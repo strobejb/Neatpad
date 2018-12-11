@@ -1,0 +1,621 @@
+//Microsoft Developer Studio generated resource script.
+//
+#include "resource.h"
+
+#define APSTUDIO_READONLY_SYMBOLS
+/////////////////////////////////////////////////////////////////////////////
+//
+// Generated from the TEXTINCLUDE 2 resource.
+//
+#include "afxres.h"
+
+/////////////////////////////////////////////////////////////////////////////
+#undef APSTUDIO_READONLY_SYMBOLS
+
+/////////////////////////////////////////////////////////////////////////////
+// English (U.K.) resources
+
+#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_ENG)
+#ifdef _WIN32
+LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_UK
+#pragma code_page(1252)
+#endif //_WIN32
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Menu
+//
+
+IDR_MENU1 MENU DISCARDABLE 
+BEGIN
+    POPUP "&File"
+    BEGIN
+        MENUITEM "&New\tCtrl+N",                IDM_FILE_NEW
+        MENUITEM "&Open...\tCtrl+O",            IDM_FILE_OPEN
+        MENUITEM "&Save\tCtrl+S",               IDM_FILE_SAVE
+        MENUITEM "Save &As...",                 IDM_FILE_SAVEAS
+        MENUITEM SEPARATOR
+        MENUITEM "&Print...\tCtrl+P",           IDM_FILE_PRINT
+        MENUITEM SEPARATOR
+        MENUITEM "E&xit",                       IDM_FILE_EXIT
+    END
+    POPUP "&Edit"
+    BEGIN
+        MENUITEM "&Undo\tCtrl+Z",               IDM_EDIT_UNDO, GRAYED
+        MENUITEM "&Redo\tCtrl+Y",               IDM_EDIT_REDO, GRAYED
+        MENUITEM SEPARATOR
+        MENUITEM "Cu&t\tCtrl+X",                IDM_EDIT_CUT, GRAYED
+        MENUITEM "&Copy\tCtrl+C",               IDM_EDIT_COPY
+        MENUITEM "&Paste\tCtrl+V",              IDM_EDIT_PASTE, GRAYED
+        MENUITEM "&Delete\tDel",                IDM_EDIT_DELETE, GRAYED
+        MENUITEM SEPARATOR
+        MENUITEM "&Find...\tCtrl+F",            IDM_EDIT_FIND
+        MENUITEM "Find &Next\tF3",              IDM_EDIT_FINDNEXT
+        MENUITEM "&Replace...\tCtrl+H",         IDM_EDIT_REPLACE
+        MENUITEM "&Go To Line...\tCtrl+G",      IDM_EDIT_GOTO
+        MENUITEM SEPARATOR
+        MENUITEM "&Select All",                 IDM_EDIT_SELECTALL
+    END
+    POPUP "&View"
+    BEGIN
+        MENUITEM "&Options...",                 IDM_VIEW_OPTIONS
+        POPUP "&Display Scheme"
+        BEGIN
+            MENUITEM "&Default",                    IDM_SCHEME_NORMAL
+            , CHECKED
+            MENUITEM SEPARATOR
+            MENUITEM "Save &As...",                 IDM_SCHEME_SAVE
+        END
+        MENUITEM SEPARATOR
+        POPUP "&Encoding"
+        BEGIN
+            MENUITEM "&Ascii",                      IDM_VIEW_ASCII
+            MENUITEM "Unicode (UTF-&8)",            IDM_VIEW_UTF8
+            MENUITEM "&Unicode (UTF-16)",           IDM_VIEW_UTF16
+            MENUITEM "Unicode (UTF-16, &Big-Endian)", IDM_VIEW_UTF16BE
+        END
+        MENUITEM "&Line Numbers",               IDM_VIEW_LINENUMBERS
+        , CHECKED
+        MENUITEM "&Highlight Long Lines",       IDM_VIEW_LONGLINES
+        MENUITEM SEPARATOR
+        MENUITEM "Status &Bar",                 IDM_VIEW_STATUSBAR
+        MENUITEM SEPARATOR
+        MENUITEM "Save Settings on &Exit",      IDM_VIEW_SAVEEXIT, CHECKED
+        MENUITEM "Save Settings &Now",          IDM_VIEW_SAVENOW
+    END
+    POPUP "&Help"
+    BEGIN
+        MENUITEM "&About Neatpad",              IDM_HELP_ABOUT
+    END
+END
+
+IDR_MENU2 MENU DISCARDABLE 
+BEGIN
+    POPUP "Popup"
+    BEGIN
+        MENUITEM "&Undo\tCtrl+Z",               IDM_EDIT_UNDO
+        MENUITEM "&Redo\tCtrl+Y",               IDM_EDIT_REDO
+        MENUITEM SEPARATOR
+        MENUITEM "C&ut\tCtrl+X",                IDM_EDIT_CUT
+        MENUITEM "&Copy\tCtrl+C",               IDM_EDIT_COPY
+        MENUITEM "&Paste\tCtrl+V",              IDM_EDIT_PASTE
+        MENUITEM "&Delete\tDel",                IDM_EDIT_DELETE
+        MENUITEM SEPARATOR
+        MENUITEM "Right to Left reading order", 0
+        MENUITEM "&Show Unicode control characters", 0
+        POPUP "&Insert Unicode control character"
+        BEGIN
+            MENUITEM "LRM\tLeft-to-right mark",     0
+            MENUITEM "RLM\tRight-to-left mark",     0
+            MENUITEM "ZWJ\tZero width joiner",      0
+            MENUITEM "ZWNJ\tZero width non-joiner", 0
+            MENUITEM "LRE\tStart of left-to-right embedding", 0
+            MENUITEM "RLE\tStart of right-to-left embedding", 0
+            MENUITEM "LRO\tStart of left-to-right override", 0
+            MENUITEM "RLO\tStart of right-to-left override", 0
+            MENUITEM "PDF\tPop directional formatting", 0
+            MENUITEM "NADS\tNational digit shapes function", 0
+            MENUITEM "NODS\tNominal (European) digit shapes", 0
+            MENUITEM "ASS\tActivate symmetric swapping", 0
+            MENUITEM "ISS\tInhibit symmetric swapping", 0
+            MENUITEM "AAFS\tActivate Arabic form shaping", 0
+            MENUITEM "IAFS\tInhibit Arabic form shaping", 0
+            MENUITEM "RS\tRecord separator (Block separator)", 0
+            MENUITEM "US\tUnit Separator (Segment separator)", 0
+        END
+    END
+END
+
+
+#ifdef APSTUDIO_INVOKED
+/////////////////////////////////////////////////////////////////////////////
+//
+// TEXTINCLUDE
+//
+
+1 TEXTINCLUDE DISCARDABLE 
+BEGIN
+    "resource.h\0"
+END
+
+2 TEXTINCLUDE DISCARDABLE 
+BEGIN
+    "#include ""afxres.h""\r\n"
+    "\0"
+END
+
+3 TEXTINCLUDE DISCARDABLE 
+BEGIN
+    "\r\n"
+    "\0"
+END
+
+#endif    // APSTUDIO_INVOKED
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Icon
+//
+
+// Icon with lowest ID value placed first to ensure application icon
+// remains consistent on all systems.
+IDI_ICON1               ICON    DISCARDABLE     "icon1.ico"
+IDI_ICON2               ICON    DISCARDABLE     "icon2.ico"
+IDI_ICON3               ICON    DISCARDABLE     "icon3.ico"
+IDI_ICON4               ICON    DISCARDABLE     "icon4.ico"
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Accelerator
+//
+
+IDR_ACCELERATOR1 ACCELERATORS DISCARDABLE 
+BEGIN
+    "C",            IDM_EDIT_COPY,          VIRTKEY, CONTROL, NOINVERT
+    "F",            IDM_EDIT_FIND,          VIRTKEY, CONTROL, NOINVERT
+    "G",            IDM_EDIT_GOTO,          VIRTKEY, CONTROL, NOINVERT
+    "H",            IDM_EDIT_REPLACE,       VIRTKEY, CONTROL, NOINVERT
+    "N",            IDM_FILE_NEW,           VIRTKEY, CONTROL, NOINVERT
+    "O",            IDM_FILE_OPEN,          VIRTKEY, CONTROL, NOINVERT
+    "V",            IDM_EDIT_PASTE,         VIRTKEY, CONTROL, NOINVERT
+    "X",            IDM_EDIT_CUT,           VIRTKEY, CONTROL, NOINVERT
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Dialog
+//
+
+IDD_OPTIONS DIALOGEX 0, 0, 290, 205
+STYLE DS_FIXEDSYS | DS_CONTROL | WS_CHILD
+EXSTYLE WS_EX_CONTROLPARENT
+FONT 8, "MS Shell Dlg"
+BEGIN
+    GROUPBOX        "System Settings",IDC_STATIC,7,7,276,77
+    CONTROL         "Add to &Explorer context menu",IDC_ADDCONTEXT,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,16,51,109,10
+    CONTROL         "&Replace Notepad as default editor",IDC_REPLACENOTEPAD,
+                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,16,64,124,10
+    CONTROL         "&Quick exit with <Escape>",IDC_CHECK10,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,16,106,96,10
+    GROUPBOX        "Window Settings",IDC_STATIC,7,91,276,61
+    CONTROL         "&Remember last window position",IDC_CHECK1,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,16,119,117,10
+    CONTROL         "For &individual files",IDC_CHECK2,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,28,131,163,10
+    ICON            "",IDC_SHIELD,16,24,20,20
+    LTEXT           "Neatpad requires Administrator privileges to change these settings. You may be presented with the User Account Control prompt when making changes.",
+                    IDC_STATIC,43,22,204,26
+END
+
+IDD_FONT DIALOGEX 0, 0, 290, 205
+STYLE DS_FIXEDSYS | DS_CONTROL | WS_CHILD
+EXSTYLE WS_EX_CONTROLPARENT
+FONT 8, "MS Shell Dlg", 0, 0, 0x1
+BEGIN
+    LTEXT           "Font (bold type indicates fixed-width font):",
+                    IDC_STATIC,7,7,179,8
+    COMBOBOX        IDC_FONTLIST,7,18,220,139,CBS_DROPDOWNLIST | 
+                    CBS_OWNERDRAWFIXED | CBS_SORT | CBS_HASSTRINGS | 
+                    WS_VSCROLL | WS_TABSTOP
+    LTEXT           "&Size:",IDC_STATIC,232,7,25,8
+    COMBOBOX        IDC_SIZELIST,232,17,48,98,CBS_DROPDOWN | WS_VSCROLL | 
+                    WS_TABSTOP
+    LTEXT           "&Display items:",IDC_STATIC,7,38,44,8
+    LISTBOX         IDC_ITEMLIST,7,49,124,58,LBS_NOINTEGRALHEIGHT | 
+                    WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Item &foreground:",IDC_STATIC,138,38,69,8
+    COMBOBOX        IDC_FGCOLCOMBO,138,49,80,95,CBS_DROPDOWNLIST | 
+                    CBS_OWNERDRAWFIXED | CBS_HASSTRINGS | WS_VSCROLL | 
+                    WS_TABSTOP
+    PUSHBUTTON      "Custom...",IDC_BUTTON2,223,49,60,14
+    LTEXT           "Item &background:",IDC_STATIC,138,67,76,8
+    COMBOBOX        IDC_BGCOLCOMBO,138,78,80,95,CBS_DROPDOWNLIST | 
+                    CBS_OWNERDRAWFIXED | CBS_HASSTRINGS | WS_VSCROLL | 
+                    WS_TABSTOP
+    PUSHBUTTON      "Custom...",IDC_BUTTON3,223,78,60,14
+    CONTROL         "&Bold",IDC_BOLD,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,
+                    138,98,41,10
+    LTEXT           "Sample:",IDC_STATIC,7,115,41,8
+    LTEXT           "Static",IDC_PREVIEW,7,126,276,36,SS_NOTIFY
+    LTEXT           "Line spacing (top && bottom):",IDC_STATIC,7,173,108,8
+    EDITTEXT        IDC_PADDINGA,8,184,60,14,ES_AUTOHSCROLL
+    CONTROL         "Spin1",IDC_SPIN1,"msctls_updown32",UDS_SETBUDDYINT | 
+                    UDS_ALIGNRIGHT | UDS_AUTOBUDDY | UDS_ARROWKEYS,56,184,9,
+                    14
+    EDITTEXT        IDC_PADDINGB,71,184,60,14,ES_AUTOHSCROLL
+    CONTROL         "Spin2",IDC_SPIN2,"msctls_updown32",UDS_SETBUDDYINT | 
+                    UDS_ALIGNRIGHT | UDS_AUTOBUDDY | UDS_ARROWKEYS,111,184,9,
+                    14
+    PUSHBUTTON      "&More...",IDC_ADVANCED,223,184,60,14
+END
+
+IDD_FONTEXTRA DIALOGEX 0, 0, 163, 74
+STYLE DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
+EXSTYLE WS_EX_CONTROLPARENT
+CAPTION "Font Options"
+FONT 8, "MS Shell Dlg", 0, 0, 0x1
+BEGIN
+    LTEXT           "Font &smoothing:",IDC_STATIC,7,7,56,8
+    COMBOBOX        IDC_COMBO1,7,17,149,78,CBS_DROPDOWNLIST | WS_VSCROLL | 
+                    WS_TABSTOP
+    DEFPUSHBUTTON   "OK",IDOK,48,53,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,106,53,50,14
+END
+
+IDD_DISPLAY DIALOGEX 0, 0, 290, 205
+STYLE DS_FIXEDSYS | DS_CONTROL | WS_CHILD
+EXSTYLE WS_EX_CONTROLPARENT
+FONT 8, "MS Shell Dlg", 0, 0, 0x1
+BEGIN
+    GROUPBOX        "Margins",IDC_STATIC,7,7,276,87
+    LTEXT           "&Long lines:",IDC_STATIC,15,20,35,8
+    COMBOBOX        IDC_LONGLINEMODE,16,31,193,57,CBS_DROPDOWNLIST | 
+                    WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Long line li&mit:",IDC_STATIC,221,20,45,8
+    EDITTEXT        IDC_LONGLINELIM,221,30,53,14,ES_AUTOHSCROLL | ES_NUMBER
+    CONTROL         "Spin3",IDC_SPIN3,"msctls_updown32",UDS_SETBUDDYINT | 
+                    UDS_ALIGNRIGHT | UDS_AUTOBUDDY | UDS_ARROWKEYS,267,30,10,
+                    14
+    GROUPBOX        "Tabs",IDC_STATIC,7,100,276,55
+    LTEXT           "&Tab size:",IDC_STATIC,16,116,38,8
+    EDITTEXT        IDC_EDIT1,63,113,40,14,ES_AUTOHSCROLL
+    CONTROL         "Spin1",IDC_SPIN1,"msctls_updown32",UDS_SETBUDDYINT | 
+                    UDS_ALIGNRIGHT | UDS_AUTOBUDDY | UDS_ARROWKEYS,100,113,9,
+                    14
+    LTEXT           "&Indent size:",IDC_STATIC,16,133,44,8
+    EDITTEXT        IDC_EDIT2,63,130,40,14,ES_AUTOHSCROLL
+    CONTROL         "Spin2",IDC_SPIN2,"msctls_updown32",UDS_SETBUDDYINT | 
+                    UDS_ALIGNRIGHT | UDS_AUTOBUDDY | UDS_ARROWKEYS,100,130,9,
+                    14
+    CONTROL         "Insert &Spaces",IDC_RADIO1,"Button",BS_AUTORADIOBUTTON | 
+                    WS_GROUP,118,112,71,10
+    CONTROL         "&Keep Tabs",IDC_RADIO2,"Button",BS_AUTORADIOBUTTON,118,
+                    124,65,10
+    CONTROL         "&Auto indent",IDC_CHECK5,"Button",BS_AUTOCHECKBOX | 
+                    WS_TABSTOP,118,137,64,10
+    CONTROL         "&Line numbers",IDC_LINENOS,"Button",BS_AUTOCHECKBOX | 
+                    WS_TABSTOP,16,62,58,10
+    CONTROL         "Use default printer's page width",IDC_CHECK1,"Button",
+                    BS_AUTOCHECKBOX | WS_DISABLED | WS_TABSTOP,16,49,115,10
+    CONTROL         "&Selection margin",IDC_SELMARGIN,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,16,75,68,10
+    CONTROL         "&Highlight current line",IDC_HIGHLIGHTCURLINE,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,185,75,80,10
+END
+
+IDD_ABOUT DIALOGEX 0, 0, 223, 137
+STYLE DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
+EXSTYLE WS_EX_CONTROLPARENT
+CAPTION "About Neatpad"
+FONT 8, "MS Shell Dlg", 0, 0, 0x1
+BEGIN
+    DEFPUSHBUTTON   "OK",IDOK,166,116,50,14
+    ICON            IDI_ICON1,IDC_HEADER2,13,20,20,20
+    LTEXT           "Copyright © 2006 by Catch22 Productions.\nWritten by J Brown.",
+                    IDC_STATIC,50,40,166,22
+    LTEXT           "Updates available at www.catch22.net",IDC_ABOUT_URL,50,
+                    90,166,18
+    LTEXT           "Neatpad Beta 0.17.10",IDC_ABOUT_APPNAME,50,20,167,14
+END
+
+IDD_SAVEFILE DIALOG DISCARDABLE  30, 17, 300, 53
+STYLE DS_3DLOOK | DS_FIXEDSYS | DS_CONTROL | DS_CONTEXTHELP | WS_CHILD | 
+    WS_CLIPSIBLINGS | WS_CLIPCHILDREN
+FONT 8, "MS Shell Dlg"
+BEGIN
+    LTEXT           "&Encoding type:",IDC_STATIC,68,1,57,18
+    COMBOBOX        IDC_ENCODINGLIST,130,0,164,30,CBS_DROPDOWNLIST | 
+                    WS_VSCROLL | WS_TABSTOP
+    CONTROL         "&Include BOM (Byte Order Mark)",IDC_INCLUDEBOM,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,130,35,113,10
+    LTEXT           "&Line format:",IDC_STATIC,68,17,57,18
+    COMBOBOX        IDC_LINEFMTLIST,130,16,164,30,CBS_DROPDOWNLIST | 
+                    WS_VSCROLL | WS_TABSTOP
+END
+
+IDD_FIND DIALOGEX 0, 0, 302, 108
+STYLE DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
+EXSTYLE WS_EX_CONTROLPARENT
+CAPTION "Find"
+FONT 8, "MS Shell Dlg", 0, 0, 0x1
+BEGIN
+    CONTROL         "Tab1",IDC_TAB1,"SysTabControl32",0x0,4,4,294,100
+END
+
+IDD_FINDPANE DIALOGEX 0, 0, 312, 100
+STYLE DS_FIXEDSYS | DS_CONTROL | WS_CHILD | WS_CLIPCHILDREN
+EXSTYLE WS_EX_CONTROLPARENT
+FONT 8, "MS Shell Dlg", 0, 0, 0x1
+BEGIN
+    LTEXT           "&Find what:",IDC_STATIC,7,9,35,8
+    COMBOBOX        IDC_COMBO1,56,7,171,30,CBS_DROPDOWN | CBS_SORT | 
+                    WS_VSCROLL | WS_TABSTOP
+    CONTROL         "Search &backwards",IDC_CHECK1,"Button",BS_AUTOCHECKBOX | 
+                    WS_TABSTOP,7,47,72,10
+    CONTROL         "&Match case",IDC_CHECK2,"Button",BS_AUTOCHECKBOX | 
+                    WS_TABSTOP,7,59,52,10
+    CONTROL         "Match whole &word only",IDC_CHECK4,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,7,71,87,10
+    CONTROL         "&Regular expression",IDC_CHECK3,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,7,83,77,10
+    DEFPUSHBUTTON   "&Find Next",IDC_FIND,241,7,64,14
+    PUSHBUTTON      "&Close",IDCANCEL,241,24,64,14
+END
+
+IDD_REPLACEPANE DIALOGEX 0, 0, 312, 100
+STYLE DS_FIXEDSYS | DS_CONTROL | WS_CHILD | WS_CLIPCHILDREN
+EXSTYLE WS_EX_CONTROLPARENT
+FONT 8, "MS Shell Dlg", 0, 0, 0x1
+BEGIN
+    LTEXT           "&Find what:",IDC_STATIC,7,9,35,8
+    COMBOBOX        IDC_COMBO1,56,7,171,30,CBS_DROPDOWN | CBS_SORT | 
+                    WS_VSCROLL | WS_TABSTOP
+    LTEXT           "&Replace with:",IDC_STATIC,7,26,47,8
+    COMBOBOX        IDC_COMBO2,56,25,171,30,CBS_DROPDOWN | CBS_SORT | 
+                    WS_VSCROLL | WS_TABSTOP
+    CONTROL         "Search &backwards",IDC_CHECK1,"Button",BS_AUTOCHECKBOX | 
+                    WS_TABSTOP,7,47,72,10
+    CONTROL         "&Match case",IDC_CHECK2,"Button",BS_AUTOCHECKBOX | 
+                    WS_TABSTOP,7,59,52,10
+    CONTROL         "Match whole &word only",IDC_CHECK4,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,7,71,87,10
+    CONTROL         "&Regular expression",IDC_CHECK3,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,7,83,77,10
+    DEFPUSHBUTTON   "&Find Next",IDC_FIND,241,7,64,14
+    PUSHBUTTON      "&Replace",IDC_REPLACE,241,24,64,14
+    PUSHBUTTON      "Replace &All",IDC_REPLACEALL,241,41,64,14
+    PUSHBUTTON      "&Close",IDCANCEL,241,58,64,14
+END
+
+IDD_GOTOPANE DIALOGEX 0, 0, 312, 100
+STYLE DS_FIXEDSYS | DS_CONTROL | WS_CHILD | WS_CLIPCHILDREN
+EXSTYLE WS_EX_CONTROLPARENT
+FONT 8, "MS Shell Dlg", 0, 0, 0x1
+BEGIN
+    LTEXT           "&Enter line number:",IDC_STATIC,7,7,59,8
+    EDITTEXT        IDC_COMBO1,7,18,220,14,ES_AUTOHSCROLL
+    DEFPUSHBUTTON   "&Goto",IDOK,241,7,64,14
+    PUSHBUTTON      "&Close",IDCANCEL,241,24,64,14
+END
+
+IDD_SEARCHBAR DIALOGEX 0, 0, 390, 16
+STYLE DS_FIXEDSYS | DS_CONTROL | WS_CHILD | WS_CLIPCHILDREN
+EXSTYLE WS_EX_CONTROLPARENT
+FONT 8, "MS Shell Dlg", 0, 0, 0x1
+BEGIN
+    EDITTEXT        IDC_EDIT1,38,1,114,14,ES_AUTOHSCROLL
+    LTEXT           "Find:",IDC_STATIC,19,4,16,8
+    CONTROL         "Mat&ch case",IDC_CHECK1,"Button",BS_AUTOCHECKBOX | 
+                    WS_TABSTOP,330,3,52,10
+    CONTROL         130,IDC_STATIC,"Static",SS_BITMAP,4,5,8,7
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// DESIGNINFO
+//
+
+#ifdef APSTUDIO_INVOKED
+GUIDELINES DESIGNINFO DISCARDABLE 
+BEGIN
+    IDD_OPTIONS, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 283
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 198
+    END
+
+    IDD_FONT, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 283
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 198
+    END
+
+    IDD_FONTEXTRA, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 156
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 67
+    END
+
+    IDD_DISPLAY, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 283
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 198
+    END
+
+    IDD_ABOUT, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 216
+        BOTTOMMARGIN, 130
+    END
+
+    IDD_SAVEFILE, DIALOG
+    BEGIN
+        BOTTOMMARGIN, 52
+    END
+
+    IDD_FIND, DIALOG
+    BEGIN
+        LEFTMARGIN, 4
+        RIGHTMARGIN, 298
+        TOPMARGIN, 4
+        BOTTOMMARGIN, 104
+    END
+
+    IDD_FINDPANE, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 305
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 93
+    END
+
+    IDD_REPLACEPANE, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 305
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 93
+    END
+
+    IDD_GOTOPANE, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 305
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 93
+    END
+
+    IDD_SEARCHBAR, DIALOG
+    BEGIN
+        RIGHTMARGIN, 383
+        BOTTOMMARGIN, 15
+    END
+END
+#endif    // APSTUDIO_INVOKED
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Bitmap
+//
+
+IDB_BITMAP1             BITMAP  DISCARDABLE     "bitmap1.bmp"
+IDB_BITMAP3             BITMAP  DISCARDABLE     "bitmap3.bmp"
+IDB_BITMAP4             BITMAP  DISCARDABLE     "bitmap4.bmp"
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// 24
+//
+
+1                       24      DISCARDABLE     "Neatpad.exe.manifest"
+
+#ifndef _MAC
+/////////////////////////////////////////////////////////////////////////////
+//
+// Version
+//
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION 0,18,19,1
+ PRODUCTVERSION 0,18,19,1
+ FILEFLAGSMASK 0x3fL
+#ifdef _DEBUG
+ FILEFLAGS 0x1L
+#else
+ FILEFLAGS 0x0L
+#endif
+ FILEOS 0x40004L
+ FILETYPE 0x1L
+ FILESUBTYPE 0x0L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "080904b0"
+        BEGIN
+            VALUE "Comments", "Neatpad text editor by www.catch22.net\0"
+            VALUE "CompanyName", "Catch22 Productions\0"
+            VALUE "FileDescription", "Neatpad Text Editor\0"
+            VALUE "FileVersion", "0, 18, 19, 1\0"
+            VALUE "InternalName", "Neatpad\0"
+            VALUE "LegalCopyright", "Copyright © 2006 Catch22 Productions\0"
+            VALUE "LegalTrademarks", "\0"
+            VALUE "OriginalFilename", "Neatpad.exe\0"
+            VALUE "PrivateBuild", "\0"
+            VALUE "ProductName", "Neatpad\0"
+            VALUE "ProductVersion", "0, 18, 19, 1\0"
+            VALUE "SpecialBuild", "\0"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x809, 1200
+    END
+END
+
+#endif    // !_MAC
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// String Table
+//
+
+STRINGTABLE DISCARDABLE 
+BEGIN
+    IDM_FILE_NEW            "Creates an empty document"
+    IDM_FILE_OPEN           "Opens an existing document"
+    IDM_FILE_EXIT           "Quits the application; prompts to save the document"
+    IDM_HELP_ABOUT          "Display program information"
+    IDM_VIEW_LINENUMBERS    "Displays line-numbers in the document margin"
+    IDM_VIEW_LONGLINES      "Highlight characters which extend past the long-line limit"
+    IDM_VIEW_SAVENOW        "Save program settings now"
+    IDM_VIEW_SAVEEXIT       "Save program settings on exit"
+    IDM_FILE_PRINT          "Prints all or part of the current document"
+    IDM_VIEW_ASCII          "Changes the document encoding to 8-bit ASCII"
+    IDM_VIEW_UTF8           "Changes the document encoding to UTF-8 Unicode"
+    IDM_VIEW_UTF16          "Changes the document encoding to 16bit Unicode"
+    IDM_VIEW_UTF16BE        "Changes the document encoding to 16bit big-endian Unicode"
+END
+
+STRINGTABLE DISCARDABLE 
+BEGIN
+    IDM_EDIT_UNDO           "Undoes the last action"
+    IDM_EDIT_REDO           "Redoes the previously undone action"
+    IDM_EDIT_CUT            "Cuts the selection and moves it to the Clipboard"
+    IDM_EDIT_COPY           "Copies the selection to the Clipboard"
+    IDM_EDIT_PASTE          "Inserts the Clipboard contents and the current cursor position"
+    IDM_EDIT_DELETE         "Deletes the current selection"
+    IDM_EDIT_SELECTALL      "Selects the entire document"
+    IDM_VIEW_STATUSBAR      "Displays the status bar"
+    IDM_VIEW_OPTIONS        "Changes program options"
+END
+
+#endif    // English (U.K.) resources
+/////////////////////////////////////////////////////////////////////////////
+
+
+
+#ifndef APSTUDIO_INVOKED
+/////////////////////////////////////////////////////////////////////////////
+//
+// Generated from the TEXTINCLUDE 3 resource.
+//
+
+
+/////////////////////////////////////////////////////////////////////////////
+#endif    // not APSTUDIO_INVOKED
+
