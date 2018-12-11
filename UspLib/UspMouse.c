@@ -10,7 +10,7 @@
 //	UspXToOffset
 //	UspOffsetToX
 //	
-//	Written by J Brown 2006 Freeware
+//	Written by J Brown 2006
 //	www.catch22.net
 //
 #define _WIN32_WINNT 0x501

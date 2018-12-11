@@ -4,8 +4,6 @@
 //	www.catch22.net
 //	Written by J Brown 2004-2006
 //
-//	Freeware
-//
 
 #define STRICT
 #define _CRT_SECURE_NO_DEPRECATE

@@ -5,8 +5,6 @@
 
 	Copyright J Brown 1999-2006
 	www.catch22.net
-
-	Freeware
 */
 #include <windows.h>
 #include <stdarg.h>

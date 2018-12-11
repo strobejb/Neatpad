@@ -13,7 +13,7 @@
 //	UspApplySelection
 //	UspApplyAttributes
 //	
-//	Written by J Brown 2006 Freeware
+//	Written by J Brown 2006
 //	www.catch22.net
 //
 
