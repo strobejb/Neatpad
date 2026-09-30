@@ -6,6 +6,9 @@
 //	NOTES:		www.catch22.net
 //
 
+#define STRICT
+#define WIN32_LEAN_AND_MEAN
+
 #include <windows.h>
 #include <tchar.h>
 #include "TextView.h"
@@ -37,15 +40,18 @@ HMENU TextView::CreateContextMenu()
 	UINT fClipboard = (IsClipboardFormatAvailable(CF_TEXT) || IsClipboardFormatAvailable(CF_UNICODETEXT)) ?
 		MF_ENABLED : MF_GRAYED | MF_DISABLED;
 
-	AppendMenu(hMenu, MF_STRING|MF_DISABLED|MF_GRAYED,	WM_USER+0, _T("&Undo"));
-	AppendMenu(hMenu, MF_STRING|MF_DISABLED|MF_GRAYED,	WM_USER+1, _T("&Redo"));
+	UINT fCanUndo = CanUndo() ? MF_ENABLED : MF_GRAYED | MF_DISABLED;
+	UINT fCanRedo = CanRedo() ? MF_ENABLED : MF_GRAYED | MF_DISABLED;
+
+	AppendMenu(hMenu, MF_STRING|fCanUndo,				WM_UNDO, _T("&Undo"));
+	AppendMenu(hMenu, MF_STRING|fCanRedo,				TXM_REDO, _T("&Redo"));
 	AppendMenu(hMenu, MF_SEPARATOR,						0, 0);
 	AppendMenu(hMenu, MF_STRING|fSelection,				WM_CUT,    _T("Cu&t"));
 	AppendMenu(hMenu, MF_STRING|fSelection,				WM_COPY,   _T("&Copy"));
 	AppendMenu(hMenu, MF_STRING|fClipboard,				WM_PASTE,  _T("&Paste"));
-	AppendMenu(hMenu, MF_STRING|fSelection,				WM_USER+5, _T("&Delete"));
+	AppendMenu(hMenu, MF_STRING|fSelection,				WM_CLEAR, _T("&Delete"));
 	AppendMenu(hMenu, MF_SEPARATOR,						0, 0);
-	AppendMenu(hMenu, MF_STRING|MF_ENABLED,				WM_USER+6, _T("&Select All"));
+	AppendMenu(hMenu, MF_STRING|MF_ENABLED,				TXM_SETSELALL, _T("&Select All"));
 	AppendMenu(hMenu, MF_SEPARATOR,						0, 0);
 	AppendMenu(hMenu, MF_STRING|MF_ENABLED,				WM_USER+7, _T("&Right to left Reading order"));
 	AppendMenu(hMenu, MF_STRING|MF_ENABLED,				WM_USER+8, _T("&Show Unicode control characters"));
@@ -60,14 +66,28 @@ HMENU TextView::CreateContextMenu()
 //
 LONG TextView::OnContextMenu(HWND hwndParam, int x, int y)
 {
-	HMENU hMenu = CreateContextMenu();
-	UINT  uCmd  = TrackPopupMenu(hMenu, TPM_RETURNCMD, x, y, 0, m_hWnd, 0);
+	if(m_hUserMenu == 0)
+	{
+		HMENU hMenu = CreateContextMenu();
+		UINT  uCmd  = TrackPopupMenu(hMenu, TPM_RETURNCMD, x, y, 0, m_hWnd, 0);
 
-	if(uCmd == WM_COPY)
-		PostMessage(m_hWnd, WM_COPY, 0, 0);
+		if(uCmd != 0)
+			PostMessage(m_hWnd, uCmd, 0, 0);
 
+		return 0;
+	}
+	else
+	{
+		UINT uCmd = TrackPopupMenu(m_hUserMenu, TPM_RETURNCMD, x, y, 0, m_hWnd, 0);
+
+		if(uCmd != 0)
+			PostMessage(GetParent(m_hWnd), WM_COMMAND, MAKEWPARAM(uCmd, 0), (LPARAM)GetParent(m_hWnd));
+
+		return 0;
+	}
 	//PostMessage(m_hWnd, WM_COMMAND, MAKEWPARAM(uCmd, 0), (LPARAM)m_hWnd);
-	return 0;//DefWindowProc(m_hWnd, WM_CONTEXTMENU, (WPARAM)hwndParam, MAKELONG(x,y));
+	
+	return DefWindowProc(m_hWnd, WM_CONTEXTMENU, (WPARAM)hwndParam, MAKELONG(x,y));
 }
 
 
@@ -152,7 +172,7 @@ LONG TextView::OnLButtonDown(UINT nFlags, int mx, int my)
 
 		InvalidateRange(m_nSelectionStart, m_nSelectionEnd);
 		
-		UpdateCaretOffset(m_nCursorOffset, &m_nCaretPosX, &m_nCurrentLine);
+		UpdateCaretOffset(m_nCursorOffset, FALSE, &m_nCaretPosX, &m_nCurrentLine);
 		m_nAnchorPosX = m_nCaretPosX;
 
 		// set capture for mouse-move selections
@@ -163,6 +183,8 @@ LONG TextView::OnLButtonDown(UINT nFlags, int mx, int my)
 
 	SetCapture(m_hWnd);
 
+	TVNCURSORINFO ci = { { 0 }, nLineNo, 0, m_nCursorOffset };
+	NotifyParent(TVN_CURSOR_CHANGE, (NMHDR *)&ci);
 	return 0;
 }
 
@@ -177,7 +199,7 @@ LONG TextView::OnLButtonUp(UINT nFlags, int mx, int my)
 	if(m_nSelectionMode == SEL_MARGIN)
 	{
 		m_nCursorOffset = m_nSelectionEnd;
-		UpdateCaretOffset(m_nCursorOffset, &m_nCaretPosX, &m_nCurrentLine);
+		UpdateCaretOffset(m_nCursorOffset, FALSE, &m_nCaretPosX, &m_nCurrentLine);
 	}
 
 	if(m_nSelectionMode)
@@ -226,8 +248,10 @@ LONG TextView::OnLButtonDblClick(UINT nFlags, int mx, int my)
 
 		// update caret position
 		InvalidateRange(m_nSelectionStart, m_nSelectionEnd);
-		UpdateCaretOffset(m_nCursorOffset, &m_nCaretPosX, &m_nCurrentLine);
+		UpdateCaretOffset(m_nCursorOffset, TRUE, &m_nCaretPosX, &m_nCurrentLine);
 		m_nAnchorPosX = m_nCaretPosX;
+
+		NotifyParent(TVN_CURSOR_CHANGE);
 	}
 
 	return 0;
@@ -243,6 +267,7 @@ LONG TextView::OnMouseMove(UINT nFlags, int mx, int my)
 	if(m_nSelectionMode)
 	{
 		ULONG	nLineNo, nFileOff;
+		BOOL	fCurChanged = FALSE;
 
 		RECT	rect;
 		POINT	pt = { mx, my };
@@ -300,6 +325,7 @@ LONG TextView::OnMouseMove(UINT nFlags, int mx, int my)
 		UpdateLine(nLineNo);
 
 		// update the region of text that has changed selection state
+		fCurChanged = m_nSelectionEnd == nFileOff ? FALSE : TRUE;
 		//if(m_nSelectionEnd != nFileOff)
 		{
 			ULONG linelen;
@@ -329,9 +355,15 @@ LONG TextView::OnMouseMove(UINT nFlags, int mx, int my)
 
 		if(m_nSelectionMode == SEL_BLOCK)
 			RefreshWindow();
+
 		//m_nCaretPosX = mx+m_nHScrollPos*m_nFontWidth-LeftMarginWidth();
 		// always set the caret position because we might be scrolling
 		UpdateCaretXY(m_nCaretPosX, m_nCurrentLine);
+
+		if(fCurChanged)
+		{
+			NotifyParent(TVN_CURSOR_CHANGE);
+		}
 	}
 	// mouse isn't being used for a selection, so set the cursor instead
 	else
@@ -643,7 +675,7 @@ VOID TextView::UpdateCaretXY(int xpos, ULONG lineno)
 //	Reposition the caret based on cursor-offset
 //	return the resulting x-coord and line#
 //
-VOID TextView::UpdateCaretOffset(ULONG offset, int *outx, ULONG *outlineno)
+VOID TextView::UpdateCaretOffset(ULONG offset, BOOL fTrailing, int *outx, ULONG *outlineno)
 {
 	ULONG		lineno = 0;
 	int			xpos = 0;
@@ -658,7 +690,11 @@ VOID TextView::UpdateCaretOffset(ULONG offset, int *outx, ULONG *outlineno)
 		{	
 			// convert character-offset to x-coordinate
 			off_chars = m_nCursorOffset - off_chars;
-			UspOffsetToX(uspData, off_chars, FALSE, &xpos);
+			
+			if(fTrailing && off_chars > 0)
+				UspOffsetToX(uspData, off_chars-1, TRUE, &xpos);
+			else
+				UspOffsetToX(uspData, off_chars, FALSE, &xpos);
 
 			// update caret position
 			UpdateCaretXY(xpos, lineno);

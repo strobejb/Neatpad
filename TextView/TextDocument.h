@@ -2,12 +2,14 @@
 #define TEXTDOC_INCLUDED
 
 #include "codepages.h"
+#include "sequence.h"
 
 class TextIterator;
 
 class TextDocument
 {
 	friend class TextIterator;
+	friend class TextView;
 
 public:
 	TextDocument();
@@ -17,6 +19,15 @@ public:
 	bool  init(TCHAR *filename);
 	
 	bool  clear();
+	bool EmptyDoc();
+
+	bool	Undo(ULONG *offset_start, ULONG *offset_end);
+	bool	Redo(ULONG *offset_start, ULONG *offset_end);
+
+	// UTF-16 text-editing interface
+	ULONG	insert_text(ULONG offset_chars, TCHAR *text, ULONG length);
+	ULONG	replace_text(ULONG offset_chars, TCHAR *text, ULONG length, ULONG erase_len);
+	ULONG	erase_text(ULONG offset_chars, ULONG length);
 
 	ULONG lineno_from_offset(ULONG offset);
 	ULONG offset_from_lineno(ULONG lineno);
@@ -29,7 +40,7 @@ public:
 	TextIterator iterate_line_offset(ULONG offset_chars, ULONG *lineno, ULONG *linestart = 0);
 
 	ULONG getdata(ULONG offset, BYTE *buf, size_t len);
-	int   getline(ULONG nLineNo, TCHAR *buf, int buflen, ULONG *off_chars);
+	ULONG getline(ULONG nLineNo, TCHAR *buf, ULONG buflen, ULONG *off_chars);
 
 	int   getformat();
 	ULONG linecount();
@@ -40,20 +51,35 @@ private:
 	
 	bool init_linebuffer();
 
+	ULONG charoffset_to_byteoffset(ULONG offset_chars);
+	ULONG byteoffset_to_charoffset(ULONG offset_bytes);
+
+	ULONG count_chars(ULONG offset_bytes, ULONG length_chars);
+
+	size_t utf16_to_rawdata(TCHAR *utf16str, size_t utf16len, BYTE *rawdata, size_t *rawlen);
+	size_t rawdata_to_utf16(BYTE *rawdata, size_t rawlen, TCHAR *utf16str, size_t *utf16len);
+
 	int   detect_file_format(int *headersize);
-	int	  gettext(ULONG offset, ULONG lenbytes, TCHAR *buf, int *len);
+	ULONG	  gettext(ULONG offset, ULONG lenbytes, TCHAR *buf, ULONG *len);
 	int   getchar(ULONG offset, ULONG lenbytes, ULONG *pch32);
 
-	char *buffer;
-	ULONG length_chars;
-	ULONG length_bytes;
+	// UTF-16 text-editing interface
+	ULONG	insert_raw(ULONG offset_bytes, TCHAR *text, ULONG length);
+	ULONG	replace_raw(ULONG offset_bytes, TCHAR *text, ULONG length, ULONG erase_len);
+	ULONG	erase_raw(ULONG offset_bytes, ULONG length);
 
-	ULONG *linebuf_byte;
-	ULONG *linebuf_char;
-	ULONG  numlines;
+
+	sequence m_seq;
+
+	ULONG  m_nDocLength_chars;
+	ULONG  m_nDocLength_bytes;
+
+	ULONG *m_pLineBuf_byte;
+	ULONG *m_pLineBuf_char;
+	ULONG  m_nNumLines;
 	
-	int	   fileformat;
-	int    headersize;
+	int	   m_nFileFormat;
+	int    m_nHeaderSize;
 };
 
 class TextIterator
@@ -86,12 +112,12 @@ public:
 		return *this;
 	}
 
-	int gettext(TCHAR *buf, int buflen)
+	ULONG gettext(TCHAR *buf, ULONG buflen)
 	{
 		if(text_doc)
 		{
 			// get text from the TextDocument at the specified byte-offset
-			int len = text_doc->gettext(off_bytes, len_bytes, buf, &buflen);
+			ULONG len = text_doc->gettext(off_bytes, len_bytes, buf, &buflen);
 
 			// adjust the iterator's internal position
 			off_bytes += len;
@@ -104,6 +130,58 @@ public:
 			return 0;
 		}
 	}
+
+	/*int insert_text(TCHAR *buf, int buflen)
+	{
+		if(text_doc)
+		{
+			// get text from the TextDocument at the specified byte-offset
+			int len = text_doc->insert(off_bytes, buf, buflen);
+
+			// adjust the iterator's internal position
+			off_bytes += len;
+			return buflen;
+		}
+		else
+		{
+			return 0;
+		}
+	}
+
+	int replace_text(TCHAR *buf, int buflen)
+	{
+		if(text_doc)
+		{
+			// get text from the TextDocument at the specified byte-offset
+			int len = text_doc->replace(off_bytes, buf, buflen);
+
+			// adjust the iterator's internal position
+			off_bytes += len;
+			return buflen;
+		}
+		else
+		{
+			return 0;
+		}
+	}
+
+	int erase_text(int length)
+	{
+		if(text_doc)
+		{
+			// get text from the TextDocument at the specified byte-offset
+			int len = text_doc->erase(off_bytes, length);
+
+			// adjust the iterator's internal position
+			off_bytes += len;
+			return len;
+		}
+		else
+		{
+			return 0;
+		}
+	}*/
+
 
 	operator bool()
 	{
@@ -118,5 +196,20 @@ private:
 	ULONG len_bytes;
 };
 
+class LineIterator
+{
+public:
+	LineIterator();
+
+private:
+	TextDocument *m_pTextDoc;
+};
+
+struct _BOM_LOOKUP
+{
+	DWORD  bom;
+	ULONG  len;
+	int    type;
+};
 
 #endif

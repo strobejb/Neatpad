@@ -5,35 +5,16 @@
 //
 //	NOTES:		www.catch22.net
 //
+
+#define STRICT
+#define WIN32_LEAN_AND_MEAN
+
 #include <windows.h>
 #include "TextDocument.h"
 #include "TextView.h"
+#include "Unicode.h"
 
-//
-//	Conversions to UTF-16
-//
-int	   ascii_to_utf16(BYTE *asciistr, size_t asciilen, wchar_t *utf16str, size_t *utf16len);
-int    utf8_to_utf16(BYTE *utf8str, size_t utf8len, wchar_t *utf16str, size_t *utf16len);
-size_t utf8_to_utf32(BYTE *utf8str, size_t utf8len, DWORD *pcp32);
-
-int	   copy_utf16(wchar_t *src, size_t srclen, wchar_t *dest, size_t *destlen);
-int	   swap_utf16(wchar_t *src, size_t srclen, wchar_t *dest, size_t *destlen);
-
-//
-//	Conversions to UTF-32
-//
-int    utf16_to_utf32(WCHAR *utf16str, size_t utf16len, ULONG *utf32str, size_t *utf32len);
-int    utf16be_to_utf32(WCHAR *utf16str, size_t utf16len, ULONG *utf32str, size_t *utf32len);
-
-
-
-struct _BOM_LOOKUP
-{
-	DWORD  bom;
-	ULONG  len;
-	int    type;
-
-} BOMLOOK[] = 
+struct _BOM_LOOKUP BOMLOOK[] = 
 {
 	// define longest headers first
 	{ 0x0000FEFF, 4, NCP_UTF32    },
@@ -44,24 +25,22 @@ struct _BOM_LOOKUP
 	{ 0,          0, NCP_ASCII	  },
 };
 
-#define SWAPWORD(val) (((WORD)(val) << 8) | ((WORD)(val) >> 8))
-
 //
 //	TextDocument constructor
 //
 TextDocument::TextDocument()
 {
-	buffer			= 0;
+//	buffer			= 0;
 	
-	length_bytes    = 0;
-	length_chars    = 0;
+	m_nDocLength_bytes  = 0;
+	m_nDocLength_chars  = 0;
 
-	linebuf_byte	= 0;
-	linebuf_char    = 0;
-	numlines		= 0;
+	m_pLineBuf_byte		= 0;
+	m_pLineBuf_char		= 0;
+	m_nNumLines			= 0;
 
-	fileformat		= NCP_ASCII;
-	headersize		= 0;
+	m_nFileFormat		= NCP_ASCII;
+	m_nHeaderSize		= 0;
 }
 
 //
@@ -93,27 +72,48 @@ bool TextDocument::init(TCHAR *filename)
 bool TextDocument::init(HANDLE hFile)
 {
 	ULONG numread;
+	char *buffer;
 
-	if((length_bytes = GetFileSize(hFile, 0)) == 0)
+	if((m_nDocLength_bytes = GetFileSize(hFile, 0)) == 0)
 		return false;
 
 	// allocate new file-buffer
-	if((buffer = new char[length_bytes]) == 0)
+	if((buffer = new char[m_nDocLength_bytes]) == 0)
 		return false;
 
 	// read entire file into memory
-	ReadFile(hFile, buffer, length_bytes, &numread, 0);
+	ReadFile(hFile, buffer, m_nDocLength_bytes, &numread, 0);
+
+	m_seq.init((BYTE *)buffer, m_nDocLength_bytes);
 
 	// try to detect if this is an ascii/unicode/utf8 file
-	fileformat = detect_file_format(&headersize);
+	m_nFileFormat = detect_file_format(&m_nHeaderSize);
 
 	// work out where each line of text starts
 	if(!init_linebuffer())
 		clear();
 
 	CloseHandle(hFile);
+	delete[] buffer;
 	return true;
 }
+
+//	Initialize the TextDocument with the specified file
+//
+/*bool TextDocument::save(TCHAR *filename)
+{
+	HANDLE hFile;
+	
+	hFile = CreateFile(filename, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
+
+	if(hFile == INVALID_HANDLE_VALUE)
+		return false;
+
+
+
+	CloseHandle(hFile);
+	return true;
+}*/
 
 
 //
@@ -131,19 +131,22 @@ bool TextDocument::init(HANDLE hFile)
 //	Match the first x bytes of the file against the
 //  Byte-Order-Mark (BOM) lookup table
 //
-int TextDocument::detect_file_format(int *headersize)
+int TextDocument::detect_file_format(int *m_nHeaderSize)
 {
+	BYTE header[4] = { 0 };
+	m_seq.render(0, header, 4);
+
 	for(int i = 0; BOMLOOK[i].len; i++)
 	{
-		if(length_bytes >= BOMLOOK[i].len &&
-		   memcmp(buffer, &BOMLOOK[i].bom, BOMLOOK[i].len) == 0)
+		if(m_nDocLength_bytes >= BOMLOOK[i].len &&
+		   memcmp(header, &BOMLOOK[i].bom, BOMLOOK[i].len) == 0)
 		{
-			*headersize = BOMLOOK[i].len;
+			*m_nHeaderSize = BOMLOOK[i].len;
 			return BOMLOOK[i].type;
 		}
 	}
 
-	*headersize = 0;
+	*m_nHeaderSize = 0;
 	return NCP_ASCII;	// default to ASCII
 }
 
@@ -153,42 +156,60 @@ int TextDocument::detect_file_format(int *headersize)
 //
 bool TextDocument::clear()
 {
-	if(buffer)
+	m_seq.clear();
+	m_nDocLength_bytes = 0;
+
+	if(m_pLineBuf_byte)
 	{
-		delete buffer;
-		buffer		 = 0;
-		length_bytes = 0;
+		delete[] m_pLineBuf_byte;
+		m_pLineBuf_byte = 0;
 	}
 
-	if(linebuf_byte)
+	if(m_pLineBuf_char)
 	{
-		delete linebuf_byte;
-		linebuf_byte = 0;
-	}
-
-	if(linebuf_char)
-	{
-		delete linebuf_char;
-		linebuf_char = 0;
+		delete[] m_pLineBuf_char;
+		m_pLineBuf_char = 0;
 	}
 		
-	numlines = 0;
+	m_nNumLines = 0;
 	return true;
 }
+
+bool TextDocument::EmptyDoc()
+{
+	clear();
+	m_seq.init();
+
+	// this is not robust. it's just to get the thing
+	// up-and-running until I write a proper line-buffer mananger
+	m_pLineBuf_byte = new ULONG[0x1000];
+	m_pLineBuf_char = new ULONG[0x1000];
+
+	m_pLineBuf_byte[0] = 0;
+	m_pLineBuf_char[0] = 0;
+
+	return true;
+}
+
 
 //
 //	Return a UTF-32 character value
 //
 int TextDocument::getchar(ULONG offset, ULONG lenbytes, ULONG *pch32)
 {
-	BYTE	*rawdata   = (BYTE *)(buffer + offset + headersize);
+//	BYTE	*rawdata   = (BYTE *)(buffer + offset + m_nHeaderSize);
+	BYTE	rawdata[16];
+
+	lenbytes = min(16, lenbytes);
+	m_seq.render(offset+ m_nHeaderSize, rawdata, lenbytes);
 
 #ifdef UNICODE
-	WCHAR   *rawdata_w = (WCHAR*)(buffer + offset + headersize);
+
+	UTF16   *rawdata_w = (UTF16 *)rawdata;//(WCHAR*)(buffer + offset + m_nHeaderSize);
 	WCHAR     ch16;
 	size_t   ch32len = 1;
 
-	switch(fileformat)
+	switch(m_nFileFormat)
 	{
 	case NCP_ASCII:
 		MultiByteToWideChar(CP_ACP, 0, (CCHAR*)rawdata, 1, &ch16, 1);
@@ -196,10 +217,10 @@ int TextDocument::getchar(ULONG offset, ULONG lenbytes, ULONG *pch32)
 		return 1;
 
 	case NCP_UTF16:
-		return utf16_to_utf32(rawdata_w, lenbytes / 2, pch32, &ch32len) * 2;
+		return utf16_to_utf32(rawdata_w, lenbytes / 2, pch32, &ch32len) * sizeof(WCHAR);
 		
 	case NCP_UTF16BE:
-		return utf16be_to_utf32(rawdata_w, lenbytes / 2, pch32, &ch32len) * 2;
+		return utf16be_to_utf32(rawdata_w, lenbytes / 2, pch32, &ch32len) * sizeof(WCHAR);
 
 	case NCP_UTF8:
 		return utf8_to_utf32(rawdata, lenbytes, pch32);
@@ -217,7 +238,7 @@ int TextDocument::getchar(ULONG offset, ULONG lenbytes, ULONG *pch32)
 }
 
 //
-//	Fetch a buffer of text from the specified offset - 
+//	Fetch a buffer of UTF-16 text from the specified byte offset - 
 //  returns the number of characters stored in buf
 //
 //	Depending on how Neatpad was compiled (UNICODE vs ANSI) this function
@@ -236,19 +257,54 @@ int TextDocument::getchar(ULONG offset, ULONG lenbytes, ULONG *pch32)
 //
 //	returns  - number of bytes processed
 //
-int	 TextDocument::gettext(ULONG offset, ULONG lenbytes, TCHAR *buf, int *buflen)
+ULONG TextDocument::gettext(ULONG offset, ULONG lenbytes, TCHAR *buf, ULONG *buflen)
 {
-	BYTE	*rawdata = (BYTE *)(buffer + offset + headersize);
+//	BYTE	*rawdata = (BYTE *)(buffer + offset + m_nHeaderSize);
 
-	if(offset >= length_bytes)
+	ULONG chars_copied = 0;
+	ULONG bytes_processed = 0;
+
+	if(offset >= m_nDocLength_bytes)
 	{
 		*buflen = 0;
 		return 0;
 	}
 
+	while(lenbytes > 0 && *buflen > 0)
+	{
+		BYTE   rawdata[0x100];
+		size_t rawlen = min(lenbytes, 0x100);
+
+		// get next block of data from the piece-table
+		m_seq.render(offset + m_nHeaderSize, rawdata, rawlen);
+
+		// convert to UTF-16 
+		size_t tmplen = *buflen;
+		rawlen = rawdata_to_utf16(rawdata, rawlen, buf, &tmplen);
+
+		lenbytes		-= rawlen;
+		offset			+= rawlen;
+		bytes_processed += rawlen;
+
+		buf				+= tmplen;
+		*buflen			-= tmplen;
+		chars_copied	+= tmplen;
+	}
+
+	*buflen = chars_copied;
+	return bytes_processed;
+
+	//ULONG remaining = lenbytes;
+	//int   charbuflen = *buflen;
+
+	//while(remaining)
+/*	{
+		lenbytes = min(lenbytes, sizeof(rawdata));
+		m_seq.render(offset + m_nHeaderSize, rawdata, lenbytes);
+
 #ifdef UNICODE
 
-	switch(fileformat)
+	switch(m_nFileFormat)
 	{
 	// convert from ANSI->UNICODE
 	case NCP_ASCII:
@@ -273,7 +329,7 @@ int	 TextDocument::gettext(ULONG offset, ULONG lenbytes, TCHAR *buf, int *buflen
 
 #else
 
-	switch(fileformat)
+	switch(m_nFileFormat)
 	{
 	// we are already an ASCII app, so do a straight memory copy
 	case NCP_ASCII:
@@ -295,11 +351,16 @@ int	 TextDocument::gettext(ULONG offset, ULONG lenbytes, TCHAR *buf, int *buflen
 
 #endif
 
+	//	remaining -= lenbytes;
+	//	buf       += lenbytes;
+	//	offset    += lenbytes;
+	}*/
 }
 
 ULONG TextDocument::getdata(ULONG offset, BYTE *buf, size_t len)
 {
-	memcpy(buf, buffer + offset + headersize, len);
+	//memcpy(buf, buffer + offset + m_nHeaderSize, len);
+	m_seq.render(offset + m_nHeaderSize, buf, len);
 	return len;
 }
 
@@ -316,19 +377,19 @@ bool TextDocument::init_linebuffer()
 	ULONG offset_chars		= 0;
 	ULONG linestart_bytes	= 0;
 	ULONG linestart_chars	= 0;
-	ULONG bytes_left	    = length_bytes - headersize;
+	ULONG bytes_left	    = m_nDocLength_bytes - m_nHeaderSize;
 
-	ULONG buflen  = length_bytes - headersize;
+	ULONG buflen  = m_nDocLength_bytes - m_nHeaderSize;
 
 	// allocate the line-buffer for storing each line's BYTE offset
-	if((linebuf_byte = new ULONG[buflen]) == 0)
+	if((m_pLineBuf_byte = new ULONG[buflen+1]) == 0)
 		return false;
 
 	// allocate the line-buffer for storing each line's CHARACTER offset
-	if((linebuf_char = new ULONG[buflen]) == 0)
+	if((m_pLineBuf_char = new ULONG[buflen+1]) == 0)
 		return false;
 
-	numlines = 0;
+	m_nNumLines = 0;
 
 
 	// loop through every byte in the file
@@ -345,10 +406,10 @@ bool TextDocument::init_linebuffer()
 		if(ch32 == '\r')
 		{
 			// record where the line starts
-			linebuf_byte[numlines] = linestart_bytes;
-			linebuf_char[numlines] = linestart_chars;
-			linestart_bytes		   = offset_bytes;
-			linestart_chars		   = offset_chars;
+			m_pLineBuf_byte[m_nNumLines] = linestart_bytes;
+			m_pLineBuf_char[m_nNumLines] = linestart_chars;
+			linestart_bytes				= offset_bytes;
+			linestart_chars				= offset_chars;
 
 			// look ahead to next char
 			len = getchar(offset_bytes, buflen - offset_bytes, &ch32);
@@ -362,28 +423,37 @@ bool TextDocument::init_linebuffer()
 				linestart_chars		= offset_chars;
 			}
 			
-			numlines++;
+			m_nNumLines++;
 		}
 		else if(ch32 == '\n' || ch32 == '\x0b' || ch32 == '\x0c' || ch32 == 0x0085 || ch32 == 0x2029 || ch32 == 0x2028)
 		{
 			// record where the line starts
-			linebuf_byte[numlines] = linestart_bytes;
-			linebuf_char[numlines] = linestart_chars;
-			linestart_bytes		   = offset_bytes;
-			linestart_chars		   = offset_chars;
-			numlines++;
+			m_pLineBuf_byte[m_nNumLines] = linestart_bytes;
+			m_pLineBuf_char[m_nNumLines] = linestart_chars;
+			linestart_bytes				= offset_bytes;
+			linestart_chars				= offset_chars;
+			m_nNumLines++;
+		}
+		// force a 'hard break' 
+		else if(offset_chars - linestart_chars > 128)
+		{
+			m_pLineBuf_byte[m_nNumLines] = linestart_bytes;
+			m_pLineBuf_char[m_nNumLines] = linestart_chars;
+			linestart_bytes				= offset_bytes;
+			linestart_chars				= offset_chars;
+			m_nNumLines++;
 		}
 	}
 
 	if(buflen > 0)
 	{
-		linebuf_byte[numlines] = linestart_bytes;
-		linebuf_char[numlines] = linestart_chars;
-		numlines++;
+		m_pLineBuf_byte[m_nNumLines] = linestart_bytes;
+		m_pLineBuf_char[m_nNumLines] = linestart_chars;
+		m_nNumLines++;
 	}
 
-	linebuf_byte[numlines] = buflen;
-	linebuf_char[numlines] = offset_chars;
+	m_pLineBuf_byte[m_nNumLines] = buflen;
+	m_pLineBuf_char[m_nNumLines] = offset_chars;
 
 	return true;
 }
@@ -394,7 +464,7 @@ bool TextDocument::init_linebuffer()
 //
 ULONG TextDocument::linecount()
 {
-	return numlines;
+	return m_nNumLines;
 }
 
 //
@@ -402,11 +472,11 @@ ULONG TextDocument::linecount()
 //
 ULONG TextDocument::longestline(int tabwidth)
 {
-	ULONG i;
+	//ULONG i;
 	ULONG longest = 0;
 	ULONG xpos = 0;
-	char *bufptr = (char *)(buffer + headersize);
-
+//	char *bufptr = (char *)(buffer + m_nHeaderSize);
+/*
 	for(i = 0; i < length_bytes; i++)
 	{
 		if(bufptr[i] == '\r')
@@ -432,8 +502,8 @@ ULONG TextDocument::longestline(int tabwidth)
 		}
 	}
 
-	longest = max(longest, xpos);
-	return longest;
+	longest = max(longest, xpos);*/
+	return 100;//longest;
 }
 
 //
@@ -441,13 +511,13 @@ ULONG TextDocument::longestline(int tabwidth)
 //
 bool TextDocument::lineinfo_from_lineno(ULONG lineno, ULONG *lineoff_chars,  ULONG *linelen_chars, ULONG *lineoff_bytes, ULONG *linelen_bytes)
 {
-	if(lineno < numlines)
+	if(lineno < m_nNumLines)
 	{
-		if(linelen_chars) *linelen_chars  = linebuf_char[lineno+1] - linebuf_char[lineno];
-		if(lineoff_chars) *lineoff_chars  = linebuf_char[lineno];
+		if(linelen_chars) *linelen_chars  = m_pLineBuf_char[lineno+1] - m_pLineBuf_char[lineno];
+		if(lineoff_chars) *lineoff_chars  = m_pLineBuf_char[lineno];
 
-		if(linelen_bytes) *linelen_bytes  = linebuf_byte[lineno+1] - linebuf_byte[lineno];
-		if(lineoff_bytes) *lineoff_bytes  = linebuf_byte[lineno];
+		if(linelen_bytes) *linelen_bytes  = m_pLineBuf_byte[lineno+1] - m_pLineBuf_byte[lineno];
+		if(lineoff_bytes) *lineoff_bytes  = m_pLineBuf_byte[lineno];
 
 		return true;
 	}
@@ -463,10 +533,10 @@ bool TextDocument::lineinfo_from_lineno(ULONG lineno, ULONG *lineoff_chars,  ULO
 bool TextDocument::lineinfo_from_offset(ULONG offset_chars, ULONG *lineno, ULONG *lineoff_chars, ULONG *linelen_chars, ULONG *lineoff_bytes, ULONG *linelen_bytes)
 {
 	ULONG low  = 0;
-	ULONG high = numlines-1;
+	ULONG high = m_nNumLines-1;
 	ULONG line = 0;
 
-	if(numlines == 0)
+	if(m_nNumLines == 0)
 	{
 		if(lineno)			*lineno			= 0;
 		if(lineoff_chars)	*lineoff_chars	= 0;
@@ -481,11 +551,11 @@ bool TextDocument::lineinfo_from_offset(ULONG offset_chars, ULONG *lineno, ULONG
 	{
 		line = (high + low) / 2;
 
-		if(offset_chars >= linebuf_char[line] && offset_chars < linebuf_char[line+1])
+		if(offset_chars >= m_pLineBuf_char[line] && offset_chars < m_pLineBuf_char[line+1])
 		{
 			break;
 		}
-		else if(offset_chars < linebuf_char[line])
+		else if(offset_chars < m_pLineBuf_char[line])
 		{
 			high = line-1;
 		}
@@ -496,28 +566,28 @@ bool TextDocument::lineinfo_from_offset(ULONG offset_chars, ULONG *lineno, ULONG
 	}
 
 	if(lineno)			*lineno			= line;
-	if(lineoff_bytes)	*lineoff_bytes	= linebuf_byte[line];
-	if(linelen_bytes)	*linelen_bytes  = linebuf_byte[line+1] - linebuf_byte[line];
-	if(lineoff_chars)	*lineoff_chars  = linebuf_char[line];
-	if(linelen_chars)	*linelen_chars  = linebuf_char[line+1] - linebuf_char[line];
+	if(lineoff_bytes)	*lineoff_bytes	= m_pLineBuf_byte[line];
+	if(linelen_bytes)	*linelen_bytes  = m_pLineBuf_byte[line+1] - m_pLineBuf_byte[line];
+	if(lineoff_chars)	*lineoff_chars  = m_pLineBuf_char[line];
+	if(linelen_chars)	*linelen_chars  = m_pLineBuf_char[line+1] - m_pLineBuf_char[line];
 
 	return true;
 }
 
 int TextDocument::getformat()
 {
-	return fileformat;
+	return m_nFileFormat;
 }
 
 ULONG TextDocument::size()
 {
-	return length_bytes;
+	return m_nDocLength_bytes;
 }
 
 TextIterator TextDocument::iterate(ULONG offset_chars)
 {
-	ULONG off_bytes=offset_chars;
-	ULONG len_bytes=length_bytes-off_bytes;
+	ULONG off_bytes = charoffset_to_byteoffset(offset_chars);
+	ULONG len_bytes = m_nDocLength_bytes - off_bytes;
 
 	//if(!lineinfo_from_offset(offset_chars, 0, linelen, &offset_bytes, &length_bytes))
 	//	return TextIterator();
@@ -568,7 +638,7 @@ ULONG TextDocument::offset_from_lineno(ULONG lineno)
 //
 //	Retrieve an entire line of text
 //	
-int  TextDocument::getline(ULONG nLineNo, TCHAR *buf, int buflen, ULONG *off_chars)
+ULONG TextDocument::getline(ULONG nLineNo, TCHAR *buf, ULONG buflen, ULONG *off_chars)
 {
 	ULONG offset_bytes;
 	ULONG length_bytes;
@@ -585,4 +655,338 @@ int  TextDocument::getline(ULONG nLineNo, TCHAR *buf, int buflen, ULONG *off_cha
 	
 	*off_chars = offset_chars;
 	return buflen;
+}
+
+//
+//	Convert the RAW buffer in underlying file-format to UTF-16
+//
+//	
+//	utf16len	- [in/out]	on input holds size of utf16str buffer, 
+//							on output holds number of utf16 characters stored
+//
+//	returns bytes processed from rawdata
+//
+size_t TextDocument::rawdata_to_utf16(BYTE *rawdata, size_t rawlen, TCHAR *utf16str, size_t *utf16len)
+{
+	switch(m_nFileFormat)
+	{
+	// convert from ANSI->UNICODE
+	case NCP_ASCII:
+		return ascii_to_utf16(rawdata, rawlen, (UTF16 *)utf16str, utf16len);
+		
+	case NCP_UTF8:
+		return utf8_to_utf16(rawdata, rawlen, (UTF16 *)utf16str, utf16len);
+
+	// already unicode, do a straight memory copy
+	case NCP_UTF16:
+		rawlen /= sizeof(TCHAR);
+		return copy_utf16((UTF16 *)rawdata, rawlen, (UTF16 *)utf16str, utf16len) * sizeof(TCHAR);
+
+	// need to convert from big-endian to little-endian
+	case NCP_UTF16BE:
+		rawlen /= sizeof(TCHAR);
+		return swap_utf16((UTF16 *)rawdata, rawlen, (UTF16 *)utf16str, utf16len) * sizeof(TCHAR);
+
+	// error! we should *never* reach this point
+	default:
+		*utf16len = 0;
+		return 0;	
+	}
+}
+
+//
+//	Converts specified UTF16 string to the underlying RAW format of the text-document
+//	(i.e. UTF-16 -> UTF-8
+//		  UTF-16 -> UTF-32 etc)
+//
+//	returns number of WCHARs processed from utf16str
+//
+size_t TextDocument::utf16_to_rawdata(TCHAR *utf16str, size_t utf16len, BYTE *rawdata, size_t *rawlen)
+{
+	switch(m_nFileFormat)
+	{
+	// convert from UTF16 -> ASCII
+	case NCP_ASCII:
+		return utf16_to_ascii((UTF16 *)utf16str, utf16len, rawdata, rawlen);
+		
+	// convert from UTF16 -> UTF8
+	case NCP_UTF8:
+		return utf16_to_utf8((UTF16 *)utf16str, utf16len, rawdata, rawlen);
+
+	// already unicode, do a straight memory copy
+	case NCP_UTF16:
+		*rawlen /= sizeof(TCHAR);
+		utf16len = copy_utf16((UTF16 *)utf16str, utf16len, (UTF16 *)rawdata, rawlen);
+		*rawlen *= sizeof(TCHAR);
+		return utf16len;
+
+	// need to convert from big-endian to little-endian
+	case NCP_UTF16BE:
+		*rawlen /= sizeof(TCHAR);
+		utf16len = swap_utf16((UTF16 *)utf16str, utf16len, (UTF16 *)rawdata, rawlen);
+		*rawlen *= sizeof(TCHAR);
+		return utf16len;
+
+	// error! we should *never* reach this point
+	default:
+		*rawlen = 0;
+		return 0;	
+	}
+
+}
+
+//
+//	Insert UTF-16 text at specified BYTE offset
+//
+//	returns number of BYTEs stored
+//
+ULONG TextDocument::insert_raw(ULONG offset_bytes, TCHAR *text, ULONG length)
+{
+	BYTE  buf[0x100];
+	ULONG buflen;
+	ULONG copied;
+	ULONG rawlen = 0;
+	ULONG offset = offset_bytes+ m_nHeaderSize;
+
+	while(length)
+	{
+		buflen = 0x100;
+		copied = utf16_to_rawdata(text, length, buf, (size_t *)&buflen);
+
+		// do the piece-table insertion!
+		if(!m_seq.insert(offset, buf, buflen))
+			break;
+
+		text   += copied;
+		length -= copied;
+		rawlen += buflen;
+		offset += buflen;
+	}
+
+	m_nDocLength_bytes = m_seq.size();
+	return rawlen;
+}
+
+ULONG TextDocument::replace_raw(ULONG offset_bytes, TCHAR *text, ULONG length, ULONG erase_chars)
+{
+	BYTE  buf[0x100];
+	ULONG buflen;
+	ULONG copied;
+	ULONG rawlen = 0;
+	ULONG offset = offset_bytes + m_nHeaderSize;
+
+	ULONG erase_bytes = count_chars(offset_bytes, erase_chars);
+
+	while(length)
+	{
+		buflen = 0x100;
+		copied = utf16_to_rawdata(text, length, buf, (size_t *)&buflen);
+
+		// do the piece-table replacement!
+		if(!m_seq.replace(offset, buf, buflen, erase_bytes))
+			break;
+
+		text   += copied;
+		length -= copied;
+		rawlen += buflen;
+		offset += buflen;
+
+		erase_bytes = 0;
+	}
+
+	m_nDocLength_bytes = m_seq.size();
+	return rawlen;
+}
+
+//
+//	Erase is a little different. Need to work out how many
+//  bytes the specified number of UTF16 characters takes up
+//
+ULONG TextDocument::erase_raw(ULONG offset_bytes, ULONG length)
+{
+	/*TCHAR  buf[0x100];
+	ULONG  buflen;
+	ULONG  bytes;
+	ULONG  erase_bytes  = 0;
+	ULONG  erase_offset = offset_bytes;
+
+	while(length)
+	{
+		buflen = min(0x100, length);
+		bytes = gettext(offset_bytes, 0x100, buf, &buflen); 
+
+		erase_bytes  += bytes;
+		offset_bytes += bytes;
+		length       -= buflen;
+	}
+
+	// do the piece-table deletion!
+	if(m_seq.erase(erase_offset + m_nHeaderSize, erase_bytes))
+	{
+		m_nDocLength_bytes = m_seq.size();
+		return length;
+	}*/
+
+	ULONG erase_bytes  = count_chars(offset_bytes, length);
+	
+	if(m_seq.erase(offset_bytes + m_nHeaderSize, erase_bytes))
+	{
+		m_nDocLength_bytes = m_seq.size();
+		return length;
+	}
+		
+	return 0;
+}
+
+//
+//	return number of bytes comprising 'length_chars' characters
+//	in the underlying raw file
+//
+ULONG TextDocument::count_chars(ULONG offset_bytes, ULONG length_chars)
+{
+	switch(m_nFileFormat)
+	{
+	case NCP_ASCII:
+		return length_chars;
+
+	case NCP_UTF16:
+	case NCP_UTF16BE:
+		return length_chars * sizeof(WCHAR);
+
+	default:
+		break;
+	}
+
+	ULONG offset_start = offset_bytes;
+
+	while(length_chars && offset_bytes < m_nDocLength_bytes)
+	{
+		TCHAR buf[0x100];
+		ULONG charlen = min(length_chars, 0x100);
+		ULONG bytelen;
+
+		bytelen = gettext(offset_bytes, m_nDocLength_bytes - offset_bytes, buf, &charlen);
+
+		length_chars -= charlen;
+		offset_bytes += bytelen;
+	}
+
+	return offset_bytes - offset_start;
+}
+
+ULONG TextDocument::byteoffset_to_charoffset(ULONG offset_bytes)
+{
+	switch(m_nFileFormat)
+	{
+	case NCP_ASCII:
+		return offset_bytes;
+
+	case NCP_UTF16:
+	case NCP_UTF16BE:
+		return offset_bytes / sizeof(WCHAR);
+
+	case NCP_UTF8:
+	case NCP_UTF32:
+	case NCP_UTF32BE:
+		// bug bug! need to implement this. 
+	default:
+		break;
+	}
+
+	return 0;
+}
+
+ULONG TextDocument::charoffset_to_byteoffset(ULONG offset_chars)
+{
+	switch(m_nFileFormat)
+	{
+	case NCP_ASCII:
+		return offset_chars;
+
+	case NCP_UTF16:
+	case NCP_UTF16BE:
+		return offset_chars * sizeof(WCHAR);
+
+	case NCP_UTF8:
+	case NCP_UTF32:
+	case NCP_UTF32BE:
+	default:
+		break;
+	}
+
+	ULONG lineoff_chars;
+	ULONG lineoff_bytes;
+
+	if(lineinfo_from_offset(offset_chars, 0, &lineoff_chars, 0, &lineoff_bytes, 0))
+	{
+		return count_chars(lineoff_bytes, offset_chars - lineoff_chars) 
+				+ lineoff_bytes;
+	}
+	else
+	{
+		return 0;
+	}
+}
+
+//
+//	Insert text at specified character-offset
+//
+ULONG TextDocument::insert_text(ULONG offset_chars, TCHAR *text, ULONG length)
+{
+	ULONG offset_bytes = charoffset_to_byteoffset(offset_chars);
+	return insert_raw(offset_bytes, text, length);
+}
+
+//
+//	Overwrite text at specified character-offset
+//
+ULONG TextDocument::replace_text(ULONG offset_chars, TCHAR *text, ULONG length, ULONG erase_len)
+{
+	ULONG offset_bytes = charoffset_to_byteoffset(offset_chars);
+	return replace_raw(offset_bytes, text, length, erase_len);
+}
+
+//
+//	Erase text at specified character-offset
+//
+ULONG TextDocument::erase_text(ULONG offset_chars, ULONG length)
+{
+	ULONG offset_bytes = charoffset_to_byteoffset(offset_chars);
+	return erase_raw(offset_bytes, length);
+}
+
+bool TextDocument::Undo(ULONG *offset_start, ULONG *offset_end)
+{
+	ULONG start, length;
+
+	if(!m_seq.undo())
+		return false;
+
+	start  = m_seq.event_index() - m_nHeaderSize;
+	length = m_seq.event_length();
+
+	*offset_start = byteoffset_to_charoffset(start);
+	*offset_end   = byteoffset_to_charoffset(start+length);
+
+	m_nDocLength_bytes = m_seq.size();
+	
+	return true;
+}
+
+bool TextDocument::Redo(ULONG *offset_start, ULONG *offset_end)
+{
+	ULONG start, length;
+
+	if(!m_seq.redo())
+		return false;
+
+	start  = m_seq.event_index() - m_nHeaderSize;
+	length = m_seq.event_length();
+
+	*offset_start = byteoffset_to_charoffset(start);
+	*offset_end   = byteoffset_to_charoffset(start+length);
+	
+	m_nDocLength_bytes = m_seq.size();
+
+	return true;
 }

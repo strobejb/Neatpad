@@ -14,8 +14,12 @@
 #endif
 
 #ifndef UNICODE
+#error  "Please build as Unicode only!"
 #define UNICODE
 #endif
+
+#define STRICT
+#define WIN32_LEAN_AND_MEAN
 
 #include <windows.h>
 #include <usp10.h>

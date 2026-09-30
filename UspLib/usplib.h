@@ -8,6 +8,9 @@ extern "C" {
 #include <usp10.h>
 #pragma comment(lib, "usp10.lib")
 
+//
+//	ATTR - use to define the attributes of a single run of text
+//
 typedef struct _ATTR
 {
 	COLORREF	fg;
@@ -21,6 +24,29 @@ typedef struct _ATTR
 
 } ATTR, *PATTR;
 
+//
+//	USPFONT - use to provide UspAnalyze with font. 
+//	Only the yoffset member can be modified by the caller - after
+//  UspInitFont has been called
+//
+typedef struct _USPFONT
+{
+	HFONT			hFont;				// handle to FONT
+	SCRIPT_CACHE	scriptCache;		// must be initialized to NULL
+	TEXTMETRIC		tm;					//
+	int				yoffset;			// height-adjustment when drawing font (set to zero)
+
+	// reserved for internal use
+	int				capheight;			// height of capital letters
+	int				numheight;			// height of numeric characters
+	int				xborder;
+	int				yborder;
+
+} USPFONT, *PUSPFONT;
+
+//
+//	ITEM_RUN - private to USPLIB
+//
 typedef struct _ITEM_RUN
 {
 	SCRIPT_ANALYSIS		analysis;
@@ -40,21 +66,11 @@ typedef struct _ITEM_RUN
 
 } ITEM_RUN, *PITEM_RUN;
 
-typedef struct _USPFONT
-{
-	HFONT			hFont;				// handle to FONT
-	SCRIPT_CACHE	scriptCache;		// must be initialized to NULL
-	TEXTMETRIC		tm;					//
-	int				yoffset;			// height-adjustment when drawing font (set to zero)
 
-	// reserved for internal use
-	int				capheight;			// height of capital letters
-	int				numheight;			// height of numeric characters
-	int				xborder;
-	int				yborder;
-
-} USPFONT, *PUSPFONT;
-
+//
+//	USPDATA - opaque data structure, do not assume
+//	anything about the internal layout of this structure
+//
 typedef struct _USPDATA
 {
 	//
@@ -117,7 +133,7 @@ typedef struct _USPDATA
 USPDATA * WINAPI UspAllocate (
 	);
 
-void WINAPI UspFree (	
+VOID WINAPI UspFree (	
 		USPDATA *uspData 
 	);
 
@@ -134,12 +150,12 @@ BOOL WINAPI UspAnalyze (
 		SCRIPT_TABDEF   * scriptTabDef
 	);
 
-void WINAPI UspApplyAttributes  (	
+VOID WINAPI UspApplyAttributes  (	
 		USPDATA	  *	uspData, 
 		ATTR      *	attrRunList
 	);
 
-void WINAPI UspApplySelection (	
+VOID WINAPI UspApplySelection (	
 		USPDATA   *	uspData, 
 		int			selStart,
 		int			selEnd
@@ -178,19 +194,19 @@ BOOL WINAPI UspOffsetToX (
 		int		  *	xpos			// out
 	);
 
-void WINAPI UspSetSelColor (
+VOID WINAPI UspSetSelColor (
 		USPDATA   *	uspData, 
 		COLORREF	fg, 
 		COLORREF	bg
 	);
 
-void WINAPI UspInitFont	(	
+VOID WINAPI UspInitFont	(	
 		USPFONT   *	uspFont,		// in/out
 		HDC			hdc,			// in
 		HFONT	    hFont			// in
 	);
 
-void WINAPI UspFreeFont (	
+VOID WINAPI UspFreeFont (	
 		USPFONT   *	uspFont
 	);
 
@@ -199,7 +215,17 @@ BOOL WINAPI UspGetSize (
 		SIZE    * size
 	);
 
-// coming soon!
+BOOL WINAPI UspBuildAttr (
+		ATTR	  *	attr,
+		COLORREF    colfg,	
+		COLORREF    colbg,
+		int			len,
+		int			font,
+		int			sel,
+		int			ctrl,
+		int			eol
+	);
+
 SCRIPT_LOGATTR * WINAPI UspGetLogAttr (	
 		USPDATA			* uspData
 	);

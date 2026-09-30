@@ -12,6 +12,9 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="sequence.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="TextDocument.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -27,6 +30,9 @@
     <ClCompile Include="TextViewFont.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="TextViewKeyInput.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="TextViewKeyNav.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -36,21 +42,21 @@
     <ClCompile Include="TextViewPaint.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="TextViewParser.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="TextViewScroll.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="TextViewSyntax.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="Unicode.cpp">
+    <ClCompile Include="Unicode.c">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="codepages.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="sequence.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="TextDocument.h">
@@ -60,6 +66,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="TextViewInternal.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Unicode.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

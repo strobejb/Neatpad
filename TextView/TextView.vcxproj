@@ -62,24 +62,27 @@
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="sequence.cpp" />
     <ClCompile Include="TextDocument.cpp" />
     <ClCompile Include="TextView.cpp" />
     <ClCompile Include="TextViewClipboard.cpp" />
     <ClCompile Include="TextViewFile.cpp" />
     <ClCompile Include="TextViewFont.cpp" />
+    <ClCompile Include="TextViewKeyInput.cpp" />
     <ClCompile Include="TextViewKeyNav.cpp" />
     <ClCompile Include="TextViewMouse.cpp" />
     <ClCompile Include="TextViewPaint.cpp" />
-    <ClCompile Include="TextViewParser.cpp" />
     <ClCompile Include="TextViewScroll.cpp" />
     <ClCompile Include="TextViewSyntax.cpp" />
-    <ClCompile Include="Unicode.cpp" />
+    <ClCompile Include="Unicode.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="codepages.h" />
+    <ClInclude Include="sequence.h" />
     <ClInclude Include="TextDocument.h" />
     <ClInclude Include="TextView.h" />
     <ClInclude Include="TextViewInternal.h" />
+    <ClInclude Include="Unicode.h" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\UspLib\UspLib.vcxproj">

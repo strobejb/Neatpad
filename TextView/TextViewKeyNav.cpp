@@ -6,6 +6,9 @@
 //	NOTES:		www.catch22.net
 //
 
+#define STRICT
+#define WIN32_LEAN_AND_MEAN
+
 #include <windows.h>
 #include <tchar.h>
 #include "TextView.h"
@@ -356,7 +359,8 @@ VOID TextView::MoveFileEnd()
 LONG TextView::OnKeyDown(UINT nKeyCode, UINT nFlags)
 {
 	bool fCtrlDown	= IsKeyPressed(VK_CONTROL);
-
+	bool fShiftDown	= IsKeyPressed(VK_SHIFT);
+	BOOL fAdvancing = FALSE;
 
 	//
 	//	Process the key-press. Cursor movement is different depending
@@ -364,14 +368,89 @@ LONG TextView::OnKeyDown(UINT nKeyCode, UINT nFlags)
 	//
 	switch(nKeyCode)
 	{
+	case VK_SHIFT: case VK_CONTROL:
+		return 0;
+
+	// CTRL+Z undo
+	case 'z': case 'Z':
+		
+		if(fCtrlDown && Undo())
+			NotifyParent(TVN_CHANGED);
+
+		return 0;
+
+	// CTRL+Y redo
+	case 'y': case 'Y':
+		
+		if(fCtrlDown && Redo()) 
+			NotifyParent(TVN_CHANGED);
+
+		return 0;
+
+	// Change insert mode / clipboard copy&paste
+	case VK_INSERT:
+
+		if(fCtrlDown)
+		{
+			OnCopy();
+			NotifyParent(TVN_CHANGED);
+		}
+		else if(fShiftDown)
+		{
+			OnPaste();
+			NotifyParent(TVN_CHANGED);
+		}
+		else
+		{
+			if(m_nEditMode == MODE_INSERT)
+				m_nEditMode = MODE_OVERWRITE;
+
+			else if(m_nEditMode == MODE_OVERWRITE)
+				m_nEditMode = MODE_INSERT;
+
+			NotifyParent(TVN_EDITMODE_CHANGE);
+		}
+
+		return 0;
+
+	case VK_DELETE:
+
+		if(m_nEditMode != MODE_READONLY)
+		{
+			if(fShiftDown)
+				OnCut();
+			else
+				ForwardDelete();
+
+			NotifyParent(TVN_CHANGED);
+		}
+		return 0;
+
+	case VK_BACK:
+
+		if(m_nEditMode != MODE_READONLY)
+		{
+			BackDelete();
+			fAdvancing = FALSE;
+
+			NotifyParent(TVN_CHANGED);
+		}
+		return 0;
+
 	case VK_LEFT:
+
 		if(fCtrlDown)	MoveWordPrev();
 		else			MoveCharPrev();
+
+		fAdvancing = FALSE;
 		break;
 
 	case VK_RIGHT:
+		
 		if(fCtrlDown)	MoveWordNext();
 		else			MoveCharNext();
+			
+		fAdvancing = TRUE;
 		break;
 
 	case VK_UP:
@@ -403,11 +482,11 @@ LONG TextView::OnKeyDown(UINT nKeyCode, UINT nFlags)
 		break;
 
 	default:
-		break;
+		return 0;
 	}
 
 	// Extend selection if <shift> is down
-	if(IsKeyPressed(VK_SHIFT))
+	if(fShiftDown)
 	{		
 		InvalidateRange(m_nSelectionEnd, m_nCursorOffset);
 		m_nSelectionEnd	= m_nCursorOffset;
@@ -423,7 +502,7 @@ LONG TextView::OnKeyDown(UINT nKeyCode, UINT nFlags)
 	}
 
 	// update caret-location (xpos, line#) from the offset
-	UpdateCaretOffset(m_nCursorOffset, &m_nCaretPosX, &m_nCurrentLine);
+	UpdateCaretOffset(m_nCursorOffset, fAdvancing, &m_nCaretPosX, &m_nCurrentLine);
 	
 	// maintain the caret 'anchor' position *except* for up/down actions
 	if(nKeyCode != VK_UP && nKeyCode != VK_DOWN)
@@ -439,6 +518,8 @@ LONG TextView::OnKeyDown(UINT nKeyCode, UINT nFlags)
 		if(!fCtrlDown)
 			ScrollToPosition(m_nCaretPosX, m_nCurrentLine);
 	}
+
+	NotifyParent(TVN_CURSOR_CHANGE);
 
 	return 0;
 }

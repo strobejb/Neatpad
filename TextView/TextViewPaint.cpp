@@ -6,6 +6,9 @@
 //	NOTES:		www.catch22.net
 //
 
+#define STRICT
+#define WIN32_LEAN_AND_MEAN
+
 #include <windows.h>
 #include <tchar.h>
 #include "TextView.h"
@@ -111,6 +114,12 @@ USPCACHE *TextView::GetUspCache(HDC hdc, ULONG nLineNo, ULONG *nOffset/*=0*/)
 		&scriptState, 
 		&tabdef
 	);
+
+	//
+	//	Modify CR/LF so cursor cannot traverse into them
+	//
+	//MarkCRLF(uspData, buff, len, attr);	
+
 
 	//
 	//	Apply the selection
@@ -288,6 +297,8 @@ int TextView::LeftMarginWidth()
 
 		if(CheckStyle(TXS_SELMARGIN) && cx > 0)
 			width += cx + 4;
+		else
+			width += 20;
 
 		if(1) width += 1;
 		if(0) width += 5;
@@ -369,6 +380,10 @@ int TextView::PaintMargin(HDC hdc, ULONG nLineNo, int xpos, int ypos)
 		{
 			imgX = rect.right;
 			rect.right += imgWidth + 4;
+		}
+		else
+		{
+			rect.right += 20;
 		}
 		
 		SetTextColor(hdc, GetColour(TXC_LINENUMBERTEXT));
@@ -559,6 +574,8 @@ int TextView::ApplyTextAttributes(ULONG nLineNo, ULONG nOffset, ULONG &nColumn, 
 	//
 	//	Finally identify control-characters (after CR/LF has been changed to 'space')
 	//
+
+
 	for(i = 0; i < nTextLen; i++)
 	{
 		ULONG ch = szText[i];
@@ -604,6 +621,34 @@ int TextView::CRLF_size(TCHAR *szText, int nLength)
 	}	
 
 	return 0;
+}
+
+void TextView::MarkCRLF(USPDATA *uspData, TCHAR *szText, int nLength, ATTR *attr)
+{
+	SCRIPT_LOGATTR *logAttr = UspGetLogAttr(uspData);
+
+	if(nLength >= 2)
+	{
+		if(szText[nLength-2] == '\r' && szText[nLength-1] == '\n') 
+		{
+			logAttr[nLength-1].fCharStop = 0;
+			logAttr[nLength-2].fCharStop = 0;
+		}
+	}
+	
+	if(nLength >= 1)
+	{
+		if( szText[nLength-1] == '\n'	||
+			szText[nLength-1] == '\r'	||
+			szText[nLength-1] == '\x0b' ||
+			szText[nLength-1] == '\x0c' ||
+			szText[nLength-1] == 0x0085 || 
+			szText[nLength-1] == 0x2029 || 
+			szText[nLength-1] == 0x2028)
+		{
+			logAttr[nLength-1].fCharStop = 0;
+		}
+	}
 }
 
 //
@@ -780,4 +825,64 @@ void DrawCheckedRect(HDC hdc, RECT *rect, COLORREF fg, COLORREF bg)
 	SelectObject(hdc, hbrold);
 	DeleteObject(hbr);
 	DeleteObject(hbmp);
+}
+
+#include <uxtheme.h>
+#include <vssym32.h>
+
+
+//
+//	Need to custom-draw the non-client area when using XP/Vista themes,
+//	otherwise the border looks old-style
+//
+LONG TextView::OnNcPaint(HRGN hrgnUpdate)
+{
+	HRGN hrgnClip = hrgnUpdate;
+
+	if(m_hTheme != 0)
+	{
+		HDC hdc = GetWindowDC(m_hWnd);//GetDCEx(m_hWnd, GetWindowDC(m_hWnd);
+		RECT rc;
+		RECT rcWindow;
+		DWORD state = ETS_NORMAL;
+		
+		if(!IsWindowEnabled(m_hWnd))
+			state = ETS_DISABLED;
+		else if(GetFocus() == m_hWnd)
+			state = ETS_HOT;
+		else
+			state = ETS_NORMAL;
+		
+		GetWindowRect(m_hWnd, &rcWindow);
+		GetClientRect(m_hWnd, &rc);
+		ClientToScreen(m_hWnd, (POINT *)&rc.left);
+		ClientToScreen(m_hWnd, (POINT *)&rc.right);
+		rc.right = rcWindow.right - (rc.left - rcWindow.left);
+		rc.bottom = rcWindow.bottom - (rc.top - rcWindow.top);
+		
+		hrgnClip = CreateRectRgn(rc.left, rc.top, rc.right, rc.bottom);
+		
+		if(hrgnUpdate != (HRGN)1)
+			CombineRgn(hrgnClip, hrgnClip, hrgnUpdate, RGN_AND);
+		
+		OffsetRect(&rc, -rcWindow.left, -rcWindow.top);
+		
+		ExcludeClipRect(hdc, rc.left, rc.top, rc.right, rc.bottom);
+		OffsetRect(&rcWindow, -rcWindow.left, -rcWindow.top);
+		
+		//if (IsThemeBackgroundPartiallyTransparent (hTheme, EP_EDITTEXT, state))
+		//	DrawThemeParentBackground(m_hWnd, hdc, &rcWindow);
+		
+		DrawThemeBackground(m_hTheme, hdc, 
+			6,
+			state,
+			//EP_EDITTEXT, 
+			//state, 
+			//3,0,
+			&rcWindow, NULL);
+		
+		ReleaseDC(m_hWnd, hdc);
+	}
+
+	return DefWindowProc(m_hWnd, WM_NCPAINT, (WPARAM)hrgnClip, 0);	
 }

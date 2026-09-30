@@ -5,10 +5,17 @@
 //
 //	NOTES:		www.catch22.net
 //
-#define _WIN32_WINNT 0x400
+#define _WIN32_WINNT 0x501
+#define STRICT
+#define WIN32_LEAN_AND_MEAN
+
 #include <windows.h>
 #include <tchar.h>
 #include <stdio.h>
+
+// for the EM_xxx message constants
+#include <richedit.h>
+
 #include "TextView.h"
 #include "TextViewInternal.h"
 #include "racursor.h"
@@ -17,9 +24,15 @@
 #ifndef SPI_GETCARETWIDTH
 #define SPI_GETCARETWIDTH 0x2006
 #endif
-#ifndef UNICODE
+#if !defined(UNICODE)
 #error "Please build as Unicode only!"
 #endif
+
+#if !defined(GetWindowLongPtr)
+#error "Latest Platform SDK is required to build Neatpad - try PSDK-Feb-2003
+#endif
+
+#pragma comment(lib, "comctl32.lib")
 
 //
 //	Constructor for TextView class
@@ -27,6 +40,8 @@
 TextView::TextView(HWND hwnd)
 {
 	m_hWnd = hwnd;
+
+	m_hTheme = OpenThemeData(hwnd, L"edit");
 
 	// Font-related data
 	m_nNumFonts		= 1;
@@ -69,11 +84,11 @@ TextView::TextView(HWND hwnd)
 
 	// Default display colours
 	m_rgbColourList[TXC_FOREGROUND]		= SYSCOL(COLOR_WINDOWTEXT);
-	m_rgbColourList[TXC_BACKGROUND]		= SYSCOL(COLOR_WINDOW);
+	m_rgbColourList[TXC_BACKGROUND]		= SYSCOL(COLOR_WINDOW);			// RGB(34,54,106)
 	m_rgbColourList[TXC_HIGHLIGHTTEXT]	= SYSCOL(COLOR_HIGHLIGHTTEXT);
 	m_rgbColourList[TXC_HIGHLIGHT]		= SYSCOL(COLOR_HIGHLIGHT);
-	m_rgbColourList[TXC_HIGHLIGHTTEXT2]	= SYSCOL(COLOR_INACTIVECAPTIONTEXT);
-	m_rgbColourList[TXC_HIGHLIGHT2]		= SYSCOL(COLOR_INACTIVECAPTION);
+	m_rgbColourList[TXC_HIGHLIGHTTEXT2]	= SYSCOL(COLOR_WINDOWTEXT);//INACTIVECAPTIONTEXT);
+	m_rgbColourList[TXC_HIGHLIGHT2]		= SYSCOL(COLOR_3DFACE);//INACTIVECAPTION);
 	m_rgbColourList[TXC_SELMARGIN1]		= SYSCOL(COLOR_3DFACE);
 	m_rgbColourList[TXC_SELMARGIN2]		= SYSCOL(COLOR_3DHIGHLIGHT);
 	m_rgbColourList[TXC_LINENUMBERTEXT]	= SYSCOL(COLOR_3DSHADOW);
@@ -86,13 +101,15 @@ TextView::TextView(HWND hwnd)
 
 	// Runtime data
 	m_nSelectionMode	= SEL_NONE;
+	m_nEditMode			= MODE_INSERT;
 	m_nScrollTimer		= 0;
 	m_fHideCaret		= false;
-	//m_fTransparent		= true;
+	m_hUserMenu			= 0;
 	m_hImageList		= 0;
 	
 	m_nSelectionStart	= 0;
 	m_nSelectionEnd		= 0;
+	m_nSelectionType	= SEL_NONE;
 	m_nCursorOffset		= 0;
 	m_nCurrentLine		= 0;
 
@@ -132,6 +149,23 @@ TextView::~TextView()
 
 	for(int i = 0; i < USP_CACHE_SIZE; i++)
 		UspFree(m_uspCache[i].uspData);
+
+	CloseThemeData(m_hTheme);
+}
+
+ULONG TextView::NotifyParent(UINT nNotifyCode, NMHDR *optional)
+{
+	UINT  nCtrlId = GetWindowLong(m_hWnd, GWL_ID);
+	NMHDR nmhdr   = { m_hWnd, nCtrlId, nNotifyCode };
+	NMHDR *nmptr  = &nmhdr;  
+	
+	if(optional)
+	{
+		nmptr  = optional;
+		*nmptr = nmhdr;
+	}
+
+	return SendMessage(GetParent(m_hWnd), WM_NOTIFY, (WPARAM)nCtrlId, (LPARAM)nmptr);
 }
 
 VOID TextView::UpdateMetrics()
@@ -284,6 +318,17 @@ ULONG TextView::SelectionSize()
 	return s2 - s1;
 }
 
+ULONG TextView::SelectAll()
+{
+	m_nSelectionStart = 0;
+	m_nSelectionEnd   = m_pTextDoc->size();
+	m_nCursorOffset   = m_nSelectionEnd;
+
+	Smeg(TRUE);
+	RefreshWindow();
+	return 0;
+}
+
 //
 //	Public memberfunction 
 //
@@ -292,6 +337,13 @@ LONG WINAPI TextView::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 	switch(msg)
 	{
 	// Draw contents of TextView whenever window needs updating
+	case WM_ERASEBKGND:
+		return 1;
+
+	// Need to custom-draw the border for XP/Vista themes
+	case WM_NCPAINT:
+		return OnNcPaint((HRGN)wParam);
+
 	case WM_PAINT:
 		return OnPaint();
 
@@ -323,6 +375,10 @@ LONG WINAPI TextView::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 	case WM_KILLFOCUS:
 		return OnKillFocus((HWND)wParam);
 
+	// make sure we get arrow-keys, enter, tab, etc when hosted inside a dialog
+	case WM_GETDLGCODE:
+		return DLGC_WANTALLKEYS;
+
 	case WM_LBUTTONDOWN:
 		return OnLButtonDown(wParam, (short)LOWORD(lParam), (short)HIWORD(lParam));
 
@@ -338,11 +394,27 @@ LONG WINAPI TextView::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 	case WM_KEYDOWN:
 		return OnKeyDown(wParam, lParam);
 
+	case WM_UNDO: case TXM_UNDO: case EM_UNDO:
+		return Undo();
+
+	case TXM_REDO: case EM_REDO:
+		return Redo();
+
+	case TXM_CANUNDO: case EM_CANUNDO:
+		return CanUndo();
+
+	case TXM_CANREDO: case EM_CANREDO:
+		return CanRedo();
+
+	case WM_CHAR:
+		return OnChar(wParam, lParam);
+
 	case WM_SETCURSOR:
+		
 		if(LOWORD(lParam) == HTCLIENT)
 			return TRUE;
-		else
-			break;
+
+		break;
 
 	case WM_COPY:
 		return OnCopy();
@@ -352,6 +424,12 @@ LONG WINAPI TextView::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 
 	case WM_PASTE:
 		return OnPaste();
+
+	case WM_CLEAR:
+		return OnClear();
+
+	case WM_GETTEXT:
+		return 0;
 
 	case WM_TIMER:
 		return OnTimer(wParam);
@@ -389,6 +467,35 @@ LONG WINAPI TextView::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 
 	case TXM_GETFORMAT:
 		return m_pTextDoc->getformat();
+
+	case TXM_GETSELSIZE:
+		return SelectionSize();
+
+	case TXM_SETSELALL:
+		return SelectAll();
+
+	case TXM_GETCURPOS:
+		return m_nCursorOffset;
+
+	case TXM_GETCURLINE:
+		return m_nCurrentLine;
+
+	case TXM_GETCURCOL:
+		ULONG nOffset;
+		GetUspData(0, m_nCurrentLine, &nOffset);
+		return m_nCursorOffset - nOffset;
+
+	case TXM_GETEDITMODE:
+		return m_nEditMode;
+
+	case TXM_SETEDITMODE:
+		lParam		= m_nEditMode;
+		m_nEditMode = wParam;
+		return lParam;
+
+	case TXM_SETCONTEXTMENU:
+		m_hUserMenu = (HMENU)wParam;
+		return 0;
 
 	default:
 		break;
@@ -461,6 +568,7 @@ BOOL InitTextView()
 HWND CreateTextView(HWND hwndParent)
 {
 	return CreateWindowEx(WS_EX_CLIENTEDGE, 
+//		L"EDIT", L"",
 		TEXTVIEW_CLASS, _T(""), 
 		WS_VSCROLL |WS_HSCROLL | WS_CHILD | WS_VISIBLE,
 		0, 0, 0, 0, 

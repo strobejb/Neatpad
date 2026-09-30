@@ -112,7 +112,7 @@ LIB32=link.exe -lib
 # PROP Intermediate_Dir "Unicode_Release"
 # PROP Target_Dir ""
 # ADD BASE CPP /nologo /MD /W3 /GX /O1 /D "WIN32" /D "NDEBUG" /D "_MBCS" /D "_LIB" /FR /YX /FD /c
-# ADD CPP /nologo /MD /W3 /O1 /D "_LIB" /D "WIN32" /D "NDEBUG" /D "_UNICODE" /D "UNICODE" /FR /YX /FD /c
+# ADD CPP /nologo /MD /W3 /GX /O1 /D "_LIB" /D "WIN32" /D "NDEBUG" /D "_UNICODE" /D "UNICODE" /FR /YX /FD /c
 # ADD BASE RSC /l 0x809 /d "NDEBUG"
 # ADD RSC /l 0x809 /d "NDEBUG"
 BSC32=bscmake.exe
@@ -135,6 +135,10 @@ LIB32=link.exe -lib
 # PROP Default_Filter "cpp;c;cxx;rc;def;r;odl;idl;hpj;bat"
 # Begin Source File
 
+SOURCE=.\sequence.cpp
+# End Source File
+# Begin Source File
+
 SOURCE=.\TextDocument.cpp
 # End Source File
 # Begin Source File
@@ -155,6 +159,10 @@ SOURCE=.\TextViewFont.cpp
 # End Source File
 # Begin Source File
 
+SOURCE=.\TextViewKeyInput.cpp
+# End Source File
+# Begin Source File
+
 SOURCE=.\TextViewKeyNav.cpp
 # End Source File
 # Begin Source File
@@ -167,10 +175,6 @@ SOURCE=.\TextViewPaint.cpp
 # End Source File
 # Begin Source File
 
-SOURCE=.\TextViewParser.cpp
-# End Source File
-# Begin Source File
-
 SOURCE=.\TextViewScroll.cpp
 # End Source File
 # Begin Source File
@@ -179,7 +183,7 @@ SOURCE=.\TextViewSyntax.cpp
 # End Source File
 # Begin Source File
 
-SOURCE=.\Unicode.cpp
+SOURCE=.\Unicode.c
 # End Source File
 # End Group
 # Begin Group "Header Files"
@@ -188,6 +192,10 @@ SOURCE=.\Unicode.cpp
 # Begin Source File
 
 SOURCE=.\codepages.h
+# End Source File
+# Begin Source File
+
+SOURCE=.\sequence.h
 # End Source File
 # Begin Source File
 
@@ -200,6 +208,10 @@ SOURCE=.\TextView.h
 # Begin Source File
 
 SOURCE=.\TextViewInternal.h
+# End Source File
+# Begin Source File
+
+SOURCE=.\Unicode.h
 # End Source File
 # End Group
 # End Target

@@ -1,46 +1,156 @@
 //
 //	MODULE:		TextViewClipboard.cpp
 //
-//	PURPOSE:	Clipboard support for TextView
+//	PURPOSE:	Basic clipboard support for TextView
+//				Just uses GetClipboardData/SetClipboardData until I migrate
+//				to the OLE code from my drag+drop tutorials
 //
 //	NOTES:		www.catch22.net
 //
+
+#define STRICT
+#define WIN32_LEAN_AND_MEAN
 
 #include <windows.h>
 #include <tchar.h>
 #include "TextView.h"
 #include "TextViewInternal.h"
 
-LONG TextView::OnPaste()
-{
-	return 0;
-}
+#ifdef UNICODE
+#define CF_TCHARTEXT CF_UNICODETEXT
+#else
+#define CF_TCHARTEXT CF_TEXT
+#endif
 
-LONG TextView::OnCopy()
+//
+//	Paste any CF_TEXT/CF_UNICODE text from the clipboard
+//
+BOOL TextView::OnPaste()
 {
-	ULONG  selstart = min(m_nSelectionStart, m_nSelectionEnd);
-	ULONG  sellen	= SelectionSize();
+	BOOL success = FALSE;
 
-	if(sellen  == 0)
-		return 0;
+	if(m_nEditMode == MODE_READONLY)
+		return FALSE;
 
 	if(OpenClipboard(m_hWnd))
 	{
-		HANDLE hMem	= GlobalAlloc(GPTR, sellen * sizeof(TCHAR));
+		HANDLE hMem		= GetClipboardData(CF_TCHARTEXT);
+		TCHAR *szText	= (TCHAR *)GlobalLock(hMem);
 
-		EmptyClipboard();
+		if(szText)
+		{
+			ULONG textlen = lstrlen(szText);
+			EnterText(szText, textlen);
 
-		TextIterator itor = m_pTextDoc->iterate(selstart);
-		itor.gettext((TCHAR *)hMem, sellen);
+			if(textlen > 1)
+				m_pTextDoc->m_seq.breakopt();	
 
-		SetClipboardData(CF_UNICODETEXT, hMem);
+			GlobalUnlock(hMem);
+			
+			success = TRUE;
+		}
+
 		CloseClipboard();
 	}
 
-	return 0;
+	return success;
 }
 
-LONG TextView::OnCut()
+//
+//	Retrieve the specified range of text and copy it to supplied buffer
+//	szDest must be big enough to hold nLength characters
+//	nLength includes the terminating NULL
+//
+ULONG TextView::GetText(TCHAR *szDest, ULONG nStartOffset, ULONG nLength)
 {
-	return 0;
+	ULONG copied = 0;
+
+	if(nLength > 1)
+	{
+		TextIterator itor = m_pTextDoc->iterate(nStartOffset);
+		copied = itor.gettext(szDest, nLength - 1);
+
+		// null-terminate
+		szDest[copied] = 0;
+	}
+	
+	return copied;
 }
+
+//
+//	Copy the currently selected text to the clipboard as CF_TEXT/CF_UNICODE
+//
+BOOL TextView::OnCopy()
+{
+	ULONG	selstart	= min(m_nSelectionStart, m_nSelectionEnd);
+	ULONG	sellen		= SelectionSize();
+	BOOL	success		= FALSE;
+
+	if(sellen  == 0)
+		return FALSE;
+
+	if(OpenClipboard(m_hWnd))
+	{
+		HANDLE hMem;
+		TCHAR  *ptr;
+		
+		if((hMem = GlobalAlloc(GPTR, (sellen + 1) * sizeof(TCHAR))) != 0)
+		{
+			if((ptr = (TCHAR *)GlobalLock(hMem)) != 0)
+			{
+				EmptyClipboard();
+
+				GetText(ptr, selstart, sellen + 1);
+
+				SetClipboardData(CF_TCHARTEXT, hMem);
+				success = TRUE;
+
+				GlobalUnlock(hMem);
+			}
+		}
+
+		CloseClipboard();
+	}
+
+	return success;
+}
+
+//
+//	Remove current selection and copy to the clipboard
+//
+BOOL TextView::OnCut()
+{
+	BOOL success = FALSE;
+
+	if(m_nEditMode == MODE_READONLY)
+		return FALSE;
+
+	if(SelectionSize() > 0)
+	{
+		// copy selected text to clipboard then erase current selection
+		success = OnCopy();
+		success = success && ForwardDelete();
+	}
+
+	return success;
+}
+
+//
+//	Remove the current selection
+//
+BOOL TextView::OnClear()
+{
+	BOOL success = FALSE;
+
+	if(m_nEditMode == MODE_READONLY)
+		return FALSE;
+
+	if(SelectionSize() > 0)
+	{
+		ForwardDelete();
+		success = TRUE;
+	}
+
+	return success;
+}
+

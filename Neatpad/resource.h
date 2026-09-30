@@ -2,6 +2,7 @@
 // Microsoft Developer Studio generated include file.
 // Used by resource.rc
 //
+#define IDC_REPLACEALL                  3
 #define IDR_MENU1                       101
 #define IDI_ICON1                       102
 #define IDR_ACCELERATOR1                103
@@ -18,6 +19,16 @@
 #define IDB_BITMAP1                     115
 #define IDB_BITMAP2                     116
 #define IDI_ICON3                       118
+#define IDD_SAVEFILE                    121
+#define IDD_FIND                        122
+#define IDD_FINDPANE                    123
+#define IDD_REPLACEPANE                 124
+#define IDD_GOTOPANE                    125
+#define IDR_MENU2                       126
+#define IDD_SEARCHBAR                   127
+#define IDB_BITMAP3                     128
+#define IDI_ICON4                       129
+#define IDB_BITMAP4                     130
 #define IDC_COMBO1                      1000
 #define IDC_FONTLIST                    1000
 #define IDC_COMBO2                      1001
@@ -75,6 +86,16 @@
 #define IDC_HIGHLIGHTCURLINE            1044
 #define IDC_MEMWINPOS                   1044
 #define IDC_MEMWINPOSFILE               1045
+#define IDC_HEADER1                     1046
+#define IDC_ABOUT_APPNAME               1047
+#define IDC_ABOUT_URL                   1048
+#define IDC_ENCODINGLIST                1049
+#define IDC_INCLUDEBOM                  1050
+#define IDC_TAB1                        1051
+#define IDC_LINEFMTLIST                 1051
+#define IDC_FIND                        1052
+#define IDC_REPLACE                     1053
+#define IDC_SHIELD                      1054
 #define IDM_FILE_NEW                    40001
 #define IDM_FILE_OPEN                   40002
 #define IDM_FILE_EXIT                   40003
@@ -96,6 +117,16 @@
 #define IDM_EDIT_PASTE                  40020
 #define IDM_EDIT_DELETE                 40021
 #define IDM_EDIT_SELECTALL              40022
+#define IDM_VIEW_STATUSBAR              40023
+#define IDM_VIEW_OPTIONS                40024
+#define IDM_FILE_SAVE                   40025
+#define IDM_FILE_SAVEAS                 40026
+#define IDM_EDIT_FIND                   40027
+#define IDM_EDIT_FINDNEXT               40028
+#define IDM_EDIT_REPLACE                40029
+#define IDM_EDIT_GOTO                   40030
+#define IDM_SCHEME_NORMAL               40032
+#define IDM_SCHEME_SAVE                 40033
 
 #define IDC_STATIC                      -1
 
@@ -103,9 +134,9 @@
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
-#define _APS_NEXT_RESOURCE_VALUE        119
-#define _APS_NEXT_COMMAND_VALUE         40023
-#define _APS_NEXT_CONTROL_VALUE         1046
+#define _APS_NEXT_RESOURCE_VALUE        131
+#define _APS_NEXT_COMMAND_VALUE         40034
+#define _APS_NEXT_CONTROL_VALUE         1055
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif

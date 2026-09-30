@@ -18,6 +18,9 @@
     <ClCompile Include="NeatUtils.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="OpenSave.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="Options.c">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -31,6 +34,12 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="Printing.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Search.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Toolbars.c">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
@@ -54,6 +63,12 @@
     <Image Include="bitmap2.bmp">
       <Filter>Resource Files</Filter>
     </Image>
+    <Image Include="bitmap3.bmp">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="bitmap4.bmp">
+      <Filter>Resource Files</Filter>
+    </Image>
     <Image Include="icon1.ico">
       <Filter>Resource Files</Filter>
     </Image>
@@ -61,6 +76,9 @@
       <Filter>Resource Files</Filter>
     </Image>
     <Image Include="icon3.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="icon4.ico">
       <Filter>Resource Files</Filter>
     </Image>
   </ItemGroup>

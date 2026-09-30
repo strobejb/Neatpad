@@ -5,7 +5,10 @@
 //	www.catch22.net
 //
 
-#define _WIN32_WINNT 0x500
+#define _CRT_SECURE_NO_DEPRECATE
+#define _CRT_NON_CONFORMING_SWPRINTFS
+#define _WIN32_WINNT 0x501
+#define STRICT
 
 #include <windows.h>
 #include <tchar.h>
@@ -19,6 +22,9 @@
 #ifndef CLEARTYPE_QUALITY
 #define CLEARTYPE_QUALITY 5
 #endif
+#include <uxtheme.h>
+#include <vssym32.h>
+
 COLORREF LightenRGB(COLORREF rgbColor, int amt);
 
 #define MSG_UPDATE_PREVIEW (WM_USER+1)
@@ -287,6 +293,28 @@ BOOL FontCombo_DrawItem(HWND hwnd, DRAWITEMSTRUCT *dis)
 		DrawFocusRect(dis->hDC, &dis->rcItem);
 		return TRUE;
 	}
+
+	/*{
+		HTHEME hTheme = 	OpenThemeData(hwnd, L"combobox");
+		RECT rc;
+		HDC hdc=GetDC(GetParent(hwnd));
+		CopyRect(&rc, &dis->rcItem);
+		InflateRect(&rc, 3, 3);
+		//GetClientRect(hwnd, &rc);
+		//rc.bottom = rc.top + 22;
+
+		//DrawThemeBackground(
+		//	hTheme, 
+		//	dis->hDC, 
+		//	4,//CP_DROPDOWNBUTTON, 
+		//	CBXS_HOT,//CBXS_NORMAL, 
+		//	&rc, 
+		//	&rc);
+
+		CloseThemeData(hTheme);
+		ReleaseDC(GetParent(hwnd),hdc);
+		return TRUE;
+	}*/
 
 	//
 	//	Get the item text
@@ -558,7 +586,7 @@ void UpdatePreviewPane(HWND hwnd)
 
 
 	if((short)LOWORD(data) >= 0)
-		g_crPreviewFG = REALIZE_SYSCOL(g_rgbTempColourList[idx]);
+		g_crPreviewFG = REALIZE_SYSCOL(g_rgbTempColourList[LOWORD(data)]);
 	else
 		g_crPreviewFG = GetSysColor(COLOR_WINDOWTEXT);
 
@@ -824,6 +852,7 @@ BOOL CALLBACK FontOptionsDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
 	switch(msg)
 	{
 	case WM_INITDIALOG:
+		CenterWindow(GetParent(hwnd));
 		return InitFontOptionsDlg(hwnd);
 
 	case MSG_UPDATE_PREVIEW:
@@ -854,8 +883,16 @@ BOOL CALLBACK FontOptionsDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
 	case WM_NOTIFY:
 
 		pshn = (PSHNOTIFY *)lParam;
-		
-		if(pshn->hdr.code == PSN_APPLY)
+
+		if(pshn->hdr.code == NM_CUSTOMDRAW)
+		{
+			if(pshn->hdr.idFrom == IDC_FONTLIST)
+			{
+				return FALSE;
+			}
+			return FALSE;
+		}		
+		else if(pshn->hdr.code == PSN_APPLY)
 		{
 			g_nFontSize = GetDlgItemInt(hwnd, IDC_SIZELIST, 0, 0);
 			g_fFontBold = IsDlgButtonChecked(hwnd, IDC_BOLD);
@@ -880,7 +917,7 @@ BOOL CALLBACK FontOptionsDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
 		{
 		case IDC_ADVANCED:
 	
-			if(DialogBoxParam(GetModuleHandle(0), MAKEINTRESOURCE(IDD_FONTEXTRA), hwnd, AdvancedDlgProc, 0))
+			if(DialogBoxParam(g_hResourceModule, MAKEINTRESOURCE(IDD_FONTEXTRA), hwnd, AdvancedDlgProc, 0))
 			{
 				UpdatePreviewPane(hwnd);
 			}

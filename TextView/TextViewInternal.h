@@ -2,10 +2,18 @@
 #define TEXTVIEW_INTERNAL_INCLUDED
 
 #define TEXTBUFSIZE  128
-#define LINENO_FMT  _T(" %d ")
+#define LINENO_FMT  _T(" %2d ")
 #define LINENO_PAD	 8
 
 #include <commctrl.h>
+#include <uxtheme.h>
+
+/*HTHEME  (WINAPI * OpenThemeData_Proc)(HWND hwnd, LPCWSTR pszClassList);
+BOOL    (WINAPI * CloseThemeData_Proc)(HTHEME hTheme);
+HRESULT (WINAPI * DrawThemeBackground_Proc)(HTHEME hTheme, HDC hdc, int, int, const RECT*, const RECT*);
+*/
+
+
 #include "TextDocument.h"
 
 #include "..\UspLib\usplib.h"
@@ -73,6 +81,7 @@ private:
 	//	Message handlers
 	//
 	LONG OnPaint();
+	LONG OnNcPaint(HRGN hrgnUpdate);
 	LONG OnSetFont(HFONT hFont);
 	LONG OnSize(UINT nFlags, int width, int height);
 	LONG OnVScroll(UINT nSBCode, UINT nPos);
@@ -89,13 +98,15 @@ private:
 	LONG OnMouseMove(UINT nFlags, int x, int y);
 
 	LONG OnKeyDown(UINT nKeyCode, UINT nFlags);
+	LONG OnChar(UINT nChar, UINT nFlags);
 
 	LONG OnSetFocus(HWND hwndOld);
 	LONG OnKillFocus(HWND hwndNew);
 
-	LONG OnCut();
-	LONG OnCopy();
-	LONG OnPaste();
+	BOOL OnCut();
+	BOOL OnCopy();
+	BOOL OnPaste();
+	BOOL OnClear();
 	
 private:
 
@@ -105,7 +116,13 @@ private:
 	LONG		OpenFile(TCHAR *szFileName);
 	LONG		ClearFile();
 	void		ResetLineCache();
+	ULONG		GetText(TCHAR *szDest, ULONG nStartOffset, ULONG nLength);
+	
+	//
+	//	Cursor/Selection
+	//
 	ULONG		SelectionSize();
+	ULONG		SelectAll();
 
 	//void		Toggle
 
@@ -127,6 +144,7 @@ private:
 	int			ApplySelection(USPDATA *uspData, ULONG nLineNo, ULONG nOffset, ULONG nTextLen);
 	int			SyntaxColour(TCHAR *szText, ULONG nTextLen, ATTR *attr);
 	int			StripCRLF(TCHAR *szText, ATTR *attrList, int nLength, bool fAllow);
+	void		MarkCRLF(USPDATA *uspData, TCHAR *szText, int nLength, ATTR *attr);
 	int			CRLF_size(TCHAR *szText, int nLength);
 
 	//
@@ -157,7 +175,8 @@ private:
 	VOID		RepositionCaret();
 	//VOID		MoveCaret(int x, int y);
 	VOID		UpdateCaretXY(int x, ULONG lineno);
-	VOID		UpdateCaretOffset(ULONG offset, int *outx=0, ULONG *outlineno=0);
+	VOID		UpdateCaretOffset(ULONG offset, BOOL fTrailing, int *outx=0, ULONG *outlineno=0);
+	VOID		Smeg(BOOL fAdvancing);
 
 	VOID		MoveWordPrev();
 	VOID		MoveWordNext();
@@ -173,6 +192,17 @@ private:
 	VOID		MoveLineEnd(ULONG lineNo);
 	VOID		MoveFileStart();
 	VOID		MoveFileEnd();
+
+	//
+	//	Editing
+	//	
+	BOOL		Undo();
+	BOOL		Redo();
+	BOOL		CanUndo();
+	BOOL		CanRedo();
+	BOOL		ForwardDelete();
+	BOOL		BackDelete();
+	ULONG		EnterText(TCHAR *szText, ULONG nLength);
 
 	//
 	//	Scrolling
@@ -204,6 +234,7 @@ private:
 	//	Miscallaneous
 	//
 	HMENU		CreateContextMenu();
+	ULONG		NotifyParent(UINT nNotifyCode, NMHDR *optional = 0);
 
 
 
@@ -212,6 +243,7 @@ private:
 	//
 
 	HWND		m_hWnd;
+	HTHEME		m_hTheme;
 	ULONG		m_uStyleFlags;
 
 	// File-related data
@@ -250,6 +282,7 @@ private:
 	SELMODE		m_nSelectionType;
 	CURPOS		m_cpBlockStart;
 	CURPOS		m_cpBlockEnd;
+	UINT		m_nEditMode;
 
 	// Display-related data
 	int			m_nTabWidthChars;
@@ -273,6 +306,7 @@ private:
 	bool		m_fHideCaret;
 	//bool		m_fTransparent;
 	HIMAGELIST	m_hImageList;
+	HMENU		m_hUserMenu;
 
 	// Cache for USPDATA objects
 	USPCACHE    *m_uspCache;

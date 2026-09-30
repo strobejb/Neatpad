@@ -4,6 +4,9 @@
 //
 //	www.catch22.net
 //
+
+#define STRICT
+
 #include <windows.h>
 #include <tchar.h>
 #include <commctrl.h>
@@ -16,6 +19,11 @@
 
 #define CONTEXT_CMD_LOC _T("*\\shell\\Open with Neatpad\\command")
 #define CONTEXT_APP_LOC _T("*\\shell\\Open with Neatpad")
+
+#define IMAGEFILE_XOPT _T("Software\\Microsoft\\Windows NT\\CurrentVersion")\
+					   _T("\\Image File Execution Options\\Notepad.exe")
+
+
 
 BOOL CALLBACK FontOptionsDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 BOOL CALLBACK MiscOptionsDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
@@ -35,8 +43,9 @@ BOOL  g_fSelMargin;
 BOOL  g_fSaveOnExit;
 int	  g_nLongLineLimit;
 BOOL  g_nHLCurLine;
-BOOL  g_fAddToExplorerContextMenu;
-BOOL  g_fReplaceNotepad;
+BOOL  g_fShowStatusbar;
+BOOL  g_fAddToExplorer		= 0;
+BOOL  g_fReplaceNotepad		= 0;
 
 COLORREF g_rgbColourList[TXC_MAX_COLOURS];
 COLORREF g_rgbCustColours[16];
@@ -90,8 +99,10 @@ BOOL WriteSettingStr(HKEY hkey, TCHAR szKeyName[], TCHAR szString[])
 //
 //	Add or remove Neatpad from the Explorer context-menu
 //
-void SetExplorerContextMenu(BOOL fAddToMenu)
+BOOL SetExplorerContextMenu(BOOL fAddToMenu)
 {
+	HRESULT hr;
+
 	if(fAddToMenu)
 	{
 		TCHAR szAppPath[MAX_PATH];
@@ -101,43 +112,51 @@ void SetExplorerContextMenu(BOOL fAddToMenu)
 
 		wsprintf(szDefaultStr, _T("\"%s\" \"%%1\""), szAppPath);
 
-		RegSetValue(HKEY_CLASSES_ROOT, CONTEXT_CMD_LOC, REG_SZ, szDefaultStr, lstrlen(szDefaultStr) * sizeof(TCHAR));
+		hr = RegSetValue(HKEY_CLASSES_ROOT, CONTEXT_CMD_LOC, REG_SZ, szDefaultStr, lstrlen(szDefaultStr) * sizeof(TCHAR));
 	}
 	else
 	{
-		RegDeleteKey(HKEY_CLASSES_ROOT, CONTEXT_CMD_LOC);
-		RegDeleteKey(HKEY_CLASSES_ROOT, CONTEXT_APP_LOC);
+		hr = RegDeleteKey(HKEY_CLASSES_ROOT, CONTEXT_CMD_LOC);
+
+		if(hr == ERROR_SUCCESS)
+			hr = RegDeleteKey(HKEY_CLASSES_ROOT, CONTEXT_APP_LOC);
 	}
+
+	return (hr == ERROR_SUCCESS) ? TRUE : FALSE;
 }
 
 //
 //	Replace/Restore Notepad (with Neatpad) as the default text editor, by
 //  manipulating the Image-File-Execution-Options debugger setting for NOTEPAD.EXE
 //
-void SetImageFileExecutionOptions(BOOL fReplaceWithCurrentApp)
+BOOL SetImageFileExecutionOptions(BOOL fReplaceWithCurrentApp)
 {
-	HKEY hKey;
-	const TCHAR* szIFEO = _T("Software\\Microsoft\\Windows NT\\CurrentVersion\\Image File Execution Options\\Notepad.exe");
+	HKEY	hKey;
+	HRESULT hr;
+	TCHAR	szPath[MAX_PATH];
 
 	// create an 'ImageFileExecutionOptions' entry for the standard Notepad app
-	if(S_OK == RegCreateKeyEx(HKEY_LOCAL_MACHINE, szIFEO, 0, 0, 0, KEY_WRITE, 0, &hKey, 0))
-	{
-		// get path of current exe
-		TCHAR szPath[MAX_PATH];
-		GetModuleFileName(0, szPath+1, MAX_PATH);
+	hr = RegCreateKeyEx(HKEY_LOCAL_MACHINE, IMAGEFILE_XOPT, 0, 0, 0, KEY_WRITE, 0, &hKey, 0);
 
-		// enclose it in double-quotes
-		szPath[0] = '\"';
-		lstrcat(szPath, _T("\""));
+	if(hr != ERROR_SUCCESS)
+		return FALSE;
 
-		// set the 'debugger' key so that whenever notepad.exe is executed, neatpad runs instead
-		if(fReplaceWithCurrentApp)
-			WriteSettingStr(hKey, _T("Debugger"), szPath);
-		else
-			RegDeleteValue(hKey, _T("Debugger"));
+	// get path of current exe
+	GetModuleFileName(0, szPath+1, MAX_PATH);
+
+	// enclose it in double-quotes
+	szPath[0] = '\"';
+	lstrcat(szPath, _T("\""));
+	lstrcat(szPath, _T(" -ifeo"));
+
+	// set the 'debugger' key so that whenever notepad.exe is executed, neatpad runs instead
+	if(fReplaceWithCurrentApp)
+		WriteSettingStr(hKey, _T("Debugger"), szPath);
+	else
+		RegDeleteValue(hKey, _T("Debugger"));
 		
-		RegCloseKey(hKey);
-	}
+	RegCloseKey(hKey);
+	return TRUE;
 }
 
 void LoadRegSettings()
@@ -163,8 +182,9 @@ void LoadRegSettings()
 	GetSettingInt(hKey, _T("SaveOnExit"),	 &g_fSaveOnExit, TRUE);
 	GetSettingInt(hKey, _T("HLCurLine"),	 &g_nHLCurLine, FALSE);
 
-	GetSettingInt(hKey, _T("AddExplorer"),	 &g_fAddToExplorerContextMenu, FALSE);
+	GetSettingInt(hKey, _T("AddExplorer"),	 &g_fAddToExplorer, FALSE);
 	GetSettingInt(hKey, _T("ReplaceNotepad"), &g_fReplaceNotepad, FALSE);
+	GetSettingInt(hKey, _T("ShowStatusbar"), &g_fShowStatusbar, FALSE);
 	
 	// read the display colours
 	RegCreateKeyEx(hKey, _T("Colours"), 0, 0, 0, KEY_READ, 0, &hColKey, 0);
@@ -187,6 +207,26 @@ void LoadRegSettings()
 	GetSettingBin(hColKey, _T("Custom"),		g_rgbCustColours, sizeof(g_rgbCustColours)); 
 
 	RegCloseKey(hColKey);
+	RegCloseKey(hKey);
+}
+
+void LoadRegSysSettings()
+{
+	HKEY hKey;
+
+	RegCreateKeyEx(HKEY_CURRENT_USER, REGLOC, 0, 0, 0, KEY_READ, 0, &hKey, 0);
+	GetSettingInt(hKey, _T("AddExplorer"),	 &g_fAddToExplorer, FALSE);
+	GetSettingInt(hKey, _T("ReplaceNotepad"), &g_fReplaceNotepad, FALSE);
+	RegCloseKey(hKey);
+}
+
+void SaveRegSysSettings()
+{
+	HKEY hKey;
+
+	RegCreateKeyEx(HKEY_CURRENT_USER, REGLOC, 0, 0, 0, KEY_WRITE, 0, &hKey, 0);
+	WriteSettingInt(hKey, _T("AddExplorer"),	g_fAddToExplorer);
+	WriteSettingInt(hKey, _T("ReplaceNotepad"), g_fReplaceNotepad);
 	RegCloseKey(hKey);
 }
 
@@ -213,9 +253,9 @@ void SaveRegSettings()
 	WriteSettingInt(hKey, _T("LongLineLimit"),g_nLongLineLimit);
 	WriteSettingInt(hKey, _T("HLCurLine"),	  g_nHLCurLine);
 
-	WriteSettingInt(hKey, _T("AddExplorer"),  g_fAddToExplorerContextMenu);
+	WriteSettingInt(hKey, _T("AddExplorer"),  g_fAddToExplorer);
 	WriteSettingInt(hKey, _T("ReplaceNotepad"), g_fReplaceNotepad);
-
+	WriteSettingInt(hKey, _T("ShowStatusbar"), g_fShowStatusbar);
 	
 	// write the display colours
 	RegCreateKeyEx(hKey, _T("Colours"), 0, 0, 0, KEY_WRITE, 0, &hColKey, 0);
@@ -272,14 +312,15 @@ void ApplyRegSettings()
 	}
 
 	//
-	//	Add
+	//	System-wide options require Administrator access. On Vista we
+	//	need to elevate using the UAC prompt. Only do this if the settings have actually
+	//	changed
 	//
-	SetExplorerContextMenu(g_fAddToExplorerContextMenu);
-
-	SetImageFileExecutionOptions(g_fReplaceNotepad);
+	//SetExplorerContextMenu(g_fAddToExplorerContextMenu);
+	//SetImageFileExecutionOptions(g_fReplaceNotepad);
 }
 
-void ShowProperties(HWND hwndParent)
+void ShowOptions(HWND hwndParent)
 {
 	PROPSHEETHEADER psh    = {   sizeof(psh)   };
 	PROPSHEETPAGE   psp[3] = {  { sizeof(psp[0]) },  
@@ -298,21 +339,21 @@ void ShowProperties(HWND hwndParent)
 
 	// configure property sheet page(1)
 	psp[0].dwFlags		= PSP_USETITLE;
-	psp[0].hInstance	= GetModuleHandle(0);
+	psp[0].hInstance	= g_hResourceModule;//GetModuleHandle(0);
 	psp[0].pfnDlgProc	= FontOptionsDlgProc;
 	psp[0].pszTemplate	= MAKEINTRESOURCE(IDD_FONT);
 	psp[0].pszTitle		= _T("Font");
 
 	// configure property sheet page(2)
 	psp[1].dwFlags		= PSP_USETITLE;
-	psp[1].hInstance	= GetModuleHandle(0);
+	psp[1].hInstance	= g_hResourceModule;//GetModuleHandle(0);
 	psp[1].pfnDlgProc	= DisplayOptionsDlgProc;
 	psp[1].pszTemplate	= MAKEINTRESOURCE(IDD_DISPLAY);
 	psp[1].pszTitle		= _T("Display");
 
-	// configure property sheet page(2)
+	// configure property sheet page(3)
 	psp[2].dwFlags		= PSP_USETITLE;
-	psp[2].hInstance	= GetModuleHandle(0);
+	psp[2].hInstance	= g_hResourceModule;//GetModuleHandle(0);
 	psp[2].pfnDlgProc	= MiscOptionsDlgProc;
 	psp[2].pszTemplate	= MAKEINTRESOURCE(IDD_OPTIONS);
 	psp[2].pszTitle		= _T("Settings");

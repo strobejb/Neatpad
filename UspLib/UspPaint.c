@@ -22,6 +22,9 @@
 #define UNICODE
 #endif
 
+#define STRICT
+#define WIN32_LEAN_AND_MEAN
+
 #include <windows.h>
 #include <usp10.h>
 #include <tchar.h>
@@ -507,7 +510,11 @@ void WINAPI UspSetSelColor (
 }
 
 //
-//	Used to initialize a font
+//	Used to initialize a font. 
+//
+//	Caller must call UspFreeFont when he is finished, and manually 
+//	do a DeleteObject on the HFONT. That is, caller is responsible for
+//	managing the lifetime of the HFONT
 //
 void WINAPI UspInitFont (
 		USPFONT		* uspFont, 
@@ -535,6 +542,6 @@ void WINAPI UspFreeFont (
 		USPFONT		* uspFont
 	)
 {
-	DeleteObject(uspFont->hFont);
+//	DeleteObject(uspFont->hFont);
 	ScriptFreeCache(&uspFont->scriptCache);
 }

@@ -111,7 +111,7 @@ BSC32=bscmake.exe
 LINK32=link.exe
 # ADD BASE LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib /nologo /subsystem:windows /debug /machine:I386
 # SUBTRACT BASE LINK32 /profile
-# ADD LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib /nologo /subsystem:windows /profile /debug /machine:I386
+# ADD LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib /nologo /subsystem:windows /profile /map /debug /machine:I386
 
 !ELSEIF  "$(CFG)" == "Neatpad - Win32 Unicode Release"
 
@@ -139,7 +139,7 @@ BSC32=bscmake.exe
 LINK32=link.exe
 # ADD BASE LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib /nologo /subsystem:windows /machine:I386
 # SUBTRACT BASE LINK32 /profile
-# ADD LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib /nologo /subsystem:windows /machine:I386
+# ADD LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib /nologo /subsystem:windows /map /machine:I386
 # SUBTRACT LINK32 /profile
 
 !ENDIF 
@@ -160,6 +160,10 @@ SOURCE=.\Neatpad.c
 # Begin Source File
 
 SOURCE=.\NeatUtils.c
+# End Source File
+# Begin Source File
+
+SOURCE=.\OpenSave.c
 # End Source File
 # Begin Source File
 
@@ -185,6 +189,14 @@ SOURCE=.\Printing.c
 
 SOURCE=.\resource.rc
 # End Source File
+# Begin Source File
+
+SOURCE=.\Search.c
+# End Source File
+# Begin Source File
+
+SOURCE=.\Toolbars.c
+# End Source File
 # End Group
 # Begin Group "Resource Files"
 
@@ -199,6 +211,14 @@ SOURCE=.\bitmap2.bmp
 # End Source File
 # Begin Source File
 
+SOURCE=.\bitmap3.bmp
+# End Source File
+# Begin Source File
+
+SOURCE=.\bitmap4.bmp
+# End Source File
+# Begin Source File
+
 SOURCE=.\icon1.ico
 # End Source File
 # Begin Source File
@@ -208,6 +228,10 @@ SOURCE=.\icon2.ico
 # Begin Source File
 
 SOURCE=.\icon3.ico
+# End Source File
+# Begin Source File
+
+SOURCE=.\icon4.ico
 # End Source File
 # End Group
 # Begin Group "Header Files"

@@ -27,9 +27,14 @@
 #define UNICODE
 #endif
 
+#define STRICT
+#define WIN32_LEAN_AND_MEAN
+
 #include <windows.h>
 #include <usp10.h>
 #include <tchar.h>
+#include <stdlib.h>
+#include <malloc.h>
 #include "usplib.h"
 
 // UspCtrl.c
@@ -542,7 +547,7 @@ void IdentifyRunSelections(USPDATA *uspData, ITEM_RUN *itemRun)
 //	The font-information stored in ATTR::font is ignored, as are
 //  the ::ctrl and ::eol flags
 //
-void WINAPI UspApplyAttributes(USPDATA *uspData, ATTR *attrRunList)
+VOID WINAPI UspApplyAttributes(USPDATA *uspData, ATTR *attrRunList)
 {
 	int i, a, c=0;
 
@@ -574,7 +579,7 @@ void WINAPI UspApplyAttributes(USPDATA *uspData, ATTR *attrRunList)
 //	the ATTR::sel values within our internal attribute-list
 //  (i.e. leave all other text styles untouched)
 //
-void WINAPI UspApplySelection(USPDATA *uspData, int selStart, int selEnd)
+VOID WINAPI UspApplySelection(USPDATA *uspData, int selStart, int selEnd)
 {
 	int i,p;
 
@@ -664,6 +669,7 @@ BOOL WINAPI UspAnalyze (
 		defAttr.font	= 0;
 		defAttr.sel		= 0;
 		defAttr.ctrl	= 0;
+		defAttr.eol		= 0;
 		defAttr.len		= wlen;
 
 		attrRunList		= &defAttr;
@@ -844,4 +850,30 @@ SCRIPT_LOGATTR * WINAPI UspGetLogAttr(USPDATA *uspData)
 	{
 		return NULL;
 	}
+}
+
+BOOL WINAPI UspBuildAttr (
+		ATTR	  *	attr,
+		COLORREF    colfg,	
+		COLORREF    colbg,
+		int			len,
+		int			font,
+		int			sel,
+		int			ctrl,
+		int			eol
+	)
+{
+	if(attr == 0)
+		return FALSE;
+
+	attr->fg		= colfg;
+	attr->bg		= colbg;
+	attr->len		= len;
+	attr->font		= font;
+	attr->sel		= sel;
+	attr->ctrl		= ctrl;
+	attr->eol		= eol;
+	attr->reserved	= 0;
+
+	return TRUE;
 }

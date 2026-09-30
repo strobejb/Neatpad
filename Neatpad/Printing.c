@@ -7,6 +7,9 @@
 //
 //	www.catch22.net
 //
+
+#define STRICT
+
 #include <windows.h>
 #include <commdlg.h>
 
