@@ -15,6 +15,8 @@ Project("{BC8A1FFA-BEE3-4634-8014-F334798102B3}") = "Neatpad", "Neatpad\Neatpad.
 		{5E7AC3D0-6E3B-4BF1-9DD6-B68A47376C83} = {5E7AC3D0-6E3B-4BF1-9DD6-B68A47376C83}
 	EndProjectSection
 EndProject
+Project("{BC8A1FFA-BEE3-4634-8014-F334798102B3}") = "SequenceTests", "Tests\SequenceTests.vcxproj", "{B73C407F-80B7-4F1A-9C7A-0423C196E032}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Win32 = Debug|Win32
@@ -33,6 +35,10 @@ Global
 		{7E3F82B5-0F6B-4432-8E0B-556B823411D4}.Debug|Win32.Build.0 = Debug|Win32
 		{7E3F82B5-0F6B-4432-8E0B-556B823411D4}.Release|Win32.ActiveCfg = Release|Win32
 		{7E3F82B5-0F6B-4432-8E0B-556B823411D4}.Release|Win32.Build.0 = Release|Win32
+		{B73C407F-80B7-4F1A-9C7A-0423C196E032}.Debug|Win32.ActiveCfg = Debug|Win32
+		{B73C407F-80B7-4F1A-9C7A-0423C196E032}.Debug|Win32.Build.0 = Debug|Win32
+		{B73C407F-80B7-4F1A-9C7A-0423C196E032}.Release|Win32.ActiveCfg = Release|Win32
+		{B73C407F-80B7-4F1A-9C7A-0423C196E032}.Release|Win32.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
