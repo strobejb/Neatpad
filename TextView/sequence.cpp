@@ -298,7 +298,8 @@ sequence::span* sequence::spanfromindex (size_w index, size_w *spanindex = 0) co
 	// insert at tail
 	if(sptr && index == curidx)
 	{
-		*spanindex = curidx;
+		if(spanindex)
+			*spanindex = curidx;
 		return sptr;
 	}
 
@@ -433,7 +434,7 @@ bool sequence::undoredo (eventstack &source, eventstack &dest)
 		dest.push_back(range);
 
 		// do the actual work
-		restore_spanrange(range, source == undostack ? true : false);
+		restore_spanrange(range, &source == &undostack ? true : false);
 	}
 	while(!source.empty() && (source.back()->group_id == group_id && group_id != 0));
 
@@ -484,9 +485,9 @@ void sequence::group()
 	{
 		if(++group_id == 0)
 			++group_id;
-
-		group_refcount++;
 	}
+
+	group_refcount++;
 }
 
 //
@@ -563,7 +564,7 @@ bool sequence::insert_worker (size_w index, const seqchar *buf, size_w length, a
 	span_range	newspans;
 	size_w		insoffset;
 
-	if(index > sequence_length)
+	if(index > sequence_length || length == 0)
 		return false;
 
 	// find the span that the insertion starts at
