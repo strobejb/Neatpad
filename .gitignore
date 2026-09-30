@@ -1,0 +1,10 @@
+.vs/
+ipch/
+Debug/
+Release/
+*.aps
+*.ncb
+*.opt
+*.plg
+*.suo
+*.user
