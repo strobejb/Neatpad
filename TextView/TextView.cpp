@@ -5,7 +5,7 @@
 //
 //	NOTES:		www.catch22.net
 //
-
+#define _WIN32_WINNT 0x400
 #include <windows.h>
 #include <tchar.h>
 #include "TextView.h"
@@ -21,9 +21,19 @@ TextView::TextView(HWND hwnd)
 	// Set the default font
 	OnSetFont((HFONT)GetStockObject(ANSI_FIXED_FONT));
 
+	// Scrollbar related data
+	m_nVScrollPos = 0;
+	m_nHScrollPos = 0;
+	m_nVScrollMax = 0;
+	m_nHScrollMax = 0;
+
 	// File-related data
-	m_nLineCount = 0;
+	m_nLineCount   = 0;
+	m_nLongestLine = 0;
+
 	m_pTextDoc = new TextDocument();
+
+	SetupScrollbars();
 }
 
 //
@@ -35,6 +45,14 @@ TextView::~TextView()
 		delete m_pTextDoc;
 }
 
+VOID TextView::UpdateMetrics()
+{
+	RECT rect;
+	GetClientRect(m_hWnd, &rect);
+
+	OnSize(0, rect.right, rect.bottom);
+	RefreshWindow();
+}
 //
 //	Set a new font
 //
@@ -56,6 +74,8 @@ LONG TextView::OnSetFont(HFONT hFont)
 
 	SelectObject(hdc, hOld);
 	ReleaseDC(m_hWnd, hdc);
+
+	UpdateMetrics();
 
 	return 0;
 }
@@ -92,6 +112,18 @@ LRESULT WINAPI TextViewWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
 	// Set a new font 
 	case WM_SETFONT:
 		return ptv->OnSetFont((HFONT)wParam);
+
+	case WM_SIZE:
+		return ptv->OnSize(wParam, LOWORD(lParam), HIWORD(lParam));
+
+	case WM_VSCROLL:
+		return ptv->OnVScroll(LOWORD(wParam), HIWORD(wParam));
+
+	case WM_HSCROLL:
+		return ptv->OnHScroll(LOWORD(wParam), HIWORD(wParam));
+
+	case WM_MOUSEWHEEL:
+		return ptv->OnMouseWheel((short)HIWORD(wParam));
 
 	//
 	case TXM_OPENFILE:

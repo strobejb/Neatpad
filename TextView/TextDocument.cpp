@@ -97,9 +97,6 @@ bool TextDocument::init_linebuffer()
 		}
 	}
 
-	if(length > 0)
-		linebuffer[numlines++] = linestart;
-
 	linebuffer[numlines] = length;
 
 	return true;
@@ -163,22 +160,32 @@ ULONG TextDocument::linecount()
 //
 //	Return the length of longest line
 //
-ULONG TextDocument::longestline()
+ULONG TextDocument::longestline(int tabwidth)
 {
-	ULONG i, len;
+	ULONG i;
 	ULONG longest = 0;
+	ULONG xpos = 0;
 
-	// use the line-buffer to work out which is the longest line
-	for(i = 0; i < numlines; i++)
+	for(i = 0; i < length; i++)
 	{
-		len = linebuffer[i+1] - linebuffer[i];
+		if(buffer[i] == '\r')
+		{
+			if(buffer[i+1] == '\n')
+				 i++;
 
-		// don't include carriage-returns
-		if(buffer[linebuffer[i+1] - 1] == '\n') len--;
-		if(buffer[linebuffer[i+1] - 2] == '\r') len--;
-
-		longest = max(longest, len);
+			longest = max(longest, xpos);
+			xpos = 0;
+		}
+		else if(buffer[i] == '\t')
+		{
+			xpos += tabwidth - (xpos % tabwidth);
+		}
+		else
+		{
+			xpos ++;
+		}
 	}
 
+	longest = max(longest, xpos);
 	return longest;
 }

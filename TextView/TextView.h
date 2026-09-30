@@ -36,10 +36,10 @@ HWND CreateTextView(HWND hwndParent);
 //
 //	TextView colours
 //
-#define HVC_BACKGROUND		0			// normal background colour
-#define HVC_FOREGROUND		1			// normal foreground colour
+#define TXC_BACKGROUND		0			// normal background colour
+#define TXC_FOREGROUND		1			// normal foreground colour
 
-#define HVC_MAX_COLOURS		2			// keep this updated!
+#define TXC_MAX_COLOURS		2			// keep this updated!
 
 #ifdef __cplusplus
 }

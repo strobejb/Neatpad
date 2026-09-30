@@ -14,6 +14,10 @@ public:
 
 	LONG OnPaint();
 	LONG OnSetFont(HFONT hFont);
+	LONG OnSize(UINT nFlags, int width, int height);
+	LONG OnVScroll(UINT nSBCode, UINT nPos);
+	LONG OnHScroll(UINT nSBCode, UINT nPos);
+	LONG OnMouseWheel(int nDelta);
 
 	LONG OpenFile(TCHAR *szFileName);
 	LONG ClearFile();
@@ -22,8 +26,14 @@ private:
 
 	void PaintLine(HDC hdc, ULONG line);
 	void TabbedExtTextOut(HDC hdc, RECT *rect, TCHAR *buf, int len);
+	void RefreshWindow();
 
-	COLORREF GetTextViewColor(UINT idx);
+	COLORREF GetColour(UINT idx);
+
+	VOID	SetupScrollbars();
+	VOID	UpdateMetrics();
+	bool    PinToBottomCorner();
+	void	Scroll(int dx, int dy);
 
 	HWND	m_hWnd;
 
@@ -31,6 +41,16 @@ private:
 	HFONT	m_hFont;
 	int		m_nFontWidth;
 	int		m_nFontHeight;
+
+	// Scrollbar related data
+	ULONG	m_nVScrollPos;
+	ULONG   m_nVScrollMax;
+	int		m_nHScrollPos;
+	int		m_nHScrollMax;
+
+	int		m_nLongestLine;
+	int		m_nWindowLines;
+	int		m_nWindowColumns;
 
 	// File-related data
 	ULONG	m_nLineCount;

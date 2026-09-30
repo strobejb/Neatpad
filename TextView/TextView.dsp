@@ -99,6 +99,10 @@ SOURCE=.\TextViewFile.cpp
 
 SOURCE=.\TextViewPaint.cpp
 # End Source File
+# Begin Source File
+
+SOURCE=.\TextViewScroll.cpp
+# End Source File
 # End Group
 # Begin Group "Header Files"
 
