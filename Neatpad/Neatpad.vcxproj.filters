@@ -15,13 +15,22 @@
     <ClCompile Include="Neatpad.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="NeatUtils.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="Options.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="OptionsDisplay.c">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="OptionsFont.c">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="OptionsMisc.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Printing.c">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
@@ -39,6 +48,12 @@
     </ResourceCompile>
   </ItemGroup>
   <ItemGroup>
+    <Image Include="bitmap1.bmp">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="bitmap2.bmp">
+      <Filter>Resource Files</Filter>
+    </Image>
     <Image Include="icon1.ico">
       <Filter>Resource Files</Filter>
     </Image>

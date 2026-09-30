@@ -82,9 +82,12 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="Neatpad.c" />
+    <ClCompile Include="NeatUtils.c" />
     <ClCompile Include="Options.c" />
+    <ClCompile Include="OptionsDisplay.c" />
     <ClCompile Include="OptionsFont.c" />
     <ClCompile Include="OptionsMisc.c" />
+    <ClCompile Include="Printing.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Neatpad.h" />
@@ -94,6 +97,8 @@
     <ResourceCompile Include="resource.rc" />
   </ItemGroup>
   <ItemGroup>
+    <Image Include="bitmap1.bmp" />
+    <Image Include="bitmap2.bmp" />
     <Image Include="icon1.ico" />
     <Image Include="icon2.ico" />
   </ItemGroup>

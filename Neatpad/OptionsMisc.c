@@ -1,3 +1,9 @@
+//
+//	Neatpad
+//	OptionsMisc.c
+//
+//	www.catch22.net
+//
 #include <windows.h>
 #include <commctrl.h>
 #include <shellapi.h>

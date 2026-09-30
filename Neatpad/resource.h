@@ -13,6 +13,10 @@
 #define IDD_FONT                        107
 #define IDD_DIALOG2                     108
 #define IDD_FONTEXTRA                   112
+#define IDD_DISPLAY                     113
+#define IDD_ABOUT                       114
+#define IDB_BITMAP1                     115
+#define IDB_BITMAP2                     116
 #define IDC_COMBO1                      1000
 #define IDC_FONTLIST                    1000
 #define IDC_COMBO2                      1001
@@ -45,14 +49,35 @@
 #define IDC_CHECK3                      1023
 #define IDC_CHECK4                      1024
 #define IDC_PROGRESS1                   1025
+#define IDC_CHECK10                     1025
 #define IDC_RADIO1                      1026
 #define IDC_RADIO2                      1027
 #define IDC_CHECK5                      1028
+#define IDC_CHECK6                      1029
+#define IDC_CHECK7                      1030
+#define IDC_CHECK8                      1031
+#define IDC_CHECK9                      1032
+#define IDC_EDIT3                       1033
+#define IDC_EDIT4                       1034
+#define IDC_LONGLINELIM                 1034
+#define IDC_BANNER                      1035
+#define IDC_SPIN3                       1037
+#define IDC_HEADER                      1038
+#define IDC_HEADER2                     1039
+#define IDC_LINENOSFIRST                1040
+#define IDC_LINENOS                     1041
+#define IDC_SELMARGIN                   1042
+#define IDC_LONGLINEMODE                1043
 #define IDM_FILE_NEW                    40001
 #define IDM_FILE_OPEN                   40002
 #define IDM_FILE_EXIT                   40003
 #define IDM_HELP_ABOUT                  40004
 #define IDM_VIEW_FONT                   40005
+#define IDM_VIEW_LINENUMBERS            40006
+#define IDM_VIEW_LONGLINES              40007
+#define IDM_VIEW_SAVENOW                40008
+#define IDM_VIEW_SAVEEXIT               40009
+#define IDM_FILE_PRINT                  40010
 
 #define IDC_STATIC                      -1
 
@@ -60,9 +85,9 @@
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
-#define _APS_NEXT_RESOURCE_VALUE        113
-#define _APS_NEXT_COMMAND_VALUE         40006
-#define _APS_NEXT_CONTROL_VALUE         1029
+#define _APS_NEXT_RESOURCE_VALUE        117
+#define _APS_NEXT_COMMAND_VALUE         40011
+#define _APS_NEXT_CONTROL_VALUE         1044
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif

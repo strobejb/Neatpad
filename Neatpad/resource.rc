@@ -32,12 +32,20 @@ BEGIN
     BEGIN
         MENUITEM "&New\tCtrl+N",                IDM_FILE_NEW
         MENUITEM "&Open...\tCtrl+O",            IDM_FILE_OPEN
+        MENUITEM "&Print...\tCtrl+P",           IDM_FILE_PRINT
         MENUITEM SEPARATOR
         MENUITEM "E&xit",                       IDM_FILE_EXIT
     END
     POPUP "&View"
     BEGIN
-        MENUITEM "&Font...",                    IDM_VIEW_FONT
+        MENUITEM "&Options...",                 IDM_VIEW_FONT
+        MENUITEM SEPARATOR
+        MENUITEM "&Line Numbers",               IDM_VIEW_LINENUMBERS
+        , CHECKED
+        MENUITEM "&Highlight Long Lines",       IDM_VIEW_LONGLINES
+        MENUITEM SEPARATOR
+        MENUITEM "Save Settings on &Exit",      IDM_VIEW_SAVEEXIT, CHECKED
+        MENUITEM "Save Settings &Now",          IDM_VIEW_SAVENOW
     END
     POPUP "&Help"
     BEGIN
@@ -102,42 +110,26 @@ END
 IDD_OPTIONS DIALOGEX 0, 0, 290, 205
 STYLE DS_FIXEDSYS | DS_CONTROL | WS_CHILD
 EXSTYLE WS_EX_CONTROLPARENT
-FONT 8, "MS Shell Dlg"
+FONT 8, "MS Shell Dlg", 0, 0, 0x1
 BEGIN
-    GROUPBOX        "Settings",IDC_STATIC,7,7,276,72
+    GROUPBOX        "Settings",IDC_STATIC,7,7,276,88
     CONTROL         "&Remember window position",IDC_CHECK1,"Button",
-                    BS_AUTOCHECKBOX | WS_TABSTOP,15,20,102,10
-    CONTROL         "&Remember last window position for each file",
-                    IDC_CHECK2,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,15,34,
-                    153,10
+                    BS_AUTOCHECKBOX | WS_TABSTOP,16,22,102,10
+    CONTROL         "&Remember window position for each file",IDC_CHECK2,
+                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,16,35,141,10
     CONTROL         "Add to &Explorer context menu",IDC_CHECK3,"Button",
-                    BS_AUTOCHECKBOX | WS_TABSTOP,15,47,109,10
+                    BS_AUTOCHECKBOX | WS_TABSTOP,16,48,109,10
     CONTROL         "&Replace Notepad as default editor",IDC_CHECK4,"Button",
-                    BS_AUTOCHECKBOX | WS_TABSTOP,15,59,124,10
-    GROUPBOX        "Tabs",IDC_STATIC,7,87,276,55
-    LTEXT           "&Tab size:",IDC_STATIC,16,103,38,8
-    EDITTEXT        IDC_EDIT1,63,100,40,14,ES_AUTOHSCROLL
-    CONTROL         "Spin1",IDC_SPIN1,"msctls_updown32",UDS_SETBUDDYINT | 
-                    UDS_ALIGNRIGHT | UDS_AUTOBUDDY | UDS_ARROWKEYS,100,100,
-                    10,14
-    LTEXT           "&Indent size:",IDC_STATIC,16,120,44,8
-    EDITTEXT        IDC_EDIT2,63,117,40,14,ES_AUTOHSCROLL
-    CONTROL         "Spin2",IDC_SPIN2,"msctls_updown32",UDS_SETBUDDYINT | 
-                    UDS_ALIGNRIGHT | UDS_AUTOBUDDY | UDS_ARROWKEYS,100,117,
-                    10,14
-    CONTROL         "Insert &Spaces",IDC_RADIO1,"Button",BS_AUTORADIOBUTTON | 
-                    WS_GROUP,118,99,71,10
-    CONTROL         "&Keep Tabs",IDC_RADIO2,"Button",BS_AUTORADIOBUTTON,118,
-                    111,65,10
-    CONTROL         "&Auto indent",IDC_CHECK5,"Button",BS_AUTOCHECKBOX | 
-                    WS_TABSTOP,118,124,64,10
+                    BS_AUTOCHECKBOX | WS_TABSTOP,16,61,124,10
     PUSHBUTTON      "&Defaults",IDC_DEFAULTS,223,184,60,14
+    CONTROL         "&Quick exit with <Escape>",IDC_CHECK10,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,16,74,96,10
 END
 
 IDD_FONT DIALOGEX 0, 0, 290, 205
 STYLE DS_FIXEDSYS | DS_CONTROL | WS_CHILD
 EXSTYLE WS_EX_CONTROLPARENT
-FONT 8, "MS Shell Dlg"
+FONT 8, "MS Shell Dlg", 0, 0, 0x1
 BEGIN
     LTEXT           "Font (bold type indicates fixed-width font):",
                     IDC_STATIC,7,7,179,8
@@ -178,16 +170,65 @@ BEGIN
 END
 
 IDD_FONTEXTRA DIALOGEX 0, 0, 199, 74
-STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU | DS_FIXEDSYS
+STYLE DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
 EXSTYLE WS_EX_CONTROLPARENT
 CAPTION "Font Options"
-FONT 8, "MS Shell Dlg"
+FONT 8, "MS Shell Dlg", 0, 0, 0x1
 BEGIN
     LTEXT           "Font &smoothing:",IDC_STATIC,7,7,56,8
-    COMBOBOX        IDC_COMBO1,7,17,124,30,CBS_DROPDOWNLIST | WS_VSCROLL | 
+    COMBOBOX        IDC_COMBO1,7,17,124,78,CBS_DROPDOWNLIST | WS_VSCROLL | 
                     WS_TABSTOP
     DEFPUSHBUTTON   "OK",IDOK,142,7,50,14
     PUSHBUTTON      "Cancel",IDCANCEL,142,24,50,14
+END
+
+IDD_DISPLAY DIALOGEX 0, 0, 290, 205
+STYLE DS_CONTROL | WS_CHILD
+EXSTYLE WS_EX_CONTROLPARENT
+FONT 8, "MS Sans Serif"
+BEGIN
+    GROUPBOX        "Margins",IDC_STATIC,7,7,276,87
+    LTEXT           "&Long lines:",IDC_STATIC,15,20,35,8
+    COMBOBOX        IDC_LONGLINEMODE,16,31,193,57,CBS_DROPDOWNLIST | 
+                    WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Long line li&mit:",IDC_STATIC,221,20,45,8
+    EDITTEXT        IDC_LONGLINELIM,221,30,53,14,ES_AUTOHSCROLL | ES_NUMBER
+    CONTROL         "Spin3",IDC_SPIN3,"msctls_updown32",UDS_SETBUDDYINT | 
+                    UDS_ALIGNRIGHT | UDS_AUTOBUDDY | UDS_ARROWKEYS,267,30,10,
+                    14
+    GROUPBOX        "Tabs",IDC_STATIC,7,100,276,55
+    LTEXT           "&Tab size:",IDC_STATIC,16,116,38,8
+    EDITTEXT        IDC_EDIT1,63,113,40,14,ES_AUTOHSCROLL
+    CONTROL         "Spin1",IDC_SPIN1,"msctls_updown32",UDS_SETBUDDYINT | 
+                    UDS_ALIGNRIGHT | UDS_AUTOBUDDY | UDS_ARROWKEYS,100,113,9,
+                    14
+    LTEXT           "&Indent size:",IDC_STATIC,16,133,44,8
+    EDITTEXT        IDC_EDIT2,63,130,40,14,ES_AUTOHSCROLL
+    CONTROL         "Spin2",IDC_SPIN2,"msctls_updown32",UDS_SETBUDDYINT | 
+                    UDS_ALIGNRIGHT | UDS_AUTOBUDDY | UDS_ARROWKEYS,100,130,9,
+                    14
+    CONTROL         "Insert &Spaces",IDC_RADIO1,"Button",BS_AUTORADIOBUTTON | 
+                    WS_GROUP,118,112,71,10
+    CONTROL         "&Keep Tabs",IDC_RADIO2,"Button",BS_AUTORADIOBUTTON,118,
+                    124,65,10
+    CONTROL         "&Auto indent",IDC_CHECK5,"Button",BS_AUTOCHECKBOX | 
+                    WS_TABSTOP,118,137,64,10
+    CONTROL         "&Line numbers",IDC_LINENOS,"Button",BS_AUTOCHECKBOX | 
+                    WS_TABSTOP,16,62,58,10
+    CONTROL         "Use default printer's page width",IDC_CHECK1,"Button",
+                    BS_AUTOCHECKBOX | WS_DISABLED | WS_TABSTOP,16,49,115,10
+    CONTROL         "&Selection margin",IDC_SELMARGIN,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,16,75,68,10
+END
+
+IDD_ABOUT DIALOG DISCARDABLE  0, 0, 269, 180
+STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "About"
+FONT 8, "MS Sans Serif"
+BEGIN
+    DEFPUSHBUTTON   "OK",IDOK,207,159,50,14
+    CONTROL         "",IDC_HEADER,"Static",SS_BITMAP,0,0,264,52
+    CONTROL         "",IDC_HEADER2,"Static",SS_BITMAP,15,20,15,13
 END
 
 
@@ -222,9 +263,29 @@ BEGIN
         TOPMARGIN, 7
         BOTTOMMARGIN, 67
     END
+
+    IDD_DISPLAY, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 283
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 198
+    END
+
+    IDD_ABOUT, DIALOG
+    BEGIN
+        BOTTOMMARGIN, 173
+    END
 END
 #endif    // APSTUDIO_INVOKED
 
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Bitmap
+//
+
+IDB_BITMAP1             BITMAP  DISCARDABLE     "bitmap1.bmp"
 #endif    // English (U.K.) resources
 /////////////////////////////////////////////////////////////////////////////
 

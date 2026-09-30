@@ -31,6 +31,7 @@ LONG TextView::OpenFile(TCHAR *szFileName)
 		m_nCursorOffset		= 0;
 
 		UpdateMetrics();
+		UpdateMarginWidth();
 		return TRUE;
 	}
 

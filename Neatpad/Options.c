@@ -1,5 +1,8 @@
 //
+//	Neatpad
+//	Options.c
 //
+//	www.catch22.net
 //
 #include <windows.h>
 #include <tchar.h>
@@ -13,6 +16,7 @@
 
 BOOL CALLBACK FontOptionsDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 BOOL CALLBACK MiscOptionsDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+BOOL CALLBACK DisplayOptionsDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 LONG  g_nFontSize;
 BOOL  g_fFontBold;
@@ -22,9 +26,15 @@ LONG  g_nFontSmoothing;
 LONG  g_nPaddingAbove;
 LONG  g_nPaddingBelow;
 LONG  g_fPaddingFlags;
+BOOL  g_fLineNumbers;
+BOOL  g_fLongLines;
+BOOL  g_fSelMargin;
+BOOL  g_fSaveOnExit;
+int	  g_nLongLineLimit;
 
 COLORREF g_rgbColourList[TXC_MAX_COLOURS];
 COLORREF g_rgbCustColours[16];
+extern COLORREF g_rgbAutoColourList[];
 
 // Get a binary buffer from the registry
 BOOL GetSettingBin(HKEY hkey, TCHAR szKeyName[], PVOID pBuffer, LONG nLength)
@@ -86,17 +96,29 @@ void LoadRegSettings()
 	GetSettingInt(hKey, _T("PaddingAbove"), &g_nPaddingAbove, 0);
 	GetSettingInt(hKey, _T("PaddingBelow"), &g_nPaddingBelow, 1);
 	GetSettingInt(hKey, _T("PaddingFlags"), &g_fPaddingFlags, COURIERNEW|LUCIDACONS);
+
+	GetSettingInt(hKey, _T("SelMargin"),	 &g_fSelMargin, TRUE);
+	GetSettingInt(hKey, _T("LineNumbers"),   &g_fLineNumbers, FALSE);
+	GetSettingInt(hKey, _T("LongLines"),	 &g_fLongLines, TRUE);
+	GetSettingInt(hKey, _T("LongLineLimit"), &g_nLongLineLimit, 80);
+	GetSettingInt(hKey, _T("SaveOnExit"),	 &g_fSaveOnExit, TRUE);
 	
 	// read the display colours
 	RegCreateKeyEx(hKey, _T("Colours"), 0, 0, 0, KEY_READ, 0, &hColKey, 0);
 
-	GetSettingInt(hColKey, _T("Foreground"),	&g_rgbColourList[TXC_FOREGROUND],		SYSCOL(COLOR_WINDOWTEXT)); 
-	GetSettingInt(hColKey, _T("Background"),	&g_rgbColourList[TXC_BACKGROUND],		SYSCOL(COLOR_WINDOW)); 
-	GetSettingInt(hColKey, _T("SelFG"),			&g_rgbColourList[TXC_HIGHLIGHTTEXT],	SYSCOL(COLOR_HIGHLIGHTTEXT)); 
-	GetSettingInt(hColKey, _T("SelBG"),			&g_rgbColourList[TXC_HIGHLIGHT],		SYSCOL(COLOR_HIGHLIGHT)); 
-	GetSettingInt(hColKey, _T("SelFG2"),		&g_rgbColourList[TXC_HIGHLIGHTTEXT2],   SYSCOL(COLOR_INACTIVECAPTIONTEXT)); 
-	GetSettingInt(hColKey, _T("SelBG2"),		&g_rgbColourList[TXC_HIGHLIGHT2],		SYSCOL(COLOR_INACTIVECAPTION)); 
-
+	GetSettingInt(hColKey, _T("Foreground"),	&g_rgbColourList[TXC_FOREGROUND],		g_rgbAutoColourList[TXC_FOREGROUND]		);
+	GetSettingInt(hColKey, _T("Background"),	&g_rgbColourList[TXC_BACKGROUND],		g_rgbAutoColourList[TXC_BACKGROUND]		);	
+	GetSettingInt(hColKey, _T("SelFG"),			&g_rgbColourList[TXC_HIGHLIGHTTEXT],	g_rgbAutoColourList[TXC_HIGHLIGHTTEXT]	);
+	GetSettingInt(hColKey, _T("SelBG"),			&g_rgbColourList[TXC_HIGHLIGHT],		g_rgbAutoColourList[TXC_HIGHLIGHT]		);
+	GetSettingInt(hColKey, _T("SelFG2"),		&g_rgbColourList[TXC_HIGHLIGHTTEXT2],   g_rgbAutoColourList[TXC_HIGHLIGHTTEXT2]	);
+	GetSettingInt(hColKey, _T("SelBG2"),		&g_rgbColourList[TXC_HIGHLIGHT2],		g_rgbAutoColourList[TXC_HIGHLIGHT2]		);
+	GetSettingInt(hColKey, _T("Margin1"),		&g_rgbColourList[TXC_SELMARGIN1],		g_rgbAutoColourList[TXC_SELMARGIN1]		);
+	GetSettingInt(hColKey, _T("Margin2"),		&g_rgbColourList[TXC_SELMARGIN2],		g_rgbAutoColourList[TXC_SELMARGIN2]		);
+	GetSettingInt(hColKey, _T("LinenoText"),	&g_rgbColourList[TXC_LINENUMBERTEXT],	g_rgbAutoColourList[TXC_LINENUMBERTEXT]	);
+	GetSettingInt(hColKey, _T("Lineno"),		&g_rgbColourList[TXC_LINENUMBER],		g_rgbAutoColourList[TXC_LINENUMBER]		);
+	GetSettingInt(hColKey, _T("LongLineText"),	&g_rgbColourList[TXC_LONGLINETEXT],		g_rgbAutoColourList[TXC_LONGLINETEXT]	);
+	GetSettingInt(hColKey, _T("LongLine"),		&g_rgbColourList[TXC_LONGLINE],			g_rgbAutoColourList[TXC_LONGLINE]		);
+	
 	GetSettingBin(hColKey, _T("Custom"),		g_rgbCustColours, sizeof(g_rgbCustColours)); 
 
 	RegCloseKey(hColKey);
@@ -119,6 +141,13 @@ void SaveRegSettings()
 	WriteSettingInt(hKey, _T("PaddingBelow"), g_nPaddingBelow);
 	WriteSettingInt(hKey, _T("PaddingFlags"), g_fPaddingFlags);
 
+	WriteSettingInt(hKey, _T("SelMargin"),	  g_fSelMargin);
+	WriteSettingInt(hKey, _T("LineNumbers"),  g_fLineNumbers);
+	WriteSettingInt(hKey, _T("LongLines"),	  g_fLongLines);
+	WriteSettingInt(hKey, _T("SaveOnExit"),	  g_fSaveOnExit);
+	WriteSettingInt(hKey, _T("LongLineLimit"),g_nLongLineLimit);
+
+	
 	// write the display colours
 	RegCreateKeyEx(hKey, _T("Colours"), 0, 0, 0, KEY_WRITE, 0, &hColKey, 0);
 
@@ -128,6 +157,17 @@ void SaveRegSettings()
 	WriteSettingInt(hColKey, _T("SelBG"),		g_rgbColourList[TXC_HIGHLIGHT]); 
 	WriteSettingInt(hColKey, _T("SelFG2"),		g_rgbColourList[TXC_HIGHLIGHTTEXT2]); 
 	WriteSettingInt(hColKey, _T("SelBG2"),		g_rgbColourList[TXC_HIGHLIGHT2]); 
+
+	WriteSettingInt(hColKey, _T("Margin1"),		g_rgbColourList[TXC_SELMARGIN1]); 
+	WriteSettingInt(hColKey, _T("Margin2"),		g_rgbColourList[TXC_SELMARGIN2]); 
+	WriteSettingInt(hColKey, _T("LinenoText"),	g_rgbColourList[TXC_LINENUMBERTEXT]); 
+	WriteSettingInt(hColKey, _T("Lineno"),		g_rgbColourList[TXC_LINENUMBER]); 
+	WriteSettingInt(hColKey, _T("LongLineText"),g_rgbColourList[TXC_LONGLINETEXT]); 
+	WriteSettingInt(hColKey, _T("LongLine"),	g_rgbColourList[TXC_LONGLINE]); 
+
+	WriteSettingInt(hColKey, _T("CurlineText"),	g_rgbColourList[TXC_LONGLINETEXT]); 
+	WriteSettingInt(hColKey, _T("Curline"),		g_rgbColourList[TXC_LONGLINE]); 
+
 
 	WriteSettingBin(hColKey, _T("Custom"),		g_rgbCustColours, sizeof(g_rgbCustColours)); 
 
@@ -145,6 +185,15 @@ void ApplyRegSettings()
 	g_hFont = EasyCreateFont(g_nFontSize, g_fFontBold, g_nFontSmoothing, g_szFontName);
 
 	TextView_SetLineSpacing(g_hwndTextView, g_nPaddingAbove, g_nPaddingBelow);
+
+	TextView_SetStyleBool(g_hwndTextView, TXS_SELMARGIN,	g_fSelMargin);
+	TextView_SetStyleBool(g_hwndTextView, TXS_LINENUMBERS,	g_fLineNumbers);
+	TextView_SetStyleBool(g_hwndTextView, TXS_LONGLINES,	g_fLongLines);
+
+	TextView_SetStyleBool(g_hwndTextView, TXS_HIGHLIGHTCURLINE,	FALSE);
+
+	TextView_SetCaretWidth(g_hwndTextView, 2);
+	TextView_SetLongLine(g_hwndTextView, g_nLongLineLimit);
 	
 	SendMessage(g_hwndTextView, WM_SETFONT, (WPARAM)g_hFont, 0);
 
@@ -157,7 +206,10 @@ void ApplyRegSettings()
 void ShowProperties(HWND hwndParent)
 {
 	PROPSHEETHEADER psh    = {   sizeof(psh)   };
-	PROPSHEETPAGE   psp[2] = { { sizeof(psp[0]) },  { sizeof(psp[1]) }, };
+	PROPSHEETPAGE   psp[3] = {  { sizeof(psp[0]) },  
+								{ sizeof(psp[1]) }, 
+								{ sizeof(psp[2]) }, 
+							};
 
 	CoInitialize(0);
 	
@@ -178,9 +230,16 @@ void ShowProperties(HWND hwndParent)
 	// configure property sheet page(2)
 	psp[1].dwFlags		= PSP_USETITLE;
 	psp[1].hInstance	= GetModuleHandle(0);
-	psp[1].pfnDlgProc	= MiscOptionsDlgProc;
-	psp[1].pszTemplate	= MAKEINTRESOURCE(IDD_OPTIONS);
-	psp[1].pszTitle		= _T("Settings");
+	psp[1].pfnDlgProc	= DisplayOptionsDlgProc;
+	psp[1].pszTemplate	= MAKEINTRESOURCE(IDD_DISPLAY);
+	psp[1].pszTitle		= _T("Display");
+
+	// configure property sheet page(2)
+	psp[2].dwFlags		= PSP_USETITLE;
+	psp[2].hInstance	= GetModuleHandle(0);
+	psp[2].pfnDlgProc	= MiscOptionsDlgProc;
+	psp[2].pszTemplate	= MAKEINTRESOURCE(IDD_OPTIONS);
+	psp[2].pszTitle		= _T("Settings");
 
 	if(PropertySheet(&psh))
 	{

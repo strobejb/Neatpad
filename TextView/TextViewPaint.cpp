@@ -13,7 +13,10 @@
 
 int		StripCRLF(TCHAR *szText, int nLength);
 void	PaintRect(HDC hdc, int x, int y, int width, int height, COLORREF fill);
+void	PaintRect(HDC hdc, RECT *rect, COLORREF fill);
 void	DrawCheckedRect(HDC hdc, RECT *rect, COLORREF fg, COLORREF bg);
+
+extern "C" COLORREF MixRGB(COLORREF, COLORREF);
 
 //
 //	Perform a full redraw of the entire window
@@ -71,6 +74,18 @@ void TextView::PaintLine(HDC hdc, ULONG nLineNo)
 	//
 	//	do things like margins, line numbers etc. here
 	//
+	if(LeftMarginWidth() > 0)
+	{
+		RECT margin = rect;
+		
+		margin.left		= 0;
+		margin.right	= LeftMarginWidth();
+		rect.left	   += LeftMarginWidth();
+
+		PaintMargin(hdc, nLineNo, &margin);
+	
+		ExcludeClipRect(hdc, margin.left, margin.top, margin.right, margin.bottom);
+	}	
 
 	//
 	//	check we have data to draw on this line
@@ -89,6 +104,169 @@ void TextView::PaintLine(HDC hdc, ULONG nLineNo)
 }
 
 //
+//	Return width of margin
+//
+int TextView::LeftMarginWidth()
+{
+	int width	= 0;
+	int cx		= 0;
+	int cy		= 0;
+
+	// get dimensions of imagelist icons
+	if(m_hImageList)
+		ImageList_GetIconSize(m_hImageList, &cx, &cy);
+
+	if(CheckStyle(TXS_LINENUMBERS))
+	{		
+		width += m_nLinenoWidth;
+
+		if(CheckStyle(TXS_SELMARGIN) && cx > 0)
+			width += cx + 4;
+
+		if(1)
+			width += 1;
+
+		if(0)
+			width += 5;
+		
+		return width;
+	}
+	// selection margin by itself
+	else if(CheckStyle(TXS_SELMARGIN))
+	{
+		width += cx + 4;
+
+		if(0)
+			width += 1;
+
+		if(0)
+			width += 5;
+
+		return width;
+	}
+
+	return 0;
+}
+
+//
+//	This must be called whenever the number of lines changes
+//  (probably easier to call it when the file-size changes)
+//
+void TextView::UpdateMarginWidth()
+{
+	HDC		hdc		 = GetDC(m_hWnd);
+	HANDLE	hOldFont = SelectObject(hdc, m_FontAttr[0].hFont);
+
+	TCHAR	buf[32];
+	int len = wsprintf(buf, LINENO_FMT, m_nLineCount);
+
+	m_nLinenoWidth = NeatTextWidth(hdc, buf, len, 0);
+
+	SelectObject(hdc, hOldFont);
+	ReleaseDC(m_hWnd, hdc);
+}
+
+//
+//	Draw the specified line's margin into the area described by *margin*
+//
+int TextView::PaintMargin(HDC hdc, ULONG nLineNo, RECT *margin)
+{
+	RECT  rect = *margin;
+	TCHAR ach[32];
+
+	int imgWidth, imgHeight;
+	int imgX, imgY;
+	int selwidth = CheckStyle(TXS_SELMARGIN) ? 20 : 0;
+
+	//int nummaxwidth = 60;
+	int curx = margin->left;
+	int cury = margin->right;
+	
+	if(m_hImageList && selwidth > 0)
+	{
+		// selection margin must include imagelists
+		ImageList_GetIconSize(m_hImageList, &imgWidth, &imgHeight);
+
+		imgX = rect.left + (selwidth - imgWidth) / 2;
+		imgY = rect.top  + (margin->bottom - margin->top - imgHeight) / 2;
+	}
+
+	if(CheckStyle(TXS_LINENUMBERS))
+	{
+		rect  = *margin; 
+
+		HANDLE hOldFont = SelectObject(hdc, m_FontAttr[0].hFont);
+		
+		int  len   = wsprintf(ach, LINENO_FMT, nLineNo + 1);
+		int	 width = NeatTextWidth(hdc, ach, len, 0);
+
+		// only draw line number if in-range
+		if(nLineNo >= m_nLineCount)
+			len = 0;
+
+		rect.right  = rect.left + m_nLinenoWidth;
+
+		if(CheckStyle(TXS_SELMARGIN) && m_hImageList)
+		{
+			imgX = rect.right;
+			rect.right += imgWidth + 4;
+		}
+		
+		SetTextColor(hdc, GetColour(TXC_LINENUMBERTEXT));
+		SetBkColor(hdc,   GetColour(TXC_LINENUMBER));
+
+		ExtTextOut(	hdc, 
+					rect.left + m_nLinenoWidth - width,
+					rect.top  + NeatTextYOffset(&m_FontAttr[0]),
+					ETO_OPAQUE | ETO_CLIPPED,
+					&rect,
+					ach,
+					len,
+					0);
+
+		// vertical line
+		rect.left   = rect.right;
+		rect.right += 1;
+		//PaintRect(hdc, &rect, MixRGB(GetSysColor(COLOR_3DFACE), 0xffffff));
+		PaintRect(hdc, &rect, GetColour(TXC_BACKGROUND));
+
+		// bleed area - use this to draw "folding" arrows
+	/*	rect.left   = rect.right;
+		rect.right += 5;
+		PaintRect(hdc, &rect, GetColour(TXC_BACKGROUND));*/
+
+		SelectObject(hdc, hOldFont);
+	}
+	else
+	{
+		DrawCheckedRect(hdc, &rect, GetColour(TXC_SELMARGIN1), GetColour(TXC_SELMARGIN2));
+	}
+
+	//
+	//	Retrieve information about this specific line
+	//
+	LINEINFO *linfo = GetLineInfo(nLineNo);
+	
+	if(m_hImageList && linfo)
+	{
+		ImageList_DrawEx(
+					  m_hImageList,
+					  linfo->nImageIdx,
+					  hdc, 
+					  imgX,
+					  imgY,
+					  imgWidth,
+					  imgHeight,
+					  CLR_NONE,
+					  CLR_NONE,
+					  ILD_TRANSPARENT
+					  );
+	}
+	
+	return rect.right-rect.left;
+}
+
+//
 //	Draw a line of text into the TextView window
 //
 void TextView::PaintText(HDC hdc, ULONG nLineNo, RECT *rect)
@@ -97,6 +275,7 @@ void TextView::PaintText(HDC hdc, ULONG nLineNo, RECT *rect)
 	ATTR		attr[TEXTBUFSIZE];
 
 	ULONG		charoff = 0;
+	ULONG		colno	= 0;
 	int			len;
 
 	int			xpos = rect->left;
@@ -132,8 +311,7 @@ void TextView::PaintText(HDC hdc, ULONG nLineNo, RECT *rect)
 		//	Apply text attributes - 
 		//	i.e. syntax highlighting, mouse selection colours etc.
 		//
-		//len = ApplyTextAttributes(nLineNo, fileoff+charoff, buff, len, attr);
-		len = ApplyTextAttributes(nLineNo, fileoff, buff, len, attr);
+		len    = ApplyTextAttributes(nLineNo, fileoff, colno, buff, len, attr);
 
 		//
 		//	Display the text by breaking it into spans of colour/style
@@ -157,7 +335,7 @@ void TextView::PaintText(HDC hdc, ULONG nLineNo, RECT *rect)
 	// Erase to the end of the line
 	//
 	rect->left = xpos;
-	SetBkColor(hdc, GetColour(TXC_BACKGROUND));
+	SetBkColor(hdc, LineColour(nLineNo));
 	ExtTextOut(hdc, 0, 0, ETO_OPAQUE, rect, 0, 0, 0);
 }
 
@@ -170,13 +348,37 @@ void TextView::PaintText(HDC hdc, ULONG nLineNo, RECT *rect)
 //
 //	Returns new length of buffer if text has been modified
 //
-int TextView::ApplyTextAttributes(ULONG nLineNo, ULONG nOffset, TCHAR *szText, int nTextLen, ATTR *attr)
+int TextView::ApplyTextAttributes(ULONG nLineNo, ULONG nOffset, ULONG &nColumn, TCHAR *szText, int nTextLen, ATTR *attr)
 {
 	int	font	= nLineNo % m_nNumFonts;
 	int i;
 
 	ULONG selstart = min(m_nSelectionStart, m_nSelectionEnd);
 	ULONG selend   = max(m_nSelectionStart, m_nSelectionEnd);
+
+	//
+	//	STEP 1. Apply the "base coat"
+	//
+	for(i = 0; i < nTextLen; i++)
+	{
+		// change the background if the line is too long
+		if(nColumn >= (ULONG)m_nLongLineLimit && CheckStyle(TXS_LONGLINES))
+		{
+			attr[i].fg = GetColour(TXC_FOREGROUND);
+			attr[i].bg = LongColour(nLineNo);
+		}
+		else
+		{
+			attr[i].fg = GetColour(TXC_FOREGROUND);
+			attr[i].bg = LineColour(nLineNo);//GetColour(TXC_BACKGROUND);
+		}
+
+		// keep track of how many columns we have processed
+		if(szText[i] == '\t')
+			nColumn += m_nTabWidthChars - (nColumn % m_nTabWidthChars);
+		else
+			nColumn += 1;	
+	}
 
 	//
 	//	TODO: 1. Apply syntax colouring first of all
@@ -205,13 +407,8 @@ int TextView::ApplyTextAttributes(ULONG nLineNo, ULONG nOffset, TCHAR *szText, i
 				attr[i].bg = GetColour(TXC_HIGHLIGHT2);
 			}
 		}
-		// normal text colours
-		else
-		{
-			attr[i].fg = GetColour(TXC_FOREGROUND);
-			attr[i].bg = GetColour(TXC_BACKGROUND);
-		}
 
+		// just an example of how to set the font
 		if(szText[i] == ' ')
 			font = (font + 1) % m_nNumFonts;
 
@@ -247,13 +444,26 @@ int TextView::NeatTextOut(HDC hdc, int xpos, int ypos, TCHAR *szText, int nLen, 
 	SetBkColor   (hdc, attr->bg);
 	SelectObject (hdc, font->hFont);
 
+	DWORD flag;
+
+	/*if(m_fTransparent && attr->bg == GetColour(TXC_BACKGROUND))
+	{
+		SetBkMode(hdc, TRANSPARENT);
+		flag = ETO_CLIPPED;
+	}
+	else*/
+	{
+		SetBkMode(hdc, OPAQUE);
+		flag = ETO_CLIPPED | ETO_OPAQUE;
+	}
+
 	// loop over each character
 	for(i = 0; i <= nLen; i++)
 	{
-		int  yoff = m_nMaxAscent + m_nHeightAbove - font->tm.tmAscent;
+		int  yoff = NeatTextYOffset(font);
 
 		// output any "deferred" text before handling tab/control chars
-		if(i == nLen || szText[i] == '\t' || szText[i] < 32)
+		if(i == nLen || szText[i] == '\t' || (TBYTE)szText[i] < 32)
 		{
 			RECT rect;
 
@@ -262,7 +472,7 @@ int TextView::NeatTextOut(HDC hdc, int xpos, int ypos, TCHAR *szText, int nLen, 
 			SetRect(&rect, xpos, ypos, xpos+sz.cx, ypos+m_nLineHeight);
 
 			// draw the text and erase it's background at the same time
-			ExtTextOut(hdc, xpos, ypos+yoff, ETO_CLIPPED|ETO_OPAQUE, &rect, szText + lasti, i - lasti, 0);
+			ExtTextOut(hdc, xpos, ypos+yoff, flag, &rect, szText + lasti, i - lasti, 0);
 			
 			xpos += sz.cx;
 		}
@@ -277,13 +487,14 @@ int TextView::NeatTextOut(HDC hdc, int xpos, int ypos, TCHAR *szText, int nLen, 
 				int width = TABWIDTHPIXELS - ((xpos - nTabOrigin) % TABWIDTHPIXELS);
 				
 				// draw a blank space 
-				PaintRect(hdc, xpos, ypos, width, m_nLineHeight, attr->bg);
+				if(flag != ETO_CLIPPED)
+					PaintRect(hdc, xpos, ypos, width, m_nLineHeight, attr->bg);
 				
 				xpos += width;
 				lasti = i + 1;
 			}
 			// ASCII-CONTROL characters
-			else if(szText[i] < 32)
+			else if((TBYTE)szText[i] < 32)
 			{
 				xpos += PaintCtrlChar(hdc, xpos, ypos, szText[i], font);
 				lasti = i + 1;
@@ -319,16 +530,60 @@ int StripCRLF(TCHAR *szText, int nLength)
 		}
 	}
 
-	if(nLength >= 1)
+/*	if(nLength >= 1)
 	{
 		if(szText[nLength-1] == '\r' || szText[nLength-1] == '\n')
 		{
 			szText[nLength-1] = ' ';
 			nLength--;
 		}
-	}
+	}*/
 
 	return nLength;
+}
+
+//
+//
+//
+COLORREF TextView::LineColour(ULONG nLineNo)
+{
+	if(m_nCurrentLine == nLineNo && CheckStyle(TXS_HIGHLIGHTCURLINE))
+		return GetColour(TXC_CURRENTLINE);
+	else
+		return GetColour(TXC_BACKGROUND);
+}
+
+COLORREF TextView::LongColour(ULONG nLineNo)
+{
+	if(m_nCurrentLine == nLineNo && CheckStyle(TXS_HIGHLIGHTCURLINE))
+		return GetColour(TXC_CURRENTLINE);
+	else
+		return GetColour(TXC_LONGLINE);
+}
+
+COLORREF MixRGB(COLORREF rgbCol1, COLORREF rgbCol2)
+{
+	return RGB(
+		(GetRValue(rgbCol1) + GetRValue(rgbCol2)) / 2,
+		(GetGValue(rgbCol1) + GetGValue(rgbCol2)) / 2,
+		(GetBValue(rgbCol1) + GetBValue(rgbCol2)) / 2
+		);
+}
+
+COLORREF RealizeColour(COLORREF col)
+{
+	COLORREF result = col;
+
+	if(col & 0x80000000)
+		result = GetSysColor(col & 0xff);
+	
+	if(col & 0x40000000)
+		result = MixRGB(GetSysColor((col & 0xff00) >> 8), result);
+
+	if(col & 0x20000000)
+		result = MixRGB(GetSysColor((col & 0xff00) >> 8), result);
+
+	return result;
 }
 
 //
@@ -378,6 +633,7 @@ void DrawCheckedRect(HDC hdc, RECT *rect, COLORREF fg, COLORREF bg)
 	hbmp = CreateBitmap(8, 8, 1, 1, wCheckPat);
 	hbr  = CreatePatternBrush(hbmp);
 
+	SetBrushOrgEx(hdc, rect->left, 0, 0);
 	hbrold = (HBRUSH)SelectObject(hdc, hbr);
 
 	fgold = SetTextColor(hdc, fg);

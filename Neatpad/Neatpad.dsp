@@ -98,7 +98,15 @@ SOURCE=.\Neatpad.c
 # End Source File
 # Begin Source File
 
+SOURCE=.\NeatUtils.c
+# End Source File
+# Begin Source File
+
 SOURCE=.\Options.c
+# End Source File
+# Begin Source File
+
+SOURCE=.\OptionsDisplay.c
 # End Source File
 # Begin Source File
 
@@ -107,6 +115,10 @@ SOURCE=.\OptionsFont.c
 # Begin Source File
 
 SOURCE=.\OptionsMisc.c
+# End Source File
+# Begin Source File
+
+SOURCE=.\Printing.c
 # End Source File
 # Begin Source File
 
@@ -128,6 +140,14 @@ SOURCE=.\resource.h
 # Begin Group "Resource Files"
 
 # PROP Default_Filter "ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe"
+# Begin Source File
+
+SOURCE=.\bitmap1.bmp
+# End Source File
+# Begin Source File
+
+SOURCE=.\bitmap2.bmp
+# End Source File
 # Begin Source File
 
 SOURCE=.\icon1.ico

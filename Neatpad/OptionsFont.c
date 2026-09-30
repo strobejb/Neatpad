@@ -1,3 +1,10 @@
+//
+//	Neatpad
+//	OptionsFont.c
+//
+//	www.catch22.net
+//
+
 #define _WIN32_WINNT 0x500
 
 #include <windows.h>
@@ -8,9 +15,11 @@
 #include "..\TextView\TextView.h"
 #include "resource.h"
 
+
 #ifndef CLEARTYPE_QUALITY
 #define CLEARTYPE_QUALITY 5
 #endif
+COLORREF LightenRGB(COLORREF rgbColor, int amt);
 
 #define MSG_UPDATE_PREVIEW (WM_USER+1)
 
@@ -24,15 +33,24 @@ static COLORREF g_crPreviewBG;
 static COLORREF g_rgbTempColourList[TXC_MAX_COLOURS];
 static LONG		g_tempFontSmoothing;
 
-static COLORREF g_rgbAutoColourList[TXC_MAX_COLOURS] = 
+COLORREF g_rgbAutoColourList[TXC_MAX_COLOURS] = 
 {
-	SYSCOL(COLOR_WINDOWTEXT),
-	SYSCOL(COLOR_WINDOW),
-	SYSCOL(COLOR_HIGHLIGHTTEXT),
-	SYSCOL(COLOR_HIGHLIGHT),
-	SYSCOL(COLOR_INACTIVECAPTIONTEXT),
-	SYSCOL(COLOR_INACTIVECAPTION),
+	SYSCOL(COLOR_WINDOWTEXT),							// foreground
+	SYSCOL(COLOR_WINDOW),								// background
+	SYSCOL(COLOR_HIGHLIGHTTEXT),						// selected text
+	SYSCOL(COLOR_HIGHLIGHT),							// selection
+	SYSCOL(COLOR_WINDOWTEXT),							// inactive selected text
+	SYSCOL(COLOR_3DFACE),								// inactive selection
+	SYSCOL(COLOR_3DFACE),								// selection margin#1
+	SYSCOL(COLOR_3DHIGHLIGHT),							// selection margin#2
+	MIXED_SYSCOL(COLOR_3DSHADOW, COLOR_3DDKSHADOW),		// line number text
+	MIXED_SYSCOL2(COLOR_3DFACE, COLOR_WINDOW),			// line number bg
+	SYSCOL(COLOR_WINDOWTEXT),							// long line text
+	MIXED_SYSCOL(COLOR_3DFACE, COLOR_WINDOW),			// long-line background
+	SYSCOL(COLOR_WINDOWTEXT),							// current line text
+	RGB(230,240,255),									// current line background
 };
+
 
 #ifndef ODS_NOFOCUSRECT
 #define ODS_NOFOCUSRECT     0x0200
@@ -595,10 +613,13 @@ void SelectColorInList(HWND hwnd, UINT uComboIdx, short itemIdx)
 	// remove the custom entry (if any)
 	SendMessage(hwndCombo, CB_DELETESTRING, NUM_DEFAULT_COLOURS, 0);
 
-	if(g_rgbTempColourList[itemIdx] & 0x80000000)
+	// if an "AUTO" colour
+	if((g_rgbTempColourList[itemIdx] & 0x80000000) ||
+		g_rgbTempColourList[itemIdx] == g_rgbAutoColourList[itemIdx])
 	{
 		SendMessage(hwndCombo, CB_SETCURSEL, 0, 0);
 	}
+	// normal colour
 	else
 	{
 		// try to match current colour with a default colour
@@ -668,12 +689,22 @@ BOOL InitFontOptionsDlg(HWND hwnd)
 	//	Subclass the PREVIEW static control so we can custom-draw it
 	//
 	hwndPreview = GetDlgItem(hwnd, IDC_PREVIEW);
-	oldPreviewProc = (WNDPROC)SetWindowLong(hwndPreview, GWL_WNDPROC, (LONG)PreviewWndProc);
+	oldPreviewProc = (WNDPROC)SetWindowLongPtr(hwndPreview, GWLP_WNDPROC, (LONG)PreviewWndProc);
 	
-	
+//	g_rgbAutoColourList[TXC_LONGLINE]	= MixRGB(GetSysColor(COLOR_3DFACE), GetSysColor(COLOR_WINDOW));
+//	g_rgbAutoColourList[TXC_LINENUMBER]	= MixRGB(GetSysColor(COLOR_3DFACE), GetSysColor(COLOR_WINDOW));
+//	g_rgbAutoColourList[TXC_LINENUMBER] = MixRGB(g_rgbAutoColourList[TXC_LINENUMBER], GetSysColor(COLOR_WINDOW));
+
+	//g_rgbAutoColourList[TXC_LONGLINE]	= MixRGB(GetSysColor(COLOR_3DFACE), GetSysColor(COLOR_WINDOW));
+	//g_rgbAutoColourList[TXC_LINENUMBER]	= MixRGB(GetSysColor(COLOR_3DFACE), GetSysColor(COLOR_WINDOW));
+	//g_rgbAutoColourList[TXC_LINENUMBER] = MixRGB(g_rgbAutoColourList[TXC_LINENUMBER], GetSysColor(COLOR_WINDOW));
+
 	AddColourListItem(hwnd, IDC_LIST1, TXC_FOREGROUND,		TXC_BACKGROUND,   "Text");
 	AddColourListItem(hwnd, IDC_LIST1, TXC_HIGHLIGHTTEXT,	TXC_HIGHLIGHT,    "Selected Text");
 	AddColourListItem(hwnd, IDC_LIST1, TXC_HIGHLIGHTTEXT2,  TXC_HIGHLIGHT2,   "Inactive Selection");
+	AddColourListItem(hwnd, IDC_LIST1, TXC_SELMARGIN1,		TXC_SELMARGIN2,   "Left Margin");
+	AddColourListItem(hwnd, IDC_LIST1, TXC_LINENUMBERTEXT,  TXC_LINENUMBER,   "Line Numbers");
+	AddColourListItem(hwnd, IDC_LIST1, -1,					TXC_LONGLINE,	  "Long Lines");
 	
 	SendDlgItemMessage(hwnd, IDC_ITEMLIST, LB_SETCURSEL, 0, 0);
 	PostMessage(hwnd, WM_COMMAND, MAKEWPARAM(IDC_ITEMLIST, LBN_SELCHANGE), (LPARAM)GetDlgItem(hwnd, IDC_ITEMLIST));
@@ -715,6 +746,8 @@ BOOL InitFontOptionsDlg(HWND hwnd)
 	}
 
 	CheckDlgButton(hwnd, IDC_BOLD,    g_fFontBold);
+
+	UpdatePreviewPane(hwnd);
 
 	return TRUE;
 }
@@ -767,6 +800,7 @@ BOOL CALLBACK AdvancedDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 	return FALSE;
 }
 
+//BOOL FontOptions(HWND hwnd, WPARAM wParam, 
 //
 //	Dialogbox procedure for the FONT pane
 //

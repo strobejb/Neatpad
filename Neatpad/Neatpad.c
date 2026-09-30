@@ -34,7 +34,7 @@ void SaveRegSettings();
 
 BOOL ShowOpenFileDlg(HWND hwnd, TCHAR *pstrFileName, TCHAR *pstrTitleName)
 {
-	TCHAR *szFilter = _T("Text Files (*.txt)\0*.txt\0All Files (*.*)\0*.*\0\0");
+	TCHAR *szFilter		= _T("Text Files (*.txt)\0*.txt\0All Files (*.*)\0*.*\0\0");
 	
 	OPENFILENAME ofn	= { sizeof(ofn) };
 
@@ -136,15 +136,34 @@ HFONT EasyCreateFont(int nPointSize, BOOL fBold, DWORD dwQuality, TCHAR *szFace)
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
 	static int width, height;
+	HIMAGELIST hImgList;
 
 	switch(msg)
 	{
 	case WM_CREATE:
 		g_hwndTextView = CreateTextView(hwnd);
 
+		// load the image list
+		hImgList = ImageList_LoadImage(
+			GetModuleHandle(0), 
+			MAKEINTRESOURCE(IDB_BITMAP1), 
+			16, 0, 
+			RGB(255,0,255),
+			IMAGE_BITMAP,
+			LR_LOADTRANSPARENT|LR_CREATEDIBSECTION
+			);
+		
+		TextView_SetImageList(g_hwndTextView, hImgList);
+
+		// highlight specific lines with image-index "1"
+		TextView_SetLineImage(g_hwndTextView, 16, 1);
+		TextView_SetLineImage(g_hwndTextView, 5,  1);
+		TextView_SetLineImage(g_hwndTextView, 36, 1);
+		TextView_SetLineImage(g_hwndTextView, 11, 1);
+
 		// automatically create new document when we start
-		PostMessage(hwnd, WM_COMMAND, IDM_FILE_NEW, 0);
-		//DoOpenFile(hwnd, "c:\\src\\edit\\test.cpp", "test.cpp");
+		//PostMessage(hwnd, WM_COMMAND, IDM_FILE_NEW, 0);
+		DoOpenFile(hwnd, "c:\\src\\edit\\test.cpp", "test.cpp");
 
 		// tell windows that we can handle drag+drop'd files
 		DragAcceptFiles(hwnd, TRUE);
@@ -157,6 +176,12 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 	case WM_DESTROY:
 		PostQuitMessage(0);
 		DeleteObject(g_hFont);
+		return 0;
+
+	case WM_INITMENU:
+		CheckMenuCommand((HMENU)wParam, IDM_VIEW_LINENUMBERS, g_fLineNumbers);
+		CheckMenuCommand((HMENU)wParam, IDM_VIEW_LONGLINES, g_fLongLines);
+		CheckMenuCommand((HMENU)wParam, IDM_VIEW_SAVEEXIT,  g_fSaveOnExit);
 		return 0;
 
 	case WM_COMMAND:
@@ -179,12 +204,37 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
 			return 0;
 
+		case IDM_FILE_PRINT:
+			
+			DeleteDC(
+				ShowPrintDlg(hwnd)
+				);
+
+			return 0;
+
 		case IDM_VIEW_FONT:
 			ShowProperties(hwnd);
 			return 0;
 
+		case IDM_VIEW_LINENUMBERS:
+			g_fLineNumbers = !g_fLineNumbers;
+			TextView_SetStyleBool(g_hwndTextView, TXS_LINENUMBERS, g_fLineNumbers);
+			return 0;
+
+		case IDM_VIEW_LONGLINES:
+			g_fLongLines = !g_fLongLines;
+			TextView_SetStyleBool(g_hwndTextView, TXS_LONGLINES, g_fLongLines);
+			return 0;
+
+		case IDM_VIEW_SAVEEXIT:
+			g_fSaveOnExit = !g_fSaveOnExit;
+			return 0;
+
+		case IDM_VIEW_SAVENOW:
+			SaveRegSettings();
+			return 0;
+
 		case IDM_HELP_ABOUT:
-			//ShellAbout(hwnd, g_szAppName, "hello", 0);//LoadIcon(0, MAKEINTRESOURCE(IDI_ICON1), 
 			ShowAboutDlg(hwnd);
 			return 0;
 		}
@@ -287,7 +337,8 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmdLine, int iShowC
 		}
 	}
 
-	SaveRegSettings();
+	if(g_fSaveOnExit)
+		SaveRegSettings();
 
 	return 0;
 }

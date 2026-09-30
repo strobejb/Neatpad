@@ -85,15 +85,25 @@ bool TextDocument::init_linebuffer()
 	// loop through every byte in the file
 	for(i = 0; i < length; )
 	{
-		if(buffer[i++] == '\r')
+		if(buffer[i] == '\r')
 		{
 			// carriage-return / line-feed combination
-			if(buffer[i] == '\n')
+			if(buffer[i+1] == '\n')
 				i++;
 
 			// record where the line starts
 			linebuffer[numlines++] = linestart;
-			linestart = i;
+			linestart = ++i;
+		}
+		else if(buffer[i] == '\n')
+		{
+			// record where the line starts
+			linebuffer[numlines++] = linestart;
+			linestart = ++i;
+		}
+		else
+		{
+			i++;
 		}
 	}
 
@@ -201,6 +211,11 @@ ULONG TextDocument::longestline(int tabwidth)
 			if(buffer[i+1] == '\n')
 				 i++;
 
+			longest = max(longest, xpos);
+			xpos = 0;
+		}
+		else if(buffer[i] == '\n')
+		{
 			longest = max(longest, xpos);
 			xpos = 0;
 		}

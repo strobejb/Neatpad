@@ -74,8 +74,10 @@ bool TextView::PinToBottomCorner()
 //
 LONG TextView::OnSize(UINT nFlags, int width, int height)
 {
-	m_nWindowLines   = min((unsigned)height	 / m_nLineHeight, m_nLineCount);
-	m_nWindowColumns = min((unsigned)width   / m_nFontWidth,  m_nLongestLine);
+	int margin = LeftMarginWidth();
+
+	m_nWindowLines   = min((unsigned)height		/ m_nLineHeight, m_nLineCount);
+	m_nWindowColumns = min((width - margin)		/ m_nFontWidth,  m_nLongestLine);
 
 	if(PinToBottomCorner())
 	{
@@ -138,6 +140,13 @@ HRGN TextView::ScrollRgn(int dx, int dy, bool fReturnUpdateRgn)
 	m_nHScrollPos += dx;
 	m_nVScrollPos += dy;
 
+	// ignore clipping rectangle if its a whole-window scroll
+	if(fReturnUpdateRgn == false)
+		GetClientRect(m_hWnd, &clip);
+
+	// take margin into account
+	clip.left += LeftMarginWidth();
+
 	// perform the scroll
 	if(dx != 0 || dy != 0)
 	{
@@ -147,7 +156,7 @@ HRGN TextView::ScrollRgn(int dx, int dy, bool fReturnUpdateRgn)
 			-dx * m_nFontWidth,					// scale up to pixel coords
 			-dy * m_nLineHeight,
 			NULL,								// scroll entire window
-			fReturnUpdateRgn ? &clip : NULL,	// clip the non-scrolling part
+			&clip,								// clip the non-scrolling part
 			0, 
 			0, 
 			SW_INVALIDATE
@@ -161,6 +170,8 @@ HRGN TextView::ScrollRgn(int dx, int dy, bool fReturnUpdateRgn)
 
 			GetClientRect(m_hWnd, &client);
 
+			//clip.left -= LeftMarginWidth();
+
 			HRGN hrgnClient  = CreateRectRgnIndirect(&client);
 			HRGN hrgnUpdate  = CreateRectRgnIndirect(&clip);
 
@@ -172,6 +183,14 @@ HRGN TextView::ScrollRgn(int dx, int dy, bool fReturnUpdateRgn)
 
 			return hrgnUpdate;
 		}
+	}
+
+	if(dy != 0)
+	{
+		GetClientRect(m_hWnd, &clip);
+		clip.right = LeftMarginWidth();
+		//ScrollWindow(m_hWnd, 0, -dy * m_nLineHeight, 0, &clip);
+		InvalidateRect(m_hWnd, &clip, 0);
 	}
 
 	return NULL;

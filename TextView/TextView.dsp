@@ -111,6 +111,10 @@ SOURCE=.\TextViewPaint.cpp
 
 SOURCE=.\TextViewScroll.cpp
 # End Source File
+# Begin Source File
+
+SOURCE=..\..\..\common\Trace.c
+# End Source File
 # End Group
 # Begin Group "Header Files"
 

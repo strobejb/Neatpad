@@ -45,6 +45,14 @@ int TextView::CtrlCharWidth(HDC hdc, ULONG chValue, FONT *font)
 }
 
 //
+//	TextView::
+//
+int TextView::NeatTextYOffset(FONT *font)
+{
+	return m_nMaxAscent + m_nHeightAbove - font->tm.tmAscent;
+}
+
+//
 //	Wrapper for GetTextExtentPoint32. Takes into account
 //	control-characters, tabs etc.
 //
@@ -55,9 +63,12 @@ int TextView::NeatTextWidth(HDC hdc, TCHAR *buf, int len, int nTabOrigin)
 
 	const int TABWIDTHPIXELS = TabWidth();
 
+	if(len == -1)
+		len = lstrlen(buf);
+
 	for(int i = 0, lasti = 0; i <= len; i++)
 	{
-		if(i == len || buf[i] == '\t' || buf[i] < 32)
+		if(i == len || buf[i] == '\t' || (TBYTE)buf[i] < 32)
 		{
 			GetTextExtentPoint32(hdc, buf + lasti, i - lasti, &sz);
 			width += sz.cx;
@@ -67,7 +78,7 @@ int TextView::NeatTextWidth(HDC hdc, TCHAR *buf, int len, int nTabOrigin)
 				width += TABWIDTHPIXELS - ((width - nTabOrigin) % TABWIDTHPIXELS);
 				lasti  = i + 1;
 			}
-			else if(i < len && buf[i] < 32)
+			else if(i < len && (TBYTE)buf[i] < 32)
 			{
 				width += CtrlCharWidth(hdc, buf[i], &m_FontAttr[0]);
 				lasti  = i + 1;
@@ -160,7 +171,7 @@ int TextView::PaintCtrlChar(HDC hdc, int xpos, int ypos, ULONG chValue, FONT *fo
 	RECT  rect;
 	const char *str = CtrlStr(chValue % 32);
 
-	int yoff = m_nMaxAscent + m_nHeightAbove - font->tm.tmAscent;
+	int yoff = NeatTextYOffset(font);
 
 	COLORREF fg = GetTextColor(hdc);
 	COLORREF bg = GetBkColor(hdc); 
@@ -170,7 +181,8 @@ int TextView::PaintCtrlChar(HDC hdc, int xpos, int ypos, ULONG chValue, FONT *fo
 	SetRect(&rect, xpos, ypos, xpos + sz.cx + 4, ypos + m_nLineHeight);
 
 	// paint the background white
-	PaintRect(hdc, &rect, bg);
+	if(GetBkMode(hdc) == OPAQUE)
+		PaintRect(hdc, &rect, bg);
 
 	// adjust rectangle for first black block
 	rect.right  -= 1;
@@ -248,6 +260,7 @@ LONG TextView::SetFont(HFONT hFont, int idx)
 	ReleaseDC(0, hdc);
 
 	RecalcLineHeight();
+	UpdateMarginWidth();
 
 	return 0;
 }
