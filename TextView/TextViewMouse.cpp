@@ -32,7 +32,7 @@ LONG TextView::OnMouseActivate(HWND hwndTop, UINT nHitTest, UINT nMessage)
 LONG TextView::OnLButtonDown(UINT nFlags, int mx, int my)
 {
 	ULONG nLineNo;
-	ULONG nCharOff;
+//	ULONG nCharOff;
 	ULONG nFileOff;
 	int   px;
 	
@@ -43,7 +43,7 @@ LONG TextView::OnLButtonDown(UINT nFlags, int mx, int my)
 	if(mx >= LeftMarginWidth())
 	{
 		// map the mouse-coordinates to a real file-offset-coordinate
-		MouseCoordToFilePos(mx, my, &nLineNo, &nCharOff, &nFileOff, &px);
+		MouseCoordToFilePos(mx, my, &nLineNo, &nFileOff, &px);
 
 		MoveCaret(px, (nLineNo - m_nVScrollPos) * m_nLineHeight);
 
@@ -70,7 +70,7 @@ LONG TextView::OnLButtonDown(UINT nFlags, int mx, int my)
 			RefreshWindow();
 		}
 
-		m_pTextDoc->getlineinfo(nLineNo, &m_nSelectionStart, &m_nSelectionEnd);
+		m_pTextDoc->lineinfo_from_lineno(nLineNo, &m_nSelectionStart, &m_nSelectionEnd, 0, 0);
 		m_nSelectionEnd    += m_nSelectionStart;
 		m_nCursorOffset	    = m_nSelectionStart;
 		
@@ -132,7 +132,7 @@ LONG TextView::OnMouseMove(UINT nFlags, int mx, int my)
 {
 	if(m_nSelectionMode)
 	{
-		ULONG	nLineNo, nCharOff, nFileOff;
+		ULONG	nLineNo, nFileOff;
 
 		RECT	rect;
 		POINT	pt = { mx, my };
@@ -180,7 +180,7 @@ LONG TextView::OnMouseMove(UINT nFlags, int mx, int my)
 		}
 
 		// get new cursor offset+coordinates
-		MouseCoordToFilePos(mx, my, &nLineNo, &nCharOff, &nFileOff, &cx);
+		MouseCoordToFilePos(mx, my, &nLineNo, &nFileOff, &cx);
 
 		// redraw the old and new lines if they are different
 		UpdateLine(nLineNo);
@@ -189,7 +189,7 @@ LONG TextView::OnMouseMove(UINT nFlags, int mx, int my)
 		//if(m_nSelectionEnd != nFileOff)
 		{
 			ULONG linelen;
-			m_pTextDoc->getlineinfo(nLineNo, 0, &linelen);
+			m_pTextDoc->lineinfo_from_lineno(nLineNo, 0, &linelen, 0, 0);
 
 			m_nCursorOffset	= nFileOff;
 
@@ -322,21 +322,17 @@ LONG TextView::OnTimer(UINT nTimerId)
 BOOL TextView::MouseCoordToFilePos(	int		 mx,			// [in]  mouse x-coord
 									int		 my,			// [in]  mouse x-coord
 									ULONG	*pnLineNo,		// [out] line number
-									ULONG	*pnCharOffset,	// [out] char-offset from start of line
-									ULONG	*pfnFileOffset, // [out] zero-based file-offset
-									int		*px,			// [out] adjusted x coord of caret
-									ULONG	*pnLineLen
+									ULONG	*pnFileOffset,  // [out] zero-based file-offset (in chars)
+									int		*px				// [out] adjusted x coord of caret
 									)
 {
-	ULONG nLineNo;
-
-	ULONG charoff = 0;
-	ULONG fileoff = 0;
-
 	TCHAR buf[TEXTBUFSIZE];
 	int   len;
 	int	  curx = 0;
 	RECT  rect;
+
+	ULONG nLineNo;
+	ULONG off_chars;
 
 	// get scrollable area
 	GetClientRect(m_hWnd, &rect);
@@ -357,32 +353,23 @@ BOOL TextView::MouseCoordToFilePos(	int		 mx,			// [in]  mouse x-coord
 	// make sure we don't go outside of the document
 	if(nLineNo >= m_nLineCount)
 	{
-		nLineNo = m_nLineCount ? m_nLineCount - 1 : 0;
-		fileoff = m_pTextDoc->size();
+		nLineNo   = m_nLineCount ? m_nLineCount - 1 : 0;
+		off_chars = m_pTextDoc->size();
 	}
 
 	HDC    hdc      = GetDC(m_hWnd);
 	HANDLE hOldFont = SelectObject(hdc, m_FontAttr[0].hFont);
 
-	*pnCharOffset = 0;
-
 	mx += m_nHScrollPos * m_nFontWidth;
 
-	// character offset within the line is more complicated. We have to 
-	// parse the text.
-	for(;;)
+	TextIterator itor = m_pTextDoc->iterate_line(nLineNo, &off_chars);
+
+	// character offset within the line is more complicated. 
+	// We have to parse the text to work out the exact character which
+	// falls under the mouse x-coordinate
+	while((len = itor.gettext(buf, TEXTBUFSIZE)) > 0)
 	{
-		// grab some text
-		if((len = m_pTextDoc->getline(nLineNo, charoff, buf, TEXTBUFSIZE, &fileoff)) == 0)
-			break;
-
-		int tlen=len;
-
-		if(len > 1 && buf[len-2] == '\r')
-		{
-			buf[len-2]=0;
-			len-=2;
-		}
+		len = StripCRLF(buf, len, true);
 
 		// find it's width
 		int width = NeatTextWidth(hdc, buf, len, -(curx % TabWidth()));
@@ -391,7 +378,7 @@ BOOL TextView::MouseCoordToFilePos(	int		 mx,			// [in]  mouse x-coord
 		if(mx >= curx && mx < curx + width)
 		{ 
 			//
-			//	We have a range of text, with the mouse 
+			//	We have a block of text, with the mouse 
 			//  somewhere in the middle. Perform a "binary chop" to
 			//  locate the exact character that the mouse is positioned over
 			//
@@ -421,31 +408,31 @@ BOOL TextView::MouseCoordToFilePos(	int		 mx,			// [in]  mouse x-coord
 			// base coordinates on centre of characters, not the edges
 			if(mx - curx > highx - m_nFontWidth/2)
 			{
-				curx    += highx;
-				charoff += high;
+				curx       += highx;
+				off_chars  += high;
 			}
 			else
 			{
-				curx    += lowx;
-				charoff += low;
+				curx       += lowx;
+				off_chars  += low;
 			}
 			
-			*pnCharOffset = charoff;
 			break;
 		}
-
-		curx			+= width;
-		charoff			+= tlen;
-		*pnCharOffset	+= len;
+		else
+		{
+			curx	  += width;
+			off_chars += len;
+		}
 	}
 
 	SelectObject(hdc, hOldFont);
 	ReleaseDC(m_hWnd, hdc);
 
 	*pnLineNo		= nLineNo;
-	*pfnFileOffset	= fileoff + *pnCharOffset;
+	*pnFileOffset	= off_chars;
 	*px				= curx - m_nHScrollPos * m_nFontWidth;
-	*px				+= LeftMarginWidth();
+	*px			   += LeftMarginWidth();
 
 	return 0;
 }
@@ -474,11 +461,18 @@ LONG TextView::InvalidateRange(ULONG nStart, ULONG nFinish)
 	ULONG start  = min(nStart, nFinish);
 	ULONG finish = max(nStart, nFinish);
 
-	ULONG lineno, charoff, linelen, lineoff;
 	int   xpos1 = 0, xpos2 = 0;
-	int  ypos;
+	int   ypos;
+	RECT  rect;
+	RECT  client;
+	
+	TextIterator itor;
 
-	RECT rect, client;
+	// information about current line:
+	ULONG lineno;
+	ULONG off_chars;
+	ULONG len_chars;
+
 	GetClientRect(m_hWnd, &client);
 
 	// nothing to do?
@@ -486,20 +480,23 @@ LONG TextView::InvalidateRange(ULONG nStart, ULONG nFinish)
 		return 0;
 
 	//
-	//	Find the line number and character offset of specified file-offset
+	//	Find the start-of-line information from specified file-offset
 	//
-	if(!m_pTextDoc->offset_to_line(start, &lineno, &charoff))
-		return 0;
+	lineno = m_pTextDoc->lineno_from_offset(start);
 
 	// clip to top of window
 	if(lineno < m_nVScrollPos)
 	{
-		lineno	= m_nVScrollPos;
-		charoff	= 0;
-		xpos1	= 0;
+		lineno = m_nVScrollPos;
+		itor   = m_pTextDoc->iterate_line(lineno, &off_chars, &len_chars);
+		start  = off_chars;
+	}
+	else
+	{
+		itor   = m_pTextDoc->iterate_line(lineno, &off_chars, &len_chars);
 	}
 
-	if(!m_pTextDoc->getlineinfo(lineno, &lineoff, &linelen))
+	if(!itor || start >= finish)
 		return 0;
 
 	HDC hdc = GetDC(m_hWnd);
@@ -507,25 +504,27 @@ LONG TextView::InvalidateRange(ULONG nStart, ULONG nFinish)
 
 	ypos = (lineno - m_nVScrollPos) * m_nLineHeight;
 
-	// selection starts midline...
-	if(charoff != 0)
+	//
+	// selection starts midline:
+	// find the x-coordinate of this character-offset within the line
+	//
+	if(off_chars < start)
 	{
-		ULONG off = 0;
-		TCHAR buf[TEXTBUFSIZE];
-		int   len   = charoff;
+		int   len   = start - off_chars;
 		int   width = 0;
+		int   tlen;
+
+		TCHAR buf[TEXTBUFSIZE];
 		
 		// loop until we get on-screen
-		while(off < charoff)
+		while((tlen = itor.gettext(buf, min(len, TEXTBUFSIZE))) > 0 && off_chars < start)
 		{
-			int tlen = min(len, TEXTBUFSIZE);
-			tlen     = m_pTextDoc->getline(lineno, off, buf, tlen, 0);
-
-			len		-= tlen;
-			off		+= tlen;
+			len		  -= tlen;
+			off_chars += tlen;
+			len_chars -= tlen;
 			
-			width	 = NeatTextWidth(hdc, buf, tlen, -(xpos1 % TabWidth()));
-			xpos1   += width;
+			width	   = NeatTextWidth(hdc, buf, tlen, -(xpos1 % TabWidth()));
+			xpos1     += width;
 
 			if(tlen == 0)
 				break;
@@ -534,42 +533,43 @@ LONG TextView::InvalidateRange(ULONG nStart, ULONG nFinish)
 		// xpos now equals the start of range
 	}
 
-	// Invalidate any lines that aren't part of the last line
-	while(finish >= lineoff + linelen)
+	//
+	// Invalidate all *whole* lines that aren't part of the last line
+	//
+	while(itor && finish >= off_chars + len_chars)
 	{
 		SetRect(&rect, xpos1, ypos, client.right, ypos + m_nLineHeight);
-		rect.left -= m_nHScrollPos * m_nFontWidth + LeftMarginWidth();
+		rect.left -= m_nHScrollPos * m_nFontWidth;
+		rect.left += LeftMarginWidth();
 			
 		//InvertRect(hdc, &rect);
 		InvalidateRect(m_hWnd, &rect, FALSE);
 
+		// jump down to next line
 		xpos1	= 0;
-		charoff = 0;
 		ypos   += m_nLineHeight;
 			
-		// get next line 
-		if(!m_pTextDoc->getlineinfo(++lineno, &lineoff, &linelen))
-			break;
+		// get next line's file-offset & length
+		itor = m_pTextDoc->iterate_line(++lineno, &off_chars, &len_chars);
 	}
 
-	// erase up to the end of selection
-	ULONG offset = lineoff + charoff;
-	ULONG len = finish - charoff;
-	
 	xpos2 = xpos1;
-	
-	TCHAR buf[TEXTBUFSIZE];
-	int width;
-	
-	while(offset < finish)
+
+	//
+	// erase up to the end of selection on *last* line of selection
+	//
+	if(off_chars < finish)
 	{
-		int tlen = min((finish - offset), TEXTBUFSIZE);
-		tlen     = m_pTextDoc->getdata(offset, buf, tlen);
+		TCHAR buf[TEXTBUFSIZE];
+		int width;
+		int len;
 		
-		offset += tlen;
-		
-		width	 = NeatTextWidth(hdc, buf, tlen, -(xpos2 % TabWidth()));
-		xpos2   += width;
+		while((len = itor.gettext(buf,  min((finish - off_chars), TEXTBUFSIZE))) && off_chars < finish)
+		{
+			width	   = NeatTextWidth(hdc, buf, len, -(xpos2 % TabWidth()));
+			xpos2     += width;
+			off_chars += len;
+		}
 	}
 	
 	SetRect(&rect, xpos1, ypos, xpos2, ypos + m_nLineHeight);
@@ -612,16 +612,18 @@ VOID TextView::MoveCaret(int x, int y)
 //
 ULONG TextView::RepositionCaret()
 {
-	ULONG lineno, charoff;
-	ULONG offset = 0;
 	int   xpos   = 0;
 	int   ypos   = 0;
 	TCHAR buf[TEXTBUFSIZE];
 
-	ULONG nOffset = m_nCursorOffset;
+	ULONG lineno;
+	ULONG off_chars;
+	int	  len;
 
-	// get line number from cursor-offset
-	if(!m_pTextDoc->offset_to_line(nOffset, &lineno, &charoff))
+	// get start-of-line information from cursor-offset
+	TextIterator itor = m_pTextDoc->iterate_line_offset(m_nCursorOffset, &lineno, &off_chars);
+
+	if(!itor)
 		return 0;
 
 	// make sure we are using the right font
@@ -632,13 +634,12 @@ ULONG TextView::RepositionCaret()
 	ypos = (lineno - m_nVScrollPos) * m_nLineHeight;
 
 	// now find the x-coordinate on the specified line
-	while(offset < charoff)
+	while((len = itor.gettext(buf, TEXTBUFSIZE)) > 0 && off_chars < m_nCursorOffset)
 	{
-		int tlen = min((charoff - offset), TEXTBUFSIZE);
-		tlen     = m_pTextDoc->getdata(nOffset - charoff + offset, buf, tlen);
-
-		offset += tlen;
-		xpos   += NeatTextWidth(hdc, buf, tlen, -xpos);
+		// only parse the bit we want
+		len		     = min(m_nCursorOffset - off_chars, len);
+		xpos		+= NeatTextWidth(hdc, buf, len, -xpos);
+		off_chars	+= len;
 	}
 	
 	ReleaseDC(m_hWnd, hdc);

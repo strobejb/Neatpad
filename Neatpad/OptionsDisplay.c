@@ -33,6 +33,8 @@ BOOL CALLBACK DisplayOptionsDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
 		CheckDlgButton(hwnd, IDC_LINENOS,   g_fLineNumbers);
 		CheckDlgButton(hwnd, IDC_SELMARGIN, g_fSelMargin);
 
+		CheckDlgButton(hwnd, IDC_HIGHLIGHTCURLINE, g_nHLCurLine);
+
 		return TRUE;
 
 	case WM_CLOSE:
@@ -48,6 +50,7 @@ BOOL CALLBACK DisplayOptionsDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
 			g_fSelMargin	 = IsDlgButtonChecked(hwnd, IDC_SELMARGIN);
 			g_fLongLines	 = SendDlgItemMessage(hwnd, IDC_LONGLINEMODE, CB_GETCURSEL, 0, 0);
 			g_nLongLineLimit = GetDlgItemInt(hwnd, IDC_LONGLINELIM, 0, FALSE);
+			g_nHLCurLine	 = IsDlgButtonChecked(hwnd, IDC_HIGHLIGHTCURLINE);
 
 			return TRUE;
 		}

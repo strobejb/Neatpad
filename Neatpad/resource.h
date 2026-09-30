@@ -47,6 +47,7 @@
 #define IDC_ADVANCED                    1021
 #define IDC_CHECK2                      1022
 #define IDC_CHECK3                      1023
+#define IDC_ADDCONTEXT                  1023
 #define IDC_CHECK4                      1024
 #define IDC_PROGRESS1                   1025
 #define IDC_CHECK10                     1025
@@ -68,6 +69,10 @@
 #define IDC_LINENOS                     1041
 #define IDC_SELMARGIN                   1042
 #define IDC_LONGLINEMODE                1043
+#define IDC_SELMARGIN2                  1044
+#define IDC_HIGHLIGHTCURLINE            1044
+#define IDC_MEMWINPOS                   1044
+#define IDC_MEMWINPOSFILE               1045
 #define IDM_FILE_NEW                    40001
 #define IDM_FILE_OPEN                   40002
 #define IDM_FILE_EXIT                   40003
@@ -78,6 +83,10 @@
 #define IDM_VIEW_SAVENOW                40008
 #define IDM_VIEW_SAVEEXIT               40009
 #define IDM_FILE_PRINT                  40010
+#define IDM_VIEW_ASCII                  40012
+#define IDM_VIEW_UTF8                   40013
+#define IDM_VIEW_UTF16                  40014
+#define IDM_VIEW_UTF16BE                40015
 
 #define IDC_STATIC                      -1
 
@@ -85,9 +94,9 @@
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
-#define _APS_NEXT_RESOURCE_VALUE        117
-#define _APS_NEXT_COMMAND_VALUE         40011
-#define _APS_NEXT_CONTROL_VALUE         1044
+#define _APS_NEXT_RESOURCE_VALUE        118
+#define _APS_NEXT_COMMAND_VALUE         40016
+#define _APS_NEXT_CONTROL_VALUE         1046
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif

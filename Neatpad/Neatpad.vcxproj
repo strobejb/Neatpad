@@ -103,6 +103,9 @@
     <Image Include="icon2.ico" />
   </ItemGroup>
   <ItemGroup>
+    <Manifest Include="Neatpad.exe.manifest" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\TextView\TextView.vcxproj">
       <Project>{9D2C0B3C-26B9-4F43-B950-4550B8D21850}</Project>
     </ProjectReference>

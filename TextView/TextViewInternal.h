@@ -1,7 +1,7 @@
 #ifndef TEXTVIEW_INTERNAL_INCLUDED
 #define TEXTVIEW_INTERNAL_INCLUDED
 
-#define TEXTBUFSIZE  32
+#define TEXTBUFSIZE  128
 #define LINENO_FMT  _T(" %d ")
 #define LINENO_PAD	 8
 
@@ -88,6 +88,8 @@ private:
 
 	LONG OnSetFocus(HWND hwndOld);
 	LONG OnKillFocus(HWND hwndNew);
+
+	LONG OnKeyDown(UINT nVirtKey, UINT nFlags);
 	
 	//
 	//	
@@ -128,7 +130,7 @@ private:
 	int	 SetCaretWidth(int nWidth);
 	BOOL SetImageList(HIMAGELIST hImgList);
 
-	BOOL  MouseCoordToFilePos(int x, int y, ULONG *pnLineNo, ULONG *pnCharOffset, ULONG *pnFileOffset, int *px, ULONG *pnLineLen=0);
+	BOOL  MouseCoordToFilePos(int x, int y, ULONG *pnLineNo, ULONG *pnFileOffset, int *px);//, ULONG *pnLineLen=0);
 	ULONG RepositionCaret();
 	VOID  MoveCaret(int x, int y);
 
@@ -146,6 +148,7 @@ private:
 
 	int		SetLineImage(ULONG nLineNo, ULONG nImageIdx);
 	LINEINFO *GetLineInfo(ULONG nLineNo);
+	int		StripCRLF(TCHAR *szText, int nLength, bool fAllow);
 
 	VOID	SetupScrollbars();
 	VOID	UpdateMetrics();
@@ -185,6 +188,7 @@ private:
 	DWORD	m_nCaretWidth;
 	ULONG	m_nCurrentLine;
 	int		m_nLongLineLimit;
+	int		m_nCRLFMode;
 	
 	LINEINFO	m_LineInfo[MAX_LINE_INFO];
 	int			m_nLineInfoCount;

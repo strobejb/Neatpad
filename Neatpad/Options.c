@@ -14,6 +14,9 @@
 
 #pragma comment(lib, "comctl32.lib")
 
+#define CONTEXT_CMD_LOC _T("*\\shell\\Open with Neatpad\\command")
+#define CONTEXT_APP_LOC _T("*\\shell\\Open with Neatpad")
+
 BOOL CALLBACK FontOptionsDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 BOOL CALLBACK MiscOptionsDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 BOOL CALLBACK DisplayOptionsDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
@@ -31,6 +34,8 @@ BOOL  g_fLongLines;
 BOOL  g_fSelMargin;
 BOOL  g_fSaveOnExit;
 int	  g_nLongLineLimit;
+BOOL  g_nHLCurLine;
+BOOL  g_fAddToExplorerContextMenu;
 
 COLORREF g_rgbColourList[TXC_MAX_COLOURS];
 COLORREF g_rgbCustColours[16];
@@ -81,6 +86,26 @@ BOOL WriteSettingStr(HKEY hkey, TCHAR szKeyName[], TCHAR szString[])
 	return !RegSetValueEx(hkey, szKeyName, 0, REG_SZ, (BYTE *)szString, (lstrlen(szString) + 1) * sizeof(TCHAR));
 }
 
+void SetExplorerContextMenu(BOOL fAddToMenu)
+{
+	if(fAddToMenu)
+	{
+		TCHAR szAppPath[MAX_PATH];
+		TCHAR szDefaultStr[MAX_PATH];
+
+		GetModuleFileName(0, szAppPath, MAX_PATH);
+
+		wsprintf(szDefaultStr, _T("\"%s\" \"%%1\""), szAppPath);
+
+		RegSetValue(HKEY_CLASSES_ROOT, CONTEXT_CMD_LOC, REG_SZ, szDefaultStr, lstrlen(szDefaultStr) * sizeof(TCHAR));
+	}
+	else
+	{
+		RegDeleteKey(HKEY_CLASSES_ROOT, CONTEXT_CMD_LOC);
+		RegDeleteKey(HKEY_CLASSES_ROOT, CONTEXT_APP_LOC);
+	}
+}
+
 void LoadRegSettings()
 {
 	HKEY hKey, hColKey;
@@ -102,6 +127,9 @@ void LoadRegSettings()
 	GetSettingInt(hKey, _T("LongLines"),	 &g_fLongLines, TRUE);
 	GetSettingInt(hKey, _T("LongLineLimit"), &g_nLongLineLimit, 80);
 	GetSettingInt(hKey, _T("SaveOnExit"),	 &g_fSaveOnExit, TRUE);
+	GetSettingInt(hKey, _T("HLCurLine"),	 &g_nHLCurLine, FALSE);
+
+	GetSettingInt(hKey, _T("AddExplorer"),	 &g_fAddToExplorerContextMenu, FALSE);
 	
 	// read the display colours
 	RegCreateKeyEx(hKey, _T("Colours"), 0, 0, 0, KEY_READ, 0, &hColKey, 0);
@@ -118,6 +146,8 @@ void LoadRegSettings()
 	GetSettingInt(hColKey, _T("Lineno"),		&g_rgbColourList[TXC_LINENUMBER],		g_rgbAutoColourList[TXC_LINENUMBER]		);
 	GetSettingInt(hColKey, _T("LongLineText"),	&g_rgbColourList[TXC_LONGLINETEXT],		g_rgbAutoColourList[TXC_LONGLINETEXT]	);
 	GetSettingInt(hColKey, _T("LongLine"),		&g_rgbColourList[TXC_LONGLINE],			g_rgbAutoColourList[TXC_LONGLINE]		);
+	GetSettingInt(hColKey, _T("CurlineText"),	&g_rgbColourList[TXC_CURRENTLINETEXT],	g_rgbAutoColourList[TXC_CURRENTLINETEXT]	);
+	GetSettingInt(hColKey, _T("Curline"),		&g_rgbColourList[TXC_CURRENTLINE],		g_rgbAutoColourList[TXC_CURRENTLINE]		);
 	
 	GetSettingBin(hColKey, _T("Custom"),		g_rgbCustColours, sizeof(g_rgbCustColours)); 
 
@@ -146,7 +176,9 @@ void SaveRegSettings()
 	WriteSettingInt(hKey, _T("LongLines"),	  g_fLongLines);
 	WriteSettingInt(hKey, _T("SaveOnExit"),	  g_fSaveOnExit);
 	WriteSettingInt(hKey, _T("LongLineLimit"),g_nLongLineLimit);
+	WriteSettingInt(hKey, _T("HLCurLine"),	  g_nHLCurLine);
 
+	WriteSettingInt(hKey, _T("AddExplorer"),  g_fAddToExplorerContextMenu);
 	
 	// write the display colours
 	RegCreateKeyEx(hKey, _T("Colours"), 0, 0, 0, KEY_WRITE, 0, &hColKey, 0);
@@ -165,8 +197,8 @@ void SaveRegSettings()
 	WriteSettingInt(hColKey, _T("LongLineText"),g_rgbColourList[TXC_LONGLINETEXT]); 
 	WriteSettingInt(hColKey, _T("LongLine"),	g_rgbColourList[TXC_LONGLINE]); 
 
-	WriteSettingInt(hColKey, _T("CurlineText"),	g_rgbColourList[TXC_LONGLINETEXT]); 
-	WriteSettingInt(hColKey, _T("Curline"),		g_rgbColourList[TXC_LONGLINE]); 
+	WriteSettingInt(hColKey, _T("CurlineText"),	g_rgbColourList[TXC_CURRENTLINETEXT]); 
+	WriteSettingInt(hColKey, _T("Curline"),		g_rgbColourList[TXC_CURRENTLINE]); 
 
 
 	WriteSettingBin(hColKey, _T("Custom"),		g_rgbCustColours, sizeof(g_rgbCustColours)); 
@@ -190,7 +222,7 @@ void ApplyRegSettings()
 	TextView_SetStyleBool(g_hwndTextView, TXS_LINENUMBERS,	g_fLineNumbers);
 	TextView_SetStyleBool(g_hwndTextView, TXS_LONGLINES,	g_fLongLines);
 
-	TextView_SetStyleBool(g_hwndTextView, TXS_HIGHLIGHTCURLINE,	FALSE);
+	TextView_SetStyleBool(g_hwndTextView, TXS_HIGHLIGHTCURLINE,	g_nHLCurLine);
 
 	TextView_SetCaretWidth(g_hwndTextView, 2);
 	TextView_SetLongLine(g_hwndTextView, g_nLongLineLimit);
@@ -201,6 +233,11 @@ void ApplyRegSettings()
 	{
 		TextView_SetColor(g_hwndTextView, i, g_rgbColourList[i]);
 	}
+
+	//
+	//	Add
+	//
+	SetExplorerContextMenu(g_fAddToExplorerContextMenu);
 }
 
 void ShowProperties(HWND hwndParent)

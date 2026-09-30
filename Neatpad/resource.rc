@@ -40,6 +40,13 @@ BEGIN
     BEGIN
         MENUITEM "&Options...",                 IDM_VIEW_FONT
         MENUITEM SEPARATOR
+        POPUP "&Encoding"
+        BEGIN
+            MENUITEM "&Ascii",                      IDM_VIEW_ASCII
+            MENUITEM "Unicode (UTF-&8)",            IDM_VIEW_UTF8
+            MENUITEM "&Unicode (UTF-16)",           IDM_VIEW_UTF16
+            MENUITEM "Unicode (UTF-16, &Big-Endian)", IDM_VIEW_UTF16BE
+        END
         MENUITEM "&Line Numbers",               IDM_VIEW_LINENUMBERS
         , CHECKED
         MENUITEM "&Highlight Long Lines",       IDM_VIEW_LONGLINES
@@ -110,20 +117,23 @@ END
 IDD_OPTIONS DIALOGEX 0, 0, 290, 205
 STYLE DS_FIXEDSYS | DS_CONTROL | WS_CHILD
 EXSTYLE WS_EX_CONTROLPARENT
-FONT 8, "MS Shell Dlg", 0, 0, 0x1
+FONT 8, "MS Shell Dlg"
 BEGIN
-    GROUPBOX        "Settings",IDC_STATIC,7,7,276,88
-    CONTROL         "&Remember window position",IDC_CHECK1,"Button",
-                    BS_AUTOCHECKBOX | WS_TABSTOP,16,22,102,10
-    CONTROL         "&Remember window position for each file",IDC_CHECK2,
-                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,16,35,141,10
-    CONTROL         "Add to &Explorer context menu",IDC_CHECK3,"Button",
-                    BS_AUTOCHECKBOX | WS_TABSTOP,16,48,109,10
+    GROUPBOX        "Settings",IDC_STATIC,7,7,276,64
+    CONTROL         "Add to &Explorer context menu",IDC_ADDCONTEXT,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,16,23,109,10
     CONTROL         "&Replace Notepad as default editor",IDC_CHECK4,"Button",
-                    BS_AUTOCHECKBOX | WS_TABSTOP,16,61,124,10
+                    BS_AUTOCHECKBOX | WS_TABSTOP,16,36,124,10
     PUSHBUTTON      "&Defaults",IDC_DEFAULTS,223,184,60,14
     CONTROL         "&Quick exit with <Escape>",IDC_CHECK10,"Button",
-                    BS_AUTOCHECKBOX | WS_TABSTOP,16,74,96,10
+                    BS_AUTOCHECKBOX | WS_TABSTOP,16,49,96,10
+    GROUPBOX        "Window Settings",IDC_STATIC,7,79,276,52
+    PUSHBUTTON      "Choose...",IDC_BUTTON2,179,103,50,14,WS_DISABLED
+    CONTROL         "&Remember window position",IDC_MEMWINPOS,"Button",
+                    BS_AUTORADIOBUTTON,16,96,102,10
+    CONTROL         "&Remember window position for each file",
+                    IDC_MEMWINPOSFILE,"Button",BS_AUTORADIOBUTTON,16,109,141,
+                    10
 END
 
 IDD_FONT DIALOGEX 0, 0, 290, 205
@@ -185,7 +195,7 @@ END
 IDD_DISPLAY DIALOGEX 0, 0, 290, 205
 STYLE DS_CONTROL | WS_CHILD
 EXSTYLE WS_EX_CONTROLPARENT
-FONT 8, "MS Sans Serif"
+FONT 8, "MS Sans Serif", 0, 0, 0x1
 BEGIN
     GROUPBOX        "Margins",IDC_STATIC,7,7,276,87
     LTEXT           "&Long lines:",IDC_STATIC,15,20,35,8
@@ -219,6 +229,8 @@ BEGIN
                     BS_AUTOCHECKBOX | WS_DISABLED | WS_TABSTOP,16,49,115,10
     CONTROL         "&Selection margin",IDC_SELMARGIN,"Button",
                     BS_AUTOCHECKBOX | WS_TABSTOP,16,75,68,10
+    CONTROL         "&Highlight current line",IDC_HIGHLIGHTCURLINE,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,185,75,80,10
 END
 
 IDD_ABOUT DIALOG DISCARDABLE  0, 0, 269, 180
@@ -286,6 +298,13 @@ END
 //
 
 IDB_BITMAP1             BITMAP  DISCARDABLE     "bitmap1.bmp"
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// 24
+//
+
+1                       24      DISCARDABLE     "Neatpad.exe.manifest"
 #endif    // English (U.K.) resources
 /////////////////////////////////////////////////////////////////////////////
 

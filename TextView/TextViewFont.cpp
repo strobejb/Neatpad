@@ -11,17 +11,17 @@
 #include "TextView.h"
 #include "TextViewInternal.h"
 
-static const char *CtrlStr(DWORD ch)
+static const TCHAR *CtrlStr(DWORD ch)
 {
-	static const char *reps[] = 
+	static const TCHAR *reps[] = 
 	{
-		"NUL", "SOH", "STX", "ETX", "EOT", "ENQ", "ACK", "BEL",
-		"BS",  "HT",  "LF",  "VT",  "FF",  "CR",  "SO",  "SI",
-		"DLE", "DC1", "DC2", "DC3", "DC4", "NAK", "SYN", "ETB",
-		"CAN", "EM",  "SUB", "ESC", "FS",  "GS",  "RS",  "US"
+		_T("NUL"), _T("SOH"), _T("STX"), _T("ETX"), _T("EOT"), _T("ENQ"), _T("ACK"), _T("BEL"),
+		_T("BS"),  _T("HT"),  _T("LF"),  _T("VT"),  _T("FF"),  _T("CR"),  _T("SO"),  _T("SI"),
+		_T("DLE"), _T("DC1"), _T("DC2"), _T("DC3"), _T("DC4"), _T("NAK"), _T("SYN"), _T("ETB"),
+		_T("CAN"), _T("EM"),  _T("SUB"), _T("ESC"), _T("FS"),  _T("GS"),  _T("RS"),  _T("US")
 	};
 
-	return ch < ' ' ? reps[ch] : "???";
+	return ch < _T(' ') ? reps[ch] : _T("???");
 }
 
 void PaintRect(HDC hdc, RECT *rect, COLORREF fill)
@@ -39,8 +39,8 @@ void PaintRect(HDC hdc, RECT *rect, COLORREF fill)
 int TextView::CtrlCharWidth(HDC hdc, ULONG chValue, FONT *font)
 {
 	SIZE sz;
-	const char *str = CtrlStr(chValue % 32);
-	GetTextExtentPoint32(hdc, str, strlen(str), &sz);
+	const TCHAR *str = CtrlStr(chValue % 32);
+	GetTextExtentPoint32(hdc, str, _tcslen(str), &sz);
 	return sz.cx + 4;
 }
 
@@ -108,7 +108,7 @@ void TextView::InitCtrlCharFontAttr(HDC hdc, FONT *font)
 	SetBkColor(hdcTemp,		RGB(255,255,255));
 	SetBkMode(hdcTemp,		OPAQUE);
 
-	TextOut(hdcTemp, 0, 0, "E", 1);
+	TextOut(hdcTemp, 0, 0, _T("E"), 1);
 
 	// give default values just in case the scan fails
 	font->nInternalLeading	= font->tm.tmInternalLeading;
@@ -169,7 +169,7 @@ int TextView::PaintCtrlChar(HDC hdc, int xpos, int ypos, ULONG chValue, FONT *fo
 {
 	SIZE  sz;
 	RECT  rect;
-	const char *str = CtrlStr(chValue % 32);
+	const TCHAR *str = CtrlStr(chValue % 32);
 
 	int yoff = NeatTextYOffset(font);
 
@@ -177,7 +177,7 @@ int TextView::PaintCtrlChar(HDC hdc, int xpos, int ypos, ULONG chValue, FONT *fo
 	COLORREF bg = GetBkColor(hdc); 
 
 	// find out how big the text will be
-	GetTextExtentPoint32(hdc, str, strlen(str), &sz);
+	GetTextExtentPoint32(hdc, str, _tcslen(str), &sz);
 	SetRect(&rect, xpos, ypos, xpos + sz.cx + 4, ypos + m_nLineHeight);
 
 	// paint the background white
@@ -198,7 +198,7 @@ int TextView::PaintCtrlChar(HDC hdc, int xpos, int ypos, ULONG chValue, FONT *fo
 	
 	// paint the text and the second "black" block at the same time
 	InflateRect(&rect, -1, 1);
-	ExtTextOut(hdc, xpos+1, ypos+yoff, ETO_OPAQUE|ETO_CLIPPED, &rect, str, strlen(str), 0);
+	ExtTextOut(hdc, xpos+1, ypos+yoff, ETO_OPAQUE|ETO_CLIPPED, &rect, str, _tcslen(str), 0);
 	
 	// restore device context
 	SetTextColor(hdc, fg);
@@ -251,6 +251,7 @@ LONG TextView::SetFont(HFONT hFont, int idx)
 	// get font settings
 	font->hFont = hFont;
 	GetTextMetrics(hdc, &font->tm);
+	m_nFontWidth = m_FontAttr[0].tm.tmAveCharWidth;
 
 	// pre-calc the control-characters for this font
 	InitCtrlCharFontAttr(hdc, font);
@@ -285,8 +286,6 @@ LONG TextView::OnSetFont(HFONT hFont)
 {
 	// default font is always #0
 	SetFont(hFont, 0);
-
-	m_nFontWidth = m_FontAttr[0].tm.tmAveCharWidth;
 	UpdateMetrics();
 
 	return 0;

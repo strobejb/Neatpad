@@ -21,7 +21,6 @@ int GetPrinterWidth(HDC hdcPrn);
 #pragma comment(lib, "DelayImp.lib")
 #pragma comment(linker, "/DELAYLOAD:Comdlg32.dll")
 #endif
-
 HDC ShowPrintDlg(HWND hwndParent)
 {
 	// if Windows 2000 and above

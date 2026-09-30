@@ -16,6 +16,17 @@ BOOL	 InitTextView();
 HWND	 CreateTextView(HWND hwndParent);
 COLORREF RealizeColour(COLORREF col);
 
+
+//
+// currently supported Neatpad Codepages
+//
+#define NCP_ASCII		0
+#define NCP_UTF8		1
+#define NCP_UTF16		2
+#define NCP_UTF16BE		3
+#define NCP_UTF32		4
+#define NCP_UTF32BE		5
+
 //
 //	TextView Window Messages defined here
 //
@@ -32,6 +43,7 @@ COLORREF RealizeColour(COLORREF col);
 #define TXM_SETIMAGELIST		 (TXM_BASE + 9)
 #define TXM_SETLONGLINE			 (TXM_BASE + 10)
 #define TXM_SETLINEIMAGE		 (TXM_BASE + 11)
+#define TXM_GETFORMAT			 (TXM_BASE + 12)
 
 //
 //	TextView Window Styles defined here
@@ -42,6 +54,15 @@ COLORREF RealizeColour(COLORREF col);
 #define TXS_TREECTRL			4
 #define TXS_LONGLINES			8
 #define TXS_HIGHLIGHTCURLINE	16
+
+//
+//	End-of-line mode
+//
+#define TXL_LF				1		// line-feed
+#define TXL_CR				2		// carriage-return
+#define TXL_CRLF			4		// carriage-return, line-feed (default)
+#define TXL_ALL				7		// allow all forms regardless
+
 
 //
 //	TextView Message Macros defined here
@@ -78,6 +99,9 @@ COLORREF RealizeColour(COLORREF col);
 
 #define TextView_SetLineImage(hwndTV, nLineNo, nImageIdx) \
 	SendMessage((hwndTV), TXM_SETLINEIMAGE, (WPARAM)(ULONG)(nLineNo), (LPARAM)(ULONG)nImageIdx)
+
+#define TextView_GetFormat(hwndTV) \
+	SendMessage((hwndTV), TXM_GETFORMAT, 0, 0)
 
 
 //

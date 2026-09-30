@@ -69,8 +69,10 @@
     <ClCompile Include="TextViewMouse.cpp" />
     <ClCompile Include="TextViewPaint.cpp" />
     <ClCompile Include="TextViewScroll.cpp" />
+    <ClCompile Include="Unicode.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="codepages.h" />
     <ClInclude Include="TextDocument.h" />
     <ClInclude Include="TextView.h" />
     <ClInclude Include="TextViewInternal.h" />
