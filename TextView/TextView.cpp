@@ -17,6 +17,10 @@
 #ifndef SPI_GETCARETWIDTH
 #define SPI_GETCARETWIDTH 0x2006
 #endif
+#ifndef UNICODE
+#error "Please build as Unicode only!"
+#endif
+
 //
 //	Constructor for TextView class
 //
@@ -46,7 +50,17 @@ TextView::TextView(HWND hwnd)
 	m_nCaretWidth	 = 0;
 	m_nLongLineLimit = 80;
 	m_nLineInfoCount = 0;
-	m_nCRLFMode		 = TXL_ALL;
+	m_nCRLFMode		 = TXL_CRLF;//ALL;
+
+	// allocate the USPDATA cache
+	m_uspCache		= new USP_CACHE[USP_CACHE_SIZE];
+	
+	for(int i = 0; i < USP_CACHE_SIZE; i++)
+	{
+		m_uspCache[i].usage   = 0;
+		m_uspCache[i].lineno  = 0;
+		m_uspCache[i].uspData = UspAllocate();
+	}
 
 	SystemParametersInfo(SPI_GETCARETWIDTH, 0, &m_nCaretWidth, 0);
 
@@ -94,6 +108,8 @@ TextView::TextView(HWND hwnd)
 	//	start calling member-functions
 	//
 
+	memset(m_uspFontList, 0, sizeof(m_uspFontList));
+
 	// Set the default font
 	OnSetFont((HFONT)GetStockObject(ANSI_FIXED_FONT));
 
@@ -110,6 +126,9 @@ TextView::~TextView()
 		delete m_pTextDoc;
 
 	DestroyCursor(m_hMarginCursor);
+
+	for(int i = 0; i < USP_CACHE_SIZE; i++)
+		UspFree(m_uspCache[i].uspData);
 }
 
 VOID TextView::UpdateMetrics()
@@ -153,6 +172,8 @@ ULONG TextView::SetStyle(ULONG uMask, ULONG uStyles)
 	ULONG oldstyle = m_uStyleFlags;
 
 	m_uStyleFlags  = (m_uStyleFlags & ~uMask) | uStyles;
+
+	ResetLineCache();
 
 	// update display here
 	UpdateMetrics();

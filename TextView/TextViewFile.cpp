@@ -32,6 +32,7 @@ LONG TextView::OpenFile(TCHAR *szFileName)
 
 		UpdateMetrics();
 		UpdateMarginWidth();
+		ResetLineCache();
 		return TRUE;
 	}
 
@@ -53,6 +54,7 @@ LONG TextView::ClearFile()
 	m_nHScrollPos  = 0;
 
 	UpdateMetrics();
+
 
 	return TRUE;
 }

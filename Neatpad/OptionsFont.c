@@ -11,7 +11,6 @@
 #include <tchar.h>
 #include <commctrl.h>
 #include <shellapi.h>
-#include <stdio.h>
 #include "Neatpad.h"
 #include "..\TextView\TextView.h"
 #include "resource.h"
@@ -26,7 +25,8 @@ COLORREF LightenRGB(COLORREF rgbColor, int amt);
 
 static HFONT g_hBoldFont;
 static HFONT g_hNormalFont;
-static HICON g_hIcon1;
+static HICON g_hIcon2;			// TrueType icon
+static HICON g_hIcon3;			// OpenType icon
 static int	 g_nFontHeight;
 
 static COLORREF g_crPreviewFG;
@@ -128,15 +128,15 @@ int CALLBACK EnumFontNames(ENUMLOGFONTEX *lpelfe, NEWTEXTMETRICEX *lpntme, DWORD
 	HWND hwndCombo = (HWND)lParam;
 	TCHAR *pszName  = lpelfe->elfLogFont.lfFaceName;
 
-	//	if(pszName[0] == '@')
-	//		return 1;
+		if(pszName[0] == '@')
+			return 1;
 	
 	// make sure font doesn't already exist in our list
 	if(SendMessage(hwndCombo, CB_FINDSTRING, 0, (LPARAM)pszName) == CB_ERR)
 	{
 		int		idx;
 		BOOL	fFixed;
-		BOOL	fTrueType;
+		int		fTrueType;		// 0 = normal, 1 = TrueType, 2 = OpenType
 
 		// add the font
 		idx = SendMessage(hwndCombo, CB_ADDSTRING, 0, (LPARAM)pszName);
@@ -144,6 +144,7 @@ int CALLBACK EnumFontNames(ENUMLOGFONTEX *lpelfe, NEWTEXTMETRICEX *lpntme, DWORD
 		// record the font's attributes (Fixedwidth and Truetype)
 		fFixed		= (lpelfe->elfLogFont.lfPitchAndFamily & FIXED_PITCH) ? TRUE : FALSE;
 		fTrueType	= (lpelfe->elfLogFont.lfOutPrecision == OUT_STROKE_PRECIS) ? TRUE : FALSE;
+		fTrueType	= (lpntme->ntmTm.ntmFlags & NTM_TT_OPENTYPE) ? 2 : fTrueType;
 			
 		// store this information in the list-item's userdata area
 		SendMessage(hwndCombo, CB_SETITEMDATA, idx, MAKEWPARAM(fFixed, fTrueType));
@@ -159,6 +160,7 @@ void FillFontComboList(HWND hwndCombo)
 {
 	HDC		hdc = GetDC(hwndCombo);
 	LOGFONT lf;
+	int		idx;
 
 	SendMessage(hwndCombo, WM_SETFONT, (WPARAM)g_hNormalFont, 0);
 
@@ -171,7 +173,9 @@ void FillFontComboList(HWND hwndCombo)
 
 	ReleaseDC(hwndCombo, hdc);
 
-	SendMessage(hwndCombo, CB_SETCURSEL, 0, 0);
+	// select current font in list
+	idx = SendMessage(hwndCombo, CB_FINDSTRING, 0, (LPARAM)g_szFontName);
+	SendMessage(hwndCombo, CB_SETCURSEL, idx, 0);
 }
 
 /*
@@ -310,7 +314,9 @@ BOOL FontCombo_DrawItem(HWND hwnd, DRAWITEMSTRUCT *dis)
 
 	// draw a 'TT' icon if the font is TRUETYPE
 	if(fTrueType)
-		DrawIconEx(dis->hDC, dis->rcItem.left+2, dis->rcItem.top, g_hIcon1,16, 16, 0, 0, DI_NORMAL);
+		DrawIconEx(dis->hDC, dis->rcItem.left+2, dis->rcItem.top, g_hIcon2,16, 16, 0, 0, DI_NORMAL);
+	//else if(fTrueType == 2)
+	//	DrawIconEx(dis->hDC, dis->rcItem.left+2, dis->rcItem.top, g_hIcon3,16, 16, 0, 0, DI_NORMAL);
 
 	SelectObject(dis->hDC, hOldFont);
 
@@ -657,7 +663,8 @@ BOOL InitFontOptionsDlg(HWND hwnd)
 	//
 	//	Load the TrueType icon for the font-list
 	//
-	g_hIcon1 = LoadImage(GetModuleHandle(0), MAKEINTRESOURCE(IDI_ICON2), IMAGE_ICON, 16, 16, 0);
+	g_hIcon2 = LoadImage(GetModuleHandle(0), MAKEINTRESOURCE(IDI_ICON2), IMAGE_ICON, 16, 16, 0);
+	g_hIcon3 = LoadImage(GetModuleHandle(0), MAKEINTRESOURCE(IDI_ICON3), IMAGE_ICON, 16, 16, 0);
 	
 	//
 	//	Create two fonts (normal+bold) based on current dialog's font settings

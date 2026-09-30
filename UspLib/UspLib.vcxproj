@@ -13,8 +13,8 @@
   <PropertyGroup Label="Globals">
     <VCProjectVersion>17.0</VCProjectVersion>
     <Keyword>Win32Proj</Keyword>
-    <ProjectGuid>{9D2C0B3C-26B9-4F43-B950-4550B8D21850}</ProjectGuid>
-    <RootNamespace>TextView</RootNamespace>
+    <ProjectGuid>{5E7AC3D0-6E3B-4BF1-9DD6-B68A47376C83}</ProjectGuid>
+    <RootNamespace>UspLib</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
@@ -62,25 +62,13 @@
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="TextDocument.cpp" />
-    <ClCompile Include="TextView.cpp" />
-    <ClCompile Include="TextViewFile.cpp" />
-    <ClCompile Include="TextViewFont.cpp" />
-    <ClCompile Include="TextViewMouse.cpp" />
-    <ClCompile Include="TextViewPaint.cpp" />
-    <ClCompile Include="TextViewScroll.cpp" />
-    <ClCompile Include="Unicode.cpp" />
+    <ClCompile Include="UspCtrl.c" />
+    <ClCompile Include="UspLib.c" />
+    <ClCompile Include="UspMouse.c" />
+    <ClCompile Include="UspPaint.c" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="codepages.h" />
-    <ClInclude Include="TextDocument.h" />
-    <ClInclude Include="TextView.h" />
-    <ClInclude Include="TextViewInternal.h" />
-  </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\UspLib\UspLib.vcxproj">
-      <Project>{5E7AC3D0-6E3B-4BF1-9DD6-B68A47376C83}</Project>
-    </ProjectReference>
+    <ClInclude Include="usplib.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>

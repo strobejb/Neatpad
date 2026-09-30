@@ -96,6 +96,7 @@ END
 // remains consistent on all systems.
 IDI_ICON1               ICON    DISCARDABLE     "icon1.ico"
 IDI_ICON2               ICON    DISCARDABLE     "icon2.ico"
+IDI_ICON3               ICON    DISCARDABLE     "icon3.ico"
 
 /////////////////////////////////////////////////////////////////////////////
 //
@@ -117,7 +118,7 @@ END
 IDD_OPTIONS DIALOGEX 0, 0, 290, 205
 STYLE DS_FIXEDSYS | DS_CONTROL | WS_CHILD
 EXSTYLE WS_EX_CONTROLPARENT
-FONT 8, "MS Shell Dlg"
+FONT 8, "MS Shell Dlg", 0, 0, 0x1
 BEGIN
     GROUPBOX        "Settings",IDC_STATIC,7,7,276,64
     CONTROL         "Add to &Explorer context menu",IDC_ADDCONTEXT,"Button",

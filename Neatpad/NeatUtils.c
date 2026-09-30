@@ -4,6 +4,9 @@
 //	www.catch22.net
 //
 #include <windows.h>
+#include <shobjidl.h>
+#include <shlguid.h>
+#include <shellapi.h>
 #include <tchar.h>
 #include "neatpad.h"
 
@@ -77,8 +80,9 @@ BOOL SaveFileData(TCHAR *szPath, HWND hwnd)
 	//
 	if((hFile = CreateFile(szStream, GENERIC_READ, 0, 0, OPEN_EXISTING, 0, 0)) != INVALID_HANDLE_VALUE)
 	{
-		GetFileTime(hFile, &ctm, &atm, &wtm);
-		restoretime = TRUE;
+		if(GetFileTime(hFile, &ctm, &atm, &wtm))
+			restoretime = TRUE;
+
 		CloseHandle(hFile);
 	}
 
@@ -133,4 +137,48 @@ BOOL LoadFileData(TCHAR *szPath, HWND hwnd)
 
 	CloseHandle(hFile);
 	return TRUE;
+}
+
+BOOL ResolveShortcut(TCHAR *pszShortcut, TCHAR *pszFilePath, int nPathLen)
+{
+	IShellLink * psl;
+	SHFILEINFO   info;
+	IPersistFile *ppf;
+
+	*pszFilePath = 0;   // assume failure
+
+	if((SHGetFileInfo(pszShortcut, 0, &info, sizeof(info), SHGFI_ATTRIBUTES) == 0))
+	{
+		return FALSE;
+	}
+
+	// not a shortcut?
+	if(!(info.dwAttributes & SFGAO_LINK))
+	{
+		lstrcpyn(pszFilePath, pszShortcut, nPathLen);
+		return TRUE;
+	}
+
+	if(FAILED(CoCreateInstance(&CLSID_ShellLink, NULL, CLSCTX_INPROC_SERVER, &IID_IShellLink, (LPVOID*)&psl)))
+		return FALSE;
+
+	if (SUCCEEDED(psl->lpVtbl->QueryInterface(psl, &IID_IPersistFile, (LPVOID*)&ppf)))
+	{
+		if (SUCCEEDED(ppf->lpVtbl->Load(ppf, pszShortcut, STGM_READ)))
+		{
+			// Resolve the link, this may post UI to find the link
+			if (SUCCEEDED(psl->lpVtbl->Resolve(psl, 0, SLR_NO_UI )))
+			{
+				psl->lpVtbl->GetPath(psl, pszFilePath, nPathLen, NULL, 0);
+				ppf->lpVtbl->Release(ppf);
+				psl->lpVtbl->Release(psl);
+				return TRUE;
+			}
+		}
+
+		ppf->lpVtbl->Release(ppf);
+	}
+
+	psl->lpVtbl->Release(psl);
+	return FALSE;
 }

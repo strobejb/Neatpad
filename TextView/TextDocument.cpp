@@ -182,32 +182,24 @@ bool TextDocument::clear()
 int TextDocument::getchar(ULONG offset, ULONG lenbytes, ULONG *pch32)
 {
 	BYTE	*rawdata   = (BYTE *)(buffer + offset + headersize);
-	WORD    *rawdata_w = (WORD *)(buffer + offset + headersize);
-	WORD     ch16;
-	size_t   ch32len = 1;
 
 #ifdef UNICODE
+	WCHAR   *rawdata_w = (WCHAR*)(buffer + offset + headersize);
+	WCHAR     ch16;
+	size_t   ch32len = 1;
 
 	switch(fileformat)
 	{
-	// convert from ANSI->UNICODE
 	case NCP_ASCII:
 		MultiByteToWideChar(CP_ACP, 0, (CCHAR*)rawdata, 1, &ch16, 1);
 		*pch32 = ch16;
 		return 1;
 
 	case NCP_UTF16:
-		//*pch32 = (ULONG)(WORD)rawdata_w[0];
-		//return 2;
-
 		return utf16_to_utf32(rawdata_w, lenbytes / 2, pch32, &ch32len) * 2;
 		
 	case NCP_UTF16BE:
-		//*pch32 = (ULONG)(WORD)SWAPWORD((WORD)rawdata_w[0]);
-		//return 2;
-
 		return utf16be_to_utf32(rawdata_w, lenbytes / 2, pch32, &ch32len) * 2;
-
 
 	case NCP_UTF8:
 		return utf8_to_utf32(rawdata, lenbytes, pch32);
@@ -247,7 +239,6 @@ int TextDocument::getchar(ULONG offset, ULONG lenbytes, ULONG *pch32)
 int	 TextDocument::gettext(ULONG offset, ULONG lenbytes, TCHAR *buf, int *buflen)
 {
 	BYTE	*rawdata = (BYTE *)(buffer + offset + headersize);
-	int		 len;
 
 	if(offset >= length_bytes)
 	{
@@ -286,6 +277,8 @@ int	 TextDocument::gettext(ULONG offset, ULONG lenbytes, TCHAR *buf, int *buflen
 	{
 	// we are already an ASCII app, so do a straight memory copy
 	case NCP_ASCII:
+
+		int len;
 		
 		len = min(*buflen, lenbytes);
 		memcpy(buf, rawdata, len);
@@ -306,7 +299,7 @@ int	 TextDocument::gettext(ULONG offset, ULONG lenbytes, TCHAR *buf, int *buflen
 
 ULONG TextDocument::getdata(ULONG offset, BYTE *buf, size_t len)
 {
-	memcpy(buf, buffer + offset, len);
+	memcpy(buf, buffer + offset + headersize, len);
 	return len;
 }
 
@@ -547,4 +540,23 @@ ULONG TextDocument::lineno_from_offset(ULONG offset)
 	ULONG lineno = 0;
 	lineinfo_from_offset(offset, &lineno, 0, 0, 0, 0);
 	return lineno;
+}
+
+//
+//	Retrieve an entire line of text
+//	
+int  TextDocument::getline(ULONG nLineNo, TCHAR *buf, int buflen, ULONG *off_chars)
+{
+	ULONG offset_bytes;
+	ULONG length_bytes;
+	ULONG offset_chars;
+	ULONG length_chars;
+
+	if(!lineinfo_from_lineno(nLineNo, &offset_chars, &length_chars, &offset_bytes, &length_bytes))
+		return 0;
+
+	gettext(offset_bytes, length_bytes, buf, &buflen);
+
+	*off_chars = offset_chars;
+	return buflen;
 }

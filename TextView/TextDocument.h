@@ -27,6 +27,7 @@ public:
 	TextIterator iterate_line_offset(ULONG offset_chars, ULONG *lineno, ULONG *linestart = 0);
 
 	ULONG getdata(ULONG offset, BYTE *buf, size_t len);
+	int   getline(ULONG nLineNo, TCHAR *buf, int buflen, ULONG *off_chars);
 
 	int   getformat();
 	ULONG linecount();

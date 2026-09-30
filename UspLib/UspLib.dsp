@@ -1,26 +1,26 @@
-# Microsoft Developer Studio Project File - Name="TextView" - Package Owner=<4>
+# Microsoft Developer Studio Project File - Name="UspLib" - Package Owner=<4>
 # Microsoft Developer Studio Generated Build File, Format Version 6.00
 # ** DO NOT EDIT **
 
 # TARGTYPE "Win32 (x86) Static Library" 0x0104
 
-CFG=TextView - Win32 Unicode Debug
+CFG=UspLib - Win32 Unicode Debug
 !MESSAGE This is not a valid makefile. To build this project using NMAKE,
 !MESSAGE use the Export Makefile command and run
 !MESSAGE 
-!MESSAGE NMAKE /f "TextView.mak".
+!MESSAGE NMAKE /f "UspLib.mak".
 !MESSAGE 
 !MESSAGE You can specify a configuration when running NMAKE
 !MESSAGE by defining the macro CFG on the command line. For example:
 !MESSAGE 
-!MESSAGE NMAKE /f "TextView.mak" CFG="TextView - Win32 Unicode Debug"
+!MESSAGE NMAKE /f "UspLib.mak" CFG="UspLib - Win32 Unicode Debug"
 !MESSAGE 
 !MESSAGE Possible choices for configuration are:
 !MESSAGE 
-!MESSAGE "TextView - Win32 Release" (based on "Win32 (x86) Static Library")
-!MESSAGE "TextView - Win32 Debug" (based on "Win32 (x86) Static Library")
-!MESSAGE "TextView - Win32 Unicode Debug" (based on "Win32 (x86) Static Library")
-!MESSAGE "TextView - Win32 Unicode Release" (based on "Win32 (x86) Static Library")
+!MESSAGE "UspLib - Win32 Release" (based on "Win32 (x86) Static Library")
+!MESSAGE "UspLib - Win32 Debug" (based on "Win32 (x86) Static Library")
+!MESSAGE "UspLib - Win32 Unicode Debug" (based on "Win32 (x86) Static Library")
+!MESSAGE "UspLib - Win32 Unicode Release" (based on "Win32 (x86) Static Library")
 !MESSAGE 
 
 # Begin Project
@@ -30,7 +30,7 @@ CFG=TextView - Win32 Unicode Debug
 CPP=cl.exe
 RSC=rc.exe
 
-!IF  "$(CFG)" == "TextView - Win32 Release"
+!IF  "$(CFG)" == "UspLib - Win32 Release"
 
 # PROP BASE Use_MFC 0
 # PROP BASE Use_Debug_Libraries 0
@@ -43,7 +43,7 @@ RSC=rc.exe
 # PROP Intermediate_Dir "Release"
 # PROP Target_Dir ""
 # ADD BASE CPP /nologo /W3 /GX /O2 /D "WIN32" /D "NDEBUG" /D "_MBCS" /D "_LIB" /YX /FD /c
-# ADD CPP /nologo /MD /W3 /GX /O1 /D "WIN32" /D "NDEBUG" /D "_MBCS" /D "_LIB" /FR /YX /FD /c
+# ADD CPP /nologo /MD /W3 /GX /O2 /D "WIN32" /D "NDEBUG" /D "_MBCS" /D "_LIB" /YX /FD /c
 # ADD BASE RSC /l 0x809 /d "NDEBUG"
 # ADD RSC /l 0x809 /d "NDEBUG"
 BSC32=bscmake.exe
@@ -53,7 +53,7 @@ LIB32=link.exe -lib
 # ADD BASE LIB32 /nologo
 # ADD LIB32 /nologo
 
-!ELSEIF  "$(CFG)" == "TextView - Win32 Debug"
+!ELSEIF  "$(CFG)" == "UspLib - Win32 Debug"
 
 # PROP BASE Use_MFC 0
 # PROP BASE Use_Debug_Libraries 1
@@ -66,7 +66,7 @@ LIB32=link.exe -lib
 # PROP Intermediate_Dir "Debug"
 # PROP Target_Dir ""
 # ADD BASE CPP /nologo /W3 /Gm /GX /ZI /Od /D "WIN32" /D "_DEBUG" /D "_MBCS" /D "_LIB" /YX /FD /GZ /c
-# ADD CPP /nologo /MDd /W3 /Gm /GX /ZI /Od /D "WIN32" /D "_DEBUG" /D "_MBCS" /D "_LIB" /FR /YX /FD /GZ /c
+# ADD CPP /nologo /MDd /W3 /Gm /GX /ZI /Od /D "WIN32" /D "_DEBUG" /D "_MBCS" /D "_LIB" /YX /FD /GZ /c
 # ADD BASE RSC /l 0x809 /d "_DEBUG"
 # ADD RSC /l 0x809 /d "_DEBUG"
 BSC32=bscmake.exe
@@ -76,20 +76,20 @@ LIB32=link.exe -lib
 # ADD BASE LIB32 /nologo
 # ADD LIB32 /nologo
 
-!ELSEIF  "$(CFG)" == "TextView - Win32 Unicode Debug"
+!ELSEIF  "$(CFG)" == "UspLib - Win32 Unicode Debug"
 
 # PROP BASE Use_MFC 0
 # PROP BASE Use_Debug_Libraries 1
-# PROP BASE Output_Dir "TextView___Win32_Unicode_Debug"
-# PROP BASE Intermediate_Dir "TextView___Win32_Unicode_Debug"
+# PROP BASE Output_Dir "Unicode Debug"
+# PROP BASE Intermediate_Dir "Unicode Debug"
 # PROP BASE Target_Dir ""
 # PROP Use_MFC 0
 # PROP Use_Debug_Libraries 1
 # PROP Output_Dir "Unicode_Debug"
 # PROP Intermediate_Dir "Unicode_Debug"
 # PROP Target_Dir ""
-# ADD BASE CPP /nologo /MDd /W3 /Gm /GX /ZI /Od /D "WIN32" /D "_DEBUG" /D "_MBCS" /D "_LIB" /FR /YX /FD /GZ /c
-# ADD CPP /nologo /MDd /W3 /Gm /GX /ZI /Od /D "_LIB" /D "WIN32" /D "_DEBUG" /D "_UNICODE" /D "UNICODE" /FR /YX /FD /GZ /c
+# ADD BASE CPP /nologo /W3 /Gm /GX /ZI /Od /D "WIN32" /D "_DEBUG" /D "_MBCS" /D "_LIB" /YX /FD /GZ /c
+# ADD CPP /nologo /MDd /W3 /Gm /GX /ZI /Od /D "WIN32" /D "_DEBUG" /D "_LIB" /D "_UNICODE" /D "UNICODE" /YX /FD /GZ /c
 # ADD BASE RSC /l 0x809 /d "_DEBUG"
 # ADD RSC /l 0x809 /d "_DEBUG"
 BSC32=bscmake.exe
@@ -99,20 +99,20 @@ LIB32=link.exe -lib
 # ADD BASE LIB32 /nologo
 # ADD LIB32 /nologo
 
-!ELSEIF  "$(CFG)" == "TextView - Win32 Unicode Release"
+!ELSEIF  "$(CFG)" == "UspLib - Win32 Unicode Release"
 
 # PROP BASE Use_MFC 0
 # PROP BASE Use_Debug_Libraries 0
-# PROP BASE Output_Dir "TextView___Win32_Unicode_Release"
-# PROP BASE Intermediate_Dir "TextView___Win32_Unicode_Release"
+# PROP BASE Output_Dir "Unicode Release"
+# PROP BASE Intermediate_Dir "Unicode Release"
 # PROP BASE Target_Dir ""
 # PROP Use_MFC 0
 # PROP Use_Debug_Libraries 0
 # PROP Output_Dir "Unicode_Release"
 # PROP Intermediate_Dir "Unicode_Release"
 # PROP Target_Dir ""
-# ADD BASE CPP /nologo /MD /W3 /GX /O1 /D "WIN32" /D "NDEBUG" /D "_MBCS" /D "_LIB" /FR /YX /FD /c
-# ADD CPP /nologo /MD /W3 /O1 /D "_LIB" /D "WIN32" /D "NDEBUG" /D "_UNICODE" /D "UNICODE" /FR /YX /FD /c
+# ADD BASE CPP /nologo /W3 /GX /O2 /D "WIN32" /D "NDEBUG" /D "_MBCS" /D "_LIB" /YX /FD /c
+# ADD CPP /nologo /MD /W3 /GX- /O1 /D "WIN32" /D "NDEBUG" /D "_LIB" /D "_UNICODE" /D "UNICODE" /YX /FD /c
 # ADD BASE RSC /l 0x809 /d "NDEBUG"
 # ADD RSC /l 0x809 /d "NDEBUG"
 BSC32=bscmake.exe
@@ -126,44 +126,28 @@ LIB32=link.exe -lib
 
 # Begin Target
 
-# Name "TextView - Win32 Release"
-# Name "TextView - Win32 Debug"
-# Name "TextView - Win32 Unicode Debug"
-# Name "TextView - Win32 Unicode Release"
+# Name "UspLib - Win32 Release"
+# Name "UspLib - Win32 Debug"
+# Name "UspLib - Win32 Unicode Debug"
+# Name "UspLib - Win32 Unicode Release"
 # Begin Group "Source Files"
 
 # PROP Default_Filter "cpp;c;cxx;rc;def;r;odl;idl;hpj;bat"
 # Begin Source File
 
-SOURCE=.\TextDocument.cpp
+SOURCE=.\UspCtrl.c
 # End Source File
 # Begin Source File
 
-SOURCE=.\TextView.cpp
+SOURCE=.\UspLib.c
 # End Source File
 # Begin Source File
 
-SOURCE=.\TextViewFile.cpp
+SOURCE=.\UspMouse.c
 # End Source File
 # Begin Source File
 
-SOURCE=.\TextViewFont.cpp
-# End Source File
-# Begin Source File
-
-SOURCE=.\TextViewMouse.cpp
-# End Source File
-# Begin Source File
-
-SOURCE=.\TextViewPaint.cpp
-# End Source File
-# Begin Source File
-
-SOURCE=.\TextViewScroll.cpp
-# End Source File
-# Begin Source File
-
-SOURCE=.\Unicode.cpp
+SOURCE=.\UspPaint.c
 # End Source File
 # End Group
 # Begin Group "Header Files"
@@ -171,19 +155,7 @@ SOURCE=.\Unicode.cpp
 # PROP Default_Filter "h;hpp;hxx;hm;inl"
 # Begin Source File
 
-SOURCE=.\codepages.h
-# End Source File
-# Begin Source File
-
-SOURCE=.\TextDocument.h
-# End Source File
-# Begin Source File
-
-SOURCE=.\TextView.h
-# End Source File
-# Begin Source File
-
-SOURCE=.\TextViewInternal.h
+SOURCE=.\usplib.h
 # End Source File
 # End Group
 # End Target

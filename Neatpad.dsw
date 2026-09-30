@@ -3,18 +3,6 @@ Microsoft Developer Studio Workspace File, Format Version 6.00
 
 ###############################################################################
 
-Project: "TextView"=.\TextView\TextView.dsp - Package Owner=<4>
-
-Package=<5>
-{{{
-}}}
-
-Package=<4>
-{{{
-}}}
-
-###############################################################################
-
 Project: "Neatpad"=.\Neatpad\Neatpad.dsp - Package Owner=<4>
 
 Package=<5>
@@ -26,6 +14,33 @@ Package=<4>
     Begin Project Dependency
     Project_Dep_Name TextView
     End Project Dependency
+}}}
+
+###############################################################################
+
+Project: "TextView"=.\TextView\TextView.dsp - Package Owner=<4>
+
+Package=<5>
+{{{
+}}}
+
+Package=<4>
+{{{
+    Begin Project Dependency
+    Project_Dep_Name UspLib
+    End Project Dependency
+}}}
+
+###############################################################################
+
+Project: "UspLib"=.\UspLib\UspLib.dsp - Package Owner=<4>
+
+Package=<5>
+{{{
+}}}
+
+Package=<4>
+{{{
 }}}
 
 ###############################################################################

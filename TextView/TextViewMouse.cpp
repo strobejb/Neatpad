@@ -34,7 +34,7 @@ LONG TextView::OnLButtonDown(UINT nFlags, int mx, int my)
 	ULONG nLineNo;
 //	ULONG nCharOff;
 	ULONG nFileOff;
-	int   px;
+	int   snappedX;
 	
 	// remove any existing selection
 	InvalidateRange(m_nSelectionStart, m_nSelectionEnd);
@@ -43,9 +43,9 @@ LONG TextView::OnLButtonDown(UINT nFlags, int mx, int my)
 	if(mx >= LeftMarginWidth())
 	{
 		// map the mouse-coordinates to a real file-offset-coordinate
-		MouseCoordToFilePos(mx, my, &nLineNo, &nFileOff, &px);
+		MouseCoordToFilePos(mx, my, &nLineNo, &nFileOff, &snappedX);
 
-		MoveCaret(px, (nLineNo - m_nVScrollPos) * m_nLineHeight);
+		MoveCaret(snappedX, (nLineNo - m_nVScrollPos) * m_nLineHeight);
 
 		// reset cursor and selection offsets to the same location
 		m_nSelectionStart	= nFileOff;
@@ -175,7 +175,7 @@ LONG TextView::OnMouseMove(UINT nFlags, int mx, int my)
 			if(m_nScrollTimer == 0)
 			{
 				m_nScrollCounter = 0;
-				m_nScrollTimer   = SetTimer(m_hWnd, 1, 10, 0);
+				m_nScrollTimer   = SetTimer(m_hWnd, 1, 30, 0);
 			}
 		}
 
@@ -323,16 +323,13 @@ BOOL TextView::MouseCoordToFilePos(	int		 mx,			// [in]  mouse x-coord
 									int		 my,			// [in]  mouse x-coord
 									ULONG	*pnLineNo,		// [out] line number
 									ULONG	*pnFileOffset,  // [out] zero-based file-offset (in chars)
-									int		*px				// [out] adjusted x coord of caret
+									int		*psnappedX		// [out] adjusted x coord of caret
 									)
 {
-	TCHAR buf[TEXTBUFSIZE];
-	int   len;
-	int	  curx = 0;
-	RECT  rect;
-
 	ULONG nLineNo;
 	ULONG off_chars;
+	RECT  rect;
+	int	  cp;
 
 	// get scrollable area
 	GetClientRect(m_hWnd, &rect);
@@ -357,87 +354,25 @@ BOOL TextView::MouseCoordToFilePos(	int		 mx,			// [in]  mouse x-coord
 		off_chars = m_pTextDoc->size();
 	}
 
-	HDC    hdc      = GetDC(m_hWnd);
-	HANDLE hOldFont = SelectObject(hdc, m_FontAttr[0].hFont);
-
 	mx += m_nHScrollPos * m_nFontWidth;
 
-	TextIterator itor = m_pTextDoc->iterate_line(nLineNo, &off_chars);
+	// get the USPDATA object for the selected line!!
+	USPDATA *uspData = GetUspData(0, nLineNo);
 
-	// character offset within the line is more complicated. 
-	// We have to parse the text to work out the exact character which
-	// falls under the mouse x-coordinate
-	while((len = itor.gettext(buf, TEXTBUFSIZE)) > 0)
-	{
-		len = StripCRLF(buf, len, true);
-
-		// find it's width
-		int width = NeatTextWidth(hdc, buf, len, -(curx % TabWidth()));
-
-		// does cursor fall within this segment?
-		if(mx >= curx && mx < curx + width)
-		{ 
-			//
-			//	We have a block of text, with the mouse 
-			//  somewhere in the middle. Perform a "binary chop" to
-			//  locate the exact character that the mouse is positioned over
-			//
-			int low   = 0;
-			int high  = len;
-			int lowx  = 0;
-			int highx = width;
+	// convert mouse-x coordinate to a character-offset relative to start of line
+	UspSnapXToOffset(uspData, mx, &mx, &cp, 0);
 	
-			while(low < high - 1)
-			{
-				int newlen   = (high - low) / 2;
-
-				width = NeatTextWidth(hdc, buf + low, newlen, -lowx-curx);
-
-				if(mx-curx < width + lowx)
-				{
-					high  = low + newlen;
-					highx = lowx + width;
-				}
-				else
-				{
-					low   = low + newlen;
-					lowx  = lowx + width;
-				}
-			}
-
-			// base coordinates on centre of characters, not the edges
-			if(mx - curx > highx - m_nFontWidth/2)
-			{
-				curx       += highx;
-				off_chars  += high;
-			}
-			else
-			{
-				curx       += lowx;
-				off_chars  += low;
-			}
-			
-			break;
-		}
-		else
-		{
-			curx	  += width;
-			off_chars += len;
-		}
-	}
-
-	SelectObject(hdc, hOldFont);
-	ReleaseDC(m_hWnd, hdc);
-
+	// return coords!
+	TextIterator itor = m_pTextDoc->iterate_line(nLineNo, &off_chars);
 	*pnLineNo		= nLineNo;
-	*pnFileOffset	= off_chars;
-	*px				= curx - m_nHScrollPos * m_nFontWidth;
-	*px			   += LeftMarginWidth();
+	*pnFileOffset	= cp + off_chars;
+	*psnappedX		= mx - m_nHScrollPos * m_nFontWidth;
+	*psnappedX		+= LeftMarginWidth();
 
 	return 0;
 }
 
-LONG TextView::InvalidateLine(ULONG nLineNo)
+LONG TextView::InvalidateLine(ULONG nLineNo, bool forceAnalysis)
 {
 	if(nLineNo >= m_nVScrollPos && nLineNo <= m_nVScrollPos + m_nWindowLines)
 	{
@@ -451,29 +386,37 @@ LONG TextView::InvalidateLine(ULONG nLineNo)
 		InvalidateRect(m_hWnd, &rect, FALSE);
 	}
 
+	if(forceAnalysis)
+	{
+		for(int i = 0; i < USP_CACHE_SIZE; i++)
+		{
+			if(nLineNo == m_uspCache[i].lineno)
+			{
+				m_uspCache[i].usage = 0;
+				break;
+			}
+		}
+	}
+
 	return 0;
 }
 //
-//	Redraw the specified range of text/data in the control
+//	Redraw any line which spans the specified range of text
 //
 LONG TextView::InvalidateRange(ULONG nStart, ULONG nFinish)
 {
 	ULONG start  = min(nStart, nFinish);
 	ULONG finish = max(nStart, nFinish);
-
-	int   xpos1 = 0, xpos2 = 0;
+	
 	int   ypos;
 	RECT  rect;
 	RECT  client;
-	
 	TextIterator itor;
 
 	// information about current line:
 	ULONG lineno;
 	ULONG off_chars;
 	ULONG len_chars;
-
-	GetClientRect(m_hWnd, &client);
 
 	// nothing to do?
 	if(start == finish)
@@ -499,94 +442,30 @@ LONG TextView::InvalidateRange(ULONG nStart, ULONG nFinish)
 	if(!itor || start >= finish)
 		return 0;
 
-	HDC hdc = GetDC(m_hWnd);
-	SelectObject(hdc, m_FontAttr[0].hFont);
-
 	ypos = (lineno - m_nVScrollPos) * m_nLineHeight;
+	GetClientRect(m_hWnd, &client);
 
-	//
-	// selection starts midline:
-	// find the x-coordinate of this character-offset within the line
-	//
-	if(off_chars < start)
+	// invalidate *whole* lines. don't care about flickering anymore because
+	// all output is double-buffered now, and this method is much simpler
+	while(itor && off_chars < finish)
 	{
-		int   len   = start - off_chars;
-		int   width = 0;
-		int   tlen;
-
-		TCHAR buf[TEXTBUFSIZE];
-		
-		// loop until we get on-screen
-		while((tlen = itor.gettext(buf, min(len, TEXTBUFSIZE))) > 0 && off_chars < start)
-		{
-			len		  -= tlen;
-			off_chars += tlen;
-			len_chars -= tlen;
-			
-			width	   = NeatTextWidth(hdc, buf, tlen, -(xpos1 % TabWidth()));
-			xpos1     += width;
-
-			if(tlen == 0)
-				break;
-		}
-
-		// xpos now equals the start of range
-	}
-
-	//
-	// Invalidate all *whole* lines that aren't part of the last line
-	//
-	while(itor && finish >= off_chars + len_chars)
-	{
-		SetRect(&rect, xpos1, ypos, client.right, ypos + m_nLineHeight);
+		SetRect(&rect, 0, ypos, client.right, ypos + m_nLineHeight);
 		rect.left -= m_nHScrollPos * m_nFontWidth;
 		rect.left += LeftMarginWidth();
 			
-		//InvertRect(hdc, &rect);
 		InvalidateRect(m_hWnd, &rect, FALSE);
 
 		// jump down to next line
-		xpos1	= 0;
-		ypos   += m_nLineHeight;
-			
-		// get next line's file-offset & length
-		itor = m_pTextDoc->iterate_line(++lineno, &off_chars, &len_chars);
+		itor  = m_pTextDoc->iterate_line(++lineno, &off_chars, &len_chars);
+		ypos += m_nLineHeight;
 	}
-
-	xpos2 = xpos1;
-
-	//
-	// erase up to the end of selection on *last* line of selection
-	//
-	if(off_chars < finish)
-	{
-		TCHAR buf[TEXTBUFSIZE];
-		int width;
-		int len;
-		
-		while((len = itor.gettext(buf,  min((finish - off_chars), TEXTBUFSIZE))) && off_chars < finish)
-		{
-			width	   = NeatTextWidth(hdc, buf, len, -(xpos2 % TabWidth()));
-			xpos2     += width;
-			off_chars += len;
-		}
-	}
-	
-	SetRect(&rect, xpos1, ypos, xpos2, ypos + m_nLineHeight);
-	OffsetRect(&rect, -m_nHScrollPos * m_nFontWidth, 0);
-	OffsetRect(&rect, LeftMarginWidth(), 0);
-
-	//InvertRect(hdc, &rect);
-	InvalidateRect(m_hWnd, &rect, FALSE);
-
-	ReleaseDC(m_hWnd, hdc);
 
 	return 0;
 }
 
 //
 //	Wrapper around SetCaretPos, hides the caret when it goes
-//  off-screen (in case x/y wrap around)
+//  off-screen (this protects against x/y wrap around due to integer overflow)
 //
 VOID TextView::MoveCaret(int x, int y)
 {
@@ -614,35 +493,26 @@ ULONG TextView::RepositionCaret()
 {
 	int   xpos   = 0;
 	int   ypos   = 0;
-	TCHAR buf[TEXTBUFSIZE];
 
 	ULONG lineno;
 	ULONG off_chars;
-	int	  len;
 
-	// get start-of-line information from cursor-offset
+	USPDATA *uspData;
+
+	// get line information from cursor-offset
 	TextIterator itor = m_pTextDoc->iterate_line_offset(m_nCursorOffset, &lineno, &off_chars);
 
 	if(!itor)
 		return 0;
 
-	// make sure we are using the right font
-	HDC hdc = GetDC(m_hWnd);
-	SelectObject(hdc, m_FontAttr[0].hFont);
+	if((uspData = GetUspData(NULL, lineno)) != 0)
+	{
+		off_chars = m_nCursorOffset - off_chars;
+		UspOffsetToX(uspData, off_chars, FALSE, &xpos);
+	}
 
 	// y-coordinate from line-number
 	ypos = (lineno - m_nVScrollPos) * m_nLineHeight;
-
-	// now find the x-coordinate on the specified line
-	while((len = itor.gettext(buf, TEXTBUFSIZE)) > 0 && off_chars < m_nCursorOffset)
-	{
-		// only parse the bit we want
-		len		     = min(m_nCursorOffset - off_chars, len);
-		xpos		+= NeatTextWidth(hdc, buf, len, -xpos);
-		off_chars	+= len;
-	}
-	
-	ReleaseDC(m_hWnd, hdc);
 
 	// take horizontal scrollbar into account
 	xpos -= m_nHScrollPos * m_nFontWidth;
@@ -661,34 +531,36 @@ void TextView::UpdateLine(ULONG nLineNo)
 	if(m_nCurrentLine != nLineNo)
 	{
 		if(CheckStyle(TXS_HIGHLIGHTCURLINE))
-			InvalidateLine(m_nCurrentLine);
+			InvalidateLine(m_nCurrentLine, true);
 
 		m_nCurrentLine = nLineNo;
 
 		if(CheckStyle(TXS_HIGHLIGHTCURLINE))
-			InvalidateLine(m_nCurrentLine);
+			InvalidateLine(m_nCurrentLine, true);
 	}
 }
 
 //
-//	return direction to scroll (+1,-1 or 0) based on 
+//	return direction to scroll (+ve, -ve or 0) based on 
 //  distance of mouse from window edge
 //
-//	"counter" is used to achieve variable-speed scrolling
+//	note: counter now redundant, we scroll multiple lines at
+//  a time (with a slower timer than before) to achieve
+//	variable-speed scrolling
 //
 int ScrollDir(int counter, int distance)
 {
-	int amt;
+	if(distance > 48)		return 5;
+	if(distance > 16)		return 2;
+	if(distance > 3)		return 1;
+	if(distance > 0)		return counter % 5 == 0 ? 1 : 0;
+	
+	if(distance < -48)		return -5;
+	if(distance < -16)		return -2;
+	if(distance < -3)		return -1;
+	if(distance < 0)		return counter % 5 == 0 ? -1 : 0;
 
-	// amount to scroll based on distance of mouse from window
-	if(abs(distance) < 16)			amt = 8;
-	else if(abs(distance) < 48)		amt = 3;
-	else							amt = 1;
-
-	if(counter % amt == 0)
-		return distance < 0 ? -1 : 1;
-	else
-		return 0;
+	return 0;
 }
 
 

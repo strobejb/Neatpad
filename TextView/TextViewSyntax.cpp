@@ -18,7 +18,7 @@
 
 typedef struct
 {
-	TEXT_ATTR  attr;
+	ATTR		attr;
 	ULONG	   type;
 	
 } TYPE;
@@ -34,7 +34,7 @@ struct LEX
 
 LEX firstchar[256];
 
-ULONG lexer(ULONG cookie, TCHAR *buf, ULONG len, TEXT_ATTR *attr)
+ULONG lexer(ULONG cookie, TCHAR *buf, ULONG len, ATTR *attr)
 {
 	LEX *state = 0;
 	int	  i  = 0;
@@ -60,7 +60,7 @@ ULONG lexer(ULONG cookie, TCHAR *buf, ULONG len, TEXT_ATTR *attr)
 	return COOKIE_END;	
 }
 
-char *gettok(char *ptr, char *buf, int buflen)
+TCHAR *gettok(TCHAR *ptr, TCHAR *buf, int buflen)
 {
 	int ch = *ptr++;
 	int i = 0;
@@ -113,13 +113,13 @@ char *gettok(char *ptr, char *buf, int buflen)
 	return ptr;
 }
 
-void SetStyle(TEXT_ATTR *attr, ULONG nPos, ULONG nLen, COLORREF fg, COLORREF bg, int bold=0)
+void xSetStyle(ATTR *attr, ULONG nPos, ULONG nLen, COLORREF fg, COLORREF bg, int bold=0)
 {
 	for(int i = nPos; i < nPos+nLen; i++)
 	{
 		attr[i].fg = fg;
 		attr[i].bg = bg;
-		attr[i].style = bold;
+		//attr[i].style = bold;
 	}
 }
 
@@ -129,40 +129,40 @@ typedef struct
 
 } SYNTAX_NODE;
 
-int TextView::SyntaxColour(TCHAR *szText, ULONG nTextLen, TEXT_ATTR *attr)
+int TextView::SyntaxColour(TCHAR *szText, ULONG nTextLen, ATTR *attr)
 {
-	char tok[128];
+	TCHAR tok[128];
 
-	char *ptr1 = szText;
-	char *ptr2;
+	TCHAR *ptr1 = szText;
+	TCHAR *ptr2;
 
 	while((ptr2 = gettok(ptr1, tok, 128)) != 0)
 	{
 		if(isdigit(tok[0]))
 		{
-			SetStyle(attr, ptr1 - szText, ptr2-ptr1, RGB(200,0,0), RGB(255,255,255), 0);
+			xSetStyle(attr, ptr1 - szText, ptr2-ptr1, RGB(200,0,0), RGB(255,255,255), 0);
 		}
-		if(memcmp(tok, "if", 2) == 0 || 
-			memcmp(tok, "for", 3) == 0)
+		if(memcmp(tok, _T("if"), 2) == 0 || 
+			memcmp(tok, _T("for"), 3) == 0)
 		{
-			SetStyle(attr, ptr1 - szText, ptr2-ptr1, RGB(0,0,128), RGB(255,255,255), 1);
+			xSetStyle(attr, ptr1 - szText, ptr2-ptr1, RGB(0,0,128), RGB(255,255,255), 1);
 		}
 		if(tok[0] == '\"' || tok[0] == '<' || tok[0] == '\'')
 		{
-			SetStyle(attr, ptr1 - szText, ptr2-ptr1, RGB(128,0,128), RGB(255,255,255));
+			xSetStyle(attr, ptr1 - szText, ptr2-ptr1, RGB(128,0,128), RGB(255,255,255));
 		}
-		if(strcmp(tok, "#include") == 0)
+		if(lstrcmp(tok, _T("#include")) == 0)
 		{
 			//SetStyle(attr, ptr1 - szText, ptr2 - ptr1, RGB(255,255,0), RGB(255,0,0));
-			SetStyle(attr, ptr1 - szText, ptr2-ptr1, RGB(65,102,190), RGB(255,255,255));
+			xSetStyle(attr, ptr1 - szText, ptr2-ptr1, RGB(65,102,190), RGB(255,255,255));
 		}		
-		else if(strcmp(tok, "ULONG") == 0)
+		else if(lstrcmp(tok, _T("ULONG")) == 0)
 		{
-			SetStyle(attr, ptr1 - szText, ptr2 - ptr1, RGB(0,0,255), RGB(255,255,255));
+			xSetStyle(attr, ptr1 - szText, ptr2 - ptr1, RGB(0,0,255), RGB(255,255,255));
 		}
-		else if(strcmp(tok, "//") == 0)
+		else if(lstrcmp(tok, _T("//")) == 0)
 		{
-			SetStyle(attr, ptr1 - szText, nTextLen - (ptr1-szText), RGB(128,90,20), RGB(255,255,255));
+			xSetStyle(attr, ptr1 - szText, nTextLen - (ptr1-szText), RGB(128,90,20), RGB(255,255,255));
 			break;
 		}
 
