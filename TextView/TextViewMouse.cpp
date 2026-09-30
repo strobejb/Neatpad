@@ -563,6 +563,7 @@ LONG TextView::InvalidateRange(ULONG nStart, ULONG nFinish)
 
 	// information about current line:
 	ULONG lineno;
+	ULONG lastline;
 	ULONG off_chars;
 	ULONG len_chars;
 
@@ -592,10 +593,11 @@ LONG TextView::InvalidateRange(ULONG nStart, ULONG nFinish)
 
 	ypos = (lineno - m_nVScrollPos) * m_nLineHeight;
 	GetClientRect(m_hWnd, &client);
+	lastline = m_nVScrollPos + m_nWindowLines;
 
 	// invalidate *whole* lines. don't care about flickering anymore because
 	// all output is double-buffered now, and this method is much simpler
-	while(itor && off_chars < finish)
+	while(itor && off_chars < finish && lineno <= lastline)
 	{
 		SetRect(&rect, 0, ypos, client.right, ypos + m_nLineHeight);
 		rect.left -= m_nHScrollPos * m_nFontWidth;

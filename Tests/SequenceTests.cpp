@@ -59,6 +59,23 @@ void expect_content(const sequence &seq, const char *expected)
     CHECK(render_content(seq) == expected);
 }
 
+void expect_line_offset(const sequence &seq, size_w line, size_w expected)
+{
+    size_w actual = static_cast<size_w>(-1);
+    CHECK(seq.lineoffset(line, &actual));
+    CHECK(actual == expected);
+}
+
+void expect_line_from_offset(const sequence &seq, size_w offset, size_w expected_line, size_w expected_line_offset)
+{
+    size_w actual_line = static_cast<size_w>(-1);
+    size_w actual_line_offset = static_cast<size_w>(-1);
+
+    CHECK(seq.linefromoffset(offset, &actual_line, &actual_line_offset));
+    CHECK(actual_line == expected_line);
+    CHECK(actual_line_offset == expected_line_offset);
+}
+
 void insert_at_beginning()
 {
     sequence seq;
@@ -419,6 +436,110 @@ void render_past_end_returns_available_bytes()
     CHECK(seq.render(3, actual, 5) == 0);
 }
 
+void linecount_handles_basic_newlines()
+{
+    sequence seq;
+    init(seq, "abc\n");
+
+    CHECK(seq.linecount() == 2);
+    expect_line_offset(seq, 0, 0);
+    expect_line_offset(seq, 1, 4);
+    CHECK(!seq.lineoffset(2, 0));
+}
+
+void linecount_handles_crlf()
+{
+    sequence seq;
+    init(seq, "abc\r\nxyz\nlast");
+
+    CHECK(seq.linecount() == 3);
+    expect_line_offset(seq, 0, 0);
+    expect_line_offset(seq, 1, 5);
+    expect_line_offset(seq, 2, 9);
+}
+
+void linecount_handles_crlf_split_across_spans()
+{
+    sequence seq;
+    init(seq, "abc\rxyz");
+
+    CHECK(insert_bytes(seq, 4, "\n"));
+    expect_content(seq, "abc\r\nxyz");
+    CHECK(seq.linecount() == 2);
+    expect_line_offset(seq, 1, 5);
+}
+
+void linecount_updates_after_insert_delete_replace()
+{
+    sequence seq;
+    init(seq, "abc");
+
+    CHECK(seq.linecount() == 1);
+    CHECK(insert_bytes(seq, 1, "\nX"));
+    expect_content(seq, "a\nXbc");
+    CHECK(seq.linecount() == 2);
+    expect_line_offset(seq, 1, 2);
+
+    CHECK(seq.erase(1, 2));
+    expect_content(seq, "abc");
+    CHECK(seq.linecount() == 1);
+
+    CHECK(replace_bytes(seq, 1, "\r\nZ\n", 1));
+    expect_content(seq, "a\r\nZ\nc");
+    CHECK(seq.linecount() == 3);
+    expect_line_offset(seq, 1, 3);
+    expect_line_offset(seq, 2, 5);
+}
+
+void linecount_restores_on_undo_redo()
+{
+    sequence seq;
+    init(seq, "abc");
+
+    CHECK(insert_bytes(seq, seq.size(), "\nxyz"));
+    CHECK(seq.linecount() == 2);
+
+    CHECK(seq.undo());
+    CHECK(seq.linecount() == 1);
+
+    CHECK(seq.redo());
+    CHECK(seq.linecount() == 2);
+    expect_line_offset(seq, 1, 4);
+}
+
+void linefromoffset_handles_basic_newlines()
+{
+    sequence seq;
+    init(seq, "abc\nxyz");
+
+    expect_line_from_offset(seq, 0, 0, 0);
+    expect_line_from_offset(seq, 3, 0, 0);
+    expect_line_from_offset(seq, 4, 1, 4);
+    expect_line_from_offset(seq, 7, 1, 4);
+}
+
+void linefromoffset_handles_crlf()
+{
+    sequence seq;
+    init(seq, "abc\r\nxyz");
+
+    expect_line_from_offset(seq, 4, 0, 0);
+    expect_line_from_offset(seq, 5, 1, 5);
+    expect_line_from_offset(seq, 8, 1, 5);
+}
+
+void linefromoffset_handles_crlf_split_across_spans()
+{
+    sequence seq;
+    init(seq, "abc\rxyz");
+
+    CHECK(insert_bytes(seq, 4, "\n"));
+    expect_content(seq, "abc\r\nxyz");
+    expect_line_from_offset(seq, 4, 0, 0);
+    expect_line_from_offset(seq, 5, 1, 5);
+    expect_line_from_offset(seq, 8, 1, 5);
+}
+
 struct test_case
 {
     const char *name;
@@ -456,6 +577,14 @@ const test_case tests[] =
     { "redo_invalidated_by_new_edit", redo_invalidated_by_new_edit },
     { "invalid_operations_do_not_modify_content", invalid_operations_do_not_modify_content },
     { "render_past_end_returns_available_bytes", render_past_end_returns_available_bytes },
+    { "linecount_handles_basic_newlines", linecount_handles_basic_newlines },
+    { "linecount_handles_crlf", linecount_handles_crlf },
+    { "linecount_handles_crlf_split_across_spans", linecount_handles_crlf_split_across_spans },
+    { "linecount_updates_after_insert_delete_replace", linecount_updates_after_insert_delete_replace },
+    { "linecount_restores_on_undo_redo", linecount_restores_on_undo_redo },
+    { "linefromoffset_handles_basic_newlines", linefromoffset_handles_basic_newlines },
+    { "linefromoffset_handles_crlf", linefromoffset_handles_crlf },
+    { "linefromoffset_handles_crlf_split_across_spans", linefromoffset_handles_crlf_split_across_spans },
 };
 }
 

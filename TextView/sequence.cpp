@@ -102,8 +102,9 @@ bool sequence::init (const seqchar *buffer, size_t length)
 	buffer_control *bc = alloc_modifybuffer(length);
 	memcpy(bc->buffer, buffer, length * sizeof(seqchar));
 	bc->length = length;
+	update_buffer_lines(bc);
 
-	span *sptr = new span(0, length, bc->id, tail, head);
+	span *sptr = alloc_span(0, length, bc->id, tail, head);
 	head->next = sptr;
 	tail->prev = sptr;
 
@@ -216,6 +217,8 @@ sequence::buffer_control* sequence::alloc_buffer (size_t maxsize)
 
 	bc->length  = 0;
 	bc->maxsize = maxsize;
+	bc->line_offsets = 0;
+	bc->line_count = 0;
 	bc->id		= buffer_list.size();		// assign the id
 
 	buffer_list.push_back(bc);
@@ -234,6 +237,108 @@ sequence::buffer_control* sequence::alloc_modifybuffer (size_t maxsize)
 	modifybuffer_pos = 0;
 
 	return bc;
+}
+
+void sequence::update_buffer_lines(buffer_control *bc)
+{
+	size_w count = 0;
+	size_w line = 0;
+
+	delete[] bc->line_offsets;
+	bc->line_offsets = 0;
+	bc->line_count = 0;
+
+	if(bc->length == 0)
+		return;
+
+	count = 1;
+
+	for(size_w i = 0; i < bc->length; i++)
+	{
+		if(bc->buffer[i] == '\r')
+		{
+			count++;
+
+			if(i + 1 < bc->length && bc->buffer[i + 1] == '\n')
+				i++;
+		}
+		else if(bc->buffer[i] == '\n')
+		{
+			count++;
+		}
+	}
+
+	bc->line_offsets = new size_w[count];
+	bc->line_count = count;
+	bc->line_offsets[line++] = 0;
+
+	for(size_w i = 0; i < bc->length; i++)
+	{
+		if(bc->buffer[i] == '\r')
+		{
+			if(i + 1 < bc->length && bc->buffer[i + 1] == '\n')
+				i++;
+
+			bc->line_offsets[line++] = i + 1;
+		}
+		else if(bc->buffer[i] == '\n')
+		{
+			bc->line_offsets[line++] = i + 1;
+		}
+	}
+}
+
+sequence::span* sequence::alloc_span(size_w offset, size_w length, int buffer, span *next, span *prev)
+{
+	span *sptr = new span(offset, length, buffer, next, prev);
+	update_span_line_data(sptr);
+	return sptr;
+}
+
+size_w sequence::find_buffer_line_index(buffer_control *bc, size_w offset) const
+{
+	size_w lo = 0;
+	size_w hi = bc->line_count;
+
+	while(lo < hi)
+	{
+		size_w mid = lo + (hi - lo) / 2;
+
+		if(bc->line_offsets[mid] <= offset)
+			lo = mid + 1;
+		else
+			hi = mid;
+	}
+
+	return lo;
+}
+
+void sequence::update_span_line_data(span *sptr)
+{
+	buffer_control *bc = buffer_list[sptr->buffer];
+	size_w span_end = sptr->offset + sptr->length;
+	size_w line_end;
+
+	sptr->line_index = 0;
+	sptr->line_count = 0;
+	sptr->starts_with_lf = 0;
+	sptr->ends_with_cr = 0;
+
+	if(sptr->length == 0)
+		return;
+
+	seqchar *source = bc->buffer + sptr->offset;
+	sptr->starts_with_lf = source[0] == '\n';
+	sptr->ends_with_cr = source[sptr->length - 1] == '\r';
+
+	if(bc->line_count == 0)
+		return;
+
+	sptr->line_index = find_buffer_line_index(bc, sptr->offset);
+	line_end = find_buffer_line_index(bc, span_end);
+
+	if(sptr->line_index < line_end)
+		sptr->line_count = line_end - sptr->line_index;
 }
 
 //
@@ -263,6 +368,7 @@ bool sequence::import_buffer (const seqchar *buf, size_t len, size_t *buffer_off
 	
 	*buffer_offset = bc->length;
 	bc->length += len;
+	update_buffer_lines(bc);
 
 	return true;
 }
@@ -507,6 +613,198 @@ size_w sequence::size () const
 	return sequence_length;
 }
 
+size_w sequence::linecount() const
+{
+	size_w breaks = 0;
+	bool prev_ends_with_cr = false;
+
+	if(sequence_length == 0)
+		return 0;
+
+	for(span *sptr = head->next; sptr != tail; sptr = sptr->next)
+	{
+		breaks += sptr->line_count;
+
+		if(prev_ends_with_cr && sptr->starts_with_lf)
+			breaks--;
+
+		prev_ends_with_cr = sptr->ends_with_cr ? true : false;
+	}
+
+	return breaks + 1;
+}
+
+bool sequence::lineoffset(size_w line, size_w *offset) const
+{
+	size_w current_line = 0;
+	size_w spanindex = 0;
+	bool prev_ends_with_cr = false;
+
+	if(offset == 0 || sequence_length == 0 || line >= linecount())
+		return false;
+
+	if(line == 0)
+	{
+		*offset = 0;
+		return true;
+	}
+
+	for(span *sptr = head->next; sptr != tail; sptr = sptr->next)
+	{
+		size_w effective_line_count = sptr->line_count;
+
+		if(prev_ends_with_cr && sptr->starts_with_lf && effective_line_count > 0)
+			effective_line_count--;
+
+		if(line > current_line + effective_line_count)
+		{
+			current_line += effective_line_count;
+			spanindex += sptr->length;
+			prev_ends_with_cr = sptr->ends_with_cr ? true : false;
+			continue;
+		}
+
+		buffer_control *bc = buffer_list[sptr->buffer];
+		size_w end = sptr->offset + sptr->length;
+		size_w local_line = line - current_line;
+		size_w line_index = sptr->line_index + local_line - 1;
+
+		if(line_index < bc->line_count && bc->line_offsets[line_index] <= end)
+		{
+			size_w line_offset = bc->line_offsets[line_index];
+
+			if(line_offset == end && sptr->ends_with_cr && sptr->next != tail && sptr->next->starts_with_lf)
+				*offset = spanindex + sptr->length + 1;
+			else
+				*offset = spanindex + (line_offset - sptr->offset);
+
+			return true;
+		}
+
+		seqchar *source = bc->buffer + sptr->offset;
+
+		for(size_w i = 0; i < sptr->length; i++)
+		{
+			if(source[i] == '\r')
+			{
+				size_w nextoffset = spanindex + i + 1;
+				current_line++;
+
+				if(i + 1 < sptr->length && source[i + 1] == '\n')
+				{
+					i++;
+					nextoffset++;
+				}
+				else if(i + 1 == sptr->length && sptr->next != tail && sptr->next->starts_with_lf)
+				{
+					nextoffset++;
+				}
+
+				if(current_line == line)
+				{
+					*offset = nextoffset;
+					return true;
+				}
+			}
+			else if(source[i] == '\n')
+			{
+				if(i == 0 && prev_ends_with_cr)
+					continue;
+
+				current_line++;
+
+				if(current_line == line)
+				{
+					*offset = spanindex + i + 1;
+					return true;
+				}
+			}
+		}
+
+		spanindex += sptr->length;
+		prev_ends_with_cr = sptr->ends_with_cr ? true : false;
+	}
+
+	return false;
+}
+
+bool sequence::linefromoffset(size_w offset, size_w *line, size_w *lineoffset) const
+{
+	size_w current_line = 0;
+	size_w current_line_offset = 0;
+	size_w spanindex = 0;
+	bool prev_ends_with_cr = false;
+
+	if(sequence_length == 0 || offset > sequence_length)
+		return false;
+
+	for(span *sptr = head->next; sptr != tail; sptr = sptr->next)
+	{
+		size_w span_end = spanindex + sptr->length;
+		size_w effective_line_count = sptr->line_count;
+		size_w skip_line_count = 0;
+
+		if(prev_ends_with_cr && sptr->starts_with_lf && effective_line_count > 0)
+		{
+			effective_line_count--;
+			skip_line_count = 1;
+		}
+
+		if(offset <= span_end)
+		{
+			buffer_control *bc = buffer_list[sptr->buffer];
+			size_w buffer_offset = sptr->offset + (offset - spanindex);
+			size_w line_end = find_buffer_line_index(bc, buffer_offset);
+			size_w line_count = 0;
+
+			if(sptr->line_index < line_end)
+				line_count = line_end - sptr->line_index;
+
+			if(line_count > 0)
+			{
+				size_w last_line_index = sptr->line_index + line_count - 1;
+
+				if(bc->line_offsets[last_line_index] == sptr->offset + sptr->length && sptr->ends_with_cr && sptr->next != tail && sptr->next->starts_with_lf)
+					line_count--;
+			}
+
+			if(line_count > skip_line_count)
+			{
+				size_w last_line_index = sptr->line_index + line_count - 1;
+				size_w buffer_line_offset = bc->line_offsets[last_line_index];
+
+				current_line += line_count - skip_line_count;
+				current_line_offset = spanindex + (buffer_line_offset - sptr->offset);
+			}
+
+			if(line)
+				*line = current_line;
+
+			if(lineoffset)
+				*lineoffset = current_line_offset;
+
+			return true;
+		}
+
+		if(effective_line_count > 0)
+		{
+			size_w last_line_index = sptr->line_index + sptr->line_count - 1;
+			size_w buffer_line_offset = buffer_list[sptr->buffer]->line_offsets[last_line_index];
+
+			current_line += effective_line_count;
+			current_line_offset = spanindex + (buffer_line_offset - sptr->offset);
+
+			if(buffer_line_offset == sptr->offset + sptr->length && sptr->ends_with_cr && sptr->next != tail && sptr->next->starts_with_lf)
+				current_line_offset++;
+		}
+
+		spanindex += sptr->length;
+		prev_ends_with_cr = sptr->ends_with_cr ? true : false;
+	}
+
+	return false;
+}
+
 //
 //	sequence::initundo
 //
@@ -588,6 +886,7 @@ bool sequence::insert_worker (size_w index, const seqchar *buf, size_w length, a
 		// simply extend the last span's length
 		span_range *event = undostack.back();
 		sptr->prev->length	+= length;
+		update_span_line_data(sptr->prev);
 		event->length		+= length;
 	}
 	// general-case #1: inserting at a span boundary?
@@ -601,7 +900,7 @@ bool sequence::insert_worker (size_w index, const seqchar *buf, size_w length, a
 		oldspans->spanboundary(sptr->prev, sptr);
 		
 		// allocate new span in the modify buffer
-		newspans.append(new span(
+		newspans.append(alloc_span(
 			modbuf_offset, 
 			length, 
 			modifybuffer_id)
@@ -621,21 +920,21 @@ bool sequence::insert_worker (size_w index, const seqchar *buf, size_w length, a
 		oldspans->append(sptr);
 
 		//	span for the existing data before the insertion
-		newspans.append(new span(
+		newspans.append(alloc_span(
 							sptr->offset, 
 							insoffset, 
 							sptr->buffer)
 						);
 
 		// make a span for the inserted data
-		newspans.append(new span(
+		newspans.append(alloc_span(
 							modbuf_offset, 
 							length, 
 							modifybuffer_id)
 						);
 
 		// span for the existing data after the insertion
-		newspans.append(new span(
+		newspans.append(alloc_span(
 							sptr->offset + insoffset, 
 							sptr->length - insoffset, 
 							sptr->buffer)
@@ -740,6 +1039,7 @@ bool sequence::erase_worker (size_w index, size_w length, action act)
 			{
 				frag2->length	-= length;
 				frag2->offset	+= length;
+				update_span_line_data(frag2);
 				sequence_length -= length;
 				return true;
 			}
@@ -771,6 +1071,7 @@ bool sequence::erase_worker (size_w index, size_w length, action act)
 			{
 				frag1->length	-= length;
 				frag1->offset	+= 0;
+				update_span_line_data(frag1);
 				sequence_length -= length;
 				return true;
 			}
@@ -799,7 +1100,7 @@ bool sequence::erase_worker (size_w index, size_w length, action act)
 	if(remoffset != 0)
 	{
 		// split the span - keep the first "half"
-		newspans.append(new span(sptr->offset, remoffset, sptr->buffer));
+		newspans.append(alloc_span(sptr->offset, remoffset, sptr->buffer));
 		frag1 = newspans.first;
 		
 		// have we split a single span into two?
@@ -807,7 +1108,7 @@ bool sequence::erase_worker (size_w index, size_w length, action act)
 		if(remoffset + removelen < sptr->length)
 		{
 			// make a second span for the second half of the split
-			newspans.append(new span(
+			newspans.append(alloc_span(
 							sptr->offset + remoffset + removelen, 
 							sptr->length - remoffset - removelen, 
 							sptr->buffer)
@@ -831,7 +1132,7 @@ bool sequence::erase_worker (size_w index, size_w length, action act)
 		if(removelen < sptr->length)
 		{
 			// split the span, keeping the last "half"
-			newspans.append(new span(
+			newspans.append(alloc_span(
 						sptr->offset + removelen, 
 						sptr->length - removelen, 
 						sptr->buffer)
@@ -1017,6 +1318,7 @@ bool sequence::clear ()
 	// delete all memory-buffers
 	for(size_t i = 0; i < buffer_list.size(); i++)
 	{
+		delete[] buffer_list[i]->line_offsets;
 		delete[] buffer_list[i]->buffer;
 		delete   buffer_list[i];
 	}

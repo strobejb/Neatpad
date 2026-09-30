@@ -180,14 +180,6 @@ bool TextDocument::EmptyDoc()
 	clear();
 	m_seq.init();
 
-	// this is not robust. it's just to get the thing
-	// up-and-running until I write a proper line-buffer mananger
-	m_pLineBuf_byte = new ULONG[0x1000];
-	m_pLineBuf_char = new ULONG[0x1000];
-
-	m_pLineBuf_byte[0] = 0;
-	m_pLineBuf_char[0] = 0;
-
 	return true;
 }
 
@@ -381,6 +373,24 @@ bool TextDocument::init_linebuffer()
 
 	ULONG buflen  = m_nDocLength_bytes - m_nHeaderSize;
 
+	if(use_sequence_linebuffer())
+	{
+		if(m_pLineBuf_byte)
+		{
+			delete[] m_pLineBuf_byte;
+			m_pLineBuf_byte = 0;
+		}
+
+		if(m_pLineBuf_char)
+		{
+			delete[] m_pLineBuf_char;
+			m_pLineBuf_char = 0;
+		}
+
+		m_nNumLines = m_seq.linecount();
+		return true;
+	}
+
 	// allocate the line-buffer for storing each line's BYTE offset
 	if((m_pLineBuf_byte = new ULONG[buflen+1]) == 0)
 		return false;
@@ -458,12 +468,20 @@ bool TextDocument::init_linebuffer()
 	return true;
 }
 
+bool TextDocument::use_sequence_linebuffer() const
+{
+	return m_nFileFormat == NCP_ASCII && m_nHeaderSize == 0;
+}
+
 
 //
 //	Return the number of lines
 //
 ULONG TextDocument::linecount()
 {
+	if(use_sequence_linebuffer())
+		return m_seq.linecount();
+
 	return m_nNumLines;
 }
 
@@ -511,6 +529,29 @@ ULONG TextDocument::longestline(int tabwidth)
 //
 bool TextDocument::lineinfo_from_lineno(ULONG lineno, ULONG *lineoff_chars,  ULONG *linelen_chars, ULONG *lineoff_bytes, ULONG *linelen_bytes)
 {
+	if(use_sequence_linebuffer())
+	{
+		size_w lineoff;
+		size_w nextoff;
+		size_w numlines = m_seq.linecount();
+
+		if(lineno >= numlines || !m_seq.lineoffset(lineno, &lineoff))
+			return false;
+
+		if(lineno + 1 < numlines)
+			m_seq.lineoffset(lineno + 1, &nextoff);
+		else
+			nextoff = m_seq.size();
+
+		if(linelen_chars) *linelen_chars = nextoff - lineoff;
+		if(lineoff_chars) *lineoff_chars = lineoff;
+
+		if(linelen_bytes) *linelen_bytes = nextoff - lineoff;
+		if(lineoff_bytes) *lineoff_bytes = lineoff;
+
+		return true;
+	}
+
 	if(lineno < m_nNumLines)
 	{
 		if(linelen_chars) *linelen_chars  = m_pLineBuf_char[lineno+1] - m_pLineBuf_char[lineno];
@@ -535,6 +576,44 @@ bool TextDocument::lineinfo_from_offset(ULONG offset_chars, ULONG *lineno, ULONG
 	ULONG low  = 0;
 	ULONG high = m_nNumLines-1;
 	ULONG line = 0;
+
+	if(use_sequence_linebuffer())
+	{
+		size_w line;
+		size_w lineoff;
+		size_w nextoff;
+		size_w numlines = m_seq.linecount();
+
+		if(numlines == 0)
+		{
+			if(lineno)			*lineno			= 0;
+			if(lineoff_chars)	*lineoff_chars	= 0;
+			if(linelen_chars)	*linelen_chars  = 0;
+			if(lineoff_bytes)	*lineoff_bytes	= 0;
+			if(linelen_bytes)	*linelen_bytes  = 0;
+
+			return false;
+		}
+
+		if(!m_seq.linefromoffset(offset_chars, &line, &lineoff))
+			return false;
+
+		if(line + 1 < numlines)
+			m_seq.lineoffset(line + 1, &nextoff);
+		else
+			nextoff = m_seq.size();
+
+		if(lineno)
+			*lineno = line;
+
+		if(lineoff_chars) *lineoff_chars = lineoff;
+		if(linelen_chars) *linelen_chars = nextoff - lineoff;
+
+		if(lineoff_bytes) *lineoff_bytes = lineoff;
+		if(linelen_bytes) *linelen_bytes = nextoff - lineoff;
+
+		return true;
+	}
 
 	if(m_nNumLines == 0)
 	{

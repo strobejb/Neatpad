@@ -55,6 +55,9 @@ public:
 	//	sequence statistics
 	//
 	size_w		size() const;
+	size_w		linecount() const;
+	bool		lineoffset(size_w line, size_w *offset) const;
+	bool		linefromoffset(size_w offset, size_w *line, size_w *lineoffset) const;
 	
 	//
 	// sequence manipulation 
@@ -109,6 +112,9 @@ private:
 	//
 	void			deletefromsequence(span **sptr);
 	span		*	spanfromindex(size_w index, size_w *spanindex) const;
+	span		*	alloc_span(size_w offset, size_w length, int buffer, span *next = 0, span *prev = 0);
+	size_w			find_buffer_line_index(buffer_control *bc, size_w offset) const;
+	void			update_span_line_data(span *sptr);
 	void			scan(span *sptr);
 	size_w			sequence_length;
 	span		*	head;
@@ -139,6 +145,7 @@ private:
 	//
 	buffer_control *alloc_buffer(size_t size);
 	buffer_control *alloc_modifybuffer(size_t size);
+	void			update_buffer_lines(buffer_control *bc);
 	bool			import_buffer(const seqchar *buf, size_t len, size_t *buffer_offset);
 
 	bufferlist		buffer_list;
@@ -197,7 +204,11 @@ public:
 			prev(pr),
 			offset(off), 
 			length(len), 
-			buffer(buf)
+			buffer(buf),
+			line_index(0),
+			line_count(0),
+			starts_with_lf(0),
+			ends_with_cr(0)
 	  {
 		  static int count=-2;
 		  id = count++;
@@ -212,6 +223,10 @@ private:
 	size_w  offset;
 	size_w  length;
 	int     buffer;
+	size_w	line_index;
+	size_w	line_count;
+	unsigned starts_with_lf : 1;
+	unsigned ends_with_cr   : 1;
 
 	int		id;
 };	
@@ -407,6 +422,8 @@ public:
 	seqchar	*buffer;
 	size_w	 length;
 	size_w	 maxsize;
+	size_w	*line_offsets;
+	size_w	 line_count;
 	int		 id;
 };
 

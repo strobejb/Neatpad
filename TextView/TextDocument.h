@@ -50,6 +50,7 @@ public:
 private:
 	
 	bool init_linebuffer();
+	bool use_sequence_linebuffer() const;
 
 	ULONG charoffset_to_byteoffset(ULONG offset_chars);
 	ULONG byteoffset_to_charoffset(ULONG offset_bytes);
