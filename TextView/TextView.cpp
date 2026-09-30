@@ -12,30 +12,50 @@
 #include "TextViewInternal.h"
 
 //
-//	Painting procedure for TextView objects
+//	Constructor for TextView class
 //
-LRESULT WINAPI TextView::OnPaint()
+TextView::TextView(HWND hwnd)
 {
-	HDC			hdc;
-	PAINTSTRUCT ps;
-	RECT		rect;
-	char		*text = _T("Hello World!");
+	m_hWnd = hwnd;
 
-	HANDLE		hOldFont;
-	HFONT		hFont;
+	// Set the default font
+	OnSetFont((HFONT)GetStockObject(ANSI_FIXED_FONT));
 
-	hdc = BeginPaint(m_hWnd, &ps);
+	// File-related data
+	m_nLineCount = 0;
+	m_pTextDoc = new TextDocument();
+}
 
-	hFont = (HFONT)GetStockObject(ANSI_FIXED_FONT);
-	hOldFont = SelectObject(hdc, hFont);
+//
+//	Destructor for TextView class
+//
+TextView::~TextView()
+{
+	if(m_pTextDoc)
+		delete m_pTextDoc;
+}
 
-	GetClientRect(m_hWnd, &rect);
+//
+//	Set a new font
+//
+LONG TextView::OnSetFont(HFONT hFont)
+{
+	HDC hdc;
+	TEXTMETRIC tm;
+	HANDLE hOld;
 
-	ExtTextOut(hdc, 10, 10, ETO_OPAQUE, &rect, text, lstrlen(text), 0);
+	m_hFont = hFont;
 
-	SelectObject(hdc, hOldFont);
+	hdc  = GetDC(m_hWnd);
+	hOld = SelectObject(hdc, hFont);
 
-	EndPaint(m_hWnd, &ps);
+	GetTextMetrics(hdc, &tm);
+
+	m_nFontHeight = tm.tmHeight;
+	m_nFontWidth  = tm.tmAveCharWidth;
+
+	SelectObject(hdc, hOld);
+	ReleaseDC(m_hWnd, hdc);
 
 	return 0;
 }
@@ -68,6 +88,17 @@ LRESULT WINAPI TextViewWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
 	// Draw contents of TextView whenever window needs updating
 	case WM_PAINT:
 		return ptv->OnPaint();
+
+	// Set a new font 
+	case WM_SETFONT:
+		return ptv->OnSetFont((HFONT)wParam);
+
+	//
+	case TXM_OPENFILE:
+		return ptv->OpenFile((TCHAR *)lParam);
+
+	case TXM_CLEAR:
+		return ptv->ClearFile();
 
 	default:
 		break;

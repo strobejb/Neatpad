@@ -3,15 +3,12 @@
   <ItemGroup>
     <Filter Include="Source Files">
       <UniqueIdentifier>{9A4D7EE4-EC5D-4759-9E5E-5BF6AB4711FE}</UniqueIdentifier>
-      <Extensions>cpp;c;cxx;rc;def;r;odl;idl;hpj;bat</Extensions>
     </Filter>
     <Filter Include="Header Files">
       <UniqueIdentifier>{C96F333E-A970-4EF3-9E71-B13AC2FDD70F}</UniqueIdentifier>
-      <Extensions>h;hpp;hxx;hm;inl</Extensions>
     </Filter>
     <Filter Include="Resource Files">
       <UniqueIdentifier>{9748A69C-BCDA-4A65-B924-C4D5B0BBF51D}</UniqueIdentifier>
-      <Extensions>ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav</Extensions>
     </Filter>
   </ItemGroup>
   <ItemGroup>

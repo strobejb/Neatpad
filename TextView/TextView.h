@@ -18,12 +18,28 @@ HWND CreateTextView(HWND hwndParent);
 //
 //	TextView Window Messages defined here
 //
+#define TXM_BASE         (WM_USER)
+#define TXM_OPENFILE     (TXM_BASE + 0)
+#define TXM_CLEAR        (TXM_BASE + 1)
+
+//
+//	TextView Message Macros defined here
+//
+#define TextView_OpenFile(hwndTV, szFile)	SendMessage((hwndTV), TXM_OPENFILE, 0, (LPARAM)(szFile))
+#define TextView_Clear(hwndTV)				SendMessage((hwndTV), TXM_CLEAR, 0, 0)
 
 //
 //	TextView Macros defined here
 //
 #define TEXTVIEW_CLASS _T("TextView32")
 
+//
+//	TextView colours
+//
+#define HVC_BACKGROUND		0			// normal background colour
+#define HVC_FOREGROUND		1			// normal foreground colour
+
+#define HVC_MAX_COLOURS		2			// keep this updated!
 
 #ifdef __cplusplus
 }

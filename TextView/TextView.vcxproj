@@ -60,14 +60,15 @@
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <PreprocessorDefinitions>WIN32;NDEBUG;_LIB;_MBCS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
-    <Lib>
-      <EnableCOMDATFolding>true</EnableCOMDATFolding>
-    </Lib>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="TextDocument.cpp" />
     <ClCompile Include="TextView.cpp" />
+    <ClCompile Include="TextViewFile.cpp" />
+    <ClCompile Include="TextViewPaint.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="TextDocument.h" />
     <ClInclude Include="TextView.h" />
     <ClInclude Include="TextViewInternal.h" />
   </ItemGroup>
