@@ -1,10 +1,35 @@
+# Visual Studio user state
 .vs/
 ipch/
+
+# Build outputs
 Debug/
 Release/
+Unicode_Debug/
+Unicode_Release/
+x64/
+Win32/
+
+# Compiler and linker intermediates
 *.aps
+*.bsc
+*.cache
+*.exe
+*.idb
+*.ilk
+*.lib
+*.log
+*.map
 *.ncb
+*.obj
 *.opt
+*.pdb
 *.plg
+*.res
+*.sbr
+*.sdf
 *.suo
 *.user
+
+# Archives are published separately.
+*.zip
