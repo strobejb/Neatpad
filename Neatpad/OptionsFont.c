@@ -556,15 +556,16 @@ void UpdatePreviewPane(HWND hwnd)
 	idx  = SendDlgItemMessage(hwnd, IDC_ITEMLIST, LB_GETCURSEL, 0, 0);
 	data = SendDlgItemMessage(hwnd, IDC_ITEMLIST, LB_GETITEMDATA, idx, 0);
 
-	//idx = SendDlgItemMessage(hwnd, IDC_FGCOLCOMBO, CB_GETCURSEL, 0, 0);
-	//g_crPreviewFG = SendDlgItemMessage(hwnd, IDC_FGCOLCOMBO, CB_GETITEMDATA, idx, 0);
 
-	g_crPreviewFG = REALIZE_SYSCOL(g_rgbTempColourList[LOWORD(data)]);
-	g_crPreviewBG = REALIZE_SYSCOL(g_rgbTempColourList[HIWORD(data)]);
+	if((short)LOWORD(data) >= 0)
+		g_crPreviewFG = REALIZE_SYSCOL(g_rgbTempColourList[idx]);
+	else
+		g_crPreviewFG = GetSysColor(COLOR_WINDOWTEXT);
 
-
-	//idx = SendDlgItemMessage(hwnd, IDC_BGCOLCOMBO, CB_GETCURSEL, 0, 0);
-	//g_crPreviewBG = SendDlgItemMessage(hwnd, IDC_BGCOLCOMBO, CB_GETITEMDATA, idx, 0);
+	if((short)HIWORD(data) >= 0)
+		g_crPreviewBG = REALIZE_SYSCOL(g_rgbTempColourList[HIWORD(data)]);
+	else
+		g_crPreviewBG = GetSysColor(COLOR_WINDOW);
 
 	InvalidateRect(GetDlgItem(hwnd, IDC_PREVIEW), 0, TRUE); 
 }
@@ -613,6 +614,9 @@ void SelectColorInList(HWND hwnd, UINT uComboIdx, short itemIdx)
 		EnableWindow(hwndCombo, TRUE);
 		EnableWindow(GetWindow(hwndCombo, GW_HWNDNEXT), TRUE);
 	}
+
+	if(itemIdx < 0 || itemIdx >= TXC_MAX_COLOURS)
+		return;
 
 	// update the Auto item
 	SendMessage(hwndCombo, CB_SETITEMDATA, 0, g_rgbAutoColourList[itemIdx]);
@@ -944,10 +948,11 @@ BOOL CALLBACK FontOptionsDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
 
 		case IDC_CUSTBUT1:
 			{
-				COLORREF col;
-				int idx = GetCurrentListData(hwnd, IDC_ITEMLIST);
-				idx = LOWORD(idx);
-				col = REALIZE_SYSCOL(g_rgbTempColourList[idx]);
+				COLORREF col = 0;
+				int idx = LOWORD(GetCurrentListData(hwnd, IDC_ITEMLIST));
+
+				if(idx >= 0)
+					col = REALIZE_SYSCOL(g_rgbTempColourList[idx]);
 				
 				if(PickColour(hwnd, &col, g_rgbCustColours))
 				{
@@ -960,10 +965,11 @@ BOOL CALLBACK FontOptionsDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
 
 		case IDC_CUSTBUT2:
 			{
-				COLORREF col;
-				int idx = GetCurrentListData(hwnd, IDC_ITEMLIST);
-				idx = HIWORD(idx);
-				col = REALIZE_SYSCOL(g_rgbTempColourList[idx]);
+				COLORREF col = 0;
+				int idx = HIWORD(GetCurrentListData(hwnd, IDC_ITEMLIST));
+				
+				if(idx >= 0)
+					col = REALIZE_SYSCOL(g_rgbTempColourList[idx]);
 				
 				if(PickColour(hwnd, &col, g_rgbCustColours))
 				{

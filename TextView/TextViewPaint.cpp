@@ -17,6 +17,7 @@ void	DrawCheckedRect(HDC hdc, RECT *rect, COLORREF fg, COLORREF bg);
 
 extern "C" COLORREF MixRGB(COLORREF, COLORREF);
 
+
 //
 //	Perform a full redraw of the entire window
 //
@@ -25,15 +26,12 @@ VOID TextView::RefreshWindow()
 	InvalidateRect(m_hWnd, NULL, FALSE);
 }
 
-//
-//	Return a fully-analyzed USPDATA object for the specified line
-//
-USPDATA *TextView::GetUspData(HDC hdc, ULONG nLineNo, ULONG *nOffset/*=0*/)
+USPCACHE *TextView::GetUspCache(HDC hdc, ULONG nLineNo, ULONG *nOffset/*=0*/)
 {
 	TCHAR	 buff[TEXTBUFSIZE];
 	ATTR	 attr[TEXTBUFSIZE];
 	ULONG	 colno = 0;
-	ULONG	 off_chars;
+	ULONG	 off_chars = 0;
 	int		 len;
 	HDC		 hdcTemp;
 	
@@ -60,7 +58,7 @@ USPDATA *TextView::GetUspData(HDC hdc, ULONG nLineNo, ULONG *nOffset/*=0*/)
 				*nOffset = m_uspCache[i].offset;
 
 			m_uspCache[i].usage++;
-			return m_uspCache[i].uspData;
+			return &m_uspCache[i];
 		}
 	}
 
@@ -78,6 +76,12 @@ USPDATA *TextView::GetUspData(HDC hdc, ULONG nLineNo, ULONG *nOffset/*=0*/)
 	// get the text for the entire line and apply style attributes
 	//
 	len = m_pTextDoc->getline(nLineNo, buff, TEXTBUFSIZE, &off_chars);
+	
+	// cache the line's offset and length information
+	m_uspCache[lru_index].offset		= off_chars;
+	m_uspCache[lru_index].length		= len;
+	m_uspCache[lru_index].length_CRLF	= len - CRLF_size(buff, len);
+
 	len = ApplyTextAttributes(nLineNo, off_chars, colno, buff, len, attr);
 	
 	//
@@ -87,6 +91,10 @@ USPDATA *TextView::GetUspData(HDC hdc, ULONG nLineNo, ULONG *nOffset/*=0*/)
 	SCRIPT_TABDEF	tabdef			= { 1, 0, tablist, 0 };
 	SCRIPT_CONTROL	scriptControl	= { 0 };
 	SCRIPT_STATE	scriptState		= { 0 };
+
+	//SCRIPT_DIGITSUBSTITUTE scriptDigitSub;
+	//ScriptRecordDigitSubstitution(LOCALE_USER_DEFAULT, &scriptDigitSub);
+	//ScriptApplyDigitSubstitution(&scriptDigitSub, &scriptControl, &scriptState);
 
 	//
 	// go!
@@ -104,14 +112,32 @@ USPDATA *TextView::GetUspData(HDC hdc, ULONG nLineNo, ULONG *nOffset/*=0*/)
 		&tabdef
 	);
 
+	//
+	//	Apply the selection
+	//
+	ApplySelection(uspData, nLineNo, off_chars, len);
+
 	if(hdc == 0)
 		ReleaseDC(m_hWnd, hdcTemp);
 
-	// cache the line's offset
-	m_uspCache[lru_index].offset = off_chars;
-	if(nOffset) *nOffset = off_chars;
+	if(nOffset) 
+		*nOffset = off_chars;
 
-	return uspData;
+	return &m_uspCache[lru_index];
+}
+
+
+//
+//	Return a fully-analyzed USPDATA object for the specified line
+//
+USPDATA *TextView::GetUspData(HDC hdc, ULONG nLineNo, ULONG *nOffset/*=0*/)
+{
+	USPCACHE *uspCache = GetUspCache(hdc, nLineNo, nOffset);
+
+	if(uspCache)
+		return uspCache->uspData;
+	else
+		return 0;
 }
 
 //
@@ -177,7 +203,8 @@ LONG TextView::OnPaint()
 		int width	= rect.right-rect.left;
 
 		// prep the background
-		PaintRect(hdcMem, 0, 0, width, m_nLineHeight, GetColour(TXC_BACKGROUND));
+		PaintRect(hdcMem, 0, 0, width, m_nLineHeight, LineColour(i));
+		//PaintRect(hdcMem, m_cpBlockStart.xpos+LeftMarginWidth(), 0, m_cpBlockEnd.xpos-m_cpBlockStart.xpos, m_nLineHeight,GetColour(TXC_HIGHLIGHT));
 
 		// draw each line into the offscreen buffer
 		PaintLine(hdcMem, i, -m_nHScrollPos * m_nFontWidth, 0, hrgnUpdate);
@@ -418,10 +445,38 @@ void TextView::PaintText(HDC hdc, ULONG nLineNo, int xpos, int ypos, RECT *bound
 	// update selection-attribute information for the line
 	UspApplySelection(uspData, m_nSelectionStart - lineOffset, m_nSelectionEnd - lineOffset);
 
+	ApplySelection(uspData, nLineNo, lineOffset, uspData->stringLen);
+
 	// draw the text!
 	UspTextOut(uspData, hdc, xpos, ypos, m_nLineHeight, m_nHeightAbove, bounds);
 }
 
+int	TextView::ApplySelection(USPDATA *uspData, ULONG nLine, ULONG nOffset, ULONG nTextLen)
+{
+	int selstart = 0;
+	int selend   = 0;
+
+	if(m_nSelectionType != SEL_BLOCK)
+		return 0;
+
+	if(nLine >= m_cpBlockStart.line && nLine <= m_cpBlockEnd.line)
+	{
+		int trailing;
+		
+		UspXToOffset(uspData, m_cpBlockStart.xpos, &selstart, &trailing, 0);
+		selstart += trailing;
+		
+		UspXToOffset(uspData, m_cpBlockEnd.xpos, &selend, &trailing, 0);
+		selend += trailing;
+
+		if(selstart > selend)
+			selstart ^= selend ^= selstart^= selend;
+	}
+
+	UspApplySelection(uspData, selend, selstart);
+
+	return 0;
+}
 
 //
 //	Apply visual-styles to the text by returning colour and font
@@ -479,14 +534,22 @@ int TextView::ApplyTextAttributes(ULONG nLineNo, ULONG nOffset, ULONG &nColumn, 
 	//
 	//	STEP 3:  Now apply text-selection (overrides everything else)
 	//
-	for(i = 0; i < nTextLen; i++)
+	if(m_nSelectionType == SEL_NORMAL)
 	{
-		// highlight uses a separate attribute-flag
-		if(nOffset + i >= selstart && nOffset + i < selend)
-			attr[i].sel = 1;
-		else
-			attr[i].sel = 0;
+		for(i = 0; i < nTextLen; i++)
+		{
+			// highlight uses a separate attribute-flag
+			if(nOffset + i >= selstart && nOffset + i < selend)
+				attr[i].sel = 1;
+			else
+				attr[i].sel = 0;
+		}
 	}
+	else if(m_nSelectionType == SEL_BLOCK)
+	{
+	}
+
+	//SyntaxColour(szText, nTextLen, attr);
 
 	//
 	//	Turn any CR/LF at the end of a line into a single 'space' character
@@ -500,6 +563,8 @@ int TextView::ApplyTextAttributes(ULONG nLineNo, ULONG nOffset, ULONG &nColumn, 
 	{
 		ULONG ch = szText[i];
 		attr[i].ctrl	= ch < 0x20 ? 1 : 0;
+		if(ch == '\r' || ch == '\n')
+			attr[i].eol=TRUE;
 	}
 
 	return nTextLen;
@@ -519,6 +584,26 @@ void PaintRect(HDC hdc, RECT *rect, COLORREF fill)
 	fill = SetBkColor(hdc, fill);
 	ExtTextOut(hdc, 0, 0, ETO_OPAQUE, rect, 0, 0, 0);	
 	SetBkColor(hdc, fill);
+}
+
+int TextView::CRLF_size(TCHAR *szText, int nLength)
+{
+	if(nLength >= 2)
+	{
+		if(szText[nLength-2] == '\r' && szText[nLength-1] == '\n') 
+			return 2;
+	}
+
+	if(nLength >= 1)
+	{
+		if(szText[nLength-1] == '\r' || szText[nLength-1] == '\n' || 
+			szText[nLength-1] == '\x0b' || szText[nLength-1] == '\x0c' ||
+			szText[nLength-1] == '\x85' || szText[nLength-1] == 0x2028 || 
+			szText[nLength-1] == 0x2029)
+			return 1;
+	}	
+
+	return 0;
 }
 
 //
@@ -548,6 +633,17 @@ int TextView::StripCRLF(TCHAR *szText, ATTR *attr, int nLength, bool fAllow)
 	
 	if(nLength >= 1)
 	{
+		if( szText[nLength-1] == '\x0b' ||
+			szText[nLength-1] == '\x0c' ||
+			szText[nLength-1] == 0x0085 || 
+			szText[nLength-1] == 0x2029 || 
+			szText[nLength-1] == 0x2028)
+		{
+			attr[nLength-1].eol = TRUE;
+			//szText[nLength-1] = ' ';
+			return nLength - 0;//(int)fAllow;
+		}
+
 		if(szText[nLength-1] == '\r')
 		{
 			attr[nLength-1].eol = TRUE;

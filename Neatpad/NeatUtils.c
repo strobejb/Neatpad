@@ -10,6 +10,9 @@
 #include <tchar.h>
 #include "neatpad.h"
 
+typedef HMONITOR (WINAPI * MFR_PROC)(LPCRECT, DWORD);
+static	MFR_PROC pMonitorFromRect = 0;
+
 BOOL CheckMenuCommand(HMENU hMenu, int nCommandId, BOOL fChecked)
 {
 	if(fChecked)
@@ -105,6 +108,33 @@ BOOL SaveFileData(TCHAR *szPath, HWND hwnd)
 	return TRUE;
 }
 
+//
+//	Ensure that the specified window is on a visible monitor
+//
+void ForceVisibleDisplay(HWND hwnd)
+{
+	RECT		rect;
+	HMODULE		hUser32;
+
+	GetWindowRect(hwnd, &rect);
+
+	hUser32 = GetModuleHandle(_T("USER32.DLL"));
+	
+	pMonitorFromRect = (MFR_PROC)GetProcAddress(hUser32, "MonitorFromRect");
+
+	if(pMonitorFromRect != 0)
+	{
+		if(NULL == pMonitorFromRect(&rect, MONITOR_DEFAULTTONULL))
+		{
+			// force window onto primary display if it is not visible
+			rect.left %= GetSystemMetrics(SM_CXSCREEN);
+			rect.top  %= GetSystemMetrics(SM_CYSCREEN);
+
+			SetWindowPos(hwnd, 0, rect.left, rect.top, 0, 0, SWP_NOACTIVATE|SWP_NOZORDER|SWP_NOSIZE);
+		}
+	}
+}
+
 BOOL LoadFileData(TCHAR *szPath, HWND hwnd)
 {
 	TCHAR szStream[MAX_PATH];
@@ -133,12 +163,16 @@ BOOL LoadFileData(TCHAR *szPath, HWND hwnd)
 	{
 		wp.flags = SW_HIDE;
 		SetWindowPlacement(hwnd, &wp);
+		ForceVisibleDisplay(hwnd);
 	}
 
 	CloseHandle(hFile);
 	return TRUE;
 }
 
+//
+//	Resolve a ShellLink (i.e. c:\path\shortcut.lnk) to a real path
+//
 BOOL ResolveShortcut(TCHAR *pszShortcut, TCHAR *pszFilePath, int nPathLen)
 {
 	IShellLink * psl;
@@ -159,6 +193,7 @@ BOOL ResolveShortcut(TCHAR *pszShortcut, TCHAR *pszFilePath, int nPathLen)
 		return TRUE;
 	}
 
+	// obtain the IShellLink interface
 	if(FAILED(CoCreateInstance(&CLSID_ShellLink, NULL, CLSCTX_INPROC_SERVER, &IID_IShellLink, (LPVOID*)&psl)))
 		return FALSE;
 

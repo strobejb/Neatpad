@@ -53,7 +53,7 @@ TextView::TextView(HWND hwnd)
 	m_nCRLFMode		 = TXL_CRLF;//ALL;
 
 	// allocate the USPDATA cache
-	m_uspCache		= new USP_CACHE[USP_CACHE_SIZE];
+	m_uspCache		= new USPCACHE[USP_CACHE_SIZE];
 	
 	for(int i = 0; i < USP_CACHE_SIZE; i++)
 	{
@@ -85,10 +85,10 @@ TextView::TextView(HWND hwnd)
 
 
 	// Runtime data
-	m_nSelectionMode	= SELMODE_NONE;
+	m_nSelectionMode	= SEL_NONE;
 	m_nScrollTimer		= 0;
 	m_fHideCaret		= false;
-	m_fTransparent		= true;
+	//m_fTransparent		= true;
 	m_hImageList		= 0;
 	
 	m_nSelectionStart	= 0;
@@ -97,7 +97,10 @@ TextView::TextView(HWND hwnd)
 	m_nCurrentLine		= 0;
 
 	m_nLinenoWidth		= 0;
-	SetRect(&m_rcBorder, 2, 2, 2, 2);
+	m_nCaretPosX		= 0;
+	m_nAnchorPosX		= 0;
+
+	//SetRect(&m_rcBorder, 2, 2, 2, 2);
 
 	m_pTextDoc = new TextDocument();
 
@@ -156,7 +159,7 @@ LONG TextView::OnKillFocus(HWND hwndNew)
 {
 	// if we are making a selection when we lost focus then
 	// stop the selection logic
-	if(m_nSelectionMode != SELMODE_NONE)
+	if(m_nSelectionMode != SEL_NONE)
 	{
 		OnLButtonUp(0, 0, 0);
 	}
@@ -274,6 +277,12 @@ LINEINFO* TextView::GetLineInfo(ULONG nLineNo)
 							);
 }
 
+ULONG TextView::SelectionSize()
+{
+	ULONG s1 = min(m_nSelectionStart, m_nSelectionEnd); 
+	ULONG s2 = max(m_nSelectionStart, m_nSelectionEnd); 
+	return s2 - s1;
+}
 
 //
 //	Public memberfunction 
@@ -302,6 +311,9 @@ LONG WINAPI TextView::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 	case WM_MOUSEACTIVATE:
 		return OnMouseActivate((HWND)wParam, LOWORD(lParam), HIWORD(lParam));
 
+	case WM_CONTEXTMENU:
+		return OnContextMenu((HWND)wParam, (short)LOWORD(lParam), (short)HIWORD(lParam));
+
 	case WM_MOUSEWHEEL:
 		return OnMouseWheel((short)HIWORD(wParam));
 
@@ -317,8 +329,14 @@ LONG WINAPI TextView::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 	case WM_LBUTTONUP:
 		return OnLButtonUp(wParam, (short)LOWORD(lParam), (short)HIWORD(lParam));
 
+	case WM_LBUTTONDBLCLK:
+		return OnLButtonDblClick(wParam, (short)LOWORD(lParam), (short)HIWORD(lParam));
+
 	case WM_MOUSEMOVE:
 		return OnMouseMove(wParam, (short)LOWORD(lParam), (short)HIWORD(lParam));
+
+	case WM_KEYDOWN:
+		return OnKeyDown(wParam, lParam);
 
 	case WM_SETCURSOR:
 		if(LOWORD(lParam) == HTCLIENT)
@@ -326,6 +344,14 @@ LONG WINAPI TextView::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 		else
 			break;
 
+	case WM_COPY:
+		return OnCopy();
+
+	case WM_CUT:
+		return OnCut();
+
+	case WM_PASTE:
+		return OnPaste();
 
 	case WM_TIMER:
 		return OnTimer(wParam);
@@ -414,7 +440,7 @@ BOOL InitTextView()
 
 	//Window class for the main application parent window
 	wcx.cbSize			= sizeof(wcx);
-	wcx.style			= 0;
+	wcx.style			= CS_DBLCLKS;
 	wcx.lpfnWndProc		= TextViewWndProc;
 	wcx.cbClsExtra		= 0;
 	wcx.cbWndExtra		= sizeof(TextView *);

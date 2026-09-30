@@ -76,6 +76,7 @@ typedef struct _USPDATA
 	int				  stringAllocLen;		// actual allocation count of string and arrays:
 	WORD			* clusterList;			// logical cluster info
 	ATTR			* attrList;				// flattened attribute-list
+	SCRIPT_LOGATTR	* breakList;			// holds results of script-break
 
 	//
 	//	Glyph information for the entire paragraph
@@ -199,9 +200,8 @@ BOOL WINAPI UspGetSize (
 	);
 
 // coming soon!
-BOOL WINAPI UspGetLogAttr (	
-		USPDATA			* uspData,
-		SCRIPT_LOGATTR ** plogAttr  
+SCRIPT_LOGATTR * WINAPI UspGetLogAttr (	
+		USPDATA			* uspData
 	);
 
 #ifdef __cplusplus

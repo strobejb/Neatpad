@@ -36,6 +36,18 @@ BEGIN
         MENUITEM SEPARATOR
         MENUITEM "E&xit",                       IDM_FILE_EXIT
     END
+    POPUP "&Edit"
+    BEGIN
+        MENUITEM "&Undo\tCtrl+U",               IDM_EDIT_UNDO, GRAYED
+        MENUITEM "&Redo\tCtrl+Z",               IDM_EDIT_REDO, GRAYED
+        MENUITEM SEPARATOR
+        MENUITEM "Cu&t\tCtrl+X",                IDM_EDIT_CUT, GRAYED
+        MENUITEM "&Copy\tCtrl+C",               IDM_EDIT_COPY
+        MENUITEM "&Paste\tCtrl+V",              IDM_EDIT_PASTE, GRAYED
+        MENUITEM "&Delete\tDel",                IDM_EDIT_DELETE, GRAYED
+        MENUITEM SEPARATOR
+        MENUITEM "&Select All",                 IDM_EDIT_SELECTALL
+    END
     POPUP "&View"
     BEGIN
         MENUITEM "&Options...",                 IDM_VIEW_FONT
@@ -118,13 +130,13 @@ END
 IDD_OPTIONS DIALOGEX 0, 0, 290, 205
 STYLE DS_FIXEDSYS | DS_CONTROL | WS_CHILD
 EXSTYLE WS_EX_CONTROLPARENT
-FONT 8, "MS Shell Dlg", 0, 0, 0x1
+FONT 8, "MS Shell Dlg"
 BEGIN
     GROUPBOX        "Settings",IDC_STATIC,7,7,276,64
     CONTROL         "Add to &Explorer context menu",IDC_ADDCONTEXT,"Button",
                     BS_AUTOCHECKBOX | WS_TABSTOP,16,23,109,10
-    CONTROL         "&Replace Notepad as default editor",IDC_CHECK4,"Button",
-                    BS_AUTOCHECKBOX | WS_TABSTOP,16,36,124,10
+    CONTROL         "&Replace Notepad as default editor",IDC_REPLACENOTEPAD,
+                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,16,36,124,10
     PUSHBUTTON      "&Defaults",IDC_DEFAULTS,223,184,60,14
     CONTROL         "&Quick exit with <Escape>",IDC_CHECK10,"Button",
                     BS_AUTOCHECKBOX | WS_TABSTOP,16,49,96,10

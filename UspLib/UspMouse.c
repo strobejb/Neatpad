@@ -51,16 +51,23 @@ BOOL WINAPI UspSnapXToOffset (
 	int i, cp, trailing, runx = 0;
 	int runCount = uspData->itemRunCount;
 
-	*charPos	= 0;
-	*snappedX	= 0;
+	if(charPos)		*charPos	= 0;
+	if(snappedX)	*snappedX	= 0;
+	if(fRTL)		*fRTL		= 0;
 
 	if(xpos < 0)
 		xpos = 0;
 
 	// don't allow mouse to move into the CR-LF sequence. This is incorrect
 	// for RTL and mixed LTR/RTL runs!!!
-	if(runCount > 0 && uspData->itemRunList[runCount-1].eol)
-		runCount--;
+	for(i = runCount-1; i >= 0; i--)
+	{
+		if(uspData->itemRunList[i].eol)
+			runCount--;
+	}
+
+	//if(runCount > 0 && uspData->itemRunList[runCount-1].eol)
+	//	runCount--;
 
 	//
 	// process each "run" or span of text in visual order
@@ -72,6 +79,12 @@ BOOL WINAPI UspSnapXToOffset (
 		// get width of this span of text
 		if((itemRun = GetItemRun(uspData, i)) == 0)
 			break;
+
+		if(itemRun->eol)
+		{
+			runx += itemRun->width;			
+			continue;
+		}
 
 		// does the mouse fall within this run of text?
 		if((i == runCount - 1) || xpos >= runx && xpos < runx + itemRun->width)
@@ -186,7 +199,9 @@ BOOL WINAPI UspXToOffset (
 		runx += itemRun->width;
 	}
 
-	*charPos = 0;
+	*trailing = 0;
+	*charPos  = 0;
+	if(fRTL) *fRTL = 0;
 	return FALSE;
 }
 

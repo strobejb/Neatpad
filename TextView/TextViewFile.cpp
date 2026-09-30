@@ -30,8 +30,8 @@ LONG TextView::OpenFile(TCHAR *szFileName)
 		m_nSelectionEnd		= 0;
 		m_nCursorOffset		= 0;
 
-		UpdateMetrics();
 		UpdateMarginWidth();
+		UpdateMetrics();
 		ResetLineCache();
 		return TRUE;
 	}
@@ -47,11 +47,16 @@ LONG TextView::ClearFile()
 	if(m_pTextDoc)
 		m_pTextDoc->clear();
 
+	ResetLineCache();
+
 	m_nLineCount   = m_pTextDoc->linecount();
 	m_nLongestLine = m_pTextDoc->longestline(4);
 
 	m_nVScrollPos  = 0;
 	m_nHScrollPos  = 0;
+
+	m_nCurrentLine = 0;
+	m_nCaretPosX   = 0;
 
 	UpdateMetrics();
 

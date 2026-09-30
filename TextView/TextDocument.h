@@ -19,10 +19,12 @@ public:
 	bool  clear();
 
 	ULONG lineno_from_offset(ULONG offset);
+	ULONG offset_from_lineno(ULONG lineno);
 
 	bool  lineinfo_from_offset(ULONG offset_chars, ULONG *lineno, ULONG *lineoff_chars,  ULONG *linelen_chars, ULONG *lineoff_bytes, ULONG *linelen_bytes);
 	bool  lineinfo_from_lineno(ULONG lineno,                      ULONG *lineoff_chars,  ULONG *linelen_chars, ULONG *lineoff_bytes, ULONG *linelen_bytes);	
 
+	TextIterator iterate(ULONG offset);
 	TextIterator iterate_line(ULONG lineno, ULONG *linestart = 0, ULONG *linelen = 0);
 	TextIterator iterate_line_offset(ULONG offset_chars, ULONG *lineno, ULONG *linestart = 0);
 

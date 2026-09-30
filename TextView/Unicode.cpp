@@ -252,7 +252,7 @@ int utf16_to_utf32(WCHAR *utf16str, size_t utf16len, ULONG *utf32str, size_t *ut
 			ULONG ch2 = *(utf16str + 1);
 			
 			// valid trailing surrogate unit?
-			if(ch2 >= UNI_SUR_LOW_START && ch < UNI_SUR_LOW_END)
+			if(ch2 >= UNI_SUR_LOW_START && ch2 <= UNI_SUR_LOW_END)
 			{
 				ch = ((ch  - UNI_SUR_HIGH_START) << 10) + 
 					 ((ch2 - UNI_SUR_LOW_START) + 0x00010000);
@@ -293,7 +293,7 @@ int utf16be_to_utf32(WCHAR *utf16str, size_t utf16len, ULONG *utf32str, size_t *
 			ULONG ch2 = SWAPWORD(*(utf16str + 1));
 			
 			// valid trailing surrogate unit?
-			if(ch2 >= UNI_SUR_LOW_START && ch < UNI_SUR_LOW_END)
+			if(ch2 >= UNI_SUR_LOW_START && ch2 <= UNI_SUR_LOW_END)
 			{
 				ch = ((ch  - UNI_SUR_HIGH_START) << 10) + 
 					 ((ch2 - UNI_SUR_LOW_START) + 0x00010000);

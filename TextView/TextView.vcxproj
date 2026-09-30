@@ -64,11 +64,15 @@
   <ItemGroup>
     <ClCompile Include="TextDocument.cpp" />
     <ClCompile Include="TextView.cpp" />
+    <ClCompile Include="TextViewClipboard.cpp" />
     <ClCompile Include="TextViewFile.cpp" />
     <ClCompile Include="TextViewFont.cpp" />
+    <ClCompile Include="TextViewKeyNav.cpp" />
     <ClCompile Include="TextViewMouse.cpp" />
     <ClCompile Include="TextViewPaint.cpp" />
+    <ClCompile Include="TextViewParser.cpp" />
     <ClCompile Include="TextViewScroll.cpp" />
+    <ClCompile Include="TextViewSyntax.cpp" />
     <ClCompile Include="Unicode.cpp" />
   </ItemGroup>
   <ItemGroup>

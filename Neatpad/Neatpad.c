@@ -193,10 +193,10 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		TextView_SetImageList(g_hwndTextView, hImgList);
 
 		// highlight specific lines with image-index "1"
-		TextView_SetLineImage(g_hwndTextView, 16, 1);
-		TextView_SetLineImage(g_hwndTextView, 5,  1);
-		TextView_SetLineImage(g_hwndTextView, 36, 1);
-		TextView_SetLineImage(g_hwndTextView, 11, 1);
+		//TextView_SetLineImage(g_hwndTextView, 16, 1);
+		//TextView_SetLineImage(g_hwndTextView, 5,  1);
+		//TextView_SetLineImage(g_hwndTextView, 36, 1);
+		//TextView_SetLineImage(g_hwndTextView, 11, 1);
 
 		// tell windows that we can handle drag+drop'd files
 		DragAcceptFiles(hwnd, TRUE);
@@ -329,8 +329,8 @@ HWND CreateMainWnd()
 				WS_OVERLAPPEDWINDOW|WS_CLIPCHILDREN,
 				CW_USEDEFAULT,			// initial x position
 				CW_USEDEFAULT,			// initial y position
-				560,					// initial x size
-				320,					// initial y size
+				CW_USEDEFAULT,			// initial x size
+				CW_USEDEFAULT,			// initial y size
 				NULL,					// parent window handle
 				NULL,					// use window class menu
 				GetModuleHandle(0),		// program instance handle

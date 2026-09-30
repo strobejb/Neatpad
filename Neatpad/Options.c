@@ -36,6 +36,7 @@ BOOL  g_fSaveOnExit;
 int	  g_nLongLineLimit;
 BOOL  g_nHLCurLine;
 BOOL  g_fAddToExplorerContextMenu;
+BOOL  g_fReplaceNotepad;
 
 COLORREF g_rgbColourList[TXC_MAX_COLOURS];
 COLORREF g_rgbCustColours[16];
@@ -86,6 +87,9 @@ BOOL WriteSettingStr(HKEY hkey, TCHAR szKeyName[], TCHAR szString[])
 	return !RegSetValueEx(hkey, szKeyName, 0, REG_SZ, (BYTE *)szString, (lstrlen(szString) + 1) * sizeof(TCHAR));
 }
 
+//
+//	Add or remove Neatpad from the Explorer context-menu
+//
 void SetExplorerContextMenu(BOOL fAddToMenu)
 {
 	if(fAddToMenu)
@@ -103,6 +107,36 @@ void SetExplorerContextMenu(BOOL fAddToMenu)
 	{
 		RegDeleteKey(HKEY_CLASSES_ROOT, CONTEXT_CMD_LOC);
 		RegDeleteKey(HKEY_CLASSES_ROOT, CONTEXT_APP_LOC);
+	}
+}
+
+//
+//	Replace/Restore Notepad (with Neatpad) as the default text editor, by
+//  manipulating the Image-File-Execution-Options debugger setting for NOTEPAD.EXE
+//
+void SetImageFileExecutionOptions(BOOL fReplaceWithCurrentApp)
+{
+	HKEY hKey;
+	const TCHAR* szIFEO = _T("Software\\Microsoft\\Windows NT\\CurrentVersion\\Image File Execution Options\\Notepad.exe");
+
+	// create an 'ImageFileExecutionOptions' entry for the standard Notepad app
+	if(S_OK == RegCreateKeyEx(HKEY_LOCAL_MACHINE, szIFEO, 0, 0, 0, KEY_WRITE, 0, &hKey, 0))
+	{
+		// get path of current exe
+		TCHAR szPath[MAX_PATH];
+		GetModuleFileName(0, szPath+1, MAX_PATH);
+
+		// enclose it in double-quotes
+		szPath[0] = '\"';
+		lstrcat(szPath, _T("\""));
+
+		// set the 'debugger' key so that whenever notepad.exe is executed, neatpad runs instead
+		if(fReplaceWithCurrentApp)
+			WriteSettingStr(hKey, _T("Debugger"), szPath);
+		else
+			RegDeleteValue(hKey, _T("Debugger"));
+		
+		RegCloseKey(hKey);
 	}
 }
 
@@ -130,6 +164,7 @@ void LoadRegSettings()
 	GetSettingInt(hKey, _T("HLCurLine"),	 &g_nHLCurLine, FALSE);
 
 	GetSettingInt(hKey, _T("AddExplorer"),	 &g_fAddToExplorerContextMenu, FALSE);
+	GetSettingInt(hKey, _T("ReplaceNotepad"), &g_fReplaceNotepad, FALSE);
 	
 	// read the display colours
 	RegCreateKeyEx(hKey, _T("Colours"), 0, 0, 0, KEY_READ, 0, &hColKey, 0);
@@ -179,6 +214,8 @@ void SaveRegSettings()
 	WriteSettingInt(hKey, _T("HLCurLine"),	  g_nHLCurLine);
 
 	WriteSettingInt(hKey, _T("AddExplorer"),  g_fAddToExplorerContextMenu);
+	WriteSettingInt(hKey, _T("ReplaceNotepad"), g_fReplaceNotepad);
+
 	
 	// write the display colours
 	RegCreateKeyEx(hKey, _T("Colours"), 0, 0, 0, KEY_WRITE, 0, &hColKey, 0);
@@ -238,6 +275,8 @@ void ApplyRegSettings()
 	//	Add
 	//
 	SetExplorerContextMenu(g_fAddToExplorerContextMenu);
+
+	SetImageFileExecutionOptions(g_fReplaceNotepad);
 }
 
 void ShowProperties(HWND hwndParent)

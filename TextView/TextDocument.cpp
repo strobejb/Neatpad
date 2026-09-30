@@ -306,6 +306,10 @@ ULONG TextDocument::getdata(ULONG offset, BYTE *buf, size_t len)
 //
 //	Initialize the line-buffer
 //
+//	With Unicode a newline sequence is defined as any of the following:
+//
+//	\u000A | \u000B | \u000C | \u000D | \u0085 | \u2028 | \u2029 | \u000D\u000A
+//
 bool TextDocument::init_linebuffer()
 {
 	ULONG offset_bytes		= 0;
@@ -360,7 +364,7 @@ bool TextDocument::init_linebuffer()
 			
 			numlines++;
 		}
-		else if(ch32 == '\n')
+		else if(ch32 == '\n' || ch32 == '\x0b' || ch32 == '\x0c' || ch32 == 0x0085 || ch32 == 0x2029 || ch32 == 0x2028)
 		{
 			// record where the line starts
 			linebuf_byte[numlines] = linestart_bytes;
@@ -510,6 +514,18 @@ ULONG TextDocument::size()
 	return length_bytes;
 }
 
+TextIterator TextDocument::iterate(ULONG offset_chars)
+{
+	ULONG off_bytes=offset_chars;
+	ULONG len_bytes=length_bytes-off_bytes;
+
+	//if(!lineinfo_from_offset(offset_chars, 0, linelen, &offset_bytes, &length_bytes))
+	//	return TextIterator();
+
+	return TextIterator(off_bytes, len_bytes, this);
+}
+
+
 //
 //
 //
@@ -542,6 +558,13 @@ ULONG TextDocument::lineno_from_offset(ULONG offset)
 	return lineno;
 }
 
+ULONG TextDocument::offset_from_lineno(ULONG lineno)
+{
+	ULONG lineoff = 0;
+	lineinfo_from_lineno(lineno, &lineoff, 0, 0, 0);
+	return lineoff;
+}
+
 //
 //	Retrieve an entire line of text
 //	
@@ -553,10 +576,13 @@ int  TextDocument::getline(ULONG nLineNo, TCHAR *buf, int buflen, ULONG *off_cha
 	ULONG length_chars;
 
 	if(!lineinfo_from_lineno(nLineNo, &offset_chars, &length_chars, &offset_bytes, &length_bytes))
+	{
+		*off_chars = 0;	
 		return 0;
+	}
 
 	gettext(offset_bytes, length_bytes, buf, &buflen);
-
+	
 	*off_chars = offset_chars;
 	return buflen;
 }

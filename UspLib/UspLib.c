@@ -703,29 +703,62 @@ BOOL WINAPI UspAnalyze (
 		return FALSE;
 	}
 
-	//	Rellocate logical cluster+attribute arrays prior to shaping
+	// Rellocate logical cluster+attribute arrays prior to shaping
 	if(uspData->stringAllocLen < wlen)
 	{
 		uspData->stringAllocLen = wlen;
 		uspData->clusterList	= realloc(uspData->clusterList,	wlen * sizeof(WORD));
 		uspData->attrList		= realloc(uspData->attrList,	wlen * sizeof(ATTR));
+		uspData->breakList		= realloc(uspData->breakList,	wlen * sizeof(SCRIPT_LOGATTR));
 	}
 
-	//	Perform shaping + generate glyph data. 
+	// Generate the word-break information in logical order
 	for(i = 0; i < uspData->itemRunCount; i++)
 	{
-		ITEM_RUN *itemRun = GetItemRun(uspData, i);
-		ShapeAndPlaceItemRun(uspData, itemRun, hdc, wstr + itemRun->charPos);
+		ITEM_RUN *itemRun = &uspData->itemRunList[i];
+
+		ScriptBreak(
+				wstr + itemRun->charPos, 
+				itemRun->len, 
+				&itemRun->analysis, 
+				uspData->breakList + itemRun->charPos
+			);
+	}
+
+	// Perform shaping + generate glyph data
+	for(i = 0; i < uspData->itemRunCount; i++)
+	{
+		ITEM_RUN *itemRun = GetItemRun(uspData, i);//;//&uspData->itemRunList[i];	//
+
+		ShapeAndPlaceItemRun(
+				uspData, 
+				itemRun, 
+				hdc, 
+				wstr + itemRun->charPos
+			);
 	}
 
 	//
 	// locate tab-characters and expand the corresponding glyph-widths appropriately.
 	// this must happen after *all* shaping/widths have been generated
 	//
-	if(scriptTabdef && !ExpandTabs(uspData, wstr, wlen, scriptTabdef))
+	if(scriptTabdef)
 	{
-		return FALSE;
+		if(ExpandTabs(uspData, wstr, wlen, scriptTabdef))
+		{
+			// modify the SCRIPT_LOGATTR list to make tabs whitespace
+			for(i = 0; i < wlen; i++)
+			{
+				if(wstr[i] == '\t')
+					uspData->breakList[i].fWhiteSpace = TRUE;
+			}
+		}
+		else
+		{
+			return FALSE;
+		}
 	}
+
 
 	//
 	//	Keep a flattened copy of the attribute-run-list, but 
@@ -801,8 +834,14 @@ BOOL WINAPI UspGetSize(USPDATA *uspData, SIZE * size)
 	return TRUE;
 }
 
-BOOL WINAPI UspGetLogAttr(USPDATA *uspData, SCRIPT_LOGATTR **pLogAttr)
+SCRIPT_LOGATTR * WINAPI UspGetLogAttr(USPDATA *uspData)
 {
-	// not implemented!
-	return TRUE;
+	if(uspData && uspData->breakList)
+	{
+		return uspData->breakList;
+	}
+	else
+	{
+		return NULL;
+	}
 }

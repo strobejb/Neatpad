@@ -2,6 +2,12 @@
 //	Neatpad
 //	OptionsMisc.c
 //
+//	Use the following registry key to replace 'notepad' with 'neatpad'
+//
+//		"HKLM\Software\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\Notepad"
+//		REG_SZ "Debugger"="C:\path\Neatpad.exe"
+//
+//
 //	www.catch22.net
 //
 #include <windows.h>
@@ -20,9 +26,12 @@ BOOL CALLBACK MiscOptionsDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
 	switch(msg)
 	{
 	case WM_INITDIALOG:
-		//CheckRadioButton(hwnd, IDC_MEMWINPOS, IDC_MEMWINPOSFILE, g_f
-		//	g_fAddToExplorerContextMenu ? IDC_RADIO
+
 		CheckDlgButton(hwnd, IDC_ADDCONTEXT, g_fAddToExplorerContextMenu);
+		CheckDlgButton(hwnd, IDC_REPLACENOTEPAD, g_fReplaceNotepad);
+
+		// disable 'replace notepad' option for Win9x
+		EnableDlgItem(hwnd, IDC_REPLACENOTEPAD, GetVersion() & 0x80000000 ? FALSE : TRUE);
 		return TRUE;
 
 	case WM_CLOSE:
@@ -35,6 +44,7 @@ BOOL CALLBACK MiscOptionsDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
 		if(pshn->hdr.code == PSN_APPLY)
 		{
 			g_fAddToExplorerContextMenu = IsDlgButtonChecked(hwnd, IDC_ADDCONTEXT);
+			g_fReplaceNotepad			= IsDlgButtonChecked(hwnd, IDC_REPLACENOTEPAD);
 			return TRUE;
 		}
 

@@ -11,6 +11,8 @@
 #include "TextView.h"
 #include "TextViewInternal.h"
 
+bool IsKeyPressed(UINT nVirtKey);
+
 //
 //	Set scrollbar positions and range
 //
@@ -206,6 +208,58 @@ VOID TextView::Scroll(int dx, int dy)
 	ScrollRgn(dx, dy, false);
 }
 
+//
+//	Ensure that the specified file-location is visible within
+//  the window-viewport, Scrolling the viewport as necessary
+//
+VOID TextView::ScrollToPosition(int xpos, ULONG lineno)
+{
+	bool fRefresh = false;
+	RECT rect;
+	int  marginWidth = LeftMarginWidth();
+
+	GetClientRect(m_hWnd, &rect);
+
+	xpos -= m_nHScrollPos * m_nFontWidth;
+	xpos += marginWidth;
+	
+	if(xpos < marginWidth)
+	{
+		m_nHScrollPos -= (marginWidth - xpos) / m_nFontWidth;
+		fRefresh = true;
+	}
+
+	if(xpos >= rect.right)
+	{
+		m_nHScrollPos += (xpos - rect.right) / m_nFontWidth + 1;
+		fRefresh = true;
+	}
+	
+	if(lineno < m_nVScrollPos)
+	{
+		m_nVScrollPos = lineno;
+		fRefresh = true;
+	}
+	else if(lineno > m_nVScrollPos + m_nWindowLines - 1)
+	{
+		m_nVScrollPos = lineno - m_nWindowLines + 1;
+		fRefresh = true;
+	}
+
+
+	if(fRefresh)
+	{
+		SetupScrollbars();
+		RefreshWindow();
+		RepositionCaret();
+	}
+}
+
+VOID TextView::ScrollToCaret()
+{
+	ScrollToPosition(m_nCaretPosX, m_nCurrentLine);
+}
+
 LONG GetTrackPos32(HWND hwnd, int nBar)
 {
 	SCROLLINFO si = { sizeof(si), SIF_TRACKPOS };
@@ -325,15 +379,18 @@ LONG TextView::OnMouseWheel(int nDelta)
 #define SPI_GETWHEELSCROLLLINES   104
 #endif
 
-	int nScrollLines;
+	if(!IsKeyPressed(VK_SHIFT))
+	{
+		int nScrollLines;
 
-	SystemParametersInfo(SPI_GETWHEELSCROLLLINES, 0, &nScrollLines, 0);
+		SystemParametersInfo(SPI_GETWHEELSCROLLLINES, 0, &nScrollLines, 0);
 
-	if(nScrollLines <= 1)
-		nScrollLines = 3;
+		if(nScrollLines <= 1)
+			nScrollLines = 3;
 
-	Scroll(0, (-nDelta/120) * nScrollLines);
-	RepositionCaret();
+		Scroll(0, (-nDelta/120) * nScrollLines);
+		RepositionCaret();
+	}
 	
 	return 0;
 }

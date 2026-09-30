@@ -50,6 +50,7 @@
 #define IDC_CHECK3                      1023
 #define IDC_ADDCONTEXT                  1023
 #define IDC_CHECK4                      1024
+#define IDC_REPLACENOTEPAD              1024
 #define IDC_PROGRESS1                   1025
 #define IDC_CHECK10                     1025
 #define IDC_RADIO1                      1026
@@ -88,6 +89,13 @@
 #define IDM_VIEW_UTF8                   40013
 #define IDM_VIEW_UTF16                  40014
 #define IDM_VIEW_UTF16BE                40015
+#define IDM_EDIT_UNDO                   40016
+#define IDM_EDIT_REDO                   40017
+#define IDM_EDIT_CUT                    40018
+#define IDM_EDIT_COPY                   40019
+#define IDM_EDIT_PASTE                  40020
+#define IDM_EDIT_DELETE                 40021
+#define IDM_EDIT_SELECTALL              40022
 
 #define IDC_STATIC                      -1
 
@@ -96,7 +104,7 @@
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        119
-#define _APS_NEXT_COMMAND_VALUE         40016
+#define _APS_NEXT_COMMAND_VALUE         40023
 #define _APS_NEXT_CONTROL_VALUE         1046
 #define _APS_NEXT_SYMED_VALUE           101
 #endif

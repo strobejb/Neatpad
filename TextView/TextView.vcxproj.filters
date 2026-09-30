@@ -18,10 +18,16 @@
     <ClCompile Include="TextView.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="TextViewClipboard.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="TextViewFile.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="TextViewFont.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="TextViewKeyNav.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="TextViewMouse.cpp">
@@ -30,7 +36,13 @@
     <ClCompile Include="TextViewPaint.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="TextViewParser.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="TextViewScroll.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="TextViewSyntax.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="Unicode.cpp">

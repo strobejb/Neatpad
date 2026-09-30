@@ -143,11 +143,19 @@ SOURCE=.\TextView.cpp
 # End Source File
 # Begin Source File
 
+SOURCE=.\TextViewClipboard.cpp
+# End Source File
+# Begin Source File
+
 SOURCE=.\TextViewFile.cpp
 # End Source File
 # Begin Source File
 
 SOURCE=.\TextViewFont.cpp
+# End Source File
+# Begin Source File
+
+SOURCE=.\TextViewKeyNav.cpp
 # End Source File
 # Begin Source File
 
@@ -159,7 +167,15 @@ SOURCE=.\TextViewPaint.cpp
 # End Source File
 # Begin Source File
 
+SOURCE=.\TextViewParser.cpp
+# End Source File
+# Begin Source File
+
 SOURCE=.\TextViewScroll.cpp
+# End Source File
+# Begin Source File
+
+SOURCE=.\TextViewSyntax.cpp
 # End Source File
 # Begin Source File
 
