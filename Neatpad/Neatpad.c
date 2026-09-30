@@ -103,6 +103,25 @@ void HandleDropFiles(HWND hwnd, HDROP hDrop)
 	DragFinish(hDrop);
 }
 
+int PointsToLogical(int nPointSize)
+{
+	HDC hdc      = GetDC(0);
+	int nLogSize = -MulDiv(nPointSize, GetDeviceCaps(hdc, LOGPIXELSY), 72);
+	ReleaseDC(0, hdc);
+
+	return nLogSize;
+}
+
+
+HFONT EasyCreateFont(int nPointSize, BOOL fBold, TCHAR *szFace)
+{
+	return CreateFont(PointsToLogical(nPointSize), 
+					  0, 0, 0, 
+					  fBold ? FW_BOLD : 0,
+					  0,0,0,0,0,0,0,0,
+					  szFace);
+}
+
 //
 //	Main window procedure
 //
@@ -116,10 +135,15 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 	case WM_CREATE:
 		hwndTextView = CreateTextView(hwnd);
 
-		hFont = CreateFont(-13,0,0,0,0,0,0,0,0,0,0,0,0, "Courier New");
-
-		// change the font
+		// change the font to look like visual-studio 2003
+		hFont = EasyCreateFont(10, FALSE, "Courier New");
 		SendMessage(hwndTextView, WM_SETFONT, (WPARAM)hFont, 0);
+		TextView_SetLineSpacing(hwndTextView, 0, 1);
+
+		// add a new font
+		//hFont = EasyCreateFont(10, FALSE, "Lucida Console");
+		//hFont = EasyCreateFont(16, FALSE, "Arial");
+		//TextView_AddFont(hwndTextView, hFont);
 
 		// automatically create new document when we start
 		PostMessage(hwnd, WM_COMMAND, IDM_FILE_NEW, 0);

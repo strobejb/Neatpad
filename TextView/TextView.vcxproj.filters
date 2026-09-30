@@ -21,6 +21,9 @@
     <ClCompile Include="TextViewFile.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="TextViewFont.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="TextViewPaint.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>

@@ -18,6 +18,11 @@ TextView::TextView(HWND hwnd)
 {
 	m_hWnd = hwnd;
 
+	// font-related data
+	m_nNumFonts    = 1;
+	m_nHeightAbove = 0;
+	m_nHeightBelow = 0;
+	
 	// Set the default font
 	OnSetFont((HFONT)GetStockObject(ANSI_FIXED_FONT));
 
@@ -31,9 +36,17 @@ TextView::TextView(HWND hwnd)
 	m_nLineCount   = 0;
 	m_nLongestLine = 0;
 
+	// Display-related data
+	m_nTabWidthChars = 4;
+	
+	// Example selection markers
+	m_nSelectionStart	= 60;
+	m_nSelectionEnd		= 270;
+
 	m_pTextDoc = new TextDocument();
 
-	SetupScrollbars();
+	//SetupScrollbars();
+	UpdateMetrics();
 }
 
 //
@@ -52,32 +65,6 @@ VOID TextView::UpdateMetrics()
 
 	OnSize(0, rect.right, rect.bottom);
 	RefreshWindow();
-}
-//
-//	Set a new font
-//
-LONG TextView::OnSetFont(HFONT hFont)
-{
-	HDC hdc;
-	TEXTMETRIC tm;
-	HANDLE hOld;
-
-	m_hFont = hFont;
-
-	hdc  = GetDC(m_hWnd);
-	hOld = SelectObject(hdc, hFont);
-
-	GetTextMetrics(hdc, &tm);
-
-	m_nFontHeight = tm.tmHeight;
-	m_nFontWidth  = tm.tmAveCharWidth;
-
-	SelectObject(hdc, hOld);
-	ReleaseDC(m_hWnd, hdc);
-
-	UpdateMetrics();
-
-	return 0;
 }
 
 //
@@ -131,6 +118,12 @@ LRESULT WINAPI TextViewWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
 
 	case TXM_CLEAR:
 		return ptv->ClearFile();
+
+	case TXM_SETLINESPACING:
+		return ptv->SetLineSpacing(wParam, lParam);
+
+	case TXM_ADDFONT:
+		return ptv->AddFont((HFONT)wParam);
 
 	default:
 		break;

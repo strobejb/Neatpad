@@ -97,6 +97,10 @@ SOURCE=.\TextViewFile.cpp
 # End Source File
 # Begin Source File
 
+SOURCE=.\TextViewFont.cpp
+# End Source File
+# Begin Source File
+
 SOURCE=.\TextViewPaint.cpp
 # End Source File
 # Begin Source File

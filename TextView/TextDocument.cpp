@@ -85,8 +85,11 @@ bool TextDocument::init_linebuffer()
 	// loop through every byte in the file
 	for(i = 0; i < length; )
 	{
-		if(buffer[i++] == '\r')
+		// carriage-return
+		if(buffer[i] == '\r')
 		{
+			i++;
+
 			// carriage-return / line-feed combination
 			if(buffer[i] == '\n')
 				i++;
@@ -95,7 +98,22 @@ bool TextDocument::init_linebuffer()
 			linebuffer[numlines++] = linestart;
 			linestart = i;
 		}
+		// single line-feed
+		else if(buffer[i] == '\n')
+		{
+			// record where the line starts
+			linebuffer[numlines++] = linestart;
+			linestart = ++i;
+		}
+		else
+		{
+			i++;
+		}
+
 	}
+
+	if(length > 0)
+		linebuffer[numlines++] = linestart;
 
 	linebuffer[numlines] = length;
 
@@ -127,7 +145,7 @@ bool TextDocument::clear()
 //
 //	Retrieve the specified line of text and store it in "buf"
 //
-ULONG TextDocument::getline(ULONG lineno, char *buf, size_t len)
+ULONG TextDocument::getline(ULONG lineno, ULONG offset, char *buf, size_t len, ULONG *fileoff)
 {
 	char *lineptr;
 	ULONG linelen;
@@ -135,18 +153,32 @@ ULONG TextDocument::getline(ULONG lineno, char *buf, size_t len)
 	if(lineno >= numlines || buffer == 0 || length == 0)
 		return 0;
 
+//	if(linebuffer[lineno]
+
 	// find the start of the specified line
 	lineptr = buffer + linebuffer[lineno];
 
 	// work out how long it is, by looking at the next line's starting point
 	linelen = linebuffer[lineno+1] - linebuffer[lineno];
 	
+	offset = min(offset, linelen);
+
 	// make sure we don't overflow caller's buffer
-	linelen = min(len, linelen);
+	linelen = min(len, linelen - offset);
+
+	lineptr += offset;	
 
 	memcpy(buf, lineptr, linelen);
+
+	if(fileoff) 
+		*fileoff = linebuffer[lineno];
 	
 	return linelen;
+}
+
+ULONG TextDocument::getline(ULONG lineno, char *buf, size_t len, ULONG *fileoff)
+{
+	return getline(lineno, 0, buf, len, fileoff);
 }
 
 //

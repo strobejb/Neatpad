@@ -12,7 +12,8 @@ public:
 	
 	bool clear();
 
-	ULONG getline(ULONG lineno, char *buf, size_t len);
+	ULONG getline(ULONG lineno, char *buf, size_t len, ULONG *fileoff=0);
+	ULONG getline(ULONG lineno, ULONG offset, char *buf, size_t len, ULONG *fileoff=0);
 
 	ULONG linecount();
 	ULONG longestline(int tabwidth);
