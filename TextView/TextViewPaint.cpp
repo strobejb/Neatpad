@@ -11,10 +11,9 @@
 #include "TextView.h"
 #include "TextViewInternal.h"
 
-#define TEXTBUFSIZE 128
-
 int		StripCRLF(TCHAR *szText, int nLength);
 void	PaintRect(HDC hdc, int x, int y, int width, int height, COLORREF fill);
+void	DrawCheckedRect(HDC hdc, RECT *rect, COLORREF fg, COLORREF bg);
 
 //
 //	Perform a full redraw of the entire window
@@ -94,24 +93,25 @@ void TextView::PaintLine(HDC hdc, ULONG nLineNo)
 //
 void TextView::PaintText(HDC hdc, ULONG nLineNo, RECT *rect)
 {
-	TCHAR	buff[TEXTBUFSIZE];
-	ATTR	attr[TEXTBUFSIZE];
+	TCHAR		buff[TEXTBUFSIZE];
+	ATTR		attr[TEXTBUFSIZE];
 
-	ULONG	charoff = 0;
-	int		len;
+	ULONG		charoff = 0;
+	int			len;
 
-	int		xpos = rect->left;
-	int		ypos = rect->top;
-	int		xtab = rect->left;
+	int			xpos = rect->left;
+	int			ypos = rect->top;
+	int			xtab = rect->left;
 
 	//
 	//	TODO: Clip text to left side of window
 	//
 
+
 	//
 	//	Keep drawing until we reach the edge of the window
 	//
-	while(charoff < m_nWindowColumns + m_nHScrollPos)
+	while(xpos < rect->right)
 	{
 		ULONG fileoff;
 		int	  lasti = 0;
@@ -124,13 +124,15 @@ void TextView::PaintText(HDC hdc, ULONG nLineNo, RECT *rect)
 			break;
 
 		// ready for the next block of characters (do this before stripping CR/LF)
-		//fileoff += charoff;
+		fileoff += charoff;
 		charoff += len;
+
 
 		//
 		//	Apply text attributes - 
 		//	i.e. syntax highlighting, mouse selection colours etc.
 		//
+		//len = ApplyTextAttributes(nLineNo, fileoff+charoff, buff, len, attr);
 		len = ApplyTextAttributes(nLineNo, fileoff, buff, len, attr);
 
 		//
@@ -140,9 +142,9 @@ void TextView::PaintText(HDC hdc, ULONG nLineNo, RECT *rect)
 		{
 			// if the colour or font changes, then need to output 
 			if(i == len || 
-				attr[i].fg != attr[lasti].fg || 
-				attr[i].bg != attr[lasti].bg || 
-				attr[i].style != attr[lasti].style)
+				attr[i].fg		!= attr[lasti].fg		|| 
+				attr[i].bg		!= attr[lasti].bg		|| 
+				attr[i].style	!= attr[lasti].style)
 			{
 				xpos += NeatTextOut(hdc, xpos, ypos, buff + lasti, i - lasti, xtab, &attr[lasti]);
 
@@ -170,31 +172,40 @@ void TextView::PaintText(HDC hdc, ULONG nLineNo, RECT *rect)
 //
 int TextView::ApplyTextAttributes(ULONG nLineNo, ULONG nOffset, TCHAR *szText, int nTextLen, ATTR *attr)
 {
-	// randomize this value to give different fonts
-	int style = nLineNo % m_nNumFonts;	
+	int		 font	= nLineNo % m_nNumFonts;
+	COLORREF fg		= RGB(rand()%200,rand()%200,rand()%200);
+
+	int i;
+
+	ULONG selstart = min(m_nSelectionStart, m_nSelectionEnd);
+	ULONG selend   = max(m_nSelectionStart, m_nSelectionEnd);
 
 	//
-	//	TODO: 1. Apply a default single-colour first of all
-	//
-
-	//
-	//	TODO: 2. Apply syntax colouring (overrides default text)
-	//
-
-	//
-	//	TODO: 3. Apply bookmarks, line highlighting etc (overrides syntax colouring)
+	//	TODO: 1. Apply syntax colouring first of all
 	//
 
 	//
-	//	STEP 4:  Now apply text-selection (overrides everything else)
+	//	TODO: 2. Apply bookmarks, line highlighting etc (override syntax colouring)
 	//
-	for(int i = 0; i < nTextLen; i++)
+
+	//
+	//	STEP 3:  Now apply text-selection (overrides everything else)
+	//
+	for(i = 0; i < nTextLen; i++)
 	{
 		// apply highlight colours 
-		if(nOffset + i >= m_nSelectionStart && nOffset + i < m_nSelectionEnd)
+		if(nOffset + i >= selstart && nOffset + i < selend)
 		{
-			attr[i].fg = GetColour(TXC_HIGHLIGHTTEXT);
-			attr[i].bg = GetColour(TXC_HIGHLIGHT);
+			if(GetFocus() == m_hWnd)
+			{
+				attr[i].fg = GetColour(TXC_HIGHLIGHTTEXT);
+				attr[i].bg = GetColour(TXC_HIGHLIGHT);
+			}
+			else
+			{
+				attr[i].fg = GetColour(TXC_HIGHLIGHTTEXT2);
+				attr[i].bg = GetColour(TXC_HIGHLIGHT2);
+			}
 		}
 		// normal text colours
 		else
@@ -203,13 +214,14 @@ int TextView::ApplyTextAttributes(ULONG nLineNo, ULONG nOffset, TCHAR *szText, i
 			attr[i].bg = GetColour(TXC_BACKGROUND);
 		}
 
-		attr[i].style = style;
+		if(szText[i] == ' ')
+			font = (font + 1) % m_nNumFonts;
+
+		attr[i].style = font;
 	}
 
 	//
 	//	Turn any CR/LF at the end of a line into a single 'space' character
-	//	when a selection goes past the end of this line, this extra 'space' will be 
-	//  drawn using the highlight colours.
 	//
 	return StripCRLF(szText, nTextLen);
 }
@@ -324,14 +336,23 @@ int StripCRLF(TCHAR *szText, int nLength)
 //
 //	Return an RGB value corresponding to the specified HVC_xxx index
 //
+//	If the RGB value has the top bit set (0x80000000) then it is
+//  not a real RGB value - instead the low 31bits specify one
+//  of the GetSysColor COLOR_xxx indices. This allows us to use
+//	system colours without worrying about colour-scheme changes etc.
+//
 COLORREF TextView::GetColour(UINT idx)
 {
-	switch(idx)
+	if(idx >= TXC_MAX_COLOURS)
+		return 0;
+
+	return REALIZE_SYSCOL(m_rgbColourList[idx]);
+	/*switch(idx)
 	{
 	case TXC_BACKGROUND:	return GetSysColor(COLOR_WINDOW);
 	case TXC_FOREGROUND:	return GetSysColor(COLOR_WINDOWTEXT);
 	case TXC_HIGHLIGHT:		return GetSysColor(COLOR_HIGHLIGHT);
 	case TXC_HIGHLIGHTTEXT:	return GetSysColor(COLOR_HIGHLIGHTTEXT);
 	default:				return 0;
-	}
+	}*/
 }

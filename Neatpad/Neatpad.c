@@ -6,7 +6,7 @@
 //
 //	Freeware
 //
-
+#define _WIN32_WINNT 0x500
 #include <windows.h>
 #include <tchar.h>
 #include <commctrl.h>
@@ -16,9 +16,10 @@
 #define APP_TITLE   _T("Neatpad")
 #define WEBSITE_STR _T("www.catch22.net")
 
-TCHAR		szAppName[] = APP_TITLE;
-HWND		hwndMain;
-HWND		hwndTextView;
+TCHAR		g_szAppName[] = APP_TITLE;
+HWND		g_hwndMain;
+HWND		g_hwndTextView;
+HFONT		g_hFont;
 
 TCHAR szFileName[MAX_PATH];
 TCHAR szFileTitle[MAX_PATH];
@@ -62,15 +63,15 @@ void ShowAboutDlg(HWND hwndParent)
 
 void SetWindowFileName(HWND hwnd, TCHAR *szFileName)
 {
-	TCHAR ach[MAX_PATH + sizeof(szAppName) + 4];
+	TCHAR ach[MAX_PATH + sizeof(g_szAppName) + 4];
 
-	wsprintf(ach, _T("%s - %s"), szFileName, szAppName);
+	wsprintf(ach, _T("%s - %s"), szFileName, g_szAppName);
 	SetWindowText(hwnd, ach);
 }
 
 BOOL DoOpenFile(HWND hwnd, TCHAR *szFileName, TCHAR *szFileTitle)
 {
-	if(TextView_OpenFile(hwndTextView, szFileName))
+	if(TextView_OpenFile(g_hwndTextView, szFileName))
 	{
 		SetWindowFileName(hwnd, szFileTitle);
 		return TRUE;
@@ -118,7 +119,11 @@ HFONT EasyCreateFont(int nPointSize, BOOL fBold, TCHAR *szFace)
 	return CreateFont(PointsToLogical(nPointSize), 
 					  0, 0, 0, 
 					  fBold ? FW_BOLD : 0,
-					  0,0,0,0,0,0,0,0,
+					  0,0,0,0,0,0,
+					  //ANTIALIASED_QUALITY,
+					  //CLEARTYPE_QUALITY,
+					  DEFAULT_QUALITY,
+					  0,
 					  szFace);
 }
 
@@ -128,22 +133,16 @@ HFONT EasyCreateFont(int nPointSize, BOOL fBold, TCHAR *szFace)
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
 	static int width, height;
-	HFONT hFont;
 
 	switch(msg)
 	{
 	case WM_CREATE:
-		hwndTextView = CreateTextView(hwnd);
+		g_hwndTextView = CreateTextView(hwnd);
 
 		// change the font to look like visual-studio 2003
-		hFont = EasyCreateFont(10, FALSE, "Courier New");
-		SendMessage(hwndTextView, WM_SETFONT, (WPARAM)hFont, 0);
-		TextView_SetLineSpacing(hwndTextView, 0, 1);
-
-		// add a new font
-		//hFont = EasyCreateFont(10, FALSE, "Lucida Console");
-		//hFont = EasyCreateFont(16, FALSE, "Arial");
-		//TextView_AddFont(hwndTextView, hFont);
+		g_hFont = EasyCreateFont(10, FALSE, "Courier New");
+		SendMessage(g_hwndTextView, WM_SETFONT, (WPARAM)g_hFont, 0);
+		TextView_SetLineSpacing(g_hwndTextView, 0, 1);
 
 		// automatically create new document when we start
 		PostMessage(hwnd, WM_COMMAND, IDM_FILE_NEW, 0);
@@ -158,6 +157,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
 	case WM_DESTROY:
 		PostQuitMessage(0);
+		DeleteObject(g_hFont);
 		return 0;
 
 	case WM_COMMAND:
@@ -166,7 +166,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		case IDM_FILE_NEW:
 			
 			SetWindowFileName(hwnd, _T("Untitled"));
-			TextView_Clear(hwndTextView);
+			TextView_Clear(g_hwndTextView);
 			
 			return 0;
 
@@ -187,7 +187,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		return 0;
 
 	case WM_SETFOCUS:
-		SetFocus(hwndTextView);
+		SetFocus(g_hwndTextView);
 		return 0;
 
 	case WM_CLOSE:
@@ -198,7 +198,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		width  = (short)LOWORD(lParam);
 		height = (short)HIWORD(lParam);
 
-		MoveWindow(hwndTextView, 0, 0, width, height, TRUE);
+		MoveWindow(g_hwndTextView, 0, 0, width, height, TRUE);
 		return 0;
 
 	}
@@ -223,7 +223,7 @@ void InitMainWnd()
 	wcx.hCursor			= LoadCursor (NULL, IDC_ARROW);
 	wcx.hbrBackground	= (HBRUSH)0;
 	wcx.lpszMenuName	= MAKEINTRESOURCE(IDR_MENU1);
-	wcx.lpszClassName	= szAppName;
+	wcx.lpszClassName	= g_szAppName;
 	wcx.hIcon			= LoadImage(hInst, MAKEINTRESOURCE(IDI_ICON1), IMAGE_ICON, 32, 32, LR_CREATEDIBSECTION);
 	wcx.hIconSm			= LoadImage(hInst, MAKEINTRESOURCE(IDI_ICON1), IMAGE_ICON, 16, 16, LR_CREATEDIBSECTION);
 
@@ -236,8 +236,8 @@ void InitMainWnd()
 HWND CreateMainWnd()
 {
 	return CreateWindowEx(0,
-				szAppName,				// window class name
-				szAppName,				// window caption
+				g_szAppName,			// window class name
+				g_szAppName,			// window caption
 				WS_OVERLAPPEDWINDOW|WS_CLIPCHILDREN,
 				CW_USEDEFAULT,			// initial x position
 				CW_USEDEFAULT,			// initial y position
@@ -262,9 +262,9 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmdLine, int iShowC
 	InitTextView();
 
 	// create the main window!
-	hwndMain = CreateMainWnd();
+	g_hwndMain = CreateMainWnd();
 
-	ShowWindow(hwndMain, iShowCmd);
+	ShowWindow(g_hwndMain, iShowCmd);
 
 	// load keyboard accelerator table
 	hAccel = LoadAccelerators(hInst, MAKEINTRESOURCE(IDR_ACCELERATOR1));
@@ -272,7 +272,7 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmdLine, int iShowC
 	// message-loop
 	while(GetMessage(&msg, NULL, 0, 0) > 0)
 	{
-		if(!TranslateAccelerator(hwndMain, hAccel, &msg))
+		if(!TranslateAccelerator(g_hwndMain, hAccel, &msg))
 		{
 			TranslateMessage(&msg);
 			DispatchMessage(&msg);

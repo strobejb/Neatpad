@@ -66,6 +66,7 @@
     <ClCompile Include="TextView.cpp" />
     <ClCompile Include="TextViewFile.cpp" />
     <ClCompile Include="TextViewFont.cpp" />
+    <ClCompile Include="TextViewMouse.cpp" />
     <ClCompile Include="TextViewPaint.cpp" />
     <ClCompile Include="TextViewScroll.cpp" />
   </ItemGroup>

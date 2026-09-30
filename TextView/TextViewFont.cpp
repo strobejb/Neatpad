@@ -34,6 +34,52 @@ void PaintRect(HDC hdc, RECT *rect, COLORREF fill)
 }
 
 //
+//	Return width of specified control-character
+//
+int TextView::CtrlCharWidth(HDC hdc, ULONG chValue, FONT *font)
+{
+	SIZE sz;
+	const char *str = CtrlStr(chValue % 32);
+	GetTextExtentPoint32(hdc, str, strlen(str), &sz);
+	return sz.cx + 4;
+}
+
+//
+//	Wrapper for GetTextExtentPoint32. Takes into account
+//	control-characters, tabs etc.
+//
+int TextView::NeatTextWidth(HDC hdc, TCHAR *buf, int len, int nTabOrigin)
+{
+	SIZE	sz;
+	int		width = 0;
+
+	const int TABWIDTHPIXELS = m_nTabWidthChars * m_nFontWidth;
+
+	for(int i = 0, lasti = 0; i <= len; i++)
+	{
+		if(i == len || buf[i] == '\t' || buf[i] < 32)
+		{
+			GetTextExtentPoint32(hdc, buf + lasti, i - lasti, &sz);
+			width += sz.cx;
+
+			if(i < len && buf[i] == '\t')
+			{
+				width += TABWIDTHPIXELS - ((width - nTabOrigin) % TABWIDTHPIXELS);
+				lasti  = i + 1;
+			}
+			else if(i < len && buf[i] < 32)
+			{
+				width += CtrlCharWidth(hdc, buf[i], &m_FontAttr[0]);
+				lasti  = i + 1;
+			}
+		}
+	}
+
+	return width;
+}
+
+
+//
 //	Manually calculate the internal-leading and descent
 //  values for a font by parsing a small bitmap of a single letter "E"
 //	and locating the top and bottom of this letter.
@@ -53,6 +99,7 @@ void TextView::InitCtrlCharFontAttr(HDC hdc, FONT *font)
 
 	TextOut(hdcTemp, 0, 0, "E", 1);
 
+	// give default values just in case the scan fails
 	font->nInternalLeading	= font->tm.tmInternalLeading;
 	font->nDescent			= font->tm.tmDescent;
 
@@ -161,6 +208,13 @@ VOID TextView::RecalcLineHeight()
 
 	// add on the above+below spacings
 	m_nLineHeight += m_nHeightAbove + m_nHeightBelow;
+
+	// force caret resize if we've got the focus
+	if(GetFocus() == m_hWnd)
+	{
+		OnKillFocus(0);
+		OnSetFocus(0);
+	}
 }
 
 //
@@ -227,4 +281,9 @@ LONG TextView::SetLineSpacing(int nAbove, int nBelow)
 	m_nHeightBelow = nBelow;
 	RecalcLineHeight();
 	return TRUE;
+}
+
+int TextView::TabWidth()
+{
+	return m_nTabWidthChars * m_nFontWidth;
 }

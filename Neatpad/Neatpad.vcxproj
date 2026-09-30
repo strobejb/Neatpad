@@ -91,6 +91,7 @@
   </ItemGroup>
   <ItemGroup>
     <Image Include="icon1.ico" />
+    <Image Include="icon2.ico" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\TextView\TextView.vcxproj">

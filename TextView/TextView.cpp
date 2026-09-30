@@ -18,13 +18,14 @@ TextView::TextView(HWND hwnd)
 {
 	m_hWnd = hwnd;
 
-	// font-related data
-	m_nNumFonts    = 1;
-	m_nHeightAbove = 0;
-	m_nHeightBelow = 0;
+	// Font-related data
+	m_nNumFonts		= 1;
+	m_nHeightAbove	= 0;
+	m_nHeightBelow	= 0;
 	
-	// Set the default font
-	OnSetFont((HFONT)GetStockObject(ANSI_FIXED_FONT));
+	// File-related data
+	m_nLineCount   = 0;
+	m_nLongestLine = 0;	
 
 	// Scrollbar related data
 	m_nVScrollPos = 0;
@@ -32,20 +33,29 @@ TextView::TextView(HWND hwnd)
 	m_nVScrollMax = 0;
 	m_nHScrollMax = 0;
 
-	// File-related data
-	m_nLineCount   = 0;
-	m_nLongestLine = 0;
-
 	// Display-related data
 	m_nTabWidthChars = 4;
+
+	// Default display colours
+	m_rgbColourList[TXC_FOREGROUND]		= SYSCOL(COLOR_WINDOWTEXT);
+	m_rgbColourList[TXC_BACKGROUND]		= SYSCOL(COLOR_WINDOW);
+	m_rgbColourList[TXC_HIGHLIGHTTEXT]	= SYSCOL(COLOR_HIGHLIGHTTEXT);
+	m_rgbColourList[TXC_HIGHLIGHT]		= SYSCOL(COLOR_HIGHLIGHT);
+	m_rgbColourList[TXC_HIGHLIGHTTEXT2]	= SYSCOL(COLOR_INACTIVECAPTIONTEXT);
+	m_rgbColourList[TXC_HIGHLIGHT2]		= SYSCOL(COLOR_INACTIVECAPTION);
+
+	// Runtime data
+	m_fMouseDown  = false;
 	
-	// Example selection markers
-	m_nSelectionStart	= 60;
-	m_nSelectionEnd		= 270;
+	m_nSelectionStart	= 0;
+	m_nSelectionEnd		= 0;
+	m_nCursorOffset		= 0;
+
+	// Set the default font
+	OnSetFont((HFONT)GetStockObject(ANSI_FIXED_FONT));
 
 	m_pTextDoc = new TextDocument();
 
-	//SetupScrollbars();
 	UpdateMetrics();
 }
 
@@ -66,6 +76,25 @@ VOID TextView::UpdateMetrics()
 	OnSize(0, rect.right, rect.bottom);
 	RefreshWindow();
 }
+
+LONG TextView::OnSetFocus(HWND hwndOld)
+{
+	CreateCaret(m_hWnd, (HBITMAP)NULL, 2, m_nLineHeight);
+	RepositionCaret();
+
+	ShowCaret(m_hWnd);
+	RefreshWindow();
+	return 0;
+}
+
+LONG TextView::OnKillFocus(HWND hwndNew)
+{
+	HideCaret(m_hWnd);
+	DestroyCaret();
+	RefreshWindow();
+	return 0;
+}
+
 
 //
 //	Win32 TextView window procedure.
@@ -109,8 +138,26 @@ LRESULT WINAPI TextViewWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
 	case WM_HSCROLL:
 		return ptv->OnHScroll(LOWORD(wParam), HIWORD(wParam));
 
+	case WM_MOUSEACTIVATE:
+		return ptv->OnMouseActivate((HWND)wParam, LOWORD(lParam), HIWORD(lParam));
+
 	case WM_MOUSEWHEEL:
 		return ptv->OnMouseWheel((short)HIWORD(wParam));
+
+	case WM_SETFOCUS:
+		return ptv->OnSetFocus((HWND)wParam);
+
+	case WM_KILLFOCUS:
+		return ptv->OnKillFocus((HWND)wParam);
+
+	case WM_LBUTTONDOWN:
+		return ptv->OnLButtonDown(wParam, (short)LOWORD(lParam), (short)HIWORD(lParam));
+
+	case WM_LBUTTONUP:
+		return ptv->OnLButtonUp(wParam, (short)LOWORD(lParam), (short)HIWORD(lParam));
+
+	case WM_MOUSEMOVE:
+		return ptv->OnMouseMove(wParam, (short)LOWORD(lParam), (short)HIWORD(lParam));
 
 	//
 	case TXM_OPENFILE:

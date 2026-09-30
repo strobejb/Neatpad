@@ -1,7 +1,7 @@
 #ifndef TEXTVIEW_INTERNAL_INCLUDED
 #define TEXTVIEW_INTERNAL_INCLUDED
 
-#define LONGEST_LINE 0x100
+#define TEXTBUFSIZE  32
 
 #include "TextDocument.h"
 
@@ -44,6 +44,9 @@ public:
 	TextView(HWND hwnd);
 	~TextView();
 
+	//
+	//	Message handlers
+	//
 	LONG OnPaint();
 	LONG OnSetFont(HFONT hFont);
 	LONG OnSize(UINT nFlags, int width, int height);
@@ -51,6 +54,17 @@ public:
 	LONG OnHScroll(UINT nSBCode, UINT nPos);
 	LONG OnMouseWheel(int nDelta);
 
+	LONG OnMouseActivate(HWND hwndTop, UINT nHitTest, UINT nMessage);
+	LONG OnLButtonDown(UINT nFlags, int x, int y);
+	LONG OnLButtonUp(UINT nFlags, int x, int y);
+	LONG OnMouseMove(UINT nFlags, int x, int y);
+
+	LONG OnSetFocus(HWND hwndOld);
+	LONG OnKillFocus(HWND hwndNew);
+
+	//
+	//	Public interface
+	//
 	LONG OpenFile(TCHAR *szFileName);
 	LONG ClearFile();
 
@@ -66,16 +80,24 @@ private:
 	int  ApplyTextAttributes(ULONG nLineNo, ULONG offset, TCHAR *szText, int nTextLen, ATTR *attr);
 	int  NeatTextOut(HDC hdc, int xpos, int ypos, TCHAR *szText, int nLen, int nTabOrigin, ATTR *attr);
 	
-	int  PaintCtrlChar(HDC hdc, int xpos, int ypos, ULONG chValue, FONT *font);
-	void InitCtrlCharFontAttr(HDC hdc, FONT *font);
+	int  PaintCtrlChar(HDC hdc, int xpos, int ypos, ULONG chValue, FONT *fa);
+	void InitCtrlCharFontAttr(HDC hdc, FONT *fa);
 
 	void RefreshWindow();
+	LONG InvalidateRange(ULONG nStart, ULONG nFinish);
+
+	int  CtrlCharWidth(HDC hdc, ULONG chValue, FONT *fa);
+	int  NeatTextWidth(HDC hdc, TCHAR *buf, int len, int nTabOrigin);
+	int	 TabWidth();
+
+	BOOL  MouseCoordToFilePos(int x, int y, ULONG *pnLineNo, ULONG *pnCharOffset, ULONG *pnFileOffset, int *px);
+	ULONG  RepositionCaret();
 
 	COLORREF GetColour(UINT idx);
 
-	VOID	RecalcLineHeight();
 	VOID	SetupScrollbars();
 	VOID	UpdateMetrics();
+	VOID	RecalcLineHeight();
 	bool    PinToBottomCorner();
 	void	Scroll(int dx, int dy);
 
@@ -104,6 +126,12 @@ private:
 	int		m_nTabWidthChars;
 	ULONG	m_nSelectionStart;
 	ULONG	m_nSelectionEnd;
+	ULONG	m_nCursorOffset;
+
+	COLORREF m_rgbColourList[TXC_MAX_COLOURS];
+
+	// Runtime data
+	bool	m_fMouseDown;
 
 	// File-related data
 	ULONG	m_nLineCount;

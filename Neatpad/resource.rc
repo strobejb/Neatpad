@@ -35,6 +35,10 @@ BEGIN
         MENUITEM SEPARATOR
         MENUITEM "E&xit",                       IDM_FILE_EXIT
     END
+    POPUP "&View"
+    BEGIN
+        MENUITEM "&Font...",                    IDM_VIEW_FONT
+    END
     POPUP "&Help"
     BEGIN
         MENUITEM "&About",                      IDM_HELP_ABOUT

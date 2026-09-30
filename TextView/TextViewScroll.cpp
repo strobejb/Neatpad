@@ -74,12 +74,13 @@ bool TextView::PinToBottomCorner()
 //
 LONG TextView::OnSize(UINT nFlags, int width, int height)
 {
-	m_nWindowLines   = min((unsigned)height / m_nLineHeight, m_nLineCount);
-	m_nWindowColumns = min(width  / m_nFontWidth,  m_nLongestLine);
+	m_nWindowLines   = min((unsigned)height			/ m_nLineHeight, m_nLineCount);
+	m_nWindowColumns = min(width / m_nFontWidth,  m_nLongestLine);
 
 	if(PinToBottomCorner())
 	{
 		RefreshWindow();
+		RepositionCaret();
 	}
 	
 	SetupScrollbars();
@@ -92,6 +93,12 @@ LONG TextView::OnSize(UINT nFlags, int width, int height)
 //
 VOID TextView::Scroll(int dx, int dy)
 {
+	RECT clip;
+	RECT update;
+
+	GetClientRect(m_hWnd, &clip);
+	CopyRect(&update, &clip);
+
 	//
 	// make sure that dx,dy don't scroll us past the edge of the document!
 	//
@@ -100,11 +107,13 @@ VOID TextView::Scroll(int dx, int dy)
 	if(dy < 0)
 	{
 		dy = -(int)min((ULONG)-dy, m_nVScrollPos);
+		clip.top = -dy * m_nLineHeight;
 	}
 	// scroll down
 	else if(dy > 0)
 	{
 		dy = min((ULONG)dy, m_nVScrollMax-m_nVScrollPos);
+		clip.bottom = (m_nWindowLines -dy) * m_nLineHeight;
 	}
 
 
@@ -112,11 +121,13 @@ VOID TextView::Scroll(int dx, int dy)
 	if(dx < 0)
 	{
 		dx = -(int)min(-dx, m_nHScrollPos);
+		clip.left = -dx * m_nFontWidth * 4;
 	}
 	// scroll right
 	else if(dx > 0)
 	{
 		dx = min((unsigned)dx, (unsigned)m_nHScrollMax-m_nHScrollPos);
+		clip.right = (m_nWindowColumns - dx - 4) * m_nFontWidth ;
 	}
 
 	// adjust the scrollbar thumb position
@@ -130,12 +141,15 @@ VOID TextView::Scroll(int dx, int dy)
 			m_hWnd, 
 			-dx * m_nFontWidth, 
 			-dy * m_nLineHeight,
-			NULL,
-			NULL,
+			&clip,
+			&clip,
 			0, 0, SW_INVALIDATE
 			);
 
 		SetupScrollbars();
+
+		SubtractRect(&update, &update, &clip);
+		InvalidateRect(m_hWnd, &update, TRUE);
 	}
 }
 
@@ -193,6 +207,7 @@ LONG TextView::OnVScroll(UINT nSBCode, UINT nPos)
 	if(oldpos != m_nVScrollPos)
 	{
 		SetupScrollbars();
+		RepositionCaret();
 	}
 
 
@@ -245,6 +260,7 @@ LONG TextView::OnHScroll(UINT nSBCode, UINT nPos)
 	if(oldpos != m_nHScrollPos)
 	{
 		SetupScrollbars();
+		RepositionCaret();
 	}
 
 	return 0;
@@ -264,6 +280,7 @@ LONG TextView::OnMouseWheel(int nDelta)
 		nScrollLines = 3;
 
 	Scroll(0, (-nDelta/120) * nScrollLines);
+	RepositionCaret();
 	
 	return 0;
 }
