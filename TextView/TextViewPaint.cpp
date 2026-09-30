@@ -172,9 +172,7 @@ void TextView::PaintText(HDC hdc, ULONG nLineNo, RECT *rect)
 //
 int TextView::ApplyTextAttributes(ULONG nLineNo, ULONG nOffset, TCHAR *szText, int nTextLen, ATTR *attr)
 {
-	int		 font	= nLineNo % m_nNumFonts;
-	COLORREF fg		= RGB(rand()%200,rand()%200,rand()%200);
-
+	int	font	= nLineNo % m_nNumFonts;
 	int i;
 
 	ULONG selstart = min(m_nSelectionStart, m_nSelectionEnd);
@@ -264,7 +262,7 @@ int TextView::NeatTextOut(HDC hdc, int xpos, int ypos, TCHAR *szText, int nLen, 
 			SetRect(&rect, xpos, ypos, xpos+sz.cx, ypos+m_nLineHeight);
 
 			// draw the text and erase it's background at the same time
-			ExtTextOut(hdc, xpos, ypos+yoff, ETO_OPAQUE, &rect, szText + lasti, i - lasti, 0);
+			ExtTextOut(hdc, xpos, ypos+yoff, ETO_CLIPPED|ETO_OPAQUE, &rect, szText + lasti, i - lasti, 0);
 			
 			xpos += sz.cx;
 		}
@@ -347,12 +345,53 @@ COLORREF TextView::GetColour(UINT idx)
 		return 0;
 
 	return REALIZE_SYSCOL(m_rgbColourList[idx]);
-	/*switch(idx)
-	{
-	case TXC_BACKGROUND:	return GetSysColor(COLOR_WINDOW);
-	case TXC_FOREGROUND:	return GetSysColor(COLOR_WINDOWTEXT);
-	case TXC_HIGHLIGHT:		return GetSysColor(COLOR_HIGHLIGHT);
-	case TXC_HIGHLIGHTTEXT:	return GetSysColor(COLOR_HIGHLIGHTTEXT);
-	default:				return 0;
-	}*/
+}
+
+COLORREF TextView::SetColour(UINT idx, COLORREF rgbColour)
+{
+	COLORREF rgbOld;
+
+	if(idx >= TXC_MAX_COLOURS)
+		return 0;
+	
+	rgbOld				 = m_rgbColourList[idx];
+	m_rgbColourList[idx] = rgbColour;
+
+	return rgbOld;
+}
+
+//
+//	Paint a checkered rectangle, with each alternate
+//	pixel being assigned a different colour
+//
+void DrawCheckedRect(HDC hdc, RECT *rect, COLORREF fg, COLORREF bg)
+{
+	static WORD wCheckPat[8] = 
+	{ 
+		0xaaaa, 0x5555, 0xaaaa, 0x5555, 0xaaaa, 0x5555, 0xaaaa, 0x5555 
+	};
+
+	HBITMAP hbmp;
+	HBRUSH  hbr, hbrold;
+	COLORREF fgold, bgold;
+
+	hbmp = CreateBitmap(8, 8, 1, 1, wCheckPat);
+	hbr  = CreatePatternBrush(hbmp);
+
+	hbrold = (HBRUSH)SelectObject(hdc, hbr);
+
+	fgold = SetTextColor(hdc, fg);
+	bgold = SetBkColor(hdc, bg);
+	
+	PatBlt(hdc, rect->left, rect->top, 
+				rect->right - rect->left, 
+				rect->bottom - rect->top, 
+				PATCOPY);
+	
+	SetBkColor(hdc, bgold);
+	SetTextColor(hdc, fgold);
+	
+	SelectObject(hdc, hbrold);
+	DeleteObject(hbr);
+	DeleteObject(hbmp);
 }

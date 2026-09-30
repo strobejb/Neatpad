@@ -26,6 +26,7 @@ TextView::TextView(HWND hwnd)
 	// File-related data
 	m_nLineCount   = 0;
 	m_nLongestLine = 0;	
+	
 
 	// Scrollbar related data
 	m_nVScrollPos = 0;
@@ -41,11 +42,12 @@ TextView::TextView(HWND hwnd)
 	m_rgbColourList[TXC_BACKGROUND]		= SYSCOL(COLOR_WINDOW);
 	m_rgbColourList[TXC_HIGHLIGHTTEXT]	= SYSCOL(COLOR_HIGHLIGHTTEXT);
 	m_rgbColourList[TXC_HIGHLIGHT]		= SYSCOL(COLOR_HIGHLIGHT);
-	m_rgbColourList[TXC_HIGHLIGHTTEXT2]	= SYSCOL(COLOR_INACTIVECAPTIONTEXT);
-	m_rgbColourList[TXC_HIGHLIGHT2]		= SYSCOL(COLOR_INACTIVECAPTION);
+	m_rgbColourList[TXC_HIGHLIGHTTEXT]	= SYSCOL(COLOR_INACTIVECAPTIONTEXT);
+	m_rgbColourList[TXC_HIGHLIGHT]		= SYSCOL(COLOR_INACTIVECAPTION);
 
 	// Runtime data
 	m_fMouseDown  = false;
+	m_nScrollTimer = 0;
 	
 	m_nSelectionStart	= 0;
 	m_nSelectionEnd		= 0;
@@ -159,6 +161,9 @@ LRESULT WINAPI TextViewWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
 	case WM_MOUSEMOVE:
 		return ptv->OnMouseMove(wParam, (short)LOWORD(lParam), (short)HIWORD(lParam));
 
+	case WM_TIMER:
+		return ptv->OnTimer(wParam);
+
 	//
 	case TXM_OPENFILE:
 		return ptv->OpenFile((TCHAR *)lParam);
@@ -171,6 +176,9 @@ LRESULT WINAPI TextViewWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
 
 	case TXM_ADDFONT:
 		return ptv->AddFont((HFONT)wParam);
+
+	case TXM_SETCOLOR:
+		return ptv->SetColour(wParam, lParam);
 
 	default:
 		break;

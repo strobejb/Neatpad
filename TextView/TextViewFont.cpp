@@ -53,7 +53,7 @@ int TextView::NeatTextWidth(HDC hdc, TCHAR *buf, int len, int nTabOrigin)
 	SIZE	sz;
 	int		width = 0;
 
-	const int TABWIDTHPIXELS = m_nTabWidthChars * m_nFontWidth;
+	const int TABWIDTHPIXELS = TabWidth();
 
 	for(int i = 0, lasti = 0; i <= len; i++)
 	{
@@ -107,24 +107,32 @@ void TextView::InitCtrlCharFontAttr(HDC hdc, FONT *font)
 	int y;
 	for(y = 0; y < font->tm.tmHeight; y++)
 	{
-		COLORREF col;
-
-		if((col = GetPixel(hdcTemp, font->tm.tmAveCharWidth / 2, y)) == RGB(0,0,0))
+		for(int x = 0; x < font->tm.tmAveCharWidth; x++)
 		{
-			font->nInternalLeading = y;
-			break;
+			COLORREF col;
+
+			if((col = GetPixel(hdcTemp, x, y)) == RGB(0,0,0))
+			{
+				font->nInternalLeading = y;
+				y = font->tm.tmHeight;
+				break;
+			}
 		}
 	}
 
 	// scan upwards looking for the bottom of the letter 'E'
 	for(y = font->tm.tmHeight - 1; y >= 0; y--)
 	{
-		COLORREF col;
-
-		if((col = GetPixel(hdcTemp, font->tm.tmAveCharWidth / 2, y)) == RGB(0,0,0))
+		for(int x = 0; x < font->tm.tmAveCharWidth; x++)
 		{
-			font->nDescent = font->tm.tmHeight - y - 1;
-			break;
+			COLORREF col;
+
+			if((col = GetPixel(hdcTemp, x, y)) == RGB(0,0,0))
+			{
+				font->nDescent = font->tm.tmHeight - y - 1;
+				y = 0;
+				break;
+			}
 		}
 	}
 
@@ -283,6 +291,9 @@ LONG TextView::SetLineSpacing(int nAbove, int nBelow)
 	return TRUE;
 }
 
+//
+//	
+//
 int TextView::TabWidth()
 {
 	return m_nTabWidthChars * m_nFontWidth;

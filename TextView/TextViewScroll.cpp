@@ -74,8 +74,8 @@ bool TextView::PinToBottomCorner()
 //
 LONG TextView::OnSize(UINT nFlags, int width, int height)
 {
-	m_nWindowLines   = min((unsigned)height			/ m_nLineHeight, m_nLineCount);
-	m_nWindowColumns = min(width / m_nFontWidth,  m_nLongestLine);
+	m_nWindowLines   = min((unsigned)height	 / m_nLineHeight, m_nLineCount);
+	m_nWindowColumns = min((unsigned)width   / m_nFontWidth,  m_nLongestLine);
 
 	if(PinToBottomCorner())
 	{
@@ -89,15 +89,19 @@ LONG TextView::OnSize(UINT nFlags, int width, int height)
 }
 
 //
-//	Scroll viewport in specified direction
+//	ScrollRgn
 //
-VOID TextView::Scroll(int dx, int dy)
+//	Scrolls the viewport in specified direction. If fReturnUpdateRgn is true, 
+//	then a HRGN is returned which holds the client-region that must be redrawn 
+//	manually. This region must be deleted by the caller using DeleteObject.
+//
+//  Otherwise ScrollRgn returns NULL and updates the entire window 
+//
+HRGN TextView::ScrollRgn(int dx, int dy, bool fReturnUpdateRgn)
 {
 	RECT clip;
-	RECT update;
 
 	GetClientRect(m_hWnd, &clip);
-	CopyRect(&update, &clip);
 
 	//
 	// make sure that dx,dy don't scroll us past the edge of the document!
@@ -137,20 +141,50 @@ VOID TextView::Scroll(int dx, int dy)
 	// perform the scroll
 	if(dx != 0 || dy != 0)
 	{
+		// do the scroll!
 		ScrollWindowEx(
 			m_hWnd, 
-			-dx * m_nFontWidth, 
+			-dx * m_nFontWidth,					// scale up to pixel coords
 			-dy * m_nLineHeight,
-			&clip,
-			&clip,
-			0, 0, SW_INVALIDATE
+			NULL,								// scroll entire window
+			fReturnUpdateRgn ? &clip : NULL,	// clip the non-scrolling part
+			0, 
+			0, 
+			SW_INVALIDATE
 			);
 
 		SetupScrollbars();
 
-		SubtractRect(&update, &update, &clip);
-		InvalidateRect(m_hWnd, &update, TRUE);
+		if(fReturnUpdateRgn)
+		{
+			RECT client;
+
+			GetClientRect(m_hWnd, &client);
+
+			HRGN hrgnClient  = CreateRectRgnIndirect(&client);
+			HRGN hrgnUpdate  = CreateRectRgnIndirect(&clip);
+
+			// create a region that represents the area outside the
+			// clipping rectangle (i.e. the part that is never scrolled)
+			CombineRgn(hrgnUpdate, hrgnClient, hrgnUpdate, RGN_XOR);
+
+			DeleteObject(hrgnClient);
+
+			return hrgnUpdate;
+		}
 	}
+
+	return NULL;
+}
+
+//
+//	Scroll viewport in specified direction
+//
+VOID TextView::Scroll(int dx, int dy)
+{
+	// do a "normal" scroll - don't worry about invalid regions,
+	// just scroll the whole window 
+	ScrollRgn(dx, dy, false);
 }
 
 LONG GetTrackPos32(HWND hwnd, int nBar)

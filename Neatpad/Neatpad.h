@@ -11,6 +11,8 @@ extern "C" {
 extern LONG		g_nFontSize;
 extern BOOL		g_fFontBold;
 extern TCHAR	g_szFontName[];
+extern LONG		g_nFontSmoothing;
+
 extern LONG		g_nPaddingAbove;
 extern LONG		g_nPaddingBelow;
 extern LONG		g_fPaddingFlags;
@@ -31,7 +33,7 @@ extern HFONT	g_hFont;
 //
 //	Global functions
 //
-HFONT EasyCreateFont(int nPointSize, BOOL fBold, TCHAR *szFace);
+HFONT EasyCreateFont(int nPointSize, BOOL fBold, DWORD dwQuality, TCHAR *szFace);
 
 void ApplyRegSettings();
 void LoadRegSettings();

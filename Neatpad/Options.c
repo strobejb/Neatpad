@@ -17,6 +17,7 @@ BOOL CALLBACK MiscOptionsDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
 LONG  g_nFontSize;
 BOOL  g_fFontBold;
 TCHAR g_szFontName[LF_FACESIZE];
+LONG  g_nFontSmoothing;
 
 LONG  g_nPaddingAbove;
 LONG  g_nPaddingBelow;
@@ -80,6 +81,7 @@ void LoadRegSettings()
 	GetSettingInt(hKey, _T("FontSize"),		&g_nFontSize, 10);
 	GetSettingInt(hKey, _T("FontBold"),		&g_fFontBold, FALSE);
 	GetSettingStr(hKey, _T("FontName"),		g_szFontName, LF_FACESIZE, _T("Courier New"));
+	GetSettingInt(hKey, _T("FontSmooth"),	&g_nFontSmoothing, DEFAULT_QUALITY);
 
 	GetSettingInt(hKey, _T("PaddingAbove"), &g_nPaddingAbove, 0);
 	GetSettingInt(hKey, _T("PaddingBelow"), &g_nPaddingBelow, 1);
@@ -108,9 +110,10 @@ void SaveRegSettings()
 	// open registry location for writing
 	RegCreateKeyEx(HKEY_CURRENT_USER, REGLOC, 0, 0, 0, KEY_WRITE, 0, &hKey, 0);
 
-	WriteSettingInt(hKey, _T("FontSize"), g_nFontSize);
-	WriteSettingInt(hKey, _T("FontBold"), g_fFontBold);
-	WriteSettingStr(hKey, _T("FontName"), g_szFontName);
+	WriteSettingInt(hKey, _T("FontSize"),	g_nFontSize);
+	WriteSettingInt(hKey, _T("FontBold"),	g_fFontBold);
+	WriteSettingStr(hKey, _T("FontName"),	g_szFontName);
+	WriteSettingInt(hKey, _T("FontSmooth"),	g_nFontSmoothing);
 
 	WriteSettingInt(hKey, _T("PaddingAbove"), g_nPaddingAbove);
 	WriteSettingInt(hKey, _T("PaddingBelow"), g_nPaddingBelow);
@@ -139,7 +142,7 @@ void ApplyRegSettings()
 	if(g_hFont)
 		DeleteObject(g_hFont);
 
-	g_hFont = EasyCreateFont(g_nFontSize, g_fFontBold, g_szFontName);
+	g_hFont = EasyCreateFont(g_nFontSize, g_fFontBold, g_nFontSmoothing, g_szFontName);
 
 	TextView_SetLineSpacing(g_hwndTextView, g_nPaddingAbove, g_nPaddingBelow);
 	

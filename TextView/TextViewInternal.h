@@ -53,6 +53,7 @@ public:
 	LONG OnVScroll(UINT nSBCode, UINT nPos);
 	LONG OnHScroll(UINT nSBCode, UINT nPos);
 	LONG OnMouseWheel(int nDelta);
+	LONG OnTimer(UINT nTimer);
 
 	LONG OnMouseActivate(HWND hwndTop, UINT nHitTest, UINT nMessage);
 	LONG OnLButtonDown(UINT nFlags, int x, int y);
@@ -71,6 +72,7 @@ public:
 	LONG AddFont(HFONT);
 	LONG SetFont(HFONT, int idx);
 	LONG SetLineSpacing(int nAbove, int nBelow);
+	COLORREF SetColour(UINT idx, COLORREF rgbColour);
 
 private:
 
@@ -91,7 +93,7 @@ private:
 	int	 TabWidth();
 
 	BOOL  MouseCoordToFilePos(int x, int y, ULONG *pnLineNo, ULONG *pnCharOffset, ULONG *pnFileOffset, int *px);
-	ULONG  RepositionCaret();
+	ULONG RepositionCaret();
 
 	COLORREF GetColour(UINT idx);
 
@@ -99,7 +101,9 @@ private:
 	VOID	UpdateMetrics();
 	VOID	RecalcLineHeight();
 	bool    PinToBottomCorner();
+
 	void	Scroll(int dx, int dy);
+	HRGN	ScrollRgn(int dx, int dy, bool fReturnUpdateRgn);
 
 	HWND	m_hWnd;
 
@@ -132,6 +136,8 @@ private:
 
 	// Runtime data
 	bool	m_fMouseDown;
+	UINT	m_nScrollTimer;
+	int		m_nScrollCounter;
 
 	// File-related data
 	ULONG	m_nLineCount;

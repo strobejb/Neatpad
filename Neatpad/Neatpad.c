@@ -10,6 +10,7 @@
 #include <windows.h>
 #include <tchar.h>
 #include <commctrl.h>
+#include "Neatpad.h"
 #include "..\TextView\TextView.h"
 #include "resource.h"
 
@@ -27,6 +28,10 @@ TCHAR szFileTitle[MAX_PATH];
 #if defined(_MSC_VER) && _MSC_VER < 1300
 #pragma comment(linker, "/OPT:NOWIN98")
 #endif
+void ShowProperties(HWND hwndParent);
+void LoadRegSettings();
+void SaveRegSettings();
+
 BOOL ShowOpenFileDlg(HWND hwnd, TCHAR *pstrFileName, TCHAR *pstrTitleName)
 {
 	TCHAR *szFilter = _T("Text Files (*.txt)\0*.txt\0All Files (*.*)\0*.*\0\0");
@@ -114,15 +119,13 @@ int PointsToLogical(int nPointSize)
 }
 
 
-HFONT EasyCreateFont(int nPointSize, BOOL fBold, TCHAR *szFace)
+HFONT EasyCreateFont(int nPointSize, BOOL fBold, DWORD dwQuality, TCHAR *szFace)
 {
 	return CreateFont(PointsToLogical(nPointSize), 
 					  0, 0, 0, 
 					  fBold ? FW_BOLD : 0,
 					  0,0,0,0,0,0,
-					  //ANTIALIASED_QUALITY,
-					  //CLEARTYPE_QUALITY,
-					  DEFAULT_QUALITY,
+					  dwQuality,
 					  0,
 					  szFace);
 }
@@ -139,13 +142,9 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 	case WM_CREATE:
 		g_hwndTextView = CreateTextView(hwnd);
 
-		// change the font to look like visual-studio 2003
-		g_hFont = EasyCreateFont(10, FALSE, "Courier New");
-		SendMessage(g_hwndTextView, WM_SETFONT, (WPARAM)g_hFont, 0);
-		TextView_SetLineSpacing(g_hwndTextView, 0, 1);
-
 		// automatically create new document when we start
 		PostMessage(hwnd, WM_COMMAND, IDM_FILE_NEW, 0);
+		//DoOpenFile(hwnd, "c:\\src\\edit\\test.cpp", "test.cpp");
 
 		// tell windows that we can handle drag+drop'd files
 		DragAcceptFiles(hwnd, TRUE);
@@ -180,7 +179,12 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
 			return 0;
 
+		case IDM_VIEW_FONT:
+			ShowProperties(hwnd);
+			return 0;
+
 		case IDM_HELP_ABOUT:
+			//ShellAbout(hwnd, g_szAppName, "hello", 0);//LoadIcon(0, MAKEINTRESOURCE(IDI_ICON1), 
 			ShowAboutDlg(hwnd);
 			return 0;
 		}
@@ -261,10 +265,14 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmdLine, int iShowC
 	InitMainWnd();
 	InitTextView();
 
+	LoadRegSettings();
+
 	// create the main window!
 	g_hwndMain = CreateMainWnd();
 
 	ShowWindow(g_hwndMain, iShowCmd);
+
+	ApplyRegSettings();
 
 	// load keyboard accelerator table
 	hAccel = LoadAccelerators(hInst, MAKEINTRESOURCE(IDR_ACCELERATOR1));
@@ -278,6 +286,8 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmdLine, int iShowC
 			DispatchMessage(&msg);
 		}
 	}
+
+	SaveRegSettings();
 
 	return 0;
 }

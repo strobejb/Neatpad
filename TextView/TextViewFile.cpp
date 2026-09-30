@@ -26,6 +26,10 @@ LONG TextView::OpenFile(TCHAR *szFileName)
 		m_nVScrollPos  = 0;
 		m_nHScrollPos  = 0;
 
+		m_nSelectionStart	= 0;
+		m_nSelectionEnd		= 0;
+		m_nCursorOffset		= 0;
+
 		UpdateMetrics();
 		return TRUE;
 	}

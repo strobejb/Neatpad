@@ -1,3 +1,5 @@
+#define _WIN32_WINNT 0x500
+
 #include <windows.h>
 #include <tchar.h>
 #include <commctrl.h>
@@ -5,6 +7,10 @@
 #include "Neatpad.h"
 #include "..\TextView\TextView.h"
 #include "resource.h"
+
+#ifndef CLEARTYPE_QUALITY
+#define CLEARTYPE_QUALITY 5
+#endif
 
 #define MSG_UPDATE_PREVIEW (WM_USER+1)
 
@@ -16,6 +22,7 @@ static int	 g_nFontHeight;
 static COLORREF g_crPreviewFG;
 static COLORREF g_crPreviewBG;
 static COLORREF g_rgbTempColourList[TXC_MAX_COLOURS];
+static LONG		g_tempFontSmoothing;
 
 static COLORREF g_rgbAutoColourList[TXC_MAX_COLOURS] = 
 {
@@ -33,8 +40,6 @@ static COLORREF g_rgbAutoColourList[TXC_MAX_COLOURS] =
 
 #define COLORECT_WIDTH  32
 #define COLORECT_OFFSET 4
-
-HFONT EasyCreateFont(int nPointSize, BOOL fBold, TCHAR *szFace);
 
 #define NUM_DEFAULT_COLOURS 17
 
@@ -88,6 +93,12 @@ DWORD GetCurrentListData(HWND hwnd, UINT uCtrl)
 {
 	int idx = SendDlgItemMessage(hwnd, uCtrl, LB_GETCURSEL, 0, 0);
 	return    SendDlgItemMessage(hwnd, uCtrl, LB_GETITEMDATA, idx == -1 ? 0 : idx, 0);
+}
+
+DWORD AddComboStringWithData(HWND hwnd, UINT uCtrl, TCHAR *szText, DWORD data)
+{
+	int idx = SendDlgItemMessage(hwnd, uCtrl, CB_ADDSTRING, 0, (LONG)szText);
+	return    SendDlgItemMessage(hwnd, uCtrl, CB_SETITEMDATA, idx, data);
 }
 
 //
@@ -276,7 +287,7 @@ BOOL FontCombo_DrawItem(HWND hwnd, DRAWITEMSTRUCT *dis)
 	
 	// draw the text
 	ExtTextOut(dis->hDC, xpos, ypos,
-		ETO_OPAQUE, &dis->rcItem, szText, strlen(szText), 0);
+		ETO_CLIPPED|ETO_OPAQUE, &dis->rcItem, szText, strlen(szText), 0);
 
 	// draw a 'TT' icon if the font is TRUETYPE
 	if(fTrueType)
@@ -338,7 +349,7 @@ BOOL ColourCombo_DrawItem(HWND hwnd, UINT uCtrlId, DRAWITEMSTRUCT *dis, BOOL fSe
 	xpos = dis->rcItem.left + boxsize + 4 + 4;
 	
 	ExtTextOut(dis->hDC, xpos, ypos, 
-		ETO_OPAQUE, &rect, szText, lstrlen(szText), 0);
+		ETO_CLIPPED|ETO_OPAQUE, &rect, szText, lstrlen(szText), 0);
 	
 	if((dis->itemState & ODS_FOCUS) && !(dis->itemState & ODS_NOFOCUSRECT))
 	{
@@ -514,6 +525,7 @@ void UpdatePreviewPane(HWND hwnd)
 
 	g_hPreviewFont = EasyCreateFont(size, 
 								IsDlgButtonChecked(hwnd, IDC_BOLD),
+								g_tempFontSmoothing,
 								szFaceName);
 
 	idx  = SendDlgItemMessage(hwnd, IDC_ITEMLIST, LB_GETCURSEL, 0, 0);
@@ -643,7 +655,8 @@ BOOL InitFontOptionsDlg(HWND hwnd)
 	SetComboItemHeight(GetDlgItem(hwnd, IDC_BGCOLCOMBO), 14);
 	SetComboItemHeight(GetDlgItem(hwnd, IDC_FONTLIST), 16);
 	
-	g_hPreviewFont = EasyCreateFont(g_nFontSize, g_fFontBold, g_szFontName);
+	g_tempFontSmoothing = g_nFontSmoothing;
+	g_hPreviewFont = EasyCreateFont(g_nFontSize, g_fFontBold, g_tempFontSmoothing, g_szFontName);
 
 	// Create the list of fonts
 	FillFontComboList(GetDlgItem(hwnd, IDC_FONTLIST));
@@ -696,13 +709,62 @@ BOOL InitFontOptionsDlg(HWND hwnd)
 
 	if((g_fPaddingFlags & LUCIDACONS) && lstrcmpi(g_szFontName, _T("Lucida Console")) == 0)
 	{
-		SetDlgItemInt(hwnd, IDC_PADDINGA, g_nPaddingAbove, 2);
-		SetDlgItemInt(hwnd, IDC_PADDINGB, g_nPaddingBelow, 1);
+		//SetDlgItemInt(hwnd, IDC_PADDINGA, g_nPaddingAbove, 2);
+		//SetDlgItemInt(hwnd, IDC_PADDINGB, g_nPaddingBelow, 1);
+		//SendDlgItemMessage(hwnd, IDC_
 	}
 
 	CheckDlgButton(hwnd, IDC_BOLD,    g_fFontBold);
 
 	return TRUE;
+}
+
+BOOL CALLBACK AdvancedDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
+{
+	char lookup[] = 
+	{ 
+		1,		// DEFAULT_QUALITY
+		1,		// ??
+		1,		// ??
+		0,		// NONANTIALIASED_QUALITY
+		2,		// ANTIALIASED_QUALITY
+		3,		// CLEARTYPE_QUALITY 
+	};
+
+	switch(msg)
+	{
+	case WM_INITDIALOG:
+		
+		AddComboStringWithData(hwnd, IDC_COMBO1, _T("None"),		NONANTIALIASED_QUALITY);
+		AddComboStringWithData(hwnd, IDC_COMBO1, _T("Default"),		DEFAULT_QUALITY);
+		AddComboStringWithData(hwnd, IDC_COMBO1, _T("Antialiased"), ANTIALIASED_QUALITY);
+		AddComboStringWithData(hwnd, IDC_COMBO1, _T("ClearType"),	CLEARTYPE_QUALITY);
+
+		SendDlgItemMessage(hwnd, IDC_COMBO1, CB_SETCURSEL, lookup[g_tempFontSmoothing], 0);
+
+		return TRUE;
+
+	case WM_CLOSE:
+		EndDialog(hwnd, FALSE);
+		return TRUE;
+
+	case WM_COMMAND:
+		switch(LOWORD(wParam))
+		{
+		case IDCANCEL:
+			EndDialog(hwnd, FALSE);
+			return TRUE;
+
+		case IDOK:
+			g_tempFontSmoothing = GetCurrentComboData(hwnd, IDC_COMBO1);
+			EndDialog(hwnd, TRUE);
+			return TRUE;
+		}
+
+		return FALSE;
+	}
+
+	return FALSE;
 }
 
 //
@@ -757,6 +819,8 @@ BOOL CALLBACK FontOptionsDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
 			g_nPaddingBelow = GetDlgItemInt(hwnd, IDC_PADDINGB, 0, 0);
 
 			memcpy(g_rgbColourList, g_rgbTempColourList, sizeof(COLORREF) * TXC_MAX_COLOURS);
+
+			g_nFontSmoothing = g_tempFontSmoothing;
 			
 			return TRUE;
 		}
@@ -767,6 +831,15 @@ BOOL CALLBACK FontOptionsDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
 
 		switch(LOWORD(wParam))
 		{
+		case IDC_ADVANCED:
+	
+			if(DialogBoxParam(GetModuleHandle(0), MAKEINTRESOURCE(IDD_FONTEXTRA), hwnd, AdvancedDlgProc, 0))
+			{
+				UpdatePreviewPane(hwnd);
+			}
+
+			return TRUE;
+
 		case IDCANCEL:
 			return TRUE;
 

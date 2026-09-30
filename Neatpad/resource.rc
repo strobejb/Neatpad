@@ -80,6 +80,7 @@ END
 // Icon with lowest ID value placed first to ensure application icon
 // remains consistent on all systems.
 IDI_ICON1               ICON    DISCARDABLE     "icon1.ico"
+IDI_ICON2               ICON    DISCARDABLE     "icon2.ico"
 
 /////////////////////////////////////////////////////////////////////////////
 //
@@ -91,6 +92,138 @@ BEGIN
     "N",            IDM_FILE_NEW,           VIRTKEY, CONTROL, NOINVERT
     "O",            IDM_FILE_OPEN,          VIRTKEY, CONTROL, NOINVERT
 END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Dialog
+//
+
+IDD_OPTIONS DIALOGEX 0, 0, 290, 205
+STYLE DS_FIXEDSYS | DS_CONTROL | WS_CHILD
+EXSTYLE WS_EX_CONTROLPARENT
+FONT 8, "MS Shell Dlg"
+BEGIN
+    GROUPBOX        "Settings",IDC_STATIC,7,7,276,72
+    CONTROL         "&Remember window position",IDC_CHECK1,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,15,20,102,10
+    CONTROL         "&Remember last window position for each file",
+                    IDC_CHECK2,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,15,34,
+                    153,10
+    CONTROL         "Add to &Explorer context menu",IDC_CHECK3,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,15,47,109,10
+    CONTROL         "&Replace Notepad as default editor",IDC_CHECK4,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,15,59,124,10
+    GROUPBOX        "Tabs",IDC_STATIC,7,87,276,55
+    LTEXT           "&Tab size:",IDC_STATIC,16,103,38,8
+    EDITTEXT        IDC_EDIT1,63,100,40,14,ES_AUTOHSCROLL
+    CONTROL         "Spin1",IDC_SPIN1,"msctls_updown32",UDS_SETBUDDYINT | 
+                    UDS_ALIGNRIGHT | UDS_AUTOBUDDY | UDS_ARROWKEYS,100,100,
+                    10,14
+    LTEXT           "&Indent size:",IDC_STATIC,16,120,44,8
+    EDITTEXT        IDC_EDIT2,63,117,40,14,ES_AUTOHSCROLL
+    CONTROL         "Spin2",IDC_SPIN2,"msctls_updown32",UDS_SETBUDDYINT | 
+                    UDS_ALIGNRIGHT | UDS_AUTOBUDDY | UDS_ARROWKEYS,100,117,
+                    10,14
+    CONTROL         "Insert &Spaces",IDC_RADIO1,"Button",BS_AUTORADIOBUTTON | 
+                    WS_GROUP,118,99,71,10
+    CONTROL         "&Keep Tabs",IDC_RADIO2,"Button",BS_AUTORADIOBUTTON,118,
+                    111,65,10
+    CONTROL         "&Auto indent",IDC_CHECK5,"Button",BS_AUTOCHECKBOX | 
+                    WS_TABSTOP,118,124,64,10
+    PUSHBUTTON      "&Defaults",IDC_DEFAULTS,223,184,60,14
+END
+
+IDD_FONT DIALOGEX 0, 0, 290, 205
+STYLE DS_FIXEDSYS | DS_CONTROL | WS_CHILD
+EXSTYLE WS_EX_CONTROLPARENT
+FONT 8, "MS Shell Dlg"
+BEGIN
+    LTEXT           "Font (bold type indicates fixed-width font):",
+                    IDC_STATIC,7,7,179,8
+    COMBOBOX        IDC_FONTLIST,7,18,220,139,CBS_DROPDOWNLIST | 
+                    CBS_OWNERDRAWFIXED | CBS_SORT | CBS_HASSTRINGS | 
+                    WS_VSCROLL | WS_TABSTOP
+    LTEXT           "&Size:",IDC_STATIC,232,7,25,8
+    COMBOBOX        IDC_SIZELIST,232,17,48,98,CBS_DROPDOWN | WS_VSCROLL | 
+                    WS_TABSTOP
+    LTEXT           "&Display items:",IDC_STATIC,7,38,44,8
+    LISTBOX         IDC_ITEMLIST,7,49,124,58,LBS_NOINTEGRALHEIGHT | 
+                    WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Item &foreground:",IDC_STATIC,138,38,69,8
+    COMBOBOX        IDC_FGCOLCOMBO,138,49,80,95,CBS_DROPDOWNLIST | 
+                    CBS_OWNERDRAWFIXED | CBS_HASSTRINGS | WS_VSCROLL | 
+                    WS_TABSTOP
+    PUSHBUTTON      "Custom...",IDC_BUTTON2,223,49,60,14
+    LTEXT           "Item &background:",IDC_STATIC,138,67,76,8
+    COMBOBOX        IDC_BGCOLCOMBO,138,78,80,95,CBS_DROPDOWNLIST | 
+                    CBS_OWNERDRAWFIXED | CBS_HASSTRINGS | WS_VSCROLL | 
+                    WS_TABSTOP
+    PUSHBUTTON      "Custom...",IDC_BUTTON3,223,78,60,14
+    CONTROL         "&Bold",IDC_BOLD,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,
+                    138,98,41,10
+    LTEXT           "Sample:",IDC_STATIC,7,115,41,8
+    LTEXT           "Static",IDC_PREVIEW,7,126,276,36,SS_NOTIFY
+    LTEXT           "Line spacing (top && bottom):",IDC_STATIC,7,173,108,8
+    EDITTEXT        IDC_PADDINGA,8,184,60,14,ES_AUTOHSCROLL
+    CONTROL         "Spin1",IDC_SPIN1,"msctls_updown32",UDS_SETBUDDYINT | 
+                    UDS_ALIGNRIGHT | UDS_AUTOBUDDY | UDS_ARROWKEYS,56,184,9,
+                    14
+    EDITTEXT        IDC_PADDINGB,71,184,60,14,ES_AUTOHSCROLL
+    CONTROL         "Spin2",IDC_SPIN2,"msctls_updown32",UDS_SETBUDDYINT | 
+                    UDS_ALIGNRIGHT | UDS_AUTOBUDDY | UDS_ARROWKEYS,111,184,9,
+                    14
+    PUSHBUTTON      "&Advanced...",IDC_ADVANCED,156,184,60,14
+    PUSHBUTTON      "&Defaults",IDC_DEFAULTS,223,184,60,14
+END
+
+IDD_FONTEXTRA DIALOGEX 0, 0, 199, 74
+STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU | DS_FIXEDSYS
+EXSTYLE WS_EX_CONTROLPARENT
+CAPTION "Font Options"
+FONT 8, "MS Shell Dlg"
+BEGIN
+    LTEXT           "Font &smoothing:",IDC_STATIC,7,7,56,8
+    COMBOBOX        IDC_COMBO1,7,17,124,30,CBS_DROPDOWNLIST | WS_VSCROLL | 
+                    WS_TABSTOP
+    DEFPUSHBUTTON   "OK",IDOK,142,7,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,142,24,50,14
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// DESIGNINFO
+//
+
+#ifdef APSTUDIO_INVOKED
+GUIDELINES DESIGNINFO DISCARDABLE 
+BEGIN
+    IDD_OPTIONS, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 283
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 198
+    END
+
+    IDD_FONT, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 283
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 198
+    END
+
+    IDD_FONTEXTRA, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 192
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 67
+    END
+END
+#endif    // APSTUDIO_INVOKED
 
 #endif    // English (U.K.) resources
 /////////////////////////////////////////////////////////////////////////////

@@ -41,6 +41,9 @@ LONG TextView::OnLButtonDown(UINT nFlags, int mx, int my)
 
 	SetCaretPos(px, (nLineNo - m_nVScrollPos) * m_nLineHeight);
 
+	// remove any existing selection
+	InvalidateRange(m_nSelectionStart, m_nSelectionEnd);
+
 	// reset cursor and selection offsets to the same location
 	m_nSelectionStart	= nFileOff;
 	m_nSelectionEnd		= nFileOff;
@@ -49,7 +52,6 @@ LONG TextView::OnLButtonDown(UINT nFlags, int mx, int my)
 	// set capture for mouse-move selections
 	m_fMouseDown = true;
 	SetCapture(m_hWnd);
-	RefreshWindow();
 
 	return 0;
 }
@@ -63,9 +65,15 @@ LONG TextView::OnLButtonUp(UINT nFlags, int mx, int my)
 {
 	if(m_fMouseDown)
 	{
+		// cancel the scroll-timer if it is still running
+		if(m_nScrollTimer != 0)
+		{
+			KillTimer(m_hWnd, m_nScrollTimer);
+			m_nScrollTimer = 0;
+		}
+
 		m_fMouseDown = false;
 		ReleaseCapture();
-		RefreshWindow();
 	}
 
 	return 0;
@@ -81,7 +89,34 @@ LONG TextView::OnMouseMove(UINT nFlags, int mx, int my)
 	if(m_fMouseDown)
 	{
 		ULONG	nLineNo, nCharOff, nFileOff;
-		int		cx;
+
+		RECT	rect;
+		POINT	pt = { mx, my };
+		int		cx;					// caret coordinates
+
+		// get the non-scrolling area (an even no. of lines)
+		GetClientRect(m_hWnd, &rect);
+		rect.bottom -= rect.bottom % m_nLineHeight;
+
+		// If mouse is within this area, we don't need to scroll
+		if(PtInRect(&rect, pt))
+		{
+			if(m_nScrollTimer != 0)
+			{
+				KillTimer(m_hWnd, m_nScrollTimer);
+				m_nScrollTimer = 0;
+			}
+		}
+		// If mouse is outside window, start a timer in
+		// order to generate regular scrolling intervals
+		else 
+		{
+			if(m_nScrollTimer == 0)
+			{
+				m_nScrollCounter = 0;
+				m_nScrollTimer   = SetTimer(m_hWnd, 1, 10, 0);
+			}
+		}
 
 		// get new cursor offset+coordinates
 		MouseCoordToFilePos(mx, my, &nLineNo, &nCharOff, &nFileOff, &cx);
@@ -92,17 +127,94 @@ LONG TextView::OnMouseMove(UINT nFlags, int mx, int my)
 			// redraw from old selection-pos to new position
 			InvalidateRange(m_nSelectionEnd, nFileOff);
 
-			SetCaretPos(cx, (nLineNo - m_nVScrollPos) * m_nLineHeight);
-
-			// adjust the cursor + selection *end* to the new offset
+			// adjust the cursor + selection to the new offset
 			m_nSelectionEnd = nFileOff;
 			m_nCursorOffset	= nFileOff;
 		}
+		
+		// always set the caret position because we might be scrolling
+		SetCaretPos(cx, (nLineNo - m_nVScrollPos) * m_nLineHeight);
 	}
 
 	return 0;
 }
 
+//
+//	WM_TIMER handler
+//
+//	Used to create regular scrolling 
+//
+LONG TextView::OnTimer(UINT nTimerId)
+{
+	int	  dx = 0, dy = 0;	// scrolling vectors
+	RECT  rect;
+	POINT pt;
+	
+	// find client area, but make it an even no. of lines
+	GetClientRect(m_hWnd, &rect);
+	rect.bottom -= rect.bottom % m_nLineHeight;
+
+	// get the mouse's client-coordinates
+	GetCursorPos(&pt);
+	ScreenToClient(m_hWnd, &pt);
+
+	//
+	// scrolling up / down??
+	//
+	if(pt.y < 0)					
+		dy = ScrollDir(m_nScrollCounter, pt.y);
+
+	else if(pt.y >= rect.bottom)	
+		dy = ScrollDir(m_nScrollCounter, pt.y - rect.bottom);
+
+	//
+	// scrolling left / right?
+	//
+	if(pt.x < 0)					
+		dx = ScrollDir(m_nScrollCounter, pt.x);
+
+	else if(pt.x > rect.right)		
+		dx = ScrollDir(m_nScrollCounter, pt.x - rect.right);
+
+	//
+	// Scroll the window but don't update any invalid
+	// areas - we will do this manually after we have 
+	// repositioned the caret
+	//
+	HRGN hrgnUpdate = ScrollRgn(dx, dy, true);
+
+	//
+	// do the redraw now that the selection offsets are all 
+	// pointing to the right places and the scroll positions are valid.
+	//
+	if(hrgnUpdate != NULL)
+	{
+		// We perform a "fake" WM_MOUSEMOVE for two reasons:
+		//
+		// 1. To get the cursor/caret/selection offsets set to the correct place
+		//    *before* we redraw (so everything is synchronized correctly)
+		//
+		// 2. To invalidate any areas due to mouse-movement which won't
+		//    get done until the next WM_MOUSEMOVE - and then it would
+		//    be too late because we need to redraw *now*
+		//
+		OnMouseMove(0, pt.x, pt.y);
+
+		// invalidate the area returned by ScrollRegion
+		InvalidateRgn(m_hWnd, hrgnUpdate, FALSE);
+		DeleteObject(hrgnUpdate);
+
+		// the next time we process WM_PAINT everything 
+		// should get drawn correctly!!
+		UpdateWindow(m_hWnd);
+	}
+	
+	// keep track of how many WM_TIMERs we process because
+	// we might want to skip the next one
+	m_nScrollCounter++;
+
+	return 0;
+}
 
 //
 //	Convert mouse(client) coordinates to a file-relative offset
@@ -326,6 +438,7 @@ LONG TextView::InvalidateRange(ULONG nStart, ULONG nFinish)
 
 	// erase up to the end of selection
 	ULONG offset = lineoff + charoff;
+	ULONG len = finish - charoff;
 	
 	xpos2 = xpos1;
 	
@@ -398,5 +511,27 @@ ULONG TextView::RepositionCaret()
 	SetCaretPos(xpos, ypos);
 	return 0;
 }
+
+//
+//	return direction to scroll (+1,-1 or 0) based on 
+//  distance of mouse from window edge
+//
+//	"counter" is used to achieve variable-speed scrolling
+//
+int ScrollDir(int counter, int distance)
+{
+	int amt;
+
+	// amount to scroll based on distance of mouse from window
+	if(abs(distance) < 16)			amt = 8;
+	else if(abs(distance) < 48)		amt = 3;
+	else							amt = 1;
+
+	if(counter % amt == 0)
+		return distance < 0 ? -1 : 1;
+	else
+		return 0;
+}
+
 
 

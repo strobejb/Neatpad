@@ -12,6 +12,7 @@
 #define IDD_DIALOG1                     107
 #define IDD_FONT                        107
 #define IDD_DIALOG2                     108
+#define IDD_FONTEXTRA                   112
 #define IDC_COMBO1                      1000
 #define IDC_FONTLIST                    1000
 #define IDC_COMBO2                      1001
@@ -39,23 +40,29 @@
 #define IDC_BOLD                        1018
 #define IDC_PADDINGA                    1019
 #define IDC_PADDINGB                    1020
+#define IDC_ADVANCED                    1021
 #define IDC_CHECK2                      1022
 #define IDC_CHECK3                      1023
 #define IDC_CHECK4                      1024
 #define IDC_PROGRESS1                   1025
+#define IDC_RADIO1                      1026
+#define IDC_RADIO2                      1027
+#define IDC_CHECK5                      1028
 #define IDM_FILE_NEW                    40001
 #define IDM_FILE_OPEN                   40002
 #define IDM_FILE_EXIT                   40003
 #define IDM_HELP_ABOUT                  40004
 #define IDM_VIEW_FONT                   40005
 
+#define IDC_STATIC                      -1
+
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
-#define _APS_NEXT_RESOURCE_VALUE        109
+#define _APS_NEXT_RESOURCE_VALUE        113
 #define _APS_NEXT_COMMAND_VALUE         40006
-#define _APS_NEXT_CONTROL_VALUE         1026
+#define _APS_NEXT_CONTROL_VALUE         1029
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif

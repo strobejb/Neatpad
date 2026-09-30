@@ -98,12 +98,28 @@ SOURCE=.\Neatpad.c
 # End Source File
 # Begin Source File
 
+SOURCE=.\Options.c
+# End Source File
+# Begin Source File
+
+SOURCE=.\OptionsFont.c
+# End Source File
+# Begin Source File
+
+SOURCE=.\OptionsMisc.c
+# End Source File
+# Begin Source File
+
 SOURCE=.\resource.rc
 # End Source File
 # End Group
 # Begin Group "Header Files"
 
 # PROP Default_Filter "h;hpp;hxx;hm;inl"
+# Begin Source File
+
+SOURCE=.\Neatpad.h
+# End Source File
 # Begin Source File
 
 SOURCE=.\resource.h

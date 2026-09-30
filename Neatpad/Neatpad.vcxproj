@@ -82,8 +82,12 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="Neatpad.c" />
+    <ClCompile Include="Options.c" />
+    <ClCompile Include="OptionsFont.c" />
+    <ClCompile Include="OptionsMisc.c" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Neatpad.h" />
     <ClInclude Include="resource.h" />
   </ItemGroup>
   <ItemGroup>
