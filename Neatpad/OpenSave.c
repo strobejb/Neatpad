@@ -6,7 +6,6 @@
 //	www.catch22.net
 //	Written by J Brown 2004
 //
-//	Freeware
 //
 #define _CRT_SECURE_NO_DEPRECATE
 #define _CRT_NON_CONFORMING_SWPRINTFS

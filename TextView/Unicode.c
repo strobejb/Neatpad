@@ -5,8 +5,6 @@
 //
 //	www.catch22.net
 //	Written by J Brown 2006
-//
-//	Freeware
 //	
 
 #define STRICT
