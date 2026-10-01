@@ -1,0 +1,142 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+      - 'tutorial/part-*'
+  # For existing tags (they predate this workflow, so pushing them won't trigger it):
+  #   gh workflow run release.yml -f tag=tutorial/part-07
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to build and release (e.g. v1.2.3 or tutorial/part-07)'
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
+  CONFIGURATION: Release
+  # The solution only defines Win32. Switch to x64 once x64 configurations exist
+  # (and the code is 64-bit clean: SetWindowLong -> SetWindowLongPtr etc.).
+  PLATFORM: Win32
+
+jobs:
+  release:
+    # Pinned: the projects use the v143 (VS 2022) toolset.
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ env.TAG }}
+
+      - name: Stamp version into resource.rc
+        id: version
+        shell: python
+        run: |
+          import os, re, sys
+
+          RC_PATH = "Neatpad/resource.rc"
+          tag = os.environ["TAG"]
+
+          if m := re.fullmatch(r"v(\d+)\.(\d+)\.(\d+)(?:[-+].*)?", tag):
+              major, minor, patch = map(int, m.groups())
+              display = tag[1:]                      # keeps any -prerelease suffix
+              title = f"Neatpad {display}"
+          elif m := re.fullmatch(r"tutorial/part-(\d+)", tag):
+              major, minor, patch = 0, int(m[1]), 0  # tutorial/part-07 -> 0.7.0
+              display = f"{major}.{minor}.{patch}"
+              title = f"Neatpad {display} (tutorial part {m[1]})"
+          else:
+              sys.exit(f"Unrecognised tag '{tag}': expected vX.Y.Z or tutorial/part-N")
+
+          build = 0
+          numeric = f"{major},{minor},{patch},{build}"
+          if any(n > 65535 for n in (major, minor, patch, build)):
+              sys.exit(f"Version {numeric} has a component > 65535 (VERSIONINFO limit)")
+
+          # latin-1 round-trips every byte (file is cp1252, e.g. the (c) sign);
+          # newline="" preserves CRLF.
+          with open(RC_PATH, encoding="latin-1", newline="") as f:
+              rc = f.read()
+
+          if "VS_VERSION_INFO" not in rc:
+              # Early tutorial parts have no version resource, so add one.
+              nl = "\r\n" if "\r\n" in rc else "\n"
+              rc += nl.join([
+                  "",
+                  "VS_VERSION_INFO VERSIONINFO",
+                  " FILEVERSION 0,0,0,0",
+                  " PRODUCTVERSION 0,0,0,0",
+                  " FILEFLAGSMASK 0x3fL",
+                  " FILEFLAGS 0x0L",
+                  " FILEOS 0x40004L",
+                  " FILETYPE 0x1L",
+                  " FILESUBTYPE 0x0L",
+                  "BEGIN",
+                  '    BLOCK "StringFileInfo"',
+                  "    BEGIN",
+                  '        BLOCK "080904b0"',
+                  "        BEGIN",
+                  '            VALUE "CompanyName", "Catch22 Productions"',
+                  '            VALUE "FileDescription", "Neatpad Text Editor"',
+                  '            VALUE "FileVersion", ""',
+                  '            VALUE "InternalName", "Neatpad"',
+                  '            VALUE "OriginalFilename", "Neatpad.exe"',
+                  '            VALUE "ProductName", "Neatpad"',
+                  '            VALUE "ProductVersion", ""',
+                  "        END",
+                  "    END",
+                  '    BLOCK "VarFileInfo"',
+                  "    BEGIN",
+                  '        VALUE "Translation", 0x809, 1200',
+                  "    END",
+                  "END",
+                  "",
+              ])
+
+          rc, n1 = re.subn(
+              r"^(\s*(?:FILE|PRODUCT)VERSION\s+)\d+\s*,\s*\d+\s*,\s*\d+\s*,\s*\d+",
+              rf"\g<1>{numeric}", rc, flags=re.M)
+          rc, n2 = re.subn(
+              r'(VALUE\s+"(?:File|Product)Version",\s*)"[^"]*"',
+              rf'\g<1>"{display}"', rc)
+          if (n1, n2) != (2, 2):
+              sys.exit(f"Expected 2+2 version replacements, got {n1}+{n2} in {RC_PATH}")
+
+          with open(RC_PATH, "w", encoding="latin-1", newline="") as f:
+              f.write(rc)
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"version={display}\ntitle={title}\n")
+          print(f"{tag} -> {numeric} / \"{display}\"")
+
+      - uses: microsoft/setup-msbuild@v2
+
+      - name: Build
+        run: msbuild Neatpad.sln /t:Neatpad /m /p:Configuration=${{ env.CONFIGURATION }} /p:Platform=${{ env.PLATFORM }}
+
+      - name: Collect artifact
+        shell: bash
+        run: |
+          mkdir dist
+          cp "$CONFIGURATION/Neatpad.exe" dist/neatpad.exe
+
+      - name: Publish release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TITLE: ${{ steps.version.outputs.title }}
+        run: |
+          # Tutorial releases must never become "Latest", even when run retrospectively.
+          latest=true
+          [[ "$TAG" == tutorial/* ]] && latest=false
+
+          # The release may already exist (created in the GitHub UI, or a re-run).
+          if ! gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$TAG" -R "$GITHUB_REPOSITORY" --verify-tag \
+              --title "$TITLE" --generate-notes --latest=$latest
+          fi
+          gh release upload "$TAG" dist/neatpad.exe -R "$GITHUB_REPOSITORY" --clobber
