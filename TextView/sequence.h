@@ -146,6 +146,7 @@ private:
 	//
 	buffer_control *alloc_buffer(size_t size);
 	buffer_control *alloc_modifybuffer(size_t size);
+	size_w			scan_buffer_lines(buffer_control *bc, size_w *line_offsets);
 	void			update_buffer_lines(buffer_control *bc);
 	bool			import_buffer(const seqchar *buf, size_t len, size_t *buffer_offset);
 

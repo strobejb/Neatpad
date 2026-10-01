@@ -619,6 +619,29 @@ void open_file_renders_across_view_boundary()
     delete[] data;
 }
 
+void open_file_handles_crlf_across_scan_boundary()
+{
+    sequence seq;
+    TCHAR path[MAX_PATH];
+    const size_w scan_size = MEM_BLOCK_SIZE / 4;
+    const size_t file_length = scan_size + 16;
+    char *data = new char[file_length];
+
+    memset(data, 'A', file_length);
+    data[scan_size - 1] = '\r';
+    data[scan_size] = '\n';
+    data[scan_size + 1] = 'B';
+
+    CHECK(write_temp_file(data, file_length, path));
+    CHECK(seq.open(path, true));
+    CHECK(seq.linecount() == 2);
+    expect_line_offset(seq, 1, scan_size + 1);
+
+    seq.clear();
+    DeleteFile(path);
+    delete[] data;
+}
+
 struct test_case
 {
     const char *name;
@@ -666,6 +689,7 @@ const test_case tests[] =
     { "linefromoffset_handles_crlf_split_across_spans", linefromoffset_handles_crlf_split_across_spans },
     { "open_file_renders_file_backed_content", open_file_renders_file_backed_content },
     { "open_file_renders_across_view_boundary", open_file_renders_across_view_boundary },
+    { "open_file_handles_crlf_across_scan_boundary", open_file_handles_crlf_across_scan_boundary },
 };
 }
 

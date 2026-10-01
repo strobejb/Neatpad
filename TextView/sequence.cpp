@@ -219,10 +219,76 @@ void sequence::debug2 ()
 	printf("\n\n");
 }
 
+size_w sequence::scan_buffer_lines(buffer_control *bc, size_w *line_offsets)
+{
+	size_w line = 0;
+	bool pending_cr = false;
+	size_w pending_line_offset = 0;
+	const size_w scan_size = MEM_BLOCK_SIZE / 4;
+
+	for(size_w offset = 0; offset < bc->length; )
+	{
+		size_w length = min(scan_size, bc->length - offset);
+		seqchar *source = bc->getptr(offset, length);
+
+		if(source == 0)
+			return line;
+
+		for(size_w i = 0; i < length; i++)
+		{
+			size_w absolute = offset + i;
+			seqchar ch = source[i];
+
+			if(pending_cr)
+			{
+				if(ch == '\n')
+				{
+					if(line_offsets)
+						line_offsets[line] = absolute + 1;
+
+					line++;
+					pending_cr = false;
+					continue;
+				}
+
+				if(line_offsets)
+					line_offsets[line] = pending_line_offset;
+
+				line++;
+				pending_cr = false;
+			}
+
+			if(ch == '\r')
+			{
+				pending_cr = true;
+				pending_line_offset = absolute + 1;
+			}
+			else if(ch == '\n')
+			{
+				if(line_offsets)
+					line_offsets[line] = absolute + 1;
+
+				line++;
+			}
+		}
+
+		offset += length;
+	}
+
+	if(pending_cr)
+	{
+		if(line_offsets)
+			line_offsets[line] = pending_line_offset;
+
+		line++;
+	}
+
+	return line;
+}
+
 void sequence::update_buffer_lines(buffer_control *bc)
 {
 	size_w count = 0;
-	size_w line = 0;
 
 	delete[] bc->line_offsets;
 	bc->line_offsets = 0;
@@ -231,45 +297,13 @@ void sequence::update_buffer_lines(buffer_control *bc)
 	if(bc->length == 0)
 		return;
 
-	count = 1;
-
-	for(size_w i = 0; i < bc->length; i++)
-	{
-		seqchar *ch = bc->getptr(i, 1);
-
-		if(*ch == '\r')
-		{
-			count++;
-
-			if(i + 1 < bc->length && *bc->getptr(i + 1, 1) == '\n')
-				i++;
-		}
-		else if(*ch == '\n')
-		{
-			count++;
-		}
-	}
+	count = scan_buffer_lines(bc, 0) + 1;
 
 	bc->line_offsets = new size_w[count];
 	bc->line_count = count;
-	bc->line_offsets[line++] = 0;
+	bc->line_offsets[0] = 0;
 
-	for(size_w i = 0; i < bc->length; i++)
-	{
-		seqchar *ch = bc->getptr(i, 1);
-
-		if(*ch == '\r')
-		{
-			if(i + 1 < bc->length && *bc->getptr(i + 1, 1) == '\n')
-				i++;
-
-			bc->line_offsets[line++] = i + 1;
-		}
-		else if(*ch == '\n')
-		{
-			bc->line_offsets[line++] = i + 1;
-		}
-	}
+	scan_buffer_lines(bc, bc->line_offsets + 1);
 }
 
 sequence::span* sequence::alloc_span(size_w offset, size_w length, int buffer, span *next, span *prev)
