@@ -56,14 +56,21 @@ TextDocument::~TextDocument()
 //
 bool TextDocument::init(TCHAR *filename)
 {
-	HANDLE hFile;
-	
-	hFile = CreateFile(filename, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
+	clear();
 
-	if(hFile == INVALID_HANDLE_VALUE)
+	if(!m_seq.open(filename, false))
 		return false;
 
-	return init(hFile);
+	m_nDocLength_bytes = m_seq.size();
+
+	// try to detect if this is an ascii/unicode/utf8 file
+	m_nFileFormat = detect_file_format(&m_nHeaderSize);
+
+	// work out where each line of text starts
+	if(!init_linebuffer())
+		clear();
+
+	return true;
 }
 
 //

@@ -116,7 +116,29 @@ bool sequence::init (const seqchar *buffer, size_t length)
 //
 bool sequence::open(TCHAR *filename, bool readonly)
 {
-	return false;
+	clear();
+
+	if(!init())
+		return false;
+
+	buffer_control *bc = new buffer_control;
+
+	if(bc == 0 || !bc->init_file(filename, readonly))
+	{
+		delete bc;
+		return false;
+	}
+
+	bc->id = buffer_list.size();
+	buffer_list.push_back(bc);
+	update_buffer_lines(bc);
+
+	span *sptr = alloc_span(0, bc->length, bc->id, tail, head);
+	head->next = sptr;
+	tail->prev = sptr;
+
+	sequence_length = bc->length;
+	return true;
 }
 
 //
@@ -289,9 +311,14 @@ void sequence::update_span_line_data(span *sptr)
 	if(sptr->length == 0)
 		return;
 
-	seqchar *source = bc->getptr(sptr->offset, sptr->length);
-	sptr->starts_with_lf = source[0] == '\n';
-	sptr->ends_with_cr = source[sptr->length - 1] == '\r';
+	seqchar *first = bc->getptr(sptr->offset, 1);
+	seqchar *last = bc->getptr(sptr->offset + sptr->length - 1, 1);
+
+	if(first == 0 || last == 0)
+		return;
+
+	sptr->starts_with_lf = *first == '\n';
+	sptr->ends_with_cr = *last == '\r';
 
 	if(bc->line_count == 0)
 		return;
@@ -610,21 +637,32 @@ bool sequence::lineoffset(size_w line, size_w *offset) const
 			return true;
 		}
 
-		seqchar *source = bc->getptr(sptr->offset, sptr->length);
-
 		for(size_w i = 0; i < sptr->length; i++)
 		{
-			if(source[i] == '\r')
+			seqchar *ch = bc->getptr(sptr->offset + i, 1);
+
+			if(ch == 0)
+				return false;
+
+			if(*ch == '\r')
 			{
 				size_w nextoffset = spanindex + i + 1;
 				current_line++;
 
-				if(i + 1 < sptr->length && source[i + 1] == '\n')
+				if(i + 1 < sptr->length)
 				{
-					i++;
-					nextoffset++;
+					seqchar *nextch = bc->getptr(sptr->offset + i + 1, 1);
+
+					if(nextch == 0)
+						return false;
+
+					if(*nextch == '\n')
+					{
+						i++;
+						nextoffset++;
+					}
 				}
-				else if(i + 1 == sptr->length && sptr->next != tail && sptr->next->starts_with_lf)
+				else if(sptr->next != tail && sptr->next->starts_with_lf)
 				{
 					nextoffset++;
 				}
@@ -635,7 +673,7 @@ bool sequence::lineoffset(size_w line, size_w *offset) const
 					return true;
 				}
 			}
-			else if(source[i] == '\n')
+			else if(*ch == '\n')
 			{
 				if(i == 0 && prev_ends_with_cr)
 					continue;
@@ -1279,13 +1317,25 @@ size_w sequence::render(size_w index, seqchar *dest, size_w length) const
 	while(length && sptr != tail)
 	{
 		size_w copylen   = min(sptr->length - spanoffset, length);
-		seqchar *source  = buffer_list[sptr->buffer]->getptr(sptr->offset, sptr->length);
+		seqchar *source;
 
-		memcpy(dest, source + spanoffset, copylen * sizeof(seqchar));
+		while(copylen)
+		{
+			size_w partlen = min(copylen, (size_w)100);
+
+			source = buffer_list[sptr->buffer]->getptr(sptr->offset + spanoffset, partlen);
+
+			if(source == 0)
+				return total;
+
+			memcpy(dest, source, partlen * sizeof(seqchar));
 		
-		dest	+= copylen;
-		length	-= copylen;
-		total	+= copylen;
+			dest		+= partlen;
+			spanoffset	+= partlen;
+			copylen		-= partlen;
+			length		-= partlen;
+			total		+= partlen;
+		}
 
 		sptr = sptr->next;
 		spanoffset = 0;

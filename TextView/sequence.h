@@ -18,6 +18,7 @@ typedef unsigned long	  size_w;
 #endif
 
 const size_w MAX_SEQUENCE_LENGTH = ((size_w)(-1) / sizeof(seqchar));
+const size_w MEM_BLOCK_SIZE = 0x40000;
 
 //
 //	sequence class!
@@ -424,15 +425,29 @@ public:
 
 	bool	init(size_t maxsize);
 	bool	init(const seqchar *buffer, size_w length);
+	bool	init_file(TCHAR *filename, bool readonly);
 	bool	append(const seqchar *buffer, size_t length, size_t *buffer_offset);
 	seqchar *getptr(size_w offset, size_w length);
 	void	clear();
 
+	enum { MAX_VIEWS = 4 };
+	struct buffer_view
+	{
+		seqchar	*buffer;
+		size_w	 offset;
+		size_w	 length;
+		bool	 initialized;
+	};
+
 	seqchar	*buffer;
+	buffer_view viewlist[MAX_VIEWS];
 	size_w	 length;
 	size_w	 maxsize;
 	size_w	*line_offsets;
 	size_w	 line_count;
+	void	*fp;
+	bool	 own_memory;
+	bool	 readonly;
 	int		 id;
 };
 

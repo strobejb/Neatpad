@@ -38,6 +38,42 @@ bool replace_bytes(sequence &seq, size_w index, const char *text, size_w erase_l
     return seq.replace(index, reinterpret_cast<const seqchar *>(text), strlen(text), erase_length);
 }
 
+bool write_temp_file(const char *data, size_t length, TCHAR path[MAX_PATH])
+{
+    TCHAR temp_path[MAX_PATH];
+    HANDLE hFile;
+    DWORD written = 0;
+    bool ok;
+
+    path[0] = 0;
+
+    if(GetTempPath(MAX_PATH, temp_path) == 0)
+        return false;
+
+    if(GetTempFileName(temp_path, TEXT("seq"), 0, path) == 0)
+        return false;
+
+    hFile = CreateFile(path, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, FILE_ATTRIBUTE_TEMPORARY, 0);
+
+    if(hFile == INVALID_HANDLE_VALUE)
+	{
+		DeleteFile(path);
+		path[0] = 0;
+        return false;
+	}
+
+    ok = WriteFile(hFile, data, static_cast<DWORD>(length), &written, 0) && written == length;
+    CloseHandle(hFile);
+
+    if(!ok)
+    {
+        DeleteFile(path);
+        path[0] = 0;
+    }
+
+    return ok;
+}
+
 std::string render_content(const sequence &seq)
 {
     std::string actual;
@@ -540,6 +576,49 @@ void linefromoffset_handles_crlf_split_across_spans()
     expect_line_from_offset(seq, 8, 1, 5);
 }
 
+void open_file_renders_file_backed_content()
+{
+    sequence seq;
+    TCHAR path[MAX_PATH];
+    const char *text = "first\r\nsecond\nthird";
+
+    CHECK(write_temp_file(text, strlen(text), path));
+    CHECK(seq.open(path, true));
+    expect_content(seq, text);
+    CHECK(seq.linecount() == 3);
+    expect_line_offset(seq, 1, 7);
+    expect_line_offset(seq, 2, 14);
+
+	seq.clear();
+    DeleteFile(path);
+}
+
+void open_file_renders_across_view_boundary()
+{
+    sequence seq;
+    TCHAR path[MAX_PATH];
+    const size_t file_length = MEM_BLOCK_SIZE + 128;
+    const size_w render_offset = MEM_BLOCK_SIZE - 60;
+    const size_w render_length = 140;
+    char *data = new char[file_length];
+    std::string actual;
+
+    for(size_t i = 0; i < file_length; i++)
+        data[i] = static_cast<char>('A' + (i % 26));
+
+    CHECK(write_temp_file(data, file_length, path));
+    CHECK(seq.open(path, true));
+    CHECK(seq.size() == file_length);
+
+    actual.resize(render_length);
+    CHECK(seq.render(render_offset, reinterpret_cast<seqchar *>(&actual[0]), render_length) == render_length);
+    CHECK(memcmp(actual.data(), data + render_offset, render_length) == 0);
+
+	seq.clear();
+    DeleteFile(path);
+    delete[] data;
+}
+
 struct test_case
 {
     const char *name;
@@ -585,6 +664,8 @@ const test_case tests[] =
     { "linefromoffset_handles_basic_newlines", linefromoffset_handles_basic_newlines },
     { "linefromoffset_handles_crlf", linefromoffset_handles_crlf },
     { "linefromoffset_handles_crlf_split_across_spans", linefromoffset_handles_crlf_split_across_spans },
+    { "open_file_renders_file_backed_content", open_file_renders_file_backed_content },
+    { "open_file_renders_across_view_boundary", open_file_renders_across_view_boundary },
 };
 }
 
