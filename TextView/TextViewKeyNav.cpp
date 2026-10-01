@@ -51,18 +51,37 @@ VOID TextView::MoveLineUp(int numLines)
 {
 	USPDATA			* uspData;
 	ULONG			  lineOffset;
+	ULONG			  targetLine;
+	ULONG			  eofLine;
+	ULONG			  eofOffset;
+	ULONG			  docLength = m_pTextDoc->size();
 	
 	int				  charPos;
 	BOOL			  trailing;
 
-	m_nCurrentLine -= min(m_nCurrentLine, (unsigned)numLines);
+	if(m_nCursorOffset >= docLength && docLength > 0)
+	{
+		if(!m_pTextDoc->lineinfo_from_offset(docLength - 1, &targetLine, 0, 0, 0, 0))
+			return;
+
+		if(!m_pTextDoc->lineinfo_from_offset(docLength, &eofLine, &eofOffset, 0, 0, 0) || eofOffset < docLength)
+			targetLine -= min(targetLine, (unsigned)numLines);
+		else if(numLines > 1)
+			targetLine -= min(targetLine, (unsigned)(numLines - 1));
+	}
+	else
+	{
+		targetLine = m_nCurrentLine - min(m_nCurrentLine, (unsigned)numLines);
+	}
 
 	// get Uniscribe data for prev line
-	uspData = GetUspData(0, m_nCurrentLine, &lineOffset);
+	if((uspData = GetUspData(0, targetLine, &lineOffset)) == 0)
+		return;
 
 	// move up to character nearest the caret-anchor positions
 	UspXToOffset(uspData, m_nAnchorPosX, &charPos, &trailing, 0);
 
+	m_nCurrentLine = targetLine;
 	m_nCursorOffset = lineOffset + charPos + trailing;
 }
 
@@ -73,19 +92,39 @@ VOID TextView::MoveLineDown(int numLines)
 {
 	USPDATA			* uspData;
 	ULONG			  lineOffset;
+	ULONG			  eofLine;
+	ULONG			  targetLine;
+	ULONG			  newOffset;
+	ULONG			  docLength = m_pTextDoc->size();
 	
 	int				  charPos;
 	BOOL			  trailing;
 
-	m_nCurrentLine += min(m_nLineCount-m_nCurrentLine-1, (unsigned)numLines);
+	if(m_nLineCount == 0 || m_nCurrentLine >= m_nLineCount - 1)
+		return;
+
+	if(m_nCursorOffset >= docLength)
+	{
+		if(!m_pTextDoc->lineinfo_from_offset(docLength, &eofLine, 0, 0, 0, 0) || m_nCurrentLine >= eofLine)
+			return;
+	}
+
+	targetLine = m_nCurrentLine + min(m_nLineCount - m_nCurrentLine - 1, (unsigned)numLines);
 
 	// get Uniscribe data for prev line
-	uspData = GetUspData(0, m_nCurrentLine, &lineOffset);
+	if((uspData = GetUspData(0, targetLine, &lineOffset)) == 0)
+		return;
 
 	// move down to character nearest the caret-anchor position
 	UspXToOffset(uspData, m_nAnchorPosX, &charPos, &trailing, 0);
 
-	m_nCursorOffset = lineOffset + charPos + trailing;
+	newOffset = lineOffset + charPos + trailing;
+
+	if(newOffset > docLength)
+		newOffset = docLength;
+
+	m_nCurrentLine = targetLine;
+	m_nCursorOffset = newOffset;
 }
 
 //
@@ -349,7 +388,18 @@ VOID TextView::MoveFileStart()
 //
 VOID TextView::MoveFileEnd()
 {
-	m_nCursorOffset = m_pTextDoc->size();
+	ULONG docLength = m_pTextDoc->size();
+
+	if(docLength > 0)
+	{
+		ULONG offset = docLength > MEM_BLOCK_SIZE ? docLength - MEM_BLOCK_SIZE : 0;
+
+		m_pTextDoc->index_lines(offset, docLength - offset);
+		m_nLineCount = m_pTextDoc->linecount();
+		SetupScrollbars();
+	}
+
+	m_nCursorOffset = docLength;
 }
 
 

@@ -480,7 +480,6 @@ bool TextDocument::use_sequence_linebuffer() const
 	return m_nFileFormat == NCP_ASCII && m_nHeaderSize == 0;
 }
 
-
 //
 //	Return the number of lines
 //
@@ -498,6 +497,14 @@ bool TextDocument::linecount_known()
 		return m_seq.linecount_known();
 
 	return true;
+}
+
+bool TextDocument::lineno_known(ULONG lineno)
+{
+	if(!use_sequence_linebuffer())
+		return lineno < m_nNumLines;
+
+	return m_seq.line_number_known(lineno);
 }
 
 bool TextDocument::line_numbers_known(ULONG offset_chars, ULONG length_chars)
@@ -558,19 +565,37 @@ ULONG TextDocument::longestline(int tabwidth)
 //
 bool TextDocument::lineinfo_from_lineno(ULONG lineno, ULONG *lineoff_chars,  ULONG *linelen_chars, ULONG *lineoff_bytes, ULONG *linelen_bytes)
 {
+	// Use the sequence line index when the document is backed by lazy file buffers.
 	if(use_sequence_linebuffer())
 	{
 		size_w lineoff;
 		size_w nextoff;
 		size_w numlines = m_seq.linecount();
 
-		if(lineno >= numlines || !m_seq.lineoffset(lineno, &lineoff))
+		if((m_seq.linecount_known() && lineno >= numlines) || !m_seq.lineoffset(lineno, &lineoff))
 			return false;
 
-		if(lineno + 1 < numlines)
-			m_seq.lineoffset(lineno + 1, &nextoff);
-		else
+		// Lazy files may not know the next line number, so scan forward from this line's offset.
+		if(!m_seq.linecount_known())
+		{
+			if(!m_seq.next_lineoffset(lineoff, &nextoff))
+				nextoff = m_seq.size();
+		}
+		else if(lineno + 1 >= numlines || !m_seq.lineoffset(lineno + 1, &nextoff))
 			nextoff = m_seq.size();
+
+		// Index the visible line range so later line-number queries can become exact.
+		if(!m_seq.linecount_known())
+		{
+			size_w length = nextoff - lineoff;
+
+			if(length == 0)
+				length = 1;
+			else if(length > MEM_BLOCK_SIZE)
+				length = MEM_BLOCK_SIZE;
+
+			m_seq.index_lines(lineoff, length);
+		}
 
 		if(linelen_chars) *linelen_chars = nextoff - lineoff;
 		if(lineoff_chars) *lineoff_chars = lineoff;
@@ -606,6 +631,7 @@ bool TextDocument::lineinfo_from_offset(ULONG offset_chars, ULONG *lineno, ULONG
 	ULONG high = m_nNumLines-1;
 	ULONG line = 0;
 
+	// Use the sequence line index when translating a file offset back to a line.
 	if(use_sequence_linebuffer())
 	{
 		size_w line;
@@ -624,13 +650,31 @@ bool TextDocument::lineinfo_from_offset(ULONG offset_chars, ULONG *lineno, ULONG
 			return false;
 		}
 
+		// Ask the sequence for the exact line start containing this offset.
 		if(!m_seq.linefromoffset(offset_chars, &line, &lineoff))
 			return false;
 
-		if(line + 1 < numlines)
-			m_seq.lineoffset(line + 1, &nextoff);
-		else
+		// Lazy files find the current line exactly, then scan to discover its end.
+		if(!m_seq.linecount_known())
+		{
+			if(!m_seq.next_lineoffset(lineoff, &nextoff))
+				nextoff = m_seq.size();
+		}
+		else if(line + 1 >= numlines || !m_seq.lineoffset(line + 1, &nextoff))
 			nextoff = m_seq.size();
+
+		// Opportunistically index the line we just touched without scanning the whole file.
+		if(!m_seq.linecount_known())
+		{
+			size_w length = nextoff - lineoff;
+
+			if(length == 0)
+				length = 1;
+			else if(length > MEM_BLOCK_SIZE)
+				length = MEM_BLOCK_SIZE;
+
+			m_seq.index_lines(lineoff, length);
+		}
 
 		if(lineno)
 			*lineno = line;

@@ -488,6 +488,9 @@ LONG WINAPI TextView::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 	case TXM_GETEDITMODE:
 		return m_nEditMode;
 
+	case TXM_GETCURLINEKNOWN:
+		return m_pTextDoc->lineno_known(m_nCurrentLine);
+
 	case TXM_SETEDITMODE:
 		lParam		= m_nEditMode;
 		m_nEditMode = wParam;

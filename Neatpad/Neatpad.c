@@ -177,9 +177,17 @@ UINT TextViewNotifyHandler(HWND hwnd, NMHDR *nmhdr)
 	// cursor position has changed, update the statusbar info
 	case TVN_CURSOR_CHANGE:
 
-		SetStatusBarText(g_hwndStatusbar, 1, 0, _T(" Ln %d, Col %d"), 
-			TextView_GetCurLine(g_hwndTextView) + 1, 
-			TextView_GetCurCol(g_hwndTextView) + 1 );
+		if(TextView_GetCurLineKnown(g_hwndTextView))
+		{
+			SetStatusBarText(g_hwndStatusbar, 1, 0, _T(" Ln %d, Col %d"),
+				TextView_GetCurLine(g_hwndTextView) + 1,
+				TextView_GetCurCol(g_hwndTextView) + 1 );
+		}
+		else
+		{
+			SetStatusBarText(g_hwndStatusbar, 1, 0, _T(" Ln ???, Col %d"),
+				TextView_GetCurCol(g_hwndTextView) + 1 );
+		}
 
 		break;
 
@@ -282,13 +290,13 @@ UINT CommandHandler(HWND hwnd, UINT nCtrlId, UINT nCtrlCode, HWND hwndFrom)
 
 		return 0;
 		
-	case IDM_FILE_PRINT:
+	/*case IDM_FILE_PRINT:
 		
 		DeleteDC(
 			ShowPrintDlg(hwnd)
 			);
 		
-		return 0;
+		return 0;*/
 
 	case IDM_FILE_EXIT:
 		PostMessage(hwnd, WM_CLOSE, 0, 0);
@@ -353,20 +361,21 @@ UINT CommandHandler(HWND hwnd, UINT nCtrlId, UINT nCtrlCode, HWND hwndFrom)
 		TextView_SetStyleBool(g_hwndTextView, TXS_LONGLINES, g_fLongLines);
 		return 0;
 		
-	case IDM_VIEW_STATUSBAR:
+	/*case IDM_VIEW_STATUSBAR:
 		g_fShowStatusbar = !g_fShowStatusbar;
 		ShowWindow(g_hwndStatusbar, SW_HIDE);
 		GetClientRect(hwnd, &rect);
 		PostMessage(hwnd, WM_SIZE, 0, MAKEWPARAM(rect.right, rect.bottom));
-		return 0;
+		return 0;*/
 		
-	case IDM_VIEW_SAVEEXIT:
+	/*case IDM_VIEW_SAVEEXIT:
 		g_fSaveOnExit = !g_fSaveOnExit;
 		return 0;
 		
 	case IDM_VIEW_SAVENOW:
 		SaveRegSettings();
 		return 0;
+	*/
 		
 	case IDM_HELP_ABOUT:
 		ShowAboutDlg(hwnd);

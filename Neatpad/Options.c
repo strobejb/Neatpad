@@ -417,7 +417,7 @@ void LoadRegSettings()
 
 	GetSettingInt(hKey, _T("AddExplorer"),	 &g_fAddToExplorer, FALSE);
 	GetSettingInt(hKey, _T("ReplaceNotepad"), &g_fReplaceNotepad, FALSE);
-	GetSettingInt(hKey, _T("ShowStatusbar"), &g_fShowStatusbar, FALSE);
+	GetSettingInt(hKey, _T("ShowStatusbar"), &g_fShowStatusbar, TRUE);
 	LoadRecentFiles(hKey);
 	
 	// read the display colours

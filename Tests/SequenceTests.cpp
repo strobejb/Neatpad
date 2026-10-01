@@ -7,6 +7,7 @@
 #include <string>
 
 #include "../TextView/sequence.h"
+#include "../TextView/TextDocument.h"
 
 namespace
 {
@@ -63,6 +64,120 @@ bool write_temp_file(const char *data, size_t length, TCHAR path[MAX_PATH])
 	}
 
     ok = WriteFile(hFile, data, static_cast<DWORD>(length), &written, 0) && written == length;
+    CloseHandle(hFile);
+
+    if(!ok)
+    {
+        DeleteFile(path);
+        path[0] = 0;
+    }
+
+    return ok;
+}
+
+bool write_large_pattern_file(const char *line, size_t line_length, size_w line_count, TCHAR path[MAX_PATH])
+{
+    TCHAR temp_path[MAX_PATH];
+    HANDLE hFile;
+    DWORD written = 0;
+    size_w file_length = static_cast<size_w>(line_length) * line_count;
+    size_w first_length = min(file_length, MEM_BLOCK_SIZE);
+    size_w tail_length = min(file_length, MEM_BLOCK_SIZE);
+    size_w tail_offset = file_length - tail_length;
+    char *block = new char[MEM_BLOCK_SIZE];
+    LARGE_INTEGER pos;
+    bool ok = false;
+
+    path[0] = 0;
+
+    if(block == 0)
+        return false;
+
+    if(GetTempPath(MAX_PATH, temp_path) == 0)
+        goto cleanup;
+
+    if(GetTempFileName(temp_path, TEXT("seq"), 0, path) == 0)
+        goto cleanup;
+
+    hFile = CreateFile(path, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, FILE_ATTRIBUTE_TEMPORARY, 0);
+
+    if(hFile == INVALID_HANDLE_VALUE)
+    {
+        DeleteFile(path);
+        path[0] = 0;
+        goto cleanup;
+    }
+
+    for(size_w i = 0; i < first_length; i++)
+        block[i] = line[i % line_length];
+
+    ok = WriteFile(hFile, block, first_length, &written, 0) && written == first_length;
+
+    if(ok && tail_offset > first_length)
+    {
+        pos.QuadPart = tail_offset;
+        ok = SetFilePointerEx(hFile, pos, 0, FILE_BEGIN) != 0;
+    }
+
+    if(ok)
+    {
+        for(size_w i = 0; i < tail_length; i++)
+            block[i] = line[(tail_offset + i) % line_length];
+
+        ok = WriteFile(hFile, block, tail_length, &written, 0) && written == tail_length;
+    }
+
+    CloseHandle(hFile);
+
+    if(!ok)
+    {
+        DeleteFile(path);
+        path[0] = 0;
+    }
+
+cleanup:
+    delete[] block;
+    return ok;
+}
+
+bool write_numbered_lines_file(size_t line_count, TCHAR path[MAX_PATH])
+{
+    TCHAR temp_path[MAX_PATH];
+    HANDLE hFile;
+    char line[128];
+    bool ok = false;
+
+    path[0] = 0;
+
+    if(GetTempPath(MAX_PATH, temp_path) == 0)
+        return false;
+
+    if(GetTempFileName(temp_path, TEXT("seq"), 0, path) == 0)
+        return false;
+
+    hFile = CreateFile(path, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, FILE_ATTRIBUTE_TEMPORARY, 0);
+
+    if(hFile == INVALID_HANDLE_VALUE)
+    {
+        DeleteFile(path);
+        path[0] = 0;
+        return false;
+    }
+
+    ok = true;
+
+    for(size_t i = 0; i < line_count; i++)
+    {
+        DWORD written = 0;
+        int len = sprintf_s(line, sizeof(line), "line %u abcdefghijklmnopqrstuvwxyz 0123456789\r\n", static_cast<unsigned>(i));
+
+        if(!WriteFile(hFile, line, static_cast<DWORD>(len), &written, 0) || written != static_cast<DWORD>(len))
+        {
+            ok = false;
+            break;
+        }
+    }
+
     CloseHandle(hFile);
 
     if(!ok)
@@ -642,6 +757,195 @@ void open_file_handles_crlf_across_scan_boundary()
     delete[] data;
 }
 
+void lazy_file_insert_crlf_updates_visible_line_offsets()
+{
+    sequence seq;
+    TCHAR path[MAX_PATH];
+    const char *line = "line abcdefghijklmnopqrstuvwxyz 0123456789\r\n";
+    const size_t line_length = strlen(line);
+    const size_t line_count = MEM_BLOCK_SIZE / line_length + 32;
+    const size_t file_length = line_length * line_count;
+    char *data = new char[file_length];
+    size_w insert_offset = line_length * 9 + 37;
+    size_w line_offset = 0;
+
+    for(size_t i = 0; i < line_count; i++)
+        memcpy(data + i * line_length, line, line_length);
+
+    CHECK(write_temp_file(data, file_length, path));
+    CHECK(seq.open(path, true));
+
+    CHECK(seq.insert(insert_offset, reinterpret_cast<const seqchar *>("\r\n"), 2));
+    CHECK(seq.lineoffset(10, &line_offset));
+    CHECK(line_offset == insert_offset + 2);
+    CHECK(seq.lineoffset(11, &line_offset));
+    CHECK(line_offset == line_length * 10 + 2);
+
+    seq.clear();
+    DeleteFile(path);
+    delete[] data;
+}
+
+void textdocument_lineinfo_handles_lazy_end_after_insert()
+{
+    TextDocument doc;
+    TCHAR path[MAX_PATH];
+    const char *line = "line abcdefghijklmnopqrstuvwxyz 0123456789\r\n";
+    const size_t line_length = strlen(line);
+    const size_t line_count = MEM_BLOCK_SIZE / line_length + 32;
+    const size_t file_length = line_length * line_count;
+    char *data = new char[file_length];
+    ULONG line_no = 0;
+    ULONG line_offset = 0;
+    ULONG line_length_chars = 0;
+    TCHAR crlf[] = TEXT("\r\n");
+
+    for(size_t i = 0; i < line_count; i++)
+        memcpy(data + i * line_length, line, line_length);
+
+    CHECK(write_temp_file(data, file_length, path));
+    CHECK(doc.init(path));
+
+    CHECK(doc.insert_text(static_cast<ULONG>(line_length * 9 + 37), crlf, 2) == 2);
+    CHECK(doc.lineinfo_from_offset(doc.size(), &line_no, &line_offset, &line_length_chars, 0, 0));
+    CHECK(line_offset == doc.size());
+    CHECK(line_length_chars == 0);
+
+    doc.clear();
+    DeleteFile(path);
+    delete[] data;
+}
+
+void textdocument_final_sparse_line_ignores_estimated_linecount()
+{
+    TextDocument doc;
+    TCHAR path[MAX_PATH];
+    const size_t prefix_lines = MEM_BLOCK_SIZE / 3;
+    const size_t prefix_length = prefix_lines * 3;
+    const size_t file_length = MEM_BLOCK_SIZE * 4;
+    const ULONG insert_offset = 9 * 3 + 1;
+    const ULONG final_line = static_cast<ULONG>(prefix_lines + 1);
+    const ULONG final_line_offset = static_cast<ULONG>(prefix_length + 2);
+    char *data = new char[file_length];
+    ULONG line_offset = 0;
+    ULONG line_length_chars = 0;
+    TCHAR crlf[] = TEXT("\r\n");
+
+    memset(data, 'A', file_length);
+
+    for(size_t i = 0; i < prefix_lines; i++)
+    {
+        data[i * 3] = 'x';
+        data[i * 3 + 1] = '\r';
+        data[i * 3 + 2] = '\n';
+    }
+
+    CHECK(write_temp_file(data, file_length, path));
+    CHECK(doc.init(path));
+
+    CHECK(doc.insert_text(insert_offset, crlf, 2) == 2);
+    CHECK(doc.lineinfo_from_lineno(final_line, &line_offset, &line_length_chars, 0, 0));
+    CHECK(line_offset == final_line_offset);
+    CHECK(line_length_chars == doc.size() - final_line_offset);
+
+    doc.clear();
+    DeleteFile(path);
+    delete[] data;
+}
+
+void textdocument_ctrl_end_uses_final_page_when_lines_are_lazy()
+{
+    TextDocument doc;
+    TCHAR path[MAX_PATH];
+    const char *line = "line abcdefghijklmnopqrstuvwxyz 0123456789\r\n";
+    const size_t line_length = strlen(line);
+    const size_t line_count = (MEM_BLOCK_SIZE * 8) / line_length;
+    const size_t file_length = line_length * line_count;
+    char *data = new char[file_length];
+    ULONG target_line = static_cast<ULONG>(MEM_BLOCK_SIZE / line_length + 20);
+    ULONG line_no = 0;
+    ULONG line_offset = 0;
+    ULONG line_length_chars = 0;
+
+    for(size_t i = 0; i < line_count; i++)
+        memcpy(data + i * line_length, line, line_length);
+
+    CHECK(write_temp_file(data, file_length, path));
+    CHECK(doc.init(path));
+
+    CHECK(!doc.lineno_known(target_line));
+    CHECK(doc.lineinfo_from_lineno(target_line, &line_offset, &line_length_chars, 0, 0));
+    CHECK(doc.lineno_known(target_line));
+    CHECK(doc.lineinfo_from_offset(doc.size(), &line_no, &line_offset, &line_length_chars, 0, 0));
+    CHECK(line_offset == doc.size());
+    CHECK(line_length_chars == 0);
+    CHECK(line_no + 1 == doc.linecount());
+
+    doc.clear();
+    DeleteFile(path);
+    delete[] data;
+}
+
+void textdocument_lazy_line_numbers_continue_after_first_page()
+{
+    TextDocument doc;
+    TCHAR path[MAX_PATH];
+    ULONG first_unknown = 0;
+    ULONG line_offset = 0;
+    ULONG line_length_chars = 0;
+
+    CHECK(write_numbered_lines_file(20000, path));
+    CHECK(doc.init(path));
+
+    while(doc.lineno_known(first_unknown))
+        first_unknown++;
+
+    CHECK(first_unknown > 1000);
+    CHECK(!doc.lineno_known(first_unknown));
+
+    for(ULONG line = first_unknown; line < first_unknown + 100; line++)
+    {
+        CHECK(doc.lineinfo_from_lineno(line, &line_offset, &line_length_chars, 0, 0));
+        CHECK(doc.lineno_known(line));
+
+        CHECK(doc.lineinfo_from_offset(line_offset, &first_unknown, 0, 0, 0, 0));
+        CHECK(first_unknown == line);
+    }
+
+    doc.clear();
+    DeleteFile(path);
+}
+
+void textdocument_large_lazy_file_line_estimate_does_not_overflow()
+{
+    TextDocument doc;
+    TCHAR path[MAX_PATH];
+    const char *line = "line 0000000 abcdefghijklmnopqrstuvwxyz 0123456789\r\n";
+    const size_t line_length = strlen(line);
+    const size_w line_count = 5000000;
+    ULONG line_no = 0;
+    ULONG line_offset = 0;
+    ULONG line_length_chars = 0;
+
+    CHECK(write_large_pattern_file(line, line_length, line_count, path));
+    CHECK(doc.init(path));
+
+    CHECK(doc.linecount() > 4000000);
+    CHECK(doc.lineno_known(0));
+    CHECK(doc.lineno_known(10));
+    CHECK(doc.lineinfo_from_offset(doc.size(), &line_no, &line_offset, &line_length_chars, 0, 0));
+    CHECK(line_no > 4000000);
+    CHECK(!doc.lineno_known(line_no));
+    CHECK(line_offset == doc.size());
+    CHECK(line_length_chars == 0);
+    CHECK(doc.lineinfo_from_lineno(doc.linecount() - 2, &line_offset, &line_length_chars, 0, 0));
+    CHECK(line_offset >= doc.size() - MEM_BLOCK_SIZE);
+    CHECK(line_length_chars <= line_length);
+
+    doc.clear();
+    DeleteFile(path);
+}
+
 struct test_case
 {
     const char *name;
@@ -690,6 +994,12 @@ const test_case tests[] =
     { "open_file_renders_file_backed_content", open_file_renders_file_backed_content },
     { "open_file_renders_across_view_boundary", open_file_renders_across_view_boundary },
     { "open_file_handles_crlf_across_scan_boundary", open_file_handles_crlf_across_scan_boundary },
+    { "lazy_file_insert_crlf_updates_visible_line_offsets", lazy_file_insert_crlf_updates_visible_line_offsets },
+    { "textdocument_lineinfo_handles_lazy_end_after_insert", textdocument_lineinfo_handles_lazy_end_after_insert },
+    { "textdocument_final_sparse_line_ignores_estimated_linecount", textdocument_final_sparse_line_ignores_estimated_linecount },
+    { "textdocument_ctrl_end_uses_final_page_when_lines_are_lazy", textdocument_ctrl_end_uses_final_page_when_lines_are_lazy },
+    { "textdocument_lazy_line_numbers_continue_after_first_page", textdocument_lazy_line_numbers_continue_after_first_page },
+    { "textdocument_large_lazy_file_line_estimate_does_not_overflow", textdocument_large_lazy_file_line_estimate_does_not_overflow },
 };
 }
 

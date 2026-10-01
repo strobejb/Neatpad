@@ -11,7 +11,7 @@
 //
 typedef unsigned char	  seqchar;
 
-#ifdef SEQUENCE64
+#if defined(SEQUENCE64) || defined(SEQUENCE_64)
 typedef unsigned __int64  size_w;
 #else
 typedef unsigned long	  size_w;
@@ -58,8 +58,10 @@ public:
 	size_w		size() const;
 	size_w		linecount() const;
 	bool		linecount_known() const;
+	bool		line_number_known(size_w line) const;
 	bool		line_numbers_known(size_w offset, size_w length) const;
 	void		index_lines(size_w offset, size_w length);
+	bool		next_lineoffset(size_w lineoff, size_w *nextoff) const;
 	bool		lineoffset(size_w line, size_w *offset) const;
 	bool		linefromoffset(size_w offset, size_w *line, size_w *lineoffset) const;
 	
@@ -125,6 +127,11 @@ private:
 	span		*	tail;	
 	span		*	frag1;
 	span		*	frag2;
+	bool			lineoffset_by_scanning(size_w line, size_w *offset, size_w max_offset = MAX_SEQUENCE_LENGTH) const;
+	bool			linefromoffset_by_scanning(size_w offset, size_w *line, size_w *lineoffset) const;
+	bool			lineoffset_by_estimate(size_w line, size_w *offset) const;
+	bool			linefromoffset_by_estimate(size_w offset, size_w *line, size_w *lineoffset) const;
+	bool			find_line_start_near_offset(size_w near_offset, size_w *offset) const;
 
 	
 	//
@@ -432,6 +439,7 @@ public:
 	bool	append(const seqchar *buffer, size_t length, size_t *buffer_offset);
 	seqchar *getptr(size_w offset, size_w length);
 	size_w	scan_lines(size_w offset, size_w length, size_w *line_offsets);
+	size_w	known_line_count() const;
 	void	update_lines();
 	void	build_line_index(size_w offset, size_w length);
 	bool	lines_known(size_w offset, size_w length) const;

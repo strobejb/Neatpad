@@ -64,6 +64,7 @@
   <ItemGroup>
     <ClCompile Include="sequence.cpp" />
     <ClCompile Include="sequence_buf.cpp" />
+    <ClCompile Include="sequence_lines.cpp" />
     <ClCompile Include="TextDocument.cpp" />
     <ClCompile Include="TextView.cpp" />
     <ClCompile Include="TextViewClipboard.cpp" />

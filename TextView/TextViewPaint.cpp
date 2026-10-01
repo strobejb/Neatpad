@@ -371,7 +371,7 @@ int TextView::PaintMargin(HDC hdc, ULONG nLineNo, int xpos, int ypos)
 		int	 width = TextWidth(hdc, ach, len);
 
 		// only draw line number if in-range
-		if(nLineNo >= m_nLineCount)
+		if(nLineNo >= m_nLineCount || !m_pTextDoc->lineno_known(nLineNo))
 			len = 0;
 
 		rect.right  = rect.left + m_nLinenoWidth;
