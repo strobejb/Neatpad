@@ -81,7 +81,7 @@ bool sequence::buffer_control::init(const seqchar *source, size_w len)
 	return true;
 }
 
-size_w calc_index_base(size_w index)
+static size_w calc_index_base(size_w index)
 {
 	if(index < MEM_BLOCK_SIZE / 2)
 		return 0;
@@ -89,7 +89,7 @@ size_w calc_index_base(size_w index)
 	return ((index + MEM_BLOCK_SIZE / 4) & (~(MEM_BLOCK_SIZE / 2 - 1))) - (MEM_BLOCK_SIZE / 2);
 }
 
-size_w calc_view_base(size_w offset, size_w length)
+static size_w calc_view_base(size_w offset, size_w length)
 {
 	size_w base = calc_index_base(offset);
 
@@ -99,7 +99,7 @@ size_w calc_view_base(size_w offset, size_w length)
 	return base;
 }
 
-bool read_data(void *file, seqchar *buffer, size_w offset, size_w length)
+static bool read_data(void *file, seqchar *buffer, size_w offset, size_w length)
 {
 	FILE *fp = (FILE *)file;
 	size_t bytes = length * sizeof(seqchar);
@@ -152,9 +152,14 @@ bool sequence::buffer_control::init_file(TCHAR *filename, bool read_only)
 	return true;
 }
 
+//
+//	buffer_control::append
+//
+//  used for 'modify' buffer - add new data
+//
 bool sequence::buffer_control::append(const seqchar *source, size_t len, size_t *buffer_offset)
 {
-	if(length + len > maxsize)
+	if(len > maxsize - length)
 		return false;
 
 	if(buffer_offset)
@@ -175,6 +180,7 @@ seqchar *sequence::buffer_control::getptr(size_w offset, size_w len)
 	if(fp == 0)
 		return buffer + offset;
 
+	// find and existing view that already contains the requested range
 	for(i = 0; i < MAX_VIEWS; i++)
 	{
 		buffer_view *bv = &viewlist[i];
@@ -188,6 +194,8 @@ seqchar *sequence::buffer_control::getptr(size_w offset, size_w len)
 
 	buffer_view *bv = &viewlist[0];
 
+	// no existing view... find an unused view slot before we
+	// reuse slot 0
 	for(i = 0; i < MAX_VIEWS; i++)
 	{
 		if(!viewlist[i].initialized)
@@ -203,6 +211,7 @@ seqchar *sequence::buffer_control::getptr(size_w offset, size_w len)
 		bv->initialized = true;
 	}
 
+	// translate from file coordinate to the buffer-based offset
 	bv->offset = calc_view_base(offset, len);
 	bv->length = MEM_BLOCK_SIZE;
 
@@ -212,6 +221,7 @@ seqchar *sequence::buffer_control::getptr(size_w offset, size_w len)
 	if(offset + len > bv->offset + bv->length)
 		return 0;
 
+	// finally read the data into the newly allocated buffer
 	if(!read_data(fp, bv->buffer, bv->offset, bv->length))
 		return 0;
 
