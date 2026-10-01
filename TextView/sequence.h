@@ -57,6 +57,9 @@ public:
 	//
 	size_w		size() const;
 	size_w		linecount() const;
+	bool		linecount_known() const;
+	bool		line_numbers_known(size_w offset, size_w length) const;
+	void		index_lines(size_w offset, size_w length);
 	bool		lineoffset(size_w line, size_w *offset) const;
 	bool		linefromoffset(size_w offset, size_w *line, size_w *lineoffset) const;
 	
@@ -146,7 +149,6 @@ private:
 	//
 	buffer_control *alloc_buffer(size_t size);
 	buffer_control *alloc_modifybuffer(size_t size);
-	size_w			scan_buffer_lines(buffer_control *bc, size_w *line_offsets);
 	void			update_buffer_lines(buffer_control *bc);
 	bool			import_buffer(const seqchar *buf, size_t len, size_t *buffer_offset);
 
@@ -429,6 +431,10 @@ public:
 	bool	init_file(TCHAR *filename, bool readonly);
 	bool	append(const seqchar *buffer, size_t length, size_t *buffer_offset);
 	seqchar *getptr(size_w offset, size_w length);
+	size_w	scan_lines(size_w offset, size_w length, size_w *line_offsets);
+	void	update_lines();
+	void	build_line_index(size_w offset, size_w length);
+	bool	lines_known(size_w offset, size_w length) const;
 	void	clear();
 
 	enum { MAX_VIEWS = 4 };
@@ -440,12 +446,28 @@ public:
 		bool	 initialized;
 	};
 
+	struct line_page
+	{
+		size_w	 offset;
+		size_w	 length;
+		size_w	*line_offsets;
+		size_w	 line_count;
+		size_w	 line_base;
+		bool	 indexed;
+		bool	 line_base_known;
+		bool	 starts_with_lf;
+		bool	 ends_with_cr;
+	};
+
 	seqchar	*buffer;
 	buffer_view viewlist[MAX_VIEWS];
+	line_page *line_pages;
+	size_w	 line_page_count;
 	size_w	 length;
 	size_w	 maxsize;
 	size_w	*line_offsets;
 	size_w	 line_count;
+	bool	 line_count_known;
 	void	*fp;
 	bool	 own_memory;
 	bool	 readonly;

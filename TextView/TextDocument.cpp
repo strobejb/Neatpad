@@ -492,6 +492,28 @@ ULONG TextDocument::linecount()
 	return m_nNumLines;
 }
 
+bool TextDocument::linecount_known()
+{
+	if(use_sequence_linebuffer())
+		return m_seq.linecount_known();
+
+	return true;
+}
+
+bool TextDocument::line_numbers_known(ULONG offset_chars, ULONG length_chars)
+{
+	if(use_sequence_linebuffer())
+		return m_seq.line_numbers_known(offset_chars, length_chars);
+
+	return true;
+}
+
+void TextDocument::index_lines(ULONG offset_chars, ULONG length_chars)
+{
+	if(use_sequence_linebuffer())
+		m_seq.index_lines(offset_chars, length_chars);
+}
+
 //
 //	Return the length of longest line
 //

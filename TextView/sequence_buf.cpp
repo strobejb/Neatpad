@@ -20,10 +20,13 @@ sequence::buffer_control::buffer_control()
 	int i;
 
 	buffer = 0;
+	line_pages = 0;
+	line_page_count = 0;
 	length = 0;
 	maxsize = 0;
 	line_offsets = 0;
 	line_count = 0;
+	line_count_known = false;
 	fp = 0;
 	own_memory = true;
 	readonly = false;
@@ -57,6 +60,7 @@ bool sequence::buffer_control::init(size_t max)
 
 	length = 0;
 	maxsize = max;
+	line_count_known = true;
 	own_memory = true;
 	return true;
 }
@@ -77,6 +81,7 @@ bool sequence::buffer_control::init(const seqchar *source, size_w len)
 
 	length = len;
 	maxsize = len;
+	line_count_known = true;
 	own_memory = true;
 	return true;
 }
@@ -149,6 +154,34 @@ bool sequence::buffer_control::init_file(TCHAR *filename, bool read_only)
 	maxsize = length;
 	own_memory = true;
 	fp = file;
+
+	line_page_count = length == 0 ? 0 : (length + MEM_BLOCK_SIZE - 1) / MEM_BLOCK_SIZE;
+
+	if(line_page_count)
+	{
+		line_pages = new line_page[line_page_count];
+
+		if(line_pages == 0)
+		{
+			fclose(file);
+			fp = 0;
+			return false;
+		}
+
+		for(size_w i = 0; i < line_page_count; i++)
+		{
+			line_pages[i].offset = i * MEM_BLOCK_SIZE;
+			line_pages[i].length = length - line_pages[i].offset < MEM_BLOCK_SIZE ? length - line_pages[i].offset : MEM_BLOCK_SIZE;
+			line_pages[i].line_offsets = 0;
+			line_pages[i].line_count = 0;
+			line_pages[i].line_base = 0;
+			line_pages[i].indexed = false;
+			line_pages[i].line_base_known = false;
+			line_pages[i].starts_with_lf = false;
+			line_pages[i].ends_with_cr = false;
+		}
+	}
+
 	return true;
 }
 
@@ -235,6 +268,17 @@ void sequence::buffer_control::clear()
 	delete[] line_offsets;
 	line_offsets = 0;
 	line_count = 0;
+	line_count_known = false;
+
+	if(line_pages)
+	{
+		for(size_w page = 0; page < line_page_count; page++)
+			delete[] line_pages[page].line_offsets;
+
+		delete[] line_pages;
+		line_pages = 0;
+		line_page_count = 0;
+	}
 
 	if(fp)
 	{

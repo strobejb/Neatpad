@@ -44,6 +44,9 @@ public:
 
 	int   getformat();
 	ULONG linecount();
+	bool  linecount_known();
+	bool  line_numbers_known(ULONG offset_chars, ULONG length_chars);
+	void  index_lines(ULONG offset_chars, ULONG length_chars);
 	ULONG longestline(int tabwidth);
 	ULONG size();
 

@@ -219,22 +219,30 @@ void sequence::debug2 ()
 	printf("\n\n");
 }
 
-size_w sequence::scan_buffer_lines(buffer_control *bc, size_w *line_offsets)
+//
+//	sequence::buffer_control::scan_lines
+//
+//  Count line breaks in a buffer range, optionally recording each line start.
+// 
+size_w sequence::buffer_control::scan_lines(size_w offset, size_w length, size_w *line_offsets)
 {
-	size_w line = 0;
-	bool pending_cr = false;
-	size_w pending_line_offset = 0;
-	const size_w scan_size = MEM_BLOCK_SIZE;
+	size_w line                 = 0;
+	bool   pending_cr           = false;
+	size_w pending_line_offset  = 0;
+	const size_w scan_size      = MEM_BLOCK_SIZE;
+	size_w end                  = offset + length;
 
-	for(size_w offset = 0; offset < bc->length; )
+	// Scan the requested range in page-sized chunks.
+	for(; offset < end; )
 	{
-		size_w length = min(scan_size, bc->length - offset);
-		seqchar *source = bc->getptr(offset, length);
+		size_w chunk_length = min(scan_size, end - offset);
+		seqchar *source = getptr(offset, chunk_length);
 
 		if(source == 0)
 			return line;
 
-		for(size_w i = 0; i < length; i++)
+		// Walk each byte in the chunk and detect CR, LF and CRLF line breaks.
+		for(size_w i = 0; i < chunk_length; i++)
 		{
 			size_w absolute = offset + i;
 			seqchar ch = source[i];
@@ -272,7 +280,7 @@ size_w sequence::scan_buffer_lines(buffer_control *bc, size_w *line_offsets)
 			}
 		}
 
-		offset += length;
+		offset += chunk_length;
 	}
 
 	if(pending_cr)
@@ -286,24 +294,139 @@ size_w sequence::scan_buffer_lines(buffer_control *bc, size_w *line_offsets)
 	return line;
 }
 
-void sequence::update_buffer_lines(buffer_control *bc)
+//
+//	sequence::buffer_control::build_line_index
+//
+//  Build lazy line metadata for each page covered by the requested range.
+// 
+void sequence::buffer_control::build_line_index(size_w offset, size_w length)
+{
+	if(line_pages == 0 || line_page_count == 0 || length == 0)
+		return;
+
+	size_w first_page = offset / MEM_BLOCK_SIZE;
+	size_w last_page = (offset + length - 1) / MEM_BLOCK_SIZE;
+
+	if(last_page >= line_page_count)
+		last_page = line_page_count - 1;
+
+	// Scan any covered pages that do not already have line metadata.
+	for(size_w page_index = first_page; page_index <= last_page; page_index++)
+	{
+		line_page *page = &line_pages[page_index];
+
+		if(page->indexed)
+			continue;
+
+		size_w count = scan_lines(page->offset, page->length, 0);
+
+		page->line_offsets = count ? new size_w[count] : 0;
+		page->line_count = count;
+
+		if(count)
+			scan_lines(page->offset, page->length, page->line_offsets);
+
+		if(page->length)
+		{
+			seqchar *first = getptr(page->offset, 1);
+			seqchar *last = getptr(page->offset + page->length - 1, 1);
+
+			page->starts_with_lf = first && *first == '\n';
+			page->ends_with_cr = last && *last == '\r';
+		}
+
+		page->indexed = true;
+	}
+
+	size_w line_base = 0;
+	bool prev_ends_with_cr = false;
+	bool complete = true;
+
+	// Assign absolute line numbers to the contiguous indexed prefix.
+	for(size_w page_index = 0; page_index < line_page_count; page_index++)
+	{
+		line_page *page = &line_pages[page_index];
+
+		if(!page->indexed)
+		{
+			complete = false;
+			break;
+		}
+
+		// Record the absolute line number of this page's first line.
+		page->line_base = line_base;
+		page->line_base_known = true;
+
+		line_base += page->line_count;
+
+		if(prev_ends_with_cr && page->starts_with_lf && line_base > 0)
+			line_base--;
+
+		prev_ends_with_cr = page->ends_with_cr;
+	}
+
+	if(complete)
+	{
+		line_count = line_base + 1;
+		line_count_known = true;
+	}
+}
+
+//
+//	sequence::buffer_control::lines_known
+//
+//  Return true when a range's page line metadata and line bases are known.
+// 
+bool sequence::buffer_control::lines_known(size_w offset, size_w length) const
+{
+	if(line_count_known)
+		return true;
+
+	if(line_pages == 0 || line_page_count == 0 || length == 0)
+		return false;
+
+	size_w first_page = offset / MEM_BLOCK_SIZE;
+	size_w last_page = (offset + length - 1) / MEM_BLOCK_SIZE;
+
+	if(last_page >= line_page_count)
+		return false;
+
+	// Check every page touched by the requested byte range.
+	for(size_w page_index = first_page; page_index <= last_page; page_index++)
+	{
+		const line_page *page = &line_pages[page_index];
+
+		if(!page->indexed || !page->line_base_known)
+			return false;
+	}
+
+	return true;
+}
+
+void sequence::buffer_control::update_lines()
 {
 	size_w count = 0;
 
-	delete[] bc->line_offsets;
-	bc->line_offsets = 0;
-	bc->line_count = 0;
+	delete[] line_offsets;
+	line_offsets = 0;
+	line_count = 0;
 
-	if(bc->length == 0)
+	if(length == 0)
 		return;
 
-	count = scan_buffer_lines(bc, 0) + 1;
+	count = scan_lines(0, length, 0) + 1;
 
-	bc->line_offsets = new size_w[count];
-	bc->line_count = count;
-	bc->line_offsets[0] = 0;
+	line_offsets = new size_w[count];
+	line_count = count;
+	line_count_known = true;
+	line_offsets[0] = 0;
 
-	scan_buffer_lines(bc, bc->line_offsets + 1);
+	scan_lines(0, length, line_offsets + 1);
+}
+
+void sequence::update_buffer_lines(buffer_control *bc)
+{
+	bc->update_lines();
 }
 
 sequence::span* sequence::alloc_span(size_w offset, size_w length, int buffer, span *next, span *prev)
@@ -313,6 +436,11 @@ sequence::span* sequence::alloc_span(size_w offset, size_w length, int buffer, s
 	return sptr;
 }
 
+//
+//	sequence::find_buffer_line_index
+//
+//  Find the first recorded line start after the specified buffer offset.
+// 
 size_w sequence::find_buffer_line_index(buffer_control *bc, size_w offset) const
 {
 	size_w lo = 0;
@@ -331,6 +459,11 @@ size_w sequence::find_buffer_line_index(buffer_control *bc, size_w offset) const
 	return lo;
 }
 
+//
+//	sequence::update_span_line_data
+//
+//  Cache the line metadata for a span from its backing buffer.
+// 
 void sequence::update_span_line_data(span *sptr)
 {
 	buffer_control *bc = buffer_list[sptr->buffer];
@@ -622,6 +755,89 @@ size_w sequence::linecount() const
 	}
 
 	return breaks + 1;
+}
+
+bool sequence::linecount_known() const
+{
+	for(size_t i = 0; i < buffer_list.size(); i++)
+	{
+		if(!buffer_list[i]->line_count_known)
+			return false;
+	}
+
+	return true;
+}
+
+void sequence::index_lines(size_w offset, size_w length)
+{
+	size_w spanoffset = 0;
+	span *sptr;
+
+	if(length == 0 || offset > sequence_length || length > sequence_length - offset)
+		return;
+
+	if((sptr = spanfromindex(offset, &spanoffset)) == 0)
+		return;
+
+	spanoffset = offset - spanoffset;
+
+	while(length && sptr != tail)
+	{
+		size_w index_length = min(sptr->length - spanoffset, length);
+		buffer_control *bc = buffer_list[sptr->buffer];
+
+		bc->build_line_index(sptr->offset + spanoffset, index_length);
+
+		spanoffset = 0;
+		length -= index_length;
+		sptr = sptr->next;
+	}
+}
+
+bool sequence::line_numbers_known(size_w offset, size_w length) const
+{
+	size_w spanindex = 0;
+	size_w end;
+
+	if(length == 0)
+		return true;
+
+	if(offset > sequence_length || length > sequence_length - offset)
+		return false;
+
+	end = offset + length;
+
+	for(span *sptr = head->next; sptr != tail && spanindex < end; sptr = sptr->next)
+	{
+		size_w check_start = 0;
+		size_w check_length = sptr->length;
+		buffer_control *bc = buffer_list[sptr->buffer];
+
+		if(spanindex + check_length <= offset)
+		{
+			if(!bc->lines_known(sptr->offset, sptr->length))
+				return false;
+
+			spanindex += sptr->length;
+			continue;
+		}
+
+		if(offset > spanindex)
+		{
+			check_start = offset - spanindex;
+			check_length -= check_start;
+		}
+
+		if(spanindex + check_start + check_length > end)
+			check_length = end - spanindex - check_start;
+
+		if(!bc->lines_known(sptr->offset + check_start, check_length))
+			return false;
+
+		spanindex += sptr->length;
+	}
+
+	return true;
 }
 
 bool sequence::lineoffset(size_w line, size_w *offset) const
@@ -1026,7 +1242,7 @@ bool sequence::erase_worker (size_w index, size_w length, action act)
 	//	can we optimize?
 	//
 	//	special-case 1: 'forward-delete'
-	//	erase+replace operations will pass through here
+	//	erase+replace operations can use this path
 	//
 	if(index == spanindex && can_optimize(act, index))
 	{
@@ -1057,7 +1273,7 @@ bool sequence::erase_worker (size_w index, size_w length, action act)
 	}
 	//
 	//	special-case 2: 'backward-delete'
-	//	only erase operations can pass through here
+	//	only erase operations can use this path
 	//
 	else if(index + length == spanindex + sptr->length && can_optimize(action_erase, index+length))
 	{
