@@ -89,6 +89,16 @@ size_w calc_index_base(size_w index)
 	return ((index + MEM_BLOCK_SIZE / 4) & (~(MEM_BLOCK_SIZE / 2 - 1))) - (MEM_BLOCK_SIZE / 2);
 }
 
+size_w calc_view_base(size_w offset, size_w length)
+{
+	size_w base = calc_index_base(offset);
+
+	if(offset + length > base + MEM_BLOCK_SIZE)
+		base = offset + length - MEM_BLOCK_SIZE;
+
+	return base;
+}
+
 bool read_data(void *file, seqchar *buffer, size_w offset, size_w length)
 {
 	FILE *fp = (FILE *)file;
@@ -193,11 +203,14 @@ seqchar *sequence::buffer_control::getptr(size_w offset, size_w len)
 		bv->initialized = true;
 	}
 
-	bv->offset = calc_index_base(offset);
+	bv->offset = calc_view_base(offset, len);
 	bv->length = MEM_BLOCK_SIZE;
 
 	if(bv->offset + bv->length > length)
 		bv->length = length - bv->offset;
+
+	if(offset + len > bv->offset + bv->length)
+		return 0;
 
 	if(!read_data(fp, bv->buffer, bv->offset, bv->length))
 		return 0;

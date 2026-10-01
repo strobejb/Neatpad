@@ -623,7 +623,7 @@ void open_file_handles_crlf_across_scan_boundary()
 {
     sequence seq;
     TCHAR path[MAX_PATH];
-    const size_w scan_size = MEM_BLOCK_SIZE / 4;
+    const size_w scan_size = MEM_BLOCK_SIZE;
     const size_t file_length = scan_size + 16;
     char *data = new char[file_length];
 

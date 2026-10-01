@@ -224,7 +224,7 @@ size_w sequence::scan_buffer_lines(buffer_control *bc, size_w *line_offsets)
 	size_w line = 0;
 	bool pending_cr = false;
 	size_w pending_line_offset = 0;
-	const size_w scan_size = MEM_BLOCK_SIZE / 4;
+	const size_w scan_size = MEM_BLOCK_SIZE;
 
 	for(size_w offset = 0; offset < bc->length; )
 	{
