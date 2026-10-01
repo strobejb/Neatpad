@@ -419,6 +419,15 @@ private:
 class sequence::buffer_control
 {
 public:
+	buffer_control();
+	~buffer_control();
+
+	bool	init(size_t maxsize);
+	bool	init(const seqchar *buffer, size_w length);
+	bool	append(const seqchar *buffer, size_t length, size_t *buffer_offset);
+	seqchar *getptr(size_w offset, size_w length);
+	void	clear();
+
 	seqchar	*buffer;
 	size_w	 length;
 	size_w	 maxsize;

@@ -72,6 +72,7 @@
   <ItemGroup>
     <ClCompile Include="SequenceTests.cpp" />
     <ClCompile Include="..\TextView\sequence.cpp" />
+    <ClCompile Include="..\TextView\sequence_buf.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\TextView\sequence.h" />

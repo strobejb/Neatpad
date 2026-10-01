@@ -100,8 +100,7 @@ bool sequence::init (const seqchar *buffer, size_t length)
 		return false;
 
 	buffer_control *bc = alloc_modifybuffer(length);
-	memcpy(bc->buffer, buffer, length * sizeof(seqchar));
-	bc->length = length;
+	bc->append(buffer, length, 0);
 	update_buffer_lines(bc);
 
 	span *sptr = alloc_span(0, length, bc->id, tail, head);
@@ -154,7 +153,7 @@ void sequence::debug1 ()
 
 	for(sptr = head; sptr; sptr = sptr->next)
 	{
-		char *buffer = (char *)buffer_list[sptr->buffer]->buffer;
+		char *buffer = (char *)buffer_list[sptr->buffer]->getptr(0, buffer_list[sptr->buffer]->length);
 		printf("%.*s", sptr->length, buffer + sptr->offset);
 	}
 
@@ -168,7 +167,7 @@ void sequence::debug2 ()
 	printf("**********************\n");
 	for(sptr = head; sptr; sptr = sptr->next)
 	{
-		char *buffer = (char *)buffer_list[sptr->buffer]->buffer;
+		char *buffer = (char *)buffer_list[sptr->buffer]->getptr(0, buffer_list[sptr->buffer]->length);
 		
 		printf("[%d] [%4d %4d] %.*s\n", sptr->id, 
 			sptr->offset, sptr->length,
@@ -179,7 +178,7 @@ void sequence::debug2 ()
 
 	for(sptr = tail; sptr; sptr = sptr->prev)
 	{
-		char *buffer = (char *)buffer_list[sptr->buffer]->buffer;
+		char *buffer = (char *)buffer_list[sptr->buffer]->getptr(0, buffer_list[sptr->buffer]->length);
 		
 		printf("[%d] [%4d %4d] %.*s\n", sptr->id, 
 			sptr->offset, sptr->length,
@@ -190,53 +189,12 @@ void sequence::debug2 ()
 
 	for(sptr = head; sptr; sptr = sptr->next)
 	{
-		char *buffer = (char *)buffer_list[sptr->buffer]->buffer;
+		char *buffer = (char *)buffer_list[sptr->buffer]->getptr(0, buffer_list[sptr->buffer]->length);
 		printf("%.*s", sptr->length, buffer + sptr->offset);
 	}
 
 	printf("\nsequence length = %d chars\n", sequence_length);
 	printf("\n\n");
-}
-
-//
-//	Allocate a buffer and add it to our 'buffer control' list
-//
-sequence::buffer_control* sequence::alloc_buffer (size_t maxsize)
-{
-	buffer_control *bc;
-
-	if((bc = new buffer_control) == 0)
-		return 0;
-
-	// allocate a new buffer of byte/wchar/long/whatever
-	if((bc->buffer  = new seqchar[maxsize]) == 0)
-	{
-		delete bc;
-		return 0;
-	}
-
-	bc->length  = 0;
-	bc->maxsize = maxsize;
-	bc->line_offsets = 0;
-	bc->line_count = 0;
-	bc->id		= buffer_list.size();		// assign the id
-
-	buffer_list.push_back(bc);
-
-	return bc;
-}
-
-sequence::buffer_control* sequence::alloc_modifybuffer (size_t maxsize)
-{
-	buffer_control *bc;
-	
-	if((bc = alloc_buffer(maxsize)) == 0)
-		return 0;
-
-	modifybuffer_id  = bc->id;
-	modifybuffer_pos = 0;
-
-	return bc;
 }
 
 void sequence::update_buffer_lines(buffer_control *bc)
@@ -255,14 +213,16 @@ void sequence::update_buffer_lines(buffer_control *bc)
 
 	for(size_w i = 0; i < bc->length; i++)
 	{
-		if(bc->buffer[i] == '\r')
+		seqchar *ch = bc->getptr(i, 1);
+
+		if(*ch == '\r')
 		{
 			count++;
 
-			if(i + 1 < bc->length && bc->buffer[i + 1] == '\n')
+			if(i + 1 < bc->length && *bc->getptr(i + 1, 1) == '\n')
 				i++;
 		}
-		else if(bc->buffer[i] == '\n')
+		else if(*ch == '\n')
 		{
 			count++;
 		}
@@ -274,14 +234,16 @@ void sequence::update_buffer_lines(buffer_control *bc)
 
 	for(size_w i = 0; i < bc->length; i++)
 	{
-		if(bc->buffer[i] == '\r')
+		seqchar *ch = bc->getptr(i, 1);
+
+		if(*ch == '\r')
 		{
-			if(i + 1 < bc->length && bc->buffer[i + 1] == '\n')
+			if(i + 1 < bc->length && *bc->getptr(i + 1, 1) == '\n')
 				i++;
 
 			bc->line_offsets[line++] = i + 1;
 		}
-		else if(bc->buffer[i] == '\n')
+		else if(*ch == '\n')
 		{
 			bc->line_offsets[line++] = i + 1;
 		}
@@ -327,7 +289,7 @@ void sequence::update_span_line_data(span *sptr)
 	if(sptr->length == 0)
 		return;
 
-	seqchar *source = bc->buffer + sptr->offset;
+	seqchar *source = bc->getptr(sptr->offset, sptr->length);
 	sptr->starts_with_lf = source[0] == '\n';
 	sptr->ends_with_cr = source[sptr->length - 1] == '\r';
 
@@ -340,39 +302,6 @@ void sequence::update_span_line_data(span *sptr)
 	if(sptr->line_index < line_end)
 		sptr->line_count = line_end - sptr->line_index;
 }
-
-//
-//	Import the specified range of data into the sequence so we have our own private copy
-//
-bool sequence::import_buffer (const seqchar *buf, size_t len, size_t *buffer_offset)
-{
-	buffer_control *bc;
-	
-	// get the current modify-buffer
-	bc = buffer_list[modifybuffer_id];
-
-	// if there isn't room then allocate a new modify-buffer
-	if(bc->length + len >= bc->maxsize)
-	{
-		bc = alloc_modifybuffer(len + 0x10000);
-		
-		// make sure that no old spans use this buffer
-		record_action(action_invalid, 0);
-	}
-
-	if(bc == 0)
-		return false;
-
-	// import the data
-	memcpy(bc->buffer + bc->length, buf, len * sizeof(seqchar));
-	
-	*buffer_offset = bc->length;
-	bc->length += len;
-	update_buffer_lines(bc);
-
-	return true;
-}
-
 
 //
 //	sequence::spanfromindex
@@ -681,7 +610,7 @@ bool sequence::lineoffset(size_w line, size_w *offset) const
 			return true;
 		}
 
-		seqchar *source = bc->buffer + sptr->offset;
+		seqchar *source = bc->getptr(sptr->offset, sptr->length);
 
 		for(size_w i = 0; i < sptr->length; i++)
 		{
@@ -1318,8 +1247,6 @@ bool sequence::clear ()
 	// delete all memory-buffers
 	for(size_t i = 0; i < buffer_list.size(); i++)
 	{
-		delete[] buffer_list[i]->line_offsets;
-		delete[] buffer_list[i]->buffer;
 		delete   buffer_list[i];
 	}
 
@@ -1352,9 +1279,9 @@ size_w sequence::render(size_w index, seqchar *dest, size_w length) const
 	while(length && sptr != tail)
 	{
 		size_w copylen   = min(sptr->length - spanoffset, length);
-		seqchar *source  = buffer_list[sptr->buffer]->buffer;
+		seqchar *source  = buffer_list[sptr->buffer]->getptr(sptr->offset, sptr->length);
 
-		memcpy(dest, source + sptr->offset + spanoffset, copylen * sizeof(seqchar));
+		memcpy(dest, source + spanoffset, copylen * sizeof(seqchar));
 		
 		dest	+= copylen;
 		length	-= copylen;
