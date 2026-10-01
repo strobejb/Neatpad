@@ -80,7 +80,7 @@ jobs:
                   "    BEGIN",
                   '        BLOCK "080904b0"',
                   "        BEGIN",
-                  '            VALUE "CompanyName", "Catch22 Productions"',
+                  '            VALUE "CompanyName", "Catch22 Solutions"',
                   '            VALUE "FileDescription", "Neatpad Text Editor"',
                   '            VALUE "FileVersion", ""',
                   '            VALUE "InternalName", "Neatpad"',
@@ -106,11 +106,16 @@ jobs:
           if (n1, n2) != (2, 2):
               sys.exit(f"Expected 2+2 version replacements, got {n1}+{n2} in {RC_PATH}")
 
+          # About dialog title (only present from part 18 onwards).
+          rc = re.sub(r'"[^"]*"(\s*,\s*IDC_ABOUT_APPNAME\b)',
+                      rf'"Neatpad {display}"\g<1>', rc)
+          rc = rc.replace("Catch22 Productions", "Catch22 Solutions")
+
           with open(RC_PATH, "w", encoding="latin-1", newline="") as f:
               f.write(rc)
 
           with open(os.environ["GITHUB_OUTPUT"], "a") as f:
-              f.write(f"version={display}\ntitle={title}\n")
+              f.write(f"version={display}\ntitle={title}\nasset=neatpad-v{display}.exe\n")
           print(f"{tag} -> {numeric} / \"{display}\"")
 
       - uses: microsoft/setup-msbuild@v2
@@ -120,15 +125,18 @@ jobs:
 
       - name: Collect artifact
         shell: bash
+        env:
+          ASSET: ${{ steps.version.outputs.asset }}
         run: |
           mkdir dist
-          cp "$CONFIGURATION/Neatpad.exe" dist/neatpad.exe
+          cp "$CONFIGURATION/Neatpad.exe" "dist/$ASSET"
 
       - name: Publish release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           TITLE: ${{ steps.version.outputs.title }}
+          ASSET: ${{ steps.version.outputs.asset }}
         run: |
           # Tutorial releases must never become "Latest", even when run retrospectively.
           latest=true
@@ -139,4 +147,4 @@ jobs:
             gh release create "$TAG" -R "$GITHUB_REPOSITORY" --verify-tag \
               --title "$TITLE" --generate-notes --latest=$latest
           fi
-          gh release upload "$TAG" dist/neatpad.exe -R "$GITHUB_REPOSITORY" --clobber
+          gh release upload "$TAG" "dist/$ASSET" -R "$GITHUB_REPOSITORY" --clobber
