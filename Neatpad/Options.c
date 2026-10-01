@@ -51,6 +51,10 @@ COLORREF g_rgbColourList[TXC_MAX_COLOURS];
 COLORREF g_rgbCustColours[16];
 extern COLORREF g_rgbAutoColourList[];
 
+#define MAX_RECENT_FILES (IDM_RECENT_LAST - IDM_RECENT_FIRST + 1)
+
+TCHAR g_szRecentFiles[MAX_RECENT_FILES][MAX_PATH];
+
 // Get a binary buffer from the registry
 BOOL GetSettingBin(HKEY hkey, TCHAR szKeyName[], PVOID pBuffer, LONG nLength)
 {
@@ -94,6 +98,235 @@ BOOL WriteSettingInt(HKEY hkey, TCHAR szKeyName[], LONG nValue)
 BOOL WriteSettingStr(HKEY hkey, TCHAR szKeyName[], TCHAR szString[])
 {
 	return !RegSetValueEx(hkey, szKeyName, 0, REG_SZ, (BYTE *)szString, (lstrlen(szString) + 1) * sizeof(TCHAR));
+}
+
+void GetRecentValueName(int index, TCHAR *szName)
+{
+	wsprintf(szName, _T("RecentFile%d"), index);
+}
+
+int RecentFileCount()
+{
+	int i;
+
+	for(i = 0; i < MAX_RECENT_FILES; i++)
+	{
+		if(g_szRecentFiles[i][0] == '\0')
+			break;
+	}
+
+	return i;
+}
+
+void LoadRecentFiles(HKEY hKey)
+{
+	int i;
+	TCHAR szName[32];
+
+	for(i = 0; i < MAX_RECENT_FILES; i++)
+	{
+		GetRecentValueName(i, szName);
+		GetSettingStr(hKey, szName, g_szRecentFiles[i], MAX_PATH, _T(""));
+	}
+}
+
+void SaveRecentFiles(HKEY hKey)
+{
+	int i;
+	TCHAR szName[32];
+
+	for(i = 0; i < MAX_RECENT_FILES; i++)
+	{
+		GetRecentValueName(i, szName);
+		WriteSettingStr(hKey, szName, g_szRecentFiles[i]);
+	}
+}
+
+void SaveRecentFilesNow()
+{
+	HKEY hKey;
+
+	RegCreateKeyEx(HKEY_CURRENT_USER, REGLOC, 0, 0, 0, KEY_WRITE, 0, &hKey, 0);
+	SaveRecentFiles(hKey);
+	RegCloseKey(hKey);
+}
+
+int FindRecentFile(TCHAR *szFileName)
+{
+	int i;
+
+	for(i = 0; i < MAX_RECENT_FILES; i++)
+	{
+		if(g_szRecentFiles[i][0] && lstrcmpi(g_szRecentFiles[i], szFileName) == 0)
+			return i;
+	}
+
+	return -1;
+}
+
+void RemoveRecentFileIndex(int index)
+{
+	int i;
+
+	if(index < 0 || index >= MAX_RECENT_FILES)
+		return;
+
+	for(i = index; i < MAX_RECENT_FILES - 1; i++)
+		lstrcpy(g_szRecentFiles[i], g_szRecentFiles[i + 1]);
+
+	g_szRecentFiles[MAX_RECENT_FILES - 1][0] = '\0';
+}
+
+void AddRecentFile(TCHAR *szFileName)
+{
+	int i;
+	int oldpos;
+	TCHAR szFullPath[MAX_PATH];
+
+	if(szFileName == 0 || szFileName[0] == '\0')
+		return;
+
+	if(GetFullPathName(szFileName, MAX_PATH, szFullPath, 0) == 0)
+		lstrcpyn(szFullPath, szFileName, MAX_PATH);
+
+	oldpos = FindRecentFile(szFullPath);
+
+	if(oldpos >= 0)
+		RemoveRecentFileIndex(oldpos);
+
+	for(i = MAX_RECENT_FILES - 1; i > 0; i--)
+		lstrcpy(g_szRecentFiles[i], g_szRecentFiles[i - 1]);
+
+	lstrcpyn(g_szRecentFiles[0], szFullPath, MAX_PATH);
+	SaveRecentFilesNow();
+}
+
+void ClearRecentFiles()
+{
+	int i;
+
+	for(i = 0; i < MAX_RECENT_FILES; i++)
+		g_szRecentFiles[i][0] = '\0';
+
+	SaveRecentFilesNow();
+}
+
+void RemoveRecentFile(TCHAR *szFileName)
+{
+	int index = FindRecentFile(szFileName);
+
+	if(index >= 0)
+	{
+		RemoveRecentFileIndex(index);
+		SaveRecentFilesNow();
+	}
+}
+
+BOOL MenuHasCommand(HMENU hMenu, UINT nCommandId)
+{
+	int i;
+	int count = GetMenuItemCount(hMenu);
+
+	for(i = 0; i < count; i++)
+	{
+		if(GetMenuItemID(hMenu, i) == nCommandId)
+			return TRUE;
+	}
+
+	return FALSE;
+}
+
+HMENU FindRecentMenu(HMENU hMenu)
+{
+	int i;
+	int count = GetMenuItemCount(hMenu);
+
+	for(i = 0; i < count; i++)
+	{
+		HMENU hSubMenu = GetSubMenu(hMenu, i);
+
+		if(hSubMenu)
+		{
+			if(MenuHasCommand(hSubMenu, IDM_RECENT_CLEAR))
+				return hSubMenu;
+
+			hSubMenu = FindRecentMenu(hSubMenu);
+
+			if(hSubMenu)
+				return hSubMenu;
+		}
+	}
+
+	return 0;
+}
+
+void MakeRecentMenuText(int index, TCHAR *szText, int cchText)
+{
+	TCHAR *src = g_szRecentFiles[index];
+	TCHAR *dst = szText;
+	TCHAR *end = szText + cchText - 1;
+
+	wsprintf(szText, _T("&%d "), index + 1);
+	dst += lstrlen(szText);
+
+	while(*src && dst < end)
+	{
+		if(*src == _T('&') && dst + 1 < end)
+			*dst++ = _T('&');
+
+		*dst++ = *src++;
+	}
+
+	*dst = '\0';
+}
+
+void UpdateRecentMenu(HMENU hMenu)
+{
+	int i;
+	int count = RecentFileCount();
+	HMENU hRecent = FindRecentMenu(hMenu);
+
+	if(hRecent == 0)
+		return;
+
+	for(i = IDM_RECENT_FIRST; i <= IDM_RECENT_LAST; i++)
+		DeleteMenu(hRecent, i, MF_BYCOMMAND);
+
+	DeleteMenu(hRecent, IDM_RECENT_EMPTY, MF_BYCOMMAND);
+
+	if(count == 0)
+	{
+		InsertMenu(hRecent, 0, MF_BYPOSITION | MF_STRING | MF_GRAYED, IDM_RECENT_EMPTY, _T("(Empty)"));
+	}
+	else
+	{
+		for(i = 0; i < count; i++)
+		{
+			TCHAR szText[MAX_PATH + 16];
+
+			MakeRecentMenuText(i, szText, MAX_PATH + 16);
+			InsertMenu(hRecent, i, MF_BYPOSITION | MF_STRING, IDM_RECENT_FIRST + i, szText);
+		}
+	}
+
+	EnableMenuItem(hRecent, IDM_RECENT_CLEAR, MF_BYCOMMAND | (count ? MF_ENABLED : MF_GRAYED));
+}
+
+BOOL OpenRecentFile(HWND hwnd, UINT nCommandId)
+{
+	int index = nCommandId - IDM_RECENT_FIRST;
+	TCHAR szFileName[MAX_PATH];
+
+	if(index < 0 || index >= MAX_RECENT_FILES || g_szRecentFiles[index][0] == '\0')
+		return FALSE;
+
+	lstrcpy(szFileName, g_szRecentFiles[index]);
+
+	if(NeatpadOpenFile(hwnd, szFileName))
+		return TRUE;
+
+	RemoveRecentFile(szFileName);
+	return FALSE;
 }
 
 //
@@ -185,6 +418,7 @@ void LoadRegSettings()
 	GetSettingInt(hKey, _T("AddExplorer"),	 &g_fAddToExplorer, FALSE);
 	GetSettingInt(hKey, _T("ReplaceNotepad"), &g_fReplaceNotepad, FALSE);
 	GetSettingInt(hKey, _T("ShowStatusbar"), &g_fShowStatusbar, FALSE);
+	LoadRecentFiles(hKey);
 	
 	// read the display colours
 	RegCreateKeyEx(hKey, _T("Colours"), 0, 0, 0, KEY_READ, 0, &hColKey, 0);
@@ -256,6 +490,7 @@ void SaveRegSettings()
 	WriteSettingInt(hKey, _T("AddExplorer"),  g_fAddToExplorer);
 	WriteSettingInt(hKey, _T("ReplaceNotepad"), g_fReplaceNotepad);
 	WriteSettingInt(hKey, _T("ShowStatusbar"), g_fShowStatusbar);
+	SaveRecentFiles(hKey);
 	
 	// write the display colours
 	RegCreateKeyEx(hKey, _T("Colours"), 0, 0, 0, KEY_WRITE, 0, &hColKey, 0);

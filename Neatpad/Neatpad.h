@@ -66,6 +66,10 @@ void LoadRegSettings();
 void SaveRegSettings();
 void LoadRegSysSettings();
 void SaveRegSysSettings();
+void AddRecentFile(TCHAR *szFileName);
+BOOL OpenRecentFile(HWND hwnd, UINT nCommandId);
+void ClearRecentFiles();
+void UpdateRecentMenu(HMENU hMenu);
 BOOL SetExplorerContextMenu(BOOL fAddToMenu);
 BOOL SetImageFileExecutionOptions(BOOL fReplaceWithCurrentApp);
 
@@ -78,7 +82,7 @@ BOOL DoSaveFile(HWND hwndMain, TCHAR *szFileName, TCHAR *szFileTitle);
 BOOL ShowOpenFileDlg(HWND hwnd, TCHAR *pstrFileName, TCHAR *pstrTitleName);
 BOOL ShowSaveFileDlg(HWND hwnd, TCHAR *pstrFileName, TCHAR *pstrTitleName);
 void HandleDropFiles(HWND hwnd, HDROP hDrop);
-void NeatpadOpenFile(HWND hwnd, TCHAR *szFile);
+BOOL NeatpadOpenFile(HWND hwnd, TCHAR *szFile);
 
 //
 //	NeatUtils.c functions

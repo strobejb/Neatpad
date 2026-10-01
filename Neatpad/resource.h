@@ -127,6 +127,10 @@
 #define IDM_EDIT_GOTO                   40030
 #define IDM_SCHEME_NORMAL               40032
 #define IDM_SCHEME_SAVE                 40033
+#define IDM_RECENT_CLEAR                40034
+#define IDM_RECENT_EMPTY                40035
+#define IDM_RECENT_FIRST                40040
+#define IDM_RECENT_LAST                 40049
 
 #define IDC_STATIC                      -1
 
@@ -135,7 +139,7 @@
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        131
-#define _APS_NEXT_COMMAND_VALUE         40034
+#define _APS_NEXT_COMMAND_VALUE         40050
 #define _APS_NEXT_CONTROL_VALUE         1055
 #define _APS_NEXT_SYMED_VALUE           101
 #endif

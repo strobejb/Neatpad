@@ -240,6 +240,12 @@ UINT CommandHandler(HWND hwnd, UINT nCtrlId, UINT nCtrlCode, HWND hwndFrom)
 {
 	RECT rect;
 
+	if(nCtrlId >= IDM_RECENT_FIRST && nCtrlId <= IDM_RECENT_LAST)
+	{
+		OpenRecentFile(hwnd, nCtrlId);
+		return 0;
+	}
+
 	switch(nCtrlId)
 	{
 	case IDM_FILE_NEW:
@@ -286,6 +292,10 @@ UINT CommandHandler(HWND hwnd, UINT nCtrlId, UINT nCtrlCode, HWND hwndFrom)
 
 	case IDM_FILE_EXIT:
 		PostMessage(hwnd, WM_CLOSE, 0, 0);
+		return 0;
+
+	case IDM_RECENT_CLEAR:
+		ClearRecentFiles();
 		return 0;
 
 	case IDM_EDIT_UNDO:	case WM_UNDO:
@@ -436,6 +446,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		EnableMenuCommand((HMENU)wParam, IDM_EDIT_COPY,		TextView_GetSelSize(g_hwndTextView));
 		EnableMenuCommand((HMENU)wParam, IDM_EDIT_CUT,		TextView_GetSelSize(g_hwndTextView));
 		EnableMenuCommand((HMENU)wParam, IDM_EDIT_DELETE,	TextView_GetSelSize(g_hwndTextView));
+		UpdateRecentMenu((HMENU)wParam);
 
 		return 0;
 

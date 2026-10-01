@@ -283,6 +283,7 @@ BOOL DoOpenFile(HWND hwndMain, TCHAR *szFileName, TCHAR *szFileTitle)
 			fmtlook[fmt], MF_BYCOMMAND);
 
 		NotifyFileChange(szFileName, hwndMain, 0);
+		AddRecentFile(szFileName);
 		return TRUE;
 	}
 	else
@@ -294,9 +295,14 @@ BOOL DoOpenFile(HWND hwndMain, TCHAR *szFileName, TCHAR *szFileTitle)
 	}
 }
 
-void NeatpadOpenFile(HWND hwnd, TCHAR *szFile)
+BOOL NeatpadOpenFile(HWND hwnd, TCHAR *szFile)
 {
 	TCHAR *name;
+	TCHAR szOldFileName[MAX_PATH];
+	TCHAR szOldFileTitle[MAX_PATH];
+
+	lstrcpy(szOldFileName, g_szFileName);
+	lstrcpy(szOldFileTitle, g_szFileTitle);
 
 	// save current file's position!
 	SaveFileData(g_szFileName, hwnd);
@@ -306,7 +312,12 @@ void NeatpadOpenFile(HWND hwnd, TCHAR *szFile)
 	name = _tcsrchr(g_szFileName, '\\');
 	_tcscpy(g_szFileTitle, name ? name+1 : szFile);
 
-	DoOpenFile(hwnd, g_szFileName, g_szFileTitle);
+	if(DoOpenFile(hwnd, g_szFileName, g_szFileTitle))
+		return TRUE;
+
+	lstrcpy(g_szFileName, szOldFileName);
+	lstrcpy(g_szFileTitle, szOldFileTitle);
+	return FALSE;
 }
 
 //
