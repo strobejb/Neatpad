@@ -866,6 +866,7 @@ void textdocument_ctrl_end_uses_final_page_when_lines_are_lazy()
     ULONG line_no = 0;
     ULONG line_offset = 0;
     ULONG line_length_chars = 0;
+    TextLineInfo lineinfo;
 
     for(size_t i = 0; i < line_count; i++)
         memcpy(data + i * line_length, line, line_length);
@@ -880,6 +881,10 @@ void textdocument_ctrl_end_uses_final_page_when_lines_are_lazy()
     CHECK(line_offset == doc.size());
     CHECK(line_length_chars == 0);
     CHECK(line_no + 1 == doc.linecount());
+    CHECK(doc.previous_lineinfo_from_offset(doc.size(), 1, &lineinfo));
+    CHECK(lineinfo.lineoff_chars == doc.size() - line_length);
+    CHECK(doc.next_lineinfo_from_offset(lineinfo.lineoff_chars, 1, &lineinfo));
+    CHECK(lineinfo.lineoff_chars == doc.size());
 
     doc.clear();
     DeleteFile(path);
@@ -903,6 +908,7 @@ void textdocument_lazy_eof_without_final_crlf_maps_to_final_line()
     ULONG prev_line_offset = 0;
     ULONG crlf_line_offset = 0;
     ULONG line_length_chars = 0;
+    TextLineInfo lineinfo;
 
     for(size_t i = 0; i < line_count - 1; i++)
         memcpy(data + i * line_length, line, line_length);
@@ -921,6 +927,10 @@ void textdocument_lazy_eof_without_final_crlf_maps_to_final_line()
 
     CHECK(doc.lineinfo_from_offset(line_offset - 2, &prev_line_no, &prev_line_offset, 0, 0, 0));
     CHECK(prev_line_offset == line_offset - line_length);
+    CHECK(doc.previous_lineinfo_from_offset(doc.size(), 1, &lineinfo));
+    CHECK(lineinfo.lineoff_chars == prev_line_offset);
+    CHECK(doc.next_lineinfo_from_offset(lineinfo.lineoff_chars, 1, &lineinfo));
+    CHECK(lineinfo.lineoff_chars == line_offset);
 
     doc.clear();
     DeleteFile(path);

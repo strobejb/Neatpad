@@ -6,6 +6,16 @@
 
 class TextIterator;
 
+// Document/view boundary object: line number plus both logical-character and raw-byte range.
+struct TextLineInfo
+{
+	ULONG lineno;
+	ULONG lineoff_chars;
+	ULONG linelen_chars;
+	ULONG lineoff_bytes;
+	ULONG linelen_bytes;
+};
+
 class TextDocument
 {
 	friend class TextIterator;
@@ -15,26 +25,36 @@ public:
 	TextDocument();
 	~TextDocument();
 
+	// Load and reset the document.
 	bool  init(HANDLE hFile);
 	bool  init(TCHAR *filename);
 	
 	bool  clear();
 	bool EmptyDoc();
 
+	// Undo/redo report the changed character range.
 	bool	Undo(ULONG *offset_start, ULONG *offset_end);
 	bool	Redo(ULONG *offset_start, ULONG *offset_end);
 
-	// UTF-16 text-editing interface
+	// Text-editing interface. Callers use character offsets; TextDocument maps them to storage bytes.
 	ULONG	insert_text(ULONG offset_chars, TCHAR *text, ULONG length);
 	ULONG	replace_text(ULONG offset_chars, TCHAR *text, ULONG length, ULONG erase_len);
 	ULONG	erase_text(ULONG offset_chars, ULONG length);
 
+	// Line/offset lookup. Line numbers may be estimated until the lazy line index reaches that range.
 	ULONG lineno_from_offset(ULONG offset);
 	ULONG offset_from_lineno(ULONG lineno);
 
+	// Query line ranges. The TextLineInfo overload is preferred for new code.
 	bool  lineinfo_from_offset(ULONG offset_chars, ULONG *lineno, ULONG *lineoff_chars,  ULONG *linelen_chars, ULONG *lineoff_bytes, ULONG *linelen_bytes);
 	bool  lineinfo_from_lineno(ULONG lineno,                      ULONG *lineoff_chars,  ULONG *linelen_chars, ULONG *lineoff_bytes, ULONG *linelen_bytes);	
+	bool  lineinfo_from_offset(ULONG offset_chars, TextLineInfo *lineinfo);
 
+	// Move by physical lines from a character offset, capped at the document ends.
+	bool  previous_lineinfo_from_offset(ULONG offset_chars, ULONG num_lines, TextLineInfo *lineinfo);
+	bool  next_lineinfo_from_offset(ULONG offset_chars, ULONG num_lines, TextLineInfo *lineinfo);
+
+	// Text access helpers used by TextView layout and painting.
 	TextIterator iterate(ULONG offset);
 	TextIterator iterate_line(ULONG lineno, ULONG *linestart = 0, ULONG *linelen = 0);
 	TextIterator iterate_line_offset(ULONG offset_chars, ULONG *lineno, ULONG *linestart = 0);
@@ -42,12 +62,16 @@ public:
 	ULONG getdata(ULONG offset, BYTE *buf, size_t len);
 	ULONG getline(ULONG nLineNo, TCHAR *buf, ULONG buflen, ULONG *off_chars);
 
+	// Document-wide facts. linecount() may be estimated until linecount_known() is true.
 	int   getformat();
 	ULONG linecount();
 	bool  linecount_known();
+
+	// Lazy line-index state. Unknown line numbers should not be shown as exact UI facts.
 	bool  lineno_known(ULONG lineno);
 	bool  line_numbers_known(ULONG offset_chars, ULONG length_chars);
 	void  index_lines(ULONG offset_chars, ULONG length_chars);
+
 	ULONG longestline(int tabwidth);
 	ULONG size();
 

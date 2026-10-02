@@ -50,13 +50,9 @@ bool TextView::GetLogAttr(ULONG nLineNo, USPCACHE **puspCache, CSCRIPT_LOGATTR *
 VOID TextView::MoveLineUp(int numLines)
 {
 	USPDATA			* uspData;
-	ULONG			  currentLine;
-	ULONG			  currentOffset;
-	ULONG			  currentLength;
 	ULONG			  lineOffset;
-	ULONG			  targetLine;
-	ULONG			  targetOffset;
 	ULONG			  docLength = m_pTextDoc->size();
+	TextLineInfo	  target;
 	
 	int				  charPos;
 	BOOL			  trailing;
@@ -64,45 +60,18 @@ VOID TextView::MoveLineUp(int numLines)
 	if(numLines <= 0 || docLength == 0)
 		return;
 
-	if(!m_pTextDoc->lineinfo_from_offset(min(m_nCursorOffset, docLength), &currentLine, &currentOffset, &currentLength, 0, 0))
+	if(!m_pTextDoc->previous_lineinfo_from_offset(m_nCursorOffset, numLines, &target))
 		return;
 
-	targetLine = currentLine;
-	targetOffset = currentOffset;
-
-	while(numLines-- > 0 && targetOffset > 0)
-	{
-		ULONG prevLine;
-		ULONG prevOffset;
-		ULONG prevLength;
-
-		if(!m_pTextDoc->lineinfo_from_offset(targetOffset - 1, &prevLine, &prevOffset, &prevLength, 0, 0))
-			break;
-
-		// Boundary offsets can still resolve to the current line.
-		if(prevOffset >= targetOffset && targetOffset > 1)
-		{
-			// Step back once more so the lookup is safely inside the previous line.
-			if(!m_pTextDoc->lineinfo_from_offset(targetOffset - 2, &prevLine, &prevOffset, &prevLength, 0, 0))
-				break;
-		}
-
-		if(prevOffset >= targetOffset)
-			break;
-
-		targetLine = prevLine;
-		targetOffset = prevOffset;
-	}
-
-	// get Uniscribe data for prev line
-	if((uspData = GetUspData(0, targetLine, &lineOffset)) == 0)
+	// get Uniscribe data for target line
+	if((uspData = GetUspData(0, target.lineno, &lineOffset)) == 0)
 		return;
 
 	// move up to character nearest the caret-anchor positions
 	UspXToOffset(uspData, m_nAnchorPosX, &charPos, &trailing, 0);
 
-	m_nCurrentLine = targetLine;
-	m_nCursorOffset = targetOffset + charPos + trailing;
+	m_nCurrentLine = target.lineno;
+	m_nCursorOffset = target.lineoff_chars + charPos + trailing;
 
 	if(m_nCursorOffset > docLength)
 		m_nCursorOffset = docLength;
@@ -114,15 +83,10 @@ VOID TextView::MoveLineUp(int numLines)
 VOID TextView::MoveLineDown(int numLines)
 {
 	USPDATA			* uspData;
-	ULONG			  currentLine;
-	ULONG			  currentOffset;
-	ULONG			  currentLength;
 	ULONG			  lineOffset;
-	ULONG			  targetLine;
-	ULONG			  targetOffset;
-	ULONG			  targetLength;
 	ULONG			  newOffset;
 	ULONG			  docLength = m_pTextDoc->size();
+	TextLineInfo	  target;
 	
 	int				  charPos;
 	BOOL			  trailing;
@@ -130,57 +94,22 @@ VOID TextView::MoveLineDown(int numLines)
 	if(numLines <= 0 || docLength == 0)
 		return;
 
-	if(!m_pTextDoc->lineinfo_from_offset(min(m_nCursorOffset, docLength), &currentLine, &currentOffset, &currentLength, 0, 0))
+	if(!m_pTextDoc->next_lineinfo_from_offset(m_nCursorOffset, numLines, &target))
 		return;
 
-	targetLine = currentLine;
-	targetOffset = currentOffset;
-	targetLength = currentLength;
-
-	while(numLines-- > 0)
-	{
-		ULONG nextLine;
-		ULONG nextOffset;
-		ULONG nextLength;
-		ULONG lineEnd = targetOffset + targetLength;
-
-		if(lineEnd > docLength)
-			lineEnd = docLength;
-
-		if(lineEnd >= docLength)
-		{
-			if(targetLength == 0 || !m_pTextDoc->lineinfo_from_offset(docLength, &nextLine, &nextOffset, &nextLength, 0, 0))
-				break;
-
-			if(nextOffset != docLength || nextLine == targetLine)
-				break;
-		}
-		else if(!m_pTextDoc->lineinfo_from_offset(lineEnd, &nextLine, &nextOffset, &nextLength, 0, 0))
-		{
-			break;
-		}
-
-		if(nextOffset <= targetOffset)
-			break;
-
-		targetLine = nextLine;
-		targetOffset = nextOffset;
-		targetLength = nextLength;
-	}
-
-	// get Uniscribe data for prev line
-	if((uspData = GetUspData(0, targetLine, &lineOffset)) == 0)
+	// get Uniscribe data for target line
+	if((uspData = GetUspData(0, target.lineno, &lineOffset)) == 0)
 		return;
 
 	// move down to character nearest the caret-anchor position
 	UspXToOffset(uspData, m_nAnchorPosX, &charPos, &trailing, 0);
 
-	newOffset = targetOffset + charPos + trailing;
+	newOffset = target.lineoff_chars + charPos + trailing;
 
 	if(newOffset > docLength)
 		newOffset = docLength;
 
-	m_nCurrentLine = targetLine;
+	m_nCurrentLine = target.lineno;
 	m_nCursorOffset = newOffset;
 }
 

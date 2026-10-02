@@ -726,6 +726,109 @@ bool TextDocument::lineinfo_from_offset(ULONG offset_chars, ULONG *lineno, ULONG
 	return true;
 }
 
+bool TextDocument::lineinfo_from_offset(ULONG offset_chars, TextLineInfo *lineinfo)
+{
+	if(lineinfo == 0)
+		return false;
+
+	// Keep the older optional-output API alive, but give new callers one named result.
+	return lineinfo_from_offset(
+		offset_chars,
+		&lineinfo->lineno,
+		&lineinfo->lineoff_chars,
+		&lineinfo->linelen_chars,
+		&lineinfo->lineoff_bytes,
+		&lineinfo->linelen_bytes);
+}
+
+bool TextDocument::previous_lineinfo_from_offset(ULONG offset_chars, ULONG num_lines, TextLineInfo *lineinfo)
+{
+	ULONG docLength = size();
+	TextLineInfo target;
+
+	if(lineinfo == 0 || docLength == 0)
+		return false;
+
+	if(offset_chars > docLength)
+		offset_chars = docLength;
+
+	if(!lineinfo_from_offset(offset_chars, &target))
+		return false;
+
+	// Walk using physical line starts, so navigation does not depend on exact global line numbers.
+	while(num_lines-- > 0 && target.lineoff_chars > 0)
+	{
+		TextLineInfo prev;
+		ULONG probe = target.lineoff_chars - 1;
+
+		if(!lineinfo_from_offset(probe, &prev))
+			break;
+
+		// A line-boundary lookup can resolve back to the current line; step inside the previous line.
+		if(prev.lineoff_chars >= target.lineoff_chars && target.lineoff_chars > 1)
+		{
+			if(!lineinfo_from_offset(target.lineoff_chars - 2, &prev))
+				break;
+		}
+
+		if(prev.lineoff_chars >= target.lineoff_chars)
+			break;
+
+		target = prev;
+	}
+
+	*lineinfo = target;
+	return true;
+}
+
+bool TextDocument::next_lineinfo_from_offset(ULONG offset_chars, ULONG num_lines, TextLineInfo *lineinfo)
+{
+	ULONG docLength = size();
+	TextLineInfo target;
+
+	if(lineinfo == 0 || docLength == 0)
+		return false;
+
+	if(offset_chars > docLength)
+		offset_chars = docLength;
+
+	if(!lineinfo_from_offset(offset_chars, &target))
+		return false;
+
+	// Walk by line length to reach the next physical line, stopping cleanly at EOF.
+	while(num_lines-- > 0)
+	{
+		TextLineInfo next;
+		ULONG lineEnd;
+
+		if(target.lineoff_chars >= docLength || target.linelen_chars > docLength - target.lineoff_chars)
+			lineEnd = docLength;
+		else
+			lineEnd = target.lineoff_chars + target.linelen_chars;
+
+		if(lineEnd >= docLength)
+		{
+			if(target.linelen_chars == 0 || !lineinfo_from_offset(docLength, &next))
+				break;
+
+			if(next.lineoff_chars != docLength || next.lineno == target.lineno)
+				break;
+		}
+		else if(!lineinfo_from_offset(lineEnd, &next))
+		{
+			break;
+		}
+
+		if(next.lineoff_chars <= target.lineoff_chars)
+			break;
+
+		target = next;
+	}
+
+	*lineinfo = target;
+	return true;
+}
+
 int TextDocument::getformat()
 {
 	return m_nFileFormat;
