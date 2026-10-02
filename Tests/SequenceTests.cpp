@@ -886,11 +886,53 @@ void textdocument_ctrl_end_uses_final_page_when_lines_are_lazy()
     delete[] data;
 }
 
+void textdocument_lazy_eof_without_final_crlf_maps_to_final_line()
+{
+    TextDocument doc;
+    TCHAR path[MAX_PATH];
+    const char *line = "line abcdefghijklmnopqrstuvwxyz 0123456789\r\n";
+    const char *last_line = "final abcdefghijklmnopqrstuvwxyz 0123456789";
+    const size_t line_length = strlen(line);
+    const size_t last_line_length = strlen(last_line);
+    const size_t line_count = (MEM_BLOCK_SIZE * 8) / line_length;
+    const size_t file_length = line_length * (line_count - 1) + last_line_length;
+    char *data = new char[file_length];
+    ULONG line_no = 0;
+    ULONG prev_line_no = 0;
+    ULONG line_offset = 0;
+    ULONG prev_line_offset = 0;
+    ULONG crlf_line_offset = 0;
+    ULONG line_length_chars = 0;
+
+    for(size_t i = 0; i < line_count - 1; i++)
+        memcpy(data + i * line_length, line, line_length);
+
+    memcpy(data + line_length * (line_count - 1), last_line, last_line_length);
+
+    CHECK(write_temp_file(data, file_length, path));
+    CHECK(doc.init(path));
+
+    CHECK(doc.lineinfo_from_offset(doc.size(), &line_no, &line_offset, &line_length_chars, 0, 0));
+    CHECK(line_offset == file_length - last_line_length);
+    CHECK(line_length_chars == last_line_length);
+
+    CHECK(doc.lineinfo_from_offset(line_offset - 1, 0, &crlf_line_offset, 0, 0, 0));
+    CHECK(crlf_line_offset == line_offset - line_length);
+
+    CHECK(doc.lineinfo_from_offset(line_offset - 2, &prev_line_no, &prev_line_offset, 0, 0, 0));
+    CHECK(prev_line_offset == line_offset - line_length);
+
+    doc.clear();
+    DeleteFile(path);
+    delete[] data;
+}
+
 void textdocument_lazy_line_numbers_continue_after_first_page()
 {
     TextDocument doc;
     TCHAR path[MAX_PATH];
     ULONG first_unknown = 0;
+    ULONG actual_line = 0;
     ULONG line_offset = 0;
     ULONG line_length_chars = 0;
 
@@ -908,8 +950,8 @@ void textdocument_lazy_line_numbers_continue_after_first_page()
         CHECK(doc.lineinfo_from_lineno(line, &line_offset, &line_length_chars, 0, 0));
         CHECK(doc.lineno_known(line));
 
-        CHECK(doc.lineinfo_from_offset(line_offset, &first_unknown, 0, 0, 0, 0));
-        CHECK(first_unknown == line);
+        CHECK(doc.lineinfo_from_offset(line_offset, &actual_line, 0, 0, 0, 0));
+        CHECK(actual_line == line);
     }
 
     doc.clear();
@@ -998,6 +1040,7 @@ const test_case tests[] =
     { "textdocument_lineinfo_handles_lazy_end_after_insert", textdocument_lineinfo_handles_lazy_end_after_insert },
     { "textdocument_final_sparse_line_ignores_estimated_linecount", textdocument_final_sparse_line_ignores_estimated_linecount },
     { "textdocument_ctrl_end_uses_final_page_when_lines_are_lazy", textdocument_ctrl_end_uses_final_page_when_lines_are_lazy },
+    { "textdocument_lazy_eof_without_final_crlf_maps_to_final_line", textdocument_lazy_eof_without_final_crlf_maps_to_final_line },
     { "textdocument_lazy_line_numbers_continue_after_first_page", textdocument_lazy_line_numbers_continue_after_first_page },
     { "textdocument_large_lazy_file_line_estimate_does_not_overflow", textdocument_large_lazy_file_line_estimate_does_not_overflow },
 };

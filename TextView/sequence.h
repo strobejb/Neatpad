@@ -69,11 +69,9 @@ public:
 	// sequence manipulation 
 	//
 	bool		insert (size_w index, const seqchar *buf, size_w length);
-	bool		insert (size_w index, const seqchar  val, size_w count);
 	bool		insert (size_w index, const seqchar  val);
 	bool		replace(size_w index, const seqchar *buf, size_w length, size_w erase_length);
 	bool		replace(size_w index, const seqchar *buf, size_w length);
-	bool		replace(size_w index, const seqchar  val, size_w count);
 	bool		replace(size_w index, const seqchar  val);
 	bool		erase  (size_w index, size_w len);
 	bool		erase  (size_w index);
@@ -119,19 +117,25 @@ private:
 	void			deletefromsequence(span **sptr);
 	span		*	spanfromindex(size_w index, size_w *spanindex) const;
 	span		*	alloc_span(size_w offset, size_w length, int buffer, span *next = 0, span *prev = 0);
-	size_w			find_buffer_line_index(buffer_control *bc, size_w offset) const;
-	void			update_span_line_data(span *sptr);
-	void			scan(span *sptr);
+
 	size_w			sequence_length;
 	span		*	head;
 	span		*	tail;	
 	span		*	frag1;
 	span		*	frag2;
-	bool			lineoffset_by_scanning(size_w line, size_w *offset, size_w max_offset = MAX_SEQUENCE_LENGTH) const;
-	bool			linefromoffset_by_scanning(size_w offset, size_w *line, size_w *lineoffset) const;
-	bool			lineoffset_by_estimate(size_w line, size_w *offset) const;
-	bool			linefromoffset_by_estimate(size_w offset, size_w *line, size_w *lineoffset) const;
-	bool			find_line_start_near_offset(size_w near_offset, size_w *offset) const;
+
+private:
+	//
+	// Internal helpers for line-buffer access. estimate helpers are lazy-file fallbacks.
+	//
+	bool			exact_scan_offset_from_line(size_w line, size_w *offset, size_w max_offset = MAX_SEQUENCE_LENGTH) const;
+	bool			exact_scan_line_from_offset(size_w offset, size_w *line, size_w *lineoffset) const;
+	bool			exact_indexed_line_from_offset(size_w offset, size_w *line, size_w *lineoffset) const;
+	bool			estimate_offset_from_line(size_w line, size_w *offset) const;
+	bool			estimate_line_from_offset(size_w offset, size_w *line, size_w *lineoffset) const;
+	bool			find_exact_line_start_near_offset(size_w near_offset, size_w *offset) const;
+
+	void			update_span_line_data(span* sptr);
 
 	
 	//
@@ -175,10 +179,6 @@ private:
 	action			lastaction;
 	bool			can_quicksave;
 	
-	void			LOCK();
-	void			UNLOCK();
-
-
 };
 
 
@@ -444,6 +444,8 @@ public:
 	void	build_line_index(size_w offset, size_w length);
 	bool	lines_known(size_w offset, size_w length) const;
 	void	clear();
+
+	size_w  first_line_after(size_w offset) const;
 
 	enum { MAX_VIEWS = 4 };
 	struct buffer_view
