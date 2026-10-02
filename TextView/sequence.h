@@ -53,14 +53,22 @@ public:
 	bool		init(const seqchar *buffer, size_t length);
 
 	//
-	//	sequence statistics
+	//	Sequence size and line index
 	//
 	size_w		size() const;
+
+	// linecount() may be estimated until every lazy file page has been indexed.
 	size_w		linecount() const;
 	bool		linecount_known() const;
+
+	// Exactness checks used by the UI before displaying line numbers as facts.
 	bool		line_number_known(size_w line) const;
 	bool		line_numbers_known(size_w offset, size_w length) const;
+
+	// Build lazy line metadata for a touched sequence range.
 	void		index_lines(size_w offset, size_w length);
+
+	// Physical line lookup. Offsets are exact; line numbers may be estimated while lazy.
 	bool		next_lineoffset(size_w lineoff, size_w *nextoff) const;
 	bool		lineoffset(size_w line, size_w *offset) const;
 	bool		linefromoffset(size_w offset, size_w *line, size_w *lineoffset) const;
@@ -126,11 +134,13 @@ private:
 
 private:
 	//
-	// Internal helpers for line-buffer access. estimate helpers are lazy-file fallbacks.
+	// Internal helpers for lazy line lookup.
 	//
 	bool			exact_scan_offset_from_line(size_w line, size_w *offset, size_w max_offset = MAX_SEQUENCE_LENGTH) const;
 	bool			exact_scan_line_from_offset(size_w offset, size_w *line, size_w *lineoffset) const;
 	bool			exact_indexed_line_from_offset(size_w offset, size_w *line, size_w *lineoffset) const;
+
+	// Estimate helpers still return exact physical offsets when possible.
 	bool			estimate_offset_from_line(size_w line, size_w *offset) const;
 	bool			estimate_line_from_offset(size_w offset, size_w *line, size_w *lineoffset) const;
 	bool			find_exact_line_start_near_offset(size_w near_offset, size_w *offset) const;

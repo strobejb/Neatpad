@@ -509,12 +509,24 @@ LONG TextView::OnKeyDown(UINT nKeyCode, UINT nFlags)
 
 	case VK_HOME:
 		if(fCtrlDown)	MoveFileStart();
-		else			MoveLineStart(m_nCurrentLine);
+		else
+		{
+			TextLineInfo lineinfo;
+
+			if(m_pTextDoc->lineinfo_from_offset(m_nCursorOffset, &lineinfo))
+				m_nCursorOffset = lineinfo.lineoff_chars;
+		}
 		break;
 
 	case VK_END:
 		if(fCtrlDown)	MoveFileEnd();
-		else			MoveLineEnd(m_nCurrentLine);
+		else
+		{
+			TextLineInfo lineinfo;
+
+			if(m_pTextDoc->lineinfo_from_offset(m_nCursorOffset, &lineinfo))
+				m_nCursorOffset = m_pTextDoc->line_text_end(&lineinfo);
+		}
 		break;
 
 	default:

@@ -6,7 +6,7 @@
 
 class TextIterator;
 
-// Document/view boundary object: line number plus both logical-character and raw-byte range.
+// Document/view boundary object: line number plus character and backing-byte range.
 struct TextLineInfo
 {
 	ULONG lineno;
@@ -36,19 +36,20 @@ public:
 	bool	Undo(ULONG *offset_start, ULONG *offset_end);
 	bool	Redo(ULONG *offset_start, ULONG *offset_end);
 
-	// Text-editing interface. Callers use character offsets; TextDocument maps them to storage bytes.
+	// Text-editing interface. Callers use character offsets; TextDocument maps them to backing bytes.
 	ULONG	insert_text(ULONG offset_chars, TCHAR *text, ULONG length);
 	ULONG	replace_text(ULONG offset_chars, TCHAR *text, ULONG length, ULONG erase_len);
 	ULONG	erase_text(ULONG offset_chars, ULONG length);
 
-	// Line/offset lookup. Line numbers may be estimated until the lazy line index reaches that range.
+	// Line/offset lookup. Use lineno_known() before presenting a returned line number as exact.
 	ULONG lineno_from_offset(ULONG offset);
 	ULONG offset_from_lineno(ULONG lineno);
 
-	// Query line ranges. The TextLineInfo overload is preferred for new code.
+	// Query line ranges. Character offsets are exact; line numbers can be provisional in lazy regions.
 	bool  lineinfo_from_offset(ULONG offset_chars, ULONG *lineno, ULONG *lineoff_chars,  ULONG *linelen_chars, ULONG *lineoff_bytes, ULONG *linelen_bytes);
 	bool  lineinfo_from_lineno(ULONG lineno,                      ULONG *lineoff_chars,  ULONG *linelen_chars, ULONG *lineoff_bytes, ULONG *linelen_bytes);	
 	bool  lineinfo_from_offset(ULONG offset_chars, TextLineInfo *lineinfo);
+	ULONG line_text_end(TextLineInfo *lineinfo);
 
 	// Move by physical lines from a character offset, capped at the document ends.
 	bool  previous_lineinfo_from_offset(ULONG offset_chars, ULONG num_lines, TextLineInfo *lineinfo);
@@ -67,7 +68,7 @@ public:
 	ULONG linecount();
 	bool  linecount_known();
 
-	// Lazy line-index state. Unknown line numbers should not be shown as exact UI facts.
+	// Lazy line-index state. Unknown line numbers should be hidden or marked provisional by the UI.
 	bool  lineno_known(ULONG lineno);
 	bool  line_numbers_known(ULONG offset_chars, ULONG length_chars);
 	void  index_lines(ULONG offset_chars, ULONG length_chars);
@@ -77,7 +78,7 @@ public:
 
 private:
 	
-	bool init_linebuffer();
+	bool init_legacy_linebuffer();
 	bool use_sequence_linebuffer() const;
 
 	ULONG charoffset_to_byteoffset(ULONG offset_chars);

@@ -883,8 +883,10 @@ void textdocument_ctrl_end_uses_final_page_when_lines_are_lazy()
     CHECK(line_no + 1 == doc.linecount());
     CHECK(doc.previous_lineinfo_from_offset(doc.size(), 1, &lineinfo));
     CHECK(lineinfo.lineoff_chars == doc.size() - line_length);
+    CHECK(doc.line_text_end(&lineinfo) == doc.size() - 2);
     CHECK(doc.next_lineinfo_from_offset(lineinfo.lineoff_chars, 1, &lineinfo));
     CHECK(lineinfo.lineoff_chars == doc.size());
+    CHECK(doc.line_text_end(&lineinfo) == doc.size());
 
     doc.clear();
     DeleteFile(path);
@@ -929,8 +931,10 @@ void textdocument_lazy_eof_without_final_crlf_maps_to_final_line()
     CHECK(prev_line_offset == line_offset - line_length);
     CHECK(doc.previous_lineinfo_from_offset(doc.size(), 1, &lineinfo));
     CHECK(lineinfo.lineoff_chars == prev_line_offset);
+    CHECK(doc.line_text_end(&lineinfo) == line_offset - 2);
     CHECK(doc.next_lineinfo_from_offset(lineinfo.lineoff_chars, 1, &lineinfo));
     CHECK(lineinfo.lineoff_chars == line_offset);
+    CHECK(doc.line_text_end(&lineinfo) == doc.size());
 
     doc.clear();
     DeleteFile(path);

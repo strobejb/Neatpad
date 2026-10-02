@@ -196,7 +196,7 @@ BOOL TextView::BackDelete()
 
 void TextView::Smeg(BOOL fAdvancing)
 {
-	m_pTextDoc->init_linebuffer();
+	m_pTextDoc->init_legacy_linebuffer();
 
 	m_nLineCount   = m_pTextDoc->linecount();
 

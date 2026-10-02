@@ -25,6 +25,14 @@ struct _BOM_LOOKUP BOMLOOK[] =
 	{ 0,          0, NCP_ASCII	  },
 };
 
+static bool is_linebreak(TCHAR ch)
+{
+	return ch == '\r' || ch == '\n' ||
+		ch == '\x0b' || ch == '\x0c' ||
+		ch == '\x85' || ch == 0x2028 ||
+		ch == 0x2029;
+}
+
 //
 //	TextDocument constructor
 //
@@ -67,7 +75,7 @@ bool TextDocument::init(TCHAR *filename)
 	m_nFileFormat = detect_file_format(&m_nHeaderSize);
 
 	// work out where each line of text starts
-	if(!init_linebuffer())
+	if(!init_legacy_linebuffer())
 		clear();
 
 	return true;
@@ -97,7 +105,7 @@ bool TextDocument::init(HANDLE hFile)
 	m_nFileFormat = detect_file_format(&m_nHeaderSize);
 
 	// work out where each line of text starts
-	if(!init_linebuffer())
+	if(!init_legacy_linebuffer())
 		clear();
 
 	CloseHandle(hFile);
@@ -364,13 +372,13 @@ ULONG TextDocument::getdata(ULONG offset, BYTE *buf, size_t len)
 }
 
 //
-//	Initialize the line-buffer
+//	Initialize the legacy line-buffer used by non-sequence-indexed encodings.
 //
 //	With Unicode a newline sequence is defined as any of the following:
 //
 //	\u000A | \u000B | \u000C | \u000D | \u0085 | \u2028 | \u2029 | \u000D\u000A
 //
-bool TextDocument::init_linebuffer()
+bool TextDocument::init_legacy_linebuffer()
 {
 	ULONG offset_bytes		= 0;
 	ULONG offset_chars		= 0;
@@ -650,7 +658,7 @@ bool TextDocument::lineinfo_from_offset(ULONG offset_chars, ULONG *lineno, ULONG
 			return false;
 		}
 
-		// Ask the sequence for the exact line start containing this offset.
+		// Ask the sequence for the physical line start containing this offset.
 		if(!m_seq.linefromoffset(offset_chars, &line, &lineoff))
 			return false;
 
@@ -739,6 +747,46 @@ bool TextDocument::lineinfo_from_offset(ULONG offset_chars, TextLineInfo *linein
 		&lineinfo->linelen_chars,
 		&lineinfo->lineoff_bytes,
 		&lineinfo->linelen_bytes);
+}
+
+ULONG TextDocument::line_text_end(TextLineInfo *lineinfo)
+{
+	ULONG offset_chars;
+	ULONG offset_bytes;
+	ULONG bytes_left;
+
+	if(lineinfo == 0)
+		return 0;
+
+	offset_chars = lineinfo->lineoff_chars;
+	offset_bytes = lineinfo->lineoff_bytes;
+	bytes_left = lineinfo->linelen_bytes;
+
+	while(bytes_left)
+	{
+		TCHAR buf[0x100];
+		ULONG chars = 0x100;
+		ULONG bytes = gettext(offset_bytes, bytes_left, buf, &chars);
+
+		for(ULONG i = 0; i < chars; i++)
+		{
+			if(is_linebreak(buf[i]))
+				return offset_chars + i;
+		}
+
+		if(bytes == 0)
+			break;
+
+		offset_chars += chars;
+		offset_bytes += bytes;
+
+		if(bytes > bytes_left)
+			break;
+
+		bytes_left -= bytes;
+	}
+
+	return offset_chars;
 }
 
 bool TextDocument::previous_lineinfo_from_offset(ULONG offset_chars, ULONG num_lines, TextLineInfo *lineinfo)
