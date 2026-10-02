@@ -33,8 +33,6 @@ BEGIN
         MENUITEM "&Save\tCtrl+S",               IDM_FILE_SAVE
         MENUITEM "Save &As...",                 IDM_FILE_SAVEAS
         MENUITEM SEPARATOR
-        MENUITEM "&Print...\tCtrl+P",           IDM_FILE_PRINT
-        MENUITEM SEPARATOR
         POPUP "&Recent"
         BEGIN
             MENUITEM "(Empty)",                     IDM_RECENT_EMPTY, GRAYED
@@ -63,14 +61,6 @@ BEGIN
     END
     POPUP "&View"
     BEGIN
-        MENUITEM "&Options...",                 IDM_VIEW_OPTIONS
-        POPUP "&Display Scheme"
-        BEGIN
-            MENUITEM "&Default",                    IDM_SCHEME_NORMAL, CHECKED
-            MENUITEM SEPARATOR
-            MENUITEM "Save &As...",                 IDM_SCHEME_SAVE
-        END
-        MENUITEM SEPARATOR
         POPUP "&Encoding"
         BEGIN
             MENUITEM "&Ascii",                      IDM_VIEW_ASCII
@@ -81,10 +71,7 @@ BEGIN
         MENUITEM "&Line Numbers",               IDM_VIEW_LINENUMBERS, CHECKED
         MENUITEM "&Highlight Long Lines",       IDM_VIEW_LONGLINES
         MENUITEM SEPARATOR
-        MENUITEM "Status &Bar",                 IDM_VIEW_STATUSBAR
-        MENUITEM SEPARATOR
-        MENUITEM "Save Settings on &Exit",      IDM_VIEW_SAVEEXIT, CHECKED
-        MENUITEM "Save Settings &Now",          IDM_VIEW_SAVENOW
+        MENUITEM "&Options...",                 IDM_VIEW_OPTIONS
     END
     POPUP "&Help"
     BEGIN
