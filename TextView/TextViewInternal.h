@@ -211,6 +211,7 @@ private:
 	void		Scroll(int dx, int dy);
 	void		ScrollToCaret();
 	void		ScrollToPosition(int xpos, ULONG lineno);
+	void		ScrollToDocumentEnd();
 	VOID		SetupScrollbars();
 	VOID		UpdateMetrics();
 	VOID		RecalcLineHeight();

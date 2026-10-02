@@ -263,6 +263,31 @@ VOID TextView::ScrollToCaret()
 	ScrollToPosition(m_nCaretPosX, m_nCurrentLine);
 }
 
+VOID TextView::ScrollToDocumentEnd()
+{
+	ULONG docLength = m_pTextDoc->size();
+	TextLineInfo eofLine;
+
+	if(docLength == 0)
+	{
+		m_nVScrollPos = 0;
+		return;
+	}
+
+	ULONG offset = docLength > MEM_BLOCK_SIZE ? docLength - MEM_BLOCK_SIZE : 0;
+
+	// The lazy line count is only an estimate, so bottom scrolling is anchored at EOF.
+	m_pTextDoc->index_lines(offset, docLength - offset);
+	m_nLineCount = m_pTextDoc->linecount();
+
+	if(!m_pTextDoc->lineinfo_from_offset(docLength, &eofLine))
+		m_nVScrollPos = m_nVScrollMax;
+	else if(eofLine.lineno + 1 > (ULONG)m_nWindowLines)
+		m_nVScrollPos = eofLine.lineno - m_nWindowLines + 1;
+	else
+		m_nVScrollPos = 0;
+}
+
 LONG GetTrackPos32(HWND hwnd, int nBar)
 {
 	SCROLLINFO si = { sizeof(si), SIF_TRACKPOS };
@@ -285,7 +310,7 @@ LONG TextView::OnVScroll(UINT nSBCode, UINT nPos)
 		break;
 
 	case SB_BOTTOM:
-		m_nVScrollPos = m_nVScrollMax;
+		ScrollToDocumentEnd();
 		RefreshWindow();
 		break;
 
@@ -309,6 +334,9 @@ LONG TextView::OnVScroll(UINT nSBCode, UINT nPos)
 	case SB_THUMBTRACK:
 
 		m_nVScrollPos = GetTrackPos32(m_hWnd, SB_VERT);
+		if(m_nVScrollPos >= m_nVScrollMax)
+			ScrollToDocumentEnd();
+
 		RefreshWindow();
 
 		break;
