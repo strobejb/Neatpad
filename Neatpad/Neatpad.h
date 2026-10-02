@@ -10,8 +10,8 @@ extern "C" {
 #define REGLOC		_T("SOFTWARE\\Catch22\\Neatpad")
 
 #define WEBSITE_STR _T("www.catch22.net")
-#define WEBSITE_URL _T("http://") WEBSITE_STR
-#define SYSLINK_STR _T("Updates available at <A HREF=\"") WEBSITE_URL _T("\">") WEBSITE_STR _T("</A>")
+#define WEBSITE_URL _T("https://") WEBSITE_STR
+#define SYSLINK_STR _T("<A HREF=\"") WEBSITE_URL _T("\">") WEBSITE_STR _T("</A>")
 
 
 //

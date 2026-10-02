@@ -266,16 +266,16 @@ BEGIN
     CONTROL         "&Highlight current line",IDC_HIGHLIGHTCURLINE,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,185,75,80,10
 END
 
-IDD_ABOUT DIALOGEX 0, 0, 223, 137
+IDD_ABOUT DIALOGEX 0, 0, 224, 113
 STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
 EXSTYLE WS_EX_CONTROLPARENT
 CAPTION "About Neatpad"
 FONT 8, "MS Shell Dlg", 0, 0, 0x1
 BEGIN
-    DEFPUSHBUTTON   "OK",IDOK,166,116,50,14
+    DEFPUSHBUTTON   "OK",IDOK,167,91,50,14
     ICON            IDI_ICON1,IDC_HEADER2,13,20,20,20
-    LTEXT           "Copyright © 2006 by Catch22 Productions.\nWritten by J Brown.",IDC_STATIC,50,40,166,22
-    LTEXT           "Updates available at www.catch22.net",IDC_ABOUT_URL,50,90,166,18
+    LTEXT           "Copyright © 2006-2026 Catch22 Solutions.\nWritten by J Brown.",IDC_STATIC,51,40,166,22
+    LTEXT           "www.catch22.net",IDC_ABOUT_URL,51,70,166,18
     LTEXT           "Neatpad Beta 0.17.10",IDC_ABOUT_APPNAME,50,20,167,14
 END
 
@@ -399,8 +399,8 @@ BEGIN
     IDD_ABOUT, DIALOG
     BEGIN
         LEFTMARGIN, 7
-        RIGHTMARGIN, 216
-        BOTTOMMARGIN, 130
+        RIGHTMARGIN, 217
+        BOTTOMMARGIN, 105
     END
 
     IDD_SAVEFILE, DIALOG
@@ -506,6 +506,17 @@ BEGIN
     BEGIN
         VALUE "Translation", 0x809, 1200
     END
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// AFX_DIALOG_LAYOUT
+//
+
+IDD_ABOUT AFX_DIALOG_LAYOUT
+BEGIN
+    0
 END
 
 
