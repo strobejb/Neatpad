@@ -6,8 +6,8 @@
 
 #include <string>
 
-#include "../TextView/sequence.h"
-#include "../TextView/TextDocument.h"
+#include "../src/TextView/sequence.h"
+#include "../src/TextView/TextDocument.h"
 
 namespace
 {

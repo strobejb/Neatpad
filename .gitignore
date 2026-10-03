@@ -1,12 +1,15 @@
-# Visual Studio user state
+﻿# Visual Studio user state
 .vs/
 ipch/
 
 # Build outputs
+build/
 Debug/
 Release/
+DebugVerify/
 Unicode_Debug/
 Unicode_Release/
+DebugVerify/
 x64/
 Win32/
 

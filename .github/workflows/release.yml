@@ -38,7 +38,7 @@ jobs:
         run: |
           import os, re, sys
 
-          RC_PATH = "Neatpad/resource.rc"
+          RC_PATH = "src/Neatpad/resource.rc"
           tag = os.environ["TAG"]
 
           if m := re.fullmatch(r"v(\d+)\.(\d+)\.(\d+)(?:[-+].*)?", tag):

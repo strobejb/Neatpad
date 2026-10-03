@@ -2,20 +2,20 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{BC8A1FFA-BEE3-4634-8014-F334798102B3}") = "UspLib", "UspLib\UspLib.vcxproj", "{5E7AC3D0-6E3B-4BF1-9DD6-B68A47376C83}"
+Project("{BC8A1FFA-BEE3-4634-8014-F334798102B3}") = "UspLib", "src\UspLib\UspLib.vcxproj", "{5E7AC3D0-6E3B-4BF1-9DD6-B68A47376C83}"
 EndProject
-Project("{BC8A1FFA-BEE3-4634-8014-F334798102B3}") = "TextView", "TextView\TextView.vcxproj", "{9D2C0B3C-26B9-4F43-B950-4550B8D21850}"
+Project("{BC8A1FFA-BEE3-4634-8014-F334798102B3}") = "TextView", "src\TextView\TextView.vcxproj", "{9D2C0B3C-26B9-4F43-B950-4550B8D21850}"
 	ProjectSection(ProjectDependencies) = postProject
 		{5E7AC3D0-6E3B-4BF1-9DD6-B68A47376C83} = {5E7AC3D0-6E3B-4BF1-9DD6-B68A47376C83}
 	EndProjectSection
 EndProject
-Project("{BC8A1FFA-BEE3-4634-8014-F334798102B3}") = "Neatpad", "Neatpad\Neatpad.vcxproj", "{7E3F82B5-0F6B-4432-8E0B-556B823411D4}"
+Project("{BC8A1FFA-BEE3-4634-8014-F334798102B3}") = "Neatpad", "src\Neatpad\Neatpad.vcxproj", "{7E3F82B5-0F6B-4432-8E0B-556B823411D4}"
 	ProjectSection(ProjectDependencies) = postProject
 		{9D2C0B3C-26B9-4F43-B950-4550B8D21850} = {9D2C0B3C-26B9-4F43-B950-4550B8D21850}
 		{5E7AC3D0-6E3B-4BF1-9DD6-B68A47376C83} = {5E7AC3D0-6E3B-4BF1-9DD6-B68A47376C83}
 	EndProjectSection
 EndProject
-Project("{BC8A1FFA-BEE3-4634-8014-F334798102B3}") = "SequenceTests", "Tests\SequenceTests.vcxproj", "{B73C407F-80B7-4F1A-9C7A-0423C196E032}"
+Project("{BC8A1FFA-BEE3-4634-8014-F334798102B3}") = "SequenceTests", "tests\SequenceTests.vcxproj", "{B73C407F-80B7-4F1A-9C7A-0423C196E032}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

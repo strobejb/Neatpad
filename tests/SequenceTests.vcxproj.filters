@@ -12,42 +12,42 @@
     <ClCompile Include="SequenceTests.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\TextView\sequence.cpp">
+    <ClCompile Include="..\src\TextView\sequence.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\TextView\sequence_buf.cpp">
+    <ClCompile Include="..\src\TextView\sequence_buf.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\TextView\sequence_lines.cpp">
+    <ClCompile Include="..\src\TextView\sequence_lines.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\TextView\TextDocument.cpp">
+    <ClCompile Include="..\src\TextView\TextDocument.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\TextView\TextLineIndex.cpp">
+    <ClCompile Include="..\src\TextView\TextLineIndex.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\TextView\Unicode.c">
+    <ClCompile Include="..\src\TextView\Unicode.c">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\TextView\codepages.h">
+    <ClInclude Include="..\src\TextView\codepages.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\TextView\sequence.h">
+    <ClInclude Include="..\src\TextView\sequence.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\TextView\TextDocument.h">
+    <ClInclude Include="..\src\TextView\TextDocument.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\TextView\TextLineIndex.h">
+    <ClInclude Include="..\src\TextView\TextLineIndex.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\TextView\TextView.h">
+    <ClInclude Include="..\src\TextView\TextView.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\TextView\Unicode.h">
+    <ClInclude Include="..\src\TextView\Unicode.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
