@@ -321,10 +321,10 @@ ULONG TextView::SelectionSize()
 ULONG TextView::SelectAll()
 {
 	m_nSelectionStart = 0;
-	m_nSelectionEnd   = m_pTextDoc->size();
+	m_nSelectionEnd   = m_pTextDoc->text_length();
 	m_nCursorOffset   = m_nSelectionEnd;
 
-	Smeg(TRUE);
+	UpdateViewState(TRUE);
 	RefreshWindow();
 	return 0;
 }

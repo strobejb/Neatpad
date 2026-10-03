@@ -50,7 +50,6 @@ LONG TextView::ClearFile()
 	if(m_pTextDoc)
 	{
 		m_pTextDoc->clear();
-		m_pTextDoc->EmptyDoc();
 	}
 
 	ResetLineCache();

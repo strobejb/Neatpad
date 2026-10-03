@@ -265,7 +265,7 @@ VOID TextView::ScrollToCaret()
 
 VOID TextView::ScrollToDocumentEnd()
 {
-	ULONG docLength = m_pTextDoc->size();
+	ULONG docLength = m_pTextDoc->text_length();
 	TextLineInfo eofLine;
 
 	if(docLength == 0)

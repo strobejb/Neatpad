@@ -4,50 +4,71 @@
 #include "codepages.h"
 #include "sequence.h"
 
-class TextIterator;
+class TextReader;
 
-// Document/view boundary object: line number plus character and backing-byte range.
+//
+//	TextDocument is the boundary between the view and the storage engine.
+//
+//	TextView works in UTF-16 code units: caret offsets, selections, line
+//	lengths and decoded text all use character offsets. TextDocument converts
+//	those requests to the byte offsets used by the backing sequence.
+//
+//	sequence stores raw bytes. It does not know about the display encoding,
+//	the caret, or the TextView line layout.
+//
+
+// Document/view boundary object: line number plus UTF-16 range.
 struct TextLineInfo
 {
 	ULONG lineno;
 	ULONG lineoff_chars;
 	ULONG linelen_chars;
-	ULONG lineoff_bytes;
-	ULONG linelen_bytes;
 };
 
 class TextDocument
 {
-	friend class TextIterator;
-	friend class TextView;
+	friend class TextReader;
 
 public:
 	TextDocument();
 	~TextDocument();
 
+	//
+	//	Lifetime
+	//
+
 	// Load and reset the document.
-	bool  init(HANDLE hFile);
 	bool  init(TCHAR *filename);
 	
 	bool  clear();
-	bool EmptyDoc();
 
-	// Undo/redo report the changed character range.
-	bool	Undo(ULONG *offset_start, ULONG *offset_end);
-	bool	Redo(ULONG *offset_start, ULONG *offset_end);
+	//
+	//	Editing
+	//
+	bool	undo(ULONG *offset_start, ULONG *offset_end);
+	bool	redo(ULONG *offset_start, ULONG *offset_end);
+	bool	can_undo();
+	bool	can_redo();
+	void	undo_group_begin();
+	void	undo_group_end();
+	void	undo_group_break();
 
 	// Text-editing interface. Callers use character offsets; TextDocument maps them to backing bytes.
-	ULONG	insert_text(ULONG offset_chars, TCHAR *text, ULONG length);
-	ULONG	replace_text(ULONG offset_chars, TCHAR *text, ULONG length, ULONG erase_len);
-	ULONG	erase_text(ULONG offset_chars, ULONG length);
+	ULONG	insert_text  (ULONG offset_chars, TCHAR *text, ULONG length);
+	ULONG	replace_text (ULONG offset_chars, TCHAR *text, ULONG length, ULONG erase_len);
+	ULONG	erase_text   (ULONG offset_chars, ULONG length);
+
+	//
+	//	Line lookup
+	//
 
 	// Line/offset lookup. Use lineno_known() before presenting a returned line number as exact.
 	ULONG lineno_from_offset(ULONG offset);
 	ULONG offset_from_lineno(ULONG lineno);
 
 	// Query line ranges. Character offsets are exact; line numbers can be provisional in lazy regions.
-	bool  lineinfo_from_offset(ULONG offset_chars, ULONG *lineno, ULONG *lineoff_chars,  ULONG *linelen_chars, ULONG *lineoff_bytes, ULONG *linelen_bytes);
-	bool  lineinfo_from_lineno(ULONG lineno,                      ULONG *lineoff_chars,  ULONG *linelen_chars, ULONG *lineoff_bytes, ULONG *linelen_bytes);	
+	bool  lineinfo_from_offset(ULONG offset_chars, ULONG *lineno, ULONG *lineoff_chars,  ULONG *linelen_chars);
+	bool  lineinfo_from_lineno(ULONG lineno,                      ULONG *lineoff_chars,  ULONG *linelen_chars);
 	bool  lineinfo_from_offset(ULONG offset_chars, TextLineInfo *lineinfo);
 	ULONG line_text_end(TextLineInfo *lineinfo);
 
@@ -55,13 +76,19 @@ public:
 	bool  previous_lineinfo_from_offset(ULONG offset_chars, ULONG num_lines, TextLineInfo *lineinfo);
 	bool  next_lineinfo_from_offset(ULONG offset_chars, ULONG num_lines, TextLineInfo *lineinfo);
 
-	// Text access helpers used by TextView layout and painting.
-	TextIterator iterate(ULONG offset);
-	TextIterator iterate_line(ULONG lineno, ULONG *linestart = 0, ULONG *linelen = 0);
-	TextIterator iterate_line_offset(ULONG offset_chars, ULONG *lineno, ULONG *linestart = 0);
+	//
+	//	Text access
+	//
 
-	ULONG getdata(ULONG offset, BYTE *buf, size_t len);
+	// Text access helpers used by TextView layout and painting.
+	TextReader text_from_offset(ULONG offset_chars);
+	TextReader text_from_line(ULONG lineno, ULONG *linestart = 0, ULONG *linelen = 0);
+
 	ULONG getline(ULONG nLineNo, TCHAR *buf, ULONG buflen, ULONG *off_chars);
+
+	//
+	//	Document facts
+	//
 
 	// Document-wide facts. linecount() may be estimated until linecount_known() is true.
 	int   getformat();
@@ -70,40 +97,69 @@ public:
 
 	// Lazy line-index state. Unknown line numbers should be hidden or marked provisional by the UI.
 	bool  lineno_known(ULONG lineno);
-	bool  line_numbers_known(ULONG offset_chars, ULONG length_chars);
+	bool  line_number_range_known(ULONG offset_chars, ULONG length_chars);
 	void  index_lines(ULONG offset_chars, ULONG length_chars);
 
 	ULONG longestline(int tabwidth);
-	ULONG size();
+	ULONG text_length();
 
 private:
+
+	//
+	//	Line indexing
+	//
+
+	struct RawLineInfo
+	{
+		ULONG lineno;
+		ULONG lineoff_chars;
+		ULONG linelen_chars;
+		ULONG lineoff_bytes;
+		ULONG linelen_bytes;
+	};
 	
-	bool init_legacy_linebuffer();
+	bool init_line_index();
 	bool use_sequence_linebuffer() const;
+	bool raw_lineinfo_from_offset(ULONG offset_chars, RawLineInfo *lineinfo);
+	bool raw_lineinfo_from_lineno(ULONG lineno, RawLineInfo *lineinfo);
+
+	//
+	//	UTF-16 / backing-byte conversion
+	//
 
 	ULONG charoffset_to_byteoffset(ULONG offset_chars);
 	ULONG byteoffset_to_charoffset(ULONG offset_bytes);
 
 	ULONG count_chars(ULONG offset_bytes, ULONG length_chars);
+	ULONG count_code_units(ULONG offset_bytes, ULONG length_bytes);
 
 	size_t utf16_to_rawdata(TCHAR *utf16str, size_t utf16len, BYTE *rawdata, size_t *rawlen);
 	size_t rawdata_to_utf16(BYTE *rawdata, size_t rawlen, TCHAR *utf16str, size_t *utf16len);
 
-	int   detect_file_format(int *headersize);
-	ULONG	  gettext(ULONG offset, ULONG lenbytes, TCHAR *buf, ULONG *len);
-	int   getchar(ULONG offset, ULONG lenbytes, ULONG *pch32);
+	//
+	//	Raw file access
+	//
 
-	// UTF-16 text-editing interface
+	int   detect_file_format(int *headersize);
+	ULONG decode_text(ULONG offset_bytes, ULONG lenbytes, TCHAR *buf, ULONG *len);
+	int   decode_char(ULONG offset_bytes, ULONG lenbytes, ULONG *pch32);
+
+	//
+	//	Raw editing
+	//
+
 	ULONG	insert_raw(ULONG offset_bytes, TCHAR *text, ULONG length);
 	ULONG	replace_raw(ULONG offset_bytes, TCHAR *text, ULONG length, ULONG erase_len);
 	ULONG	erase_raw(ULONG offset_bytes, ULONG length);
 
 
+	// Raw byte storage.
 	sequence m_seq;
 
+	// Cached document length in UTF-16 code units.
 	ULONG  m_nDocLength_chars;
-	ULONG  m_nDocLength_bytes;
 
+	// Legacy contiguous line buffer, retained for non-sequence-indexed formats.
 	ULONG *m_pLineBuf_byte;
 	ULONG *m_pLineBuf_char;
 	ULONG  m_nNumLines;
@@ -112,44 +168,39 @@ private:
 	int    m_nHeaderSize;
 };
 
-class TextIterator
+// Byte-backed reader which decodes UTF-16 text for callers.
+class TextReader
 {
 public:
 	// default constructor sets all members to zero
-	TextIterator()
+	TextReader()
 		: text_doc(0), off_bytes(0), len_bytes(0)
 	{
 	}
 
-	TextIterator(ULONG off, ULONG len, TextDocument *td)
-		: text_doc(td), off_bytes(off), len_bytes(len)
-	{
-		
-	}
-
 	// default copy-constructor
-	TextIterator(const TextIterator &ti) 
-		: text_doc(ti.text_doc), off_bytes(ti.off_bytes), len_bytes(ti.len_bytes)
+	TextReader(const TextReader &reader)
+		: text_doc(reader.text_doc), off_bytes(reader.off_bytes), len_bytes(reader.len_bytes)
 	{
 	}
 
 	// assignment operator
-	TextIterator & operator= (TextIterator &ti)
+	TextReader & operator= (const TextReader &reader)
 	{
-		text_doc  = ti.text_doc;
-		off_bytes = ti.off_bytes;
-		len_bytes = ti.len_bytes;
+		text_doc  = reader.text_doc;
+		off_bytes = reader.off_bytes;
+		len_bytes = reader.len_bytes;
 		return *this;
 	}
 
-	ULONG gettext(TCHAR *buf, ULONG buflen)
+	ULONG read(TCHAR *buf, ULONG buflen)
 	{
 		if(text_doc)
 		{
 			// get text from the TextDocument at the specified byte-offset
-			ULONG len = text_doc->gettext(off_bytes, len_bytes, buf, &buflen);
+			ULONG len = text_doc->decode_text(off_bytes, len_bytes, buf, &buflen);
 
-			// adjust the iterator's internal position
+			// adjust the reader's internal position
 			off_bytes += len;
 			len_bytes -= len;
 
@@ -161,64 +212,18 @@ public:
 		}
 	}
 
-	/*int insert_text(TCHAR *buf, int buflen)
-	{
-		if(text_doc)
-		{
-			// get text from the TextDocument at the specified byte-offset
-			int len = text_doc->insert(off_bytes, buf, buflen);
-
-			// adjust the iterator's internal position
-			off_bytes += len;
-			return buflen;
-		}
-		else
-		{
-			return 0;
-		}
-	}
-
-	int replace_text(TCHAR *buf, int buflen)
-	{
-		if(text_doc)
-		{
-			// get text from the TextDocument at the specified byte-offset
-			int len = text_doc->replace(off_bytes, buf, buflen);
-
-			// adjust the iterator's internal position
-			off_bytes += len;
-			return buflen;
-		}
-		else
-		{
-			return 0;
-		}
-	}
-
-	int erase_text(int length)
-	{
-		if(text_doc)
-		{
-			// get text from the TextDocument at the specified byte-offset
-			int len = text_doc->erase(off_bytes, length);
-
-			// adjust the iterator's internal position
-			off_bytes += len;
-			return len;
-		}
-		else
-		{
-			return 0;
-		}
-	}*/
-
-
 	operator bool()
 	{
 		return text_doc ? true : false;
 	}
 
 private:
+	friend class TextDocument;
+
+	TextReader(ULONG off, ULONG len, TextDocument *td)
+		: text_doc(td), off_bytes(off), len_bytes(len)
+	{
+	}
 
 	TextDocument *text_doc;
 	

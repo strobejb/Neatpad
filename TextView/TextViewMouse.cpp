@@ -163,7 +163,7 @@ LONG TextView::OnLButtonDown(UINT nFlags, int mx, int my)
 			RefreshWindow();
 		}
 
-		m_pTextDoc->lineinfo_from_lineno(nLineNo, &m_nSelectionStart, &m_nSelectionEnd, 0, 0);
+		m_pTextDoc->lineinfo_from_lineno(nLineNo, &m_nSelectionStart, &m_nSelectionEnd);
 		m_nSelectionEnd    += m_nSelectionStart;
 		m_nCursorOffset	    = m_nSelectionStart;
 		
@@ -329,7 +329,7 @@ LONG TextView::OnMouseMove(UINT nFlags, int mx, int my)
 		//if(m_nSelectionEnd != nFileOff)
 		{
 			ULONG linelen;
-			m_pTextDoc->lineinfo_from_lineno(nLineNo, 0, &linelen, 0, 0);
+			m_pTextDoc->lineinfo_from_lineno(nLineNo, 0, &linelen);
 
 			m_nCursorOffset	= nFileOff;
 
@@ -499,7 +499,7 @@ BOOL TextView::MouseCoordToFilePos(	int		 mx,			// [in]  mouse x-coord
 	if(nLineNo >= m_nLineCount)
 	{
 		nLineNo   = m_nLineCount ? m_nLineCount - 1 : 0;
-		off_chars = m_pTextDoc->size();
+		off_chars = m_pTextDoc->text_length();
 	}
 
 	mx += m_nHScrollPos * m_nFontWidth;
@@ -511,7 +511,7 @@ BOOL TextView::MouseCoordToFilePos(	int		 mx,			// [in]  mouse x-coord
 	UspSnapXToOffset(uspData, mx, &mx, &cp, 0);
 	
 	// return coords!
-	TextIterator itor = m_pTextDoc->iterate_line(nLineNo, &off_chars);
+	m_pTextDoc->lineinfo_from_lineno(nLineNo, &off_chars, 0);
 	*pnLineNo		= nLineNo;
 	*pnFileOffset	= cp + off_chars;
 	*psnappedX		= mx;// - m_nHScrollPos * m_nFontWidth;
@@ -559,7 +559,7 @@ LONG TextView::InvalidateRange(ULONG nStart, ULONG nFinish)
 	int   ypos;
 	RECT  rect;
 	RECT  client;
-	TextIterator itor;
+	TextReader reader;
 
 	// information about current line:
 	ULONG lineno;
@@ -580,15 +580,15 @@ LONG TextView::InvalidateRange(ULONG nStart, ULONG nFinish)
 	if(lineno < m_nVScrollPos)
 	{
 		lineno = m_nVScrollPos;
-		itor   = m_pTextDoc->iterate_line(lineno, &off_chars, &len_chars);
+		reader = m_pTextDoc->text_from_line(lineno, &off_chars, &len_chars);
 		start  = off_chars;
 	}
 	else
 	{
-		itor   = m_pTextDoc->iterate_line(lineno, &off_chars, &len_chars);
+		reader = m_pTextDoc->text_from_line(lineno, &off_chars, &len_chars);
 	}
 
-	if(!itor || start >= finish)
+	if(!reader || start >= finish)
 		return 0;
 
 	ypos = (lineno - m_nVScrollPos) * m_nLineHeight;
@@ -597,7 +597,7 @@ LONG TextView::InvalidateRange(ULONG nStart, ULONG nFinish)
 
 	// invalidate *whole* lines. don't care about flickering anymore because
 	// all output is double-buffered now, and this method is much simpler
-	while(itor && off_chars < finish && lineno <= lastline)
+	while(reader && off_chars < finish && lineno <= lastline)
 	{
 		SetRect(&rect, 0, ypos, client.right, ypos + m_nLineHeight);
 		rect.left -= m_nHScrollPos * m_nFontWidth;
@@ -606,7 +606,7 @@ LONG TextView::InvalidateRange(ULONG nStart, ULONG nFinish)
 		InvalidateRect(m_hWnd, &rect, FALSE);
 
 		// jump down to next line
-		itor  = m_pTextDoc->iterate_line(++lineno, &off_chars, &len_chars);
+		reader = m_pTextDoc->text_from_line(++lineno, &off_chars, &len_chars);
 		ypos += m_nLineHeight;
 	}
 
@@ -685,7 +685,7 @@ VOID TextView::UpdateCaretOffset(ULONG offset, BOOL fTrailing, int *outx, ULONG 
 	USPDATA	  * uspData;
 
 	// get line information from cursor-offset
-	if(m_pTextDoc->lineinfo_from_offset(offset, &lineno, &off_chars, 0, 0, 0))
+	if(m_pTextDoc->lineinfo_from_offset(offset, &lineno, &off_chars, 0))
 	{
 		// locate the USPDATA for this line
 		if((uspData = GetUspData(NULL, lineno)) != 0)
@@ -712,54 +712,6 @@ VOID TextView::RepositionCaret()
 	UpdateCaretXY(m_nCaretPosX, m_nCurrentLine);
 }
 
-//
-//	Set the caret position based on m_nCursorOffset,
-//	typically used whilst scrolling 
-//	(i.e. not due to mouse clicks/keyboard input)
-//
-/*
-ULONG TextView::RepositionCaret(POINT *pt)
-{
-	int   xpos   = 0;
-	int   ypos   = 0;
-
-	ULONG lineno;
-	ULONG off_chars;
-
-	USPDATA *uspData;
-
-	// get line information from cursor-offset
-	TextIterator itor = m_pTextDoc->iterate_line_offset(m_nCursorOffset, &lineno, &off_chars);
-
-	if(!itor)
-		return 0;
-
-	if((uspData = GetUspData(NULL, lineno)) != 0)
-	{
-		off_chars = m_nCursorOffset - off_chars;
-		UspOffsetToX(uspData, off_chars, FALSE, &xpos);
-	}
-
-	// y-coordinate from line-number
-	ypos = (lineno - m_nVScrollPos) * m_nLineHeight;
-
-	if(pt)
-	{
-		pt->x = xpos;
-		pt->y = ypos;
-	}
-
-	// take horizontal scrollbar into account
-	xpos -= m_nHScrollPos * m_nFontWidth;
-
-	// take left margin into account
-	xpos += LeftMarginWidth();
-
-	MoveCaret(xpos, ypos);
-
-	return 0;
-}
-*/
 void TextView::UpdateLine(ULONG nLineNo)
 {
 	// redraw the old and new lines if they are different

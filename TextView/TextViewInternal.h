@@ -176,7 +176,7 @@ private:
 	//VOID		MoveCaret(int x, int y);
 	VOID		UpdateCaretXY(int x, ULONG lineno);
 	VOID		UpdateCaretOffset(ULONG offset, BOOL fTrailing, int *outx=0, ULONG *outlineno=0);
-	VOID		Smeg(BOOL fAdvancing);
+	VOID		UpdateViewState(BOOL fAdvancing);
 
 	VOID		MoveWordPrev();
 	VOID		MoveWordNext();

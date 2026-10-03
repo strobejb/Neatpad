@@ -39,7 +39,7 @@ ULONG TextView::EnterText(TCHAR *szText, ULONG nLength)
 		if(fReplaceSelection)
 		{
 			// group this erase with the insert/replace operation
-			m_pTextDoc->m_seq.group();
+			m_pTextDoc->undo_group_begin();
 			m_pTextDoc->erase_text(selstart, selend-selstart);
 			m_nCursorOffset = selstart;
 		}
@@ -48,7 +48,7 @@ ULONG TextView::EnterText(TCHAR *szText, ULONG nLength)
 			return 0;
 
 		if(fReplaceSelection)
-			m_pTextDoc->m_seq.ungroup();
+			m_pTextDoc->undo_group_end();
 	
 		break;
 
@@ -100,7 +100,7 @@ ULONG TextView::EnterText(TCHAR *szText, ULONG nLength)
 	ResetLineCache();
 	RefreshWindow();
 	
-	Smeg(TRUE);
+	UpdateViewState(TRUE);
 	NotifyParent(TVN_CURSOR_CHANGE);
 
 	return nLength;
@@ -116,40 +116,15 @@ BOOL TextView::ForwardDelete()
 		m_pTextDoc->erase_text(selstart, selend-selstart);
 		m_nCursorOffset = selstart;
 
-		m_pTextDoc->m_seq.breakopt();
+		m_pTextDoc->undo_group_break();
 	}
 	else
 	{
-		BYTE tmp[2];
-		//USPCACHE		* uspCache;
-		//CSCRIPT_LOGATTR * logAttr;
-		//ULONG			  lineOffset;
-		//ULONG			  index;
-
-		m_pTextDoc->m_seq.render(m_nCursorOffset, tmp, 2);
-
-		/*GetLogAttr(m_nCurrentLine, &uspCache, &logAttr, &lineOffset);
-	
-		index = m_nCursorOffset - lineOffset;
-
-		do
-		{
-			m_pTextDoc->seq.erase(m_nCursorOffset, 1);
-			index++;
-		}
-		while(!logAttr[index].fCharStop);*/
-
 		ULONG oldpos = m_nCursorOffset;
 		MoveCharNext();
 
 		m_pTextDoc->erase_text(oldpos, m_nCursorOffset - oldpos);
 		m_nCursorOffset = oldpos;
-		
-
-		//if(tmp[0] == '\r')
-		//	m_pTextDoc->erase_text(m_nCursorOffset, 2);
-		//else
-		//	m_pTextDoc->erase_text(m_nCursorOffset, 1);
 	}
 
 	m_nSelectionStart = m_nCursorOffset;
@@ -157,7 +132,7 @@ BOOL TextView::ForwardDelete()
 
 	ResetLineCache();
 	RefreshWindow();
-	Smeg(FALSE);
+	UpdateViewState(FALSE);
 
 	return TRUE;
 }
@@ -172,7 +147,7 @@ BOOL TextView::BackDelete()
 	{
 		m_pTextDoc->erase_text(selstart, selend-selstart);
 		m_nCursorOffset = selstart;
-		m_pTextDoc->m_seq.breakopt();
+		m_pTextDoc->undo_group_break();
 	}
 	// otherwise do a back-delete
 	else if(m_nCursorOffset > 0)
@@ -189,15 +164,13 @@ BOOL TextView::BackDelete()
 
 	ResetLineCache();
 	RefreshWindow();
-	Smeg(FALSE);
+	UpdateViewState(FALSE);
 
 	return TRUE;
 }
 
-void TextView::Smeg(BOOL fAdvancing)
+void TextView::UpdateViewState(BOOL fAdvancing)
 {
-	m_pTextDoc->init_legacy_linebuffer();
-
 	m_nLineCount   = m_pTextDoc->linecount();
 
 	UpdateMetrics();
@@ -216,7 +189,7 @@ BOOL TextView::Undo()
 	if(m_nEditMode == MODE_READONLY)
 		return FALSE;
 
-	if(!m_pTextDoc->Undo(&m_nSelectionStart, &m_nSelectionEnd))
+	if(!m_pTextDoc->undo(&m_nSelectionStart, &m_nSelectionEnd))
 		return FALSE;
 
 	m_nCursorOffset = m_nSelectionEnd;
@@ -224,7 +197,7 @@ BOOL TextView::Undo()
 	ResetLineCache();
 	RefreshWindow();
 
-	Smeg(m_nSelectionStart != m_nSelectionEnd);
+	UpdateViewState(m_nSelectionStart != m_nSelectionEnd);
 
 	return TRUE;
 }
@@ -234,26 +207,26 @@ BOOL TextView::Redo()
 	if(m_nEditMode == MODE_READONLY)
 		return FALSE;
 
-	if(!m_pTextDoc->Redo(&m_nSelectionStart, &m_nSelectionEnd))
+	if(!m_pTextDoc->redo(&m_nSelectionStart, &m_nSelectionEnd))
 		return FALSE;
 
 	m_nCursorOffset = m_nSelectionEnd;
 				
 	ResetLineCache();
 	RefreshWindow();
-	Smeg(m_nSelectionStart != m_nSelectionEnd);
+	UpdateViewState(m_nSelectionStart != m_nSelectionEnd);
 
 	return TRUE;
 }
 
 BOOL TextView::CanUndo()
 {
-	return m_pTextDoc->m_seq.canundo() ? TRUE : FALSE;
+	return m_pTextDoc->can_undo() ? TRUE : FALSE;
 }
 
 BOOL TextView::CanRedo()
 {
-	return m_pTextDoc->m_seq.canredo() ? TRUE : FALSE;
+	return m_pTextDoc->can_redo() ? TRUE : FALSE;
 }
 
 LONG TextView::OnChar(UINT nChar, UINT nFlags)
@@ -270,7 +243,7 @@ LONG TextView::OnChar(UINT nChar, UINT nFlags)
 	if(EnterText(&ch, 1))
 	{
 		if(nChar == '\n')
-			m_pTextDoc->m_seq.breakopt();
+			m_pTextDoc->undo_group_break();
 
 		NotifyParent(TVN_CHANGED);
 	}

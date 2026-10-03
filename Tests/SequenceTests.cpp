@@ -807,8 +807,8 @@ void textdocument_lineinfo_handles_lazy_end_after_insert()
     CHECK(doc.init(path));
 
     CHECK(doc.insert_text(static_cast<ULONG>(line_length * 9 + 37), crlf, 2) == 2);
-    CHECK(doc.lineinfo_from_offset(doc.size(), &line_no, &line_offset, &line_length_chars, 0, 0));
-    CHECK(line_offset == doc.size());
+    CHECK(doc.lineinfo_from_offset(doc.text_length(), &line_no, &line_offset, &line_length_chars));
+    CHECK(line_offset == doc.text_length());
     CHECK(line_length_chars == 0);
 
     doc.clear();
@@ -844,9 +844,9 @@ void textdocument_final_sparse_line_ignores_estimated_linecount()
     CHECK(doc.init(path));
 
     CHECK(doc.insert_text(insert_offset, crlf, 2) == 2);
-    CHECK(doc.lineinfo_from_lineno(final_line, &line_offset, &line_length_chars, 0, 0));
+    CHECK(doc.lineinfo_from_lineno(final_line, &line_offset, &line_length_chars));
     CHECK(line_offset == final_line_offset);
-    CHECK(line_length_chars == doc.size() - final_line_offset);
+    CHECK(line_length_chars == doc.text_length() - final_line_offset);
 
     doc.clear();
     DeleteFile(path);
@@ -875,18 +875,18 @@ void textdocument_ctrl_end_uses_final_page_when_lines_are_lazy()
     CHECK(doc.init(path));
 
     CHECK(!doc.lineno_known(target_line));
-    CHECK(doc.lineinfo_from_lineno(target_line, &line_offset, &line_length_chars, 0, 0));
+    CHECK(doc.lineinfo_from_lineno(target_line, &line_offset, &line_length_chars));
     CHECK(doc.lineno_known(target_line));
-    CHECK(doc.lineinfo_from_offset(doc.size(), &line_no, &line_offset, &line_length_chars, 0, 0));
-    CHECK(line_offset == doc.size());
+    CHECK(doc.lineinfo_from_offset(doc.text_length(), &line_no, &line_offset, &line_length_chars));
+    CHECK(line_offset == doc.text_length());
     CHECK(line_length_chars == 0);
     CHECK(line_no + 1 == doc.linecount());
-    CHECK(doc.previous_lineinfo_from_offset(doc.size(), 1, &lineinfo));
-    CHECK(lineinfo.lineoff_chars == doc.size() - line_length);
-    CHECK(doc.line_text_end(&lineinfo) == doc.size() - 2);
+    CHECK(doc.previous_lineinfo_from_offset(doc.text_length(), 1, &lineinfo));
+    CHECK(lineinfo.lineoff_chars == doc.text_length() - line_length);
+    CHECK(doc.line_text_end(&lineinfo) == doc.text_length() - 2);
     CHECK(doc.next_lineinfo_from_offset(lineinfo.lineoff_chars, 1, &lineinfo));
-    CHECK(lineinfo.lineoff_chars == doc.size());
-    CHECK(doc.line_text_end(&lineinfo) == doc.size());
+    CHECK(lineinfo.lineoff_chars == doc.text_length());
+    CHECK(doc.line_text_end(&lineinfo) == doc.text_length());
 
     doc.clear();
     DeleteFile(path);
@@ -920,21 +920,21 @@ void textdocument_lazy_eof_without_final_crlf_maps_to_final_line()
     CHECK(write_temp_file(data, file_length, path));
     CHECK(doc.init(path));
 
-    CHECK(doc.lineinfo_from_offset(doc.size(), &line_no, &line_offset, &line_length_chars, 0, 0));
+    CHECK(doc.lineinfo_from_offset(doc.text_length(), &line_no, &line_offset, &line_length_chars));
     CHECK(line_offset == file_length - last_line_length);
     CHECK(line_length_chars == last_line_length);
 
-    CHECK(doc.lineinfo_from_offset(line_offset - 1, 0, &crlf_line_offset, 0, 0, 0));
+    CHECK(doc.lineinfo_from_offset(line_offset - 1, 0, &crlf_line_offset, 0));
     CHECK(crlf_line_offset == line_offset - line_length);
 
-    CHECK(doc.lineinfo_from_offset(line_offset - 2, &prev_line_no, &prev_line_offset, 0, 0, 0));
+    CHECK(doc.lineinfo_from_offset(line_offset - 2, &prev_line_no, &prev_line_offset, 0));
     CHECK(prev_line_offset == line_offset - line_length);
-    CHECK(doc.previous_lineinfo_from_offset(doc.size(), 1, &lineinfo));
+    CHECK(doc.previous_lineinfo_from_offset(doc.text_length(), 1, &lineinfo));
     CHECK(lineinfo.lineoff_chars == prev_line_offset);
     CHECK(doc.line_text_end(&lineinfo) == line_offset - 2);
     CHECK(doc.next_lineinfo_from_offset(lineinfo.lineoff_chars, 1, &lineinfo));
     CHECK(lineinfo.lineoff_chars == line_offset);
-    CHECK(doc.line_text_end(&lineinfo) == doc.size());
+    CHECK(doc.line_text_end(&lineinfo) == doc.text_length());
 
     doc.clear();
     DeleteFile(path);
@@ -961,10 +961,10 @@ void textdocument_lazy_line_numbers_continue_after_first_page()
 
     for(ULONG line = first_unknown; line < first_unknown + 100; line++)
     {
-        CHECK(doc.lineinfo_from_lineno(line, &line_offset, &line_length_chars, 0, 0));
+        CHECK(doc.lineinfo_from_lineno(line, &line_offset, &line_length_chars));
         CHECK(doc.lineno_known(line));
 
-        CHECK(doc.lineinfo_from_offset(line_offset, &actual_line, 0, 0, 0, 0));
+        CHECK(doc.lineinfo_from_offset(line_offset, &actual_line, 0, 0));
         CHECK(actual_line == line);
     }
 
@@ -989,13 +989,13 @@ void textdocument_large_lazy_file_line_estimate_does_not_overflow()
     CHECK(doc.linecount() > 4000000);
     CHECK(doc.lineno_known(0));
     CHECK(doc.lineno_known(10));
-    CHECK(doc.lineinfo_from_offset(doc.size(), &line_no, &line_offset, &line_length_chars, 0, 0));
+    CHECK(doc.lineinfo_from_offset(doc.text_length(), &line_no, &line_offset, &line_length_chars));
     CHECK(line_no > 4000000);
     CHECK(!doc.lineno_known(line_no));
-    CHECK(line_offset == doc.size());
+    CHECK(line_offset == doc.text_length());
     CHECK(line_length_chars == 0);
-    CHECK(doc.lineinfo_from_lineno(doc.linecount() - 2, &line_offset, &line_length_chars, 0, 0));
-    CHECK(line_offset >= doc.size() - MEM_BLOCK_SIZE);
+    CHECK(doc.lineinfo_from_lineno(doc.linecount() - 2, &line_offset, &line_length_chars));
+    CHECK(line_offset >= doc.text_length() - MEM_BLOCK_SIZE);
     CHECK(line_length_chars <= line_length);
 
     doc.clear();

@@ -51,7 +51,7 @@ VOID TextView::MoveLineUp(int numLines)
 {
 	USPDATA			* uspData;
 	ULONG			  lineOffset;
-	ULONG			  docLength = m_pTextDoc->size();
+	ULONG			  docLength = m_pTextDoc->text_length();
 	TextLineInfo	  target;
 	
 	int				  charPos;
@@ -85,7 +85,7 @@ VOID TextView::MoveLineDown(int numLines)
 	USPDATA			* uspData;
 	ULONG			  lineOffset;
 	ULONG			  newOffset;
-	ULONG			  docLength = m_pTextDoc->size();
+	ULONG			  docLength = m_pTextDoc->text_length();
 	TextLineInfo	  target;
 	
 	int				  charPos;
@@ -374,7 +374,7 @@ VOID TextView::MoveFileStart()
 //
 VOID TextView::MoveFileEnd()
 {
-	ULONG docLength = m_pTextDoc->size();
+	ULONG docLength = m_pTextDoc->text_length();
 
 	if(docLength > 0)
 	{

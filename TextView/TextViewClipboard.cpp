@@ -43,7 +43,7 @@ BOOL TextView::OnPaste()
 			EnterText(szText, textlen);
 
 			if(textlen > 1)
-				m_pTextDoc->m_seq.breakopt();	
+				m_pTextDoc->undo_group_break();
 
 			GlobalUnlock(hMem);
 			
@@ -67,8 +67,8 @@ ULONG TextView::GetText(TCHAR *szDest, ULONG nStartOffset, ULONG nLength)
 
 	if(nLength > 1)
 	{
-		TextIterator itor = m_pTextDoc->iterate(nStartOffset);
-		copied = itor.gettext(szDest, nLength - 1);
+		TextReader reader = m_pTextDoc->text_from_offset(nStartOffset);
+		copied = reader.read(szDest, nLength - 1);
 
 		// null-terminate
 		szDest[copied] = 0;
