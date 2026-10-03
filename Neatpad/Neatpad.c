@@ -246,8 +246,6 @@ UINT NotifyHandler(HWND hwnd, NMHDR *nmhdr)
 //
 UINT CommandHandler(HWND hwnd, UINT nCtrlId, UINT nCtrlCode, HWND hwndFrom)
 {
-	RECT rect;
-
 	if(nCtrlId >= IDM_RECENT_FIRST && nCtrlId <= IDM_RECENT_LAST)
 	{
 		OpenRecentFile(hwnd, nCtrlId);

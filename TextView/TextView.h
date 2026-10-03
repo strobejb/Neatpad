@@ -22,16 +22,6 @@ COLORREF RealizeColour(COLORREF col);
 
 
 //
-// currently supported Neatpad Codepages
-//
-#define NCP_ASCII		0
-#define NCP_UTF8		1
-#define NCP_UTF16		2
-#define NCP_UTF16BE		3
-#define NCP_UTF32		4
-#define NCP_UTF32BE		5
-
-//
 //	TextView edit modes
 //
 #define MODE_READONLY	0

@@ -91,7 +91,7 @@ public:
 	//
 
 	// Document-wide facts. linecount() may be estimated until linecount_known() is true.
-	int   getformat();
+	TEXT_ENCODING getformat();
 	ULONG linecount();
 	bool  linecount_known();
 
@@ -140,7 +140,7 @@ private:
 	//	Raw file access
 	//
 
-	int   detect_file_format(int *headersize);
+	TEXT_ENCODING detect_file_format(int *headersize);
 	ULONG decode_text(ULONG offset_bytes, ULONG lenbytes, TCHAR *buf, ULONG *len);
 	int   decode_char(ULONG offset_bytes, ULONG lenbytes, ULONG *pch32);
 
@@ -164,7 +164,7 @@ private:
 	ULONG *m_pLineBuf_char;
 	ULONG  m_nNumLines;
 	
-	int	   m_nFileFormat;
+	TEXT_ENCODING m_nFileFormat;
 	int    m_nHeaderSize;
 };
 
@@ -238,13 +238,6 @@ public:
 
 private:
 	TextDocument *m_pTextDoc;
-};
-
-struct _BOM_LOOKUP
-{
-	DWORD  bom;
-	ULONG  len;
-	int    type;
 };
 
 #endif

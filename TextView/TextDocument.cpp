@@ -14,7 +14,7 @@
 #include "TextView.h"
 #include "Unicode.h"
 
-struct _BOM_LOOKUP BOMLOOK[] = 
+static BOM_LOOKUP BOMLOOK[] =
 {
 	// define longest headers first
 	{ 0x0000FEFF, 4, NCP_UTF32    },
@@ -114,7 +114,7 @@ bool TextDocument::init(TCHAR *filename)
 //	Match the first x bytes of the file against the
 //  Byte-Order-Mark (BOM) lookup table
 //
-int TextDocument::detect_file_format(int *m_nHeaderSize)
+TEXT_ENCODING TextDocument::detect_file_format(int *m_nHeaderSize)
 {
 	BYTE header[4] = { 0 };
 	m_seq.render(0, header, 4);
@@ -125,7 +125,7 @@ int TextDocument::detect_file_format(int *m_nHeaderSize)
 		   memcmp(header, &BOMLOOK[i].bom, BOMLOOK[i].len) == 0)
 		{
 			*m_nHeaderSize = BOMLOOK[i].len;
-			return BOMLOOK[i].type;
+			return BOMLOOK[i].encoding;
 		}
 	}
 
@@ -871,7 +871,7 @@ bool TextDocument::next_lineinfo_from_offset(ULONG offset_chars, ULONG num_lines
 	return true;
 }
 
-int TextDocument::getformat()
+TEXT_ENCODING TextDocument::getformat()
 {
 	return m_nFileFormat;
 }
@@ -1084,28 +1084,6 @@ ULONG TextDocument::replace_raw(ULONG offset_bytes, TCHAR *text, ULONG length, U
 //
 ULONG TextDocument::erase_raw(ULONG offset_bytes, ULONG length)
 {
-	/*TCHAR  buf[0x100];
-	ULONG  buflen;
-	ULONG  bytes;
-	ULONG  erase_bytes  = 0;
-	ULONG  erase_offset = offset_bytes;
-
-	while(length)
-	{
-		buflen = min(0x100, length);
-		bytes = gettext(offset_bytes, 0x100, buf, &buflen); 
-
-		erase_bytes  += bytes;
-		offset_bytes += bytes;
-		length       -= buflen;
-	}
-
-	// do the piece-table deletion!
-	if(m_seq.erase(erase_offset + m_nHeaderSize, erase_bytes))
-	{
-		return length;
-	}*/
-
 	ULONG erase_bytes  = count_chars(offset_bytes, length);
 	
 	if(m_seq.erase(offset_bytes + m_nHeaderSize, erase_bytes))
