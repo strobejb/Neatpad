@@ -64,10 +64,10 @@ static TCHAR * EncodingName(UINT format)
 	{
 	case NCP_ASCII:		return _T("ASCII");
 	case NCP_UTF8:		return _T("UTF-8");
-	case NCP_UTF16:		return _T("UTF-16");
-	case NCP_UTF16BE:	return _T("UTF-16BE");
-	case NCP_UTF32:		return _T("UTF-32");
-	case NCP_UTF32BE:	return _T("UTF-32BE");
+	case NCP_UTF16:		return _T("UTF-16 LE");
+	case NCP_UTF16BE:	return _T("UTF-16 BE");
+	case NCP_UTF32:		return _T("UTF-32 LE");
+	case NCP_UTF32BE:	return _T("UTF-32 BE");
 	default:			return _T("?");
 	}
 }
@@ -76,9 +76,9 @@ static TCHAR * LineFormatName(UINT format)
 {
 	switch(format)
 	{
-	case TXL_LF:	return _T("LF");
-	case TXL_CR:	return _T("CR");
-	case TXL_CRLF:	return _T("CRLF");
+	case TXL_LF:	return _T("UINX (LF)");
+	case TXL_CR:	return _T("Mac (CR)");
+	case TXL_CRLF:	return _T("Windows (CRLF)");
 	case TXL_ALL:	return _T("ALL");
 	default:		return _T("?");
 	}
@@ -236,10 +236,8 @@ UINT TextViewNotifyHandler(HWND hwnd, NMHDR *nmhdr)
 
 	// edit/insert mode changed, update statusbar info
 	case TVN_EDITMODE_CHANGE:
-
-		SetStatusBarText(g_hwndStatusbar, STATUS_PART_EDITMODE, 0,
-			g_szEditMode[TextView_GetEditMode(g_hwndTextView)] );
-
+		//SetStatusBarText(g_hwndStatusbar, STATUS_PART_EDITMODE, 0,
+		//	g_szEditMode[TextView_GetEditMode(g_hwndTextView)] );
 		break;
 
 	default:
