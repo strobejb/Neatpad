@@ -47,11 +47,14 @@ private:
 		ULONG   line_base;
 
 		bool    indexed;
+		bool    offset_known;
 		bool    line_base_known;
 		bool    starts_with_lf;
 		bool    ends_with_cr;
 	};
 
+	bool   direct_offset_mapping() const;
+	void   ensure_page_offset(LinePage *page);
 	ULONG  scan_lines(LinePage *page, ULONG *line_offsets_bytes, ULONG *line_offsets_chars);
 	ULONG  estimate_line_count() const;
 	bool   lineoffset_from_lineno(ULONG lineno, ULONG *offset_chars);

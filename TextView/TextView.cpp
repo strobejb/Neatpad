@@ -468,6 +468,9 @@ LONG WINAPI TextView::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 	case TXM_GETFORMAT:
 		return m_pTextDoc->getformat();
 
+	case TXM_GETLINEFORMAT:
+		return m_nCRLFMode;
+
 	case TXM_GETSELSIZE:
 		return SelectionSize();
 

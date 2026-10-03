@@ -14,6 +14,7 @@
 #include <commctrl.h>
 #include <uxtheme.h>
 #include "Neatpad.h"
+#include "..\TextView\codepages.h"
 #include "..\TextView\TextView.h"
 #include "resource.h"
 
@@ -55,6 +56,59 @@ void SetWindowFileName(HWND hwnd, TCHAR *szFileName, BOOL fModified)
 
 	wsprintf(ach, _T("%s - %s%s"), szFileName, g_szAppName, mod);
 	SetWindowText(hwnd, ach);
+}
+
+static TCHAR * EncodingName(UINT format)
+{
+	switch(format)
+	{
+	case NCP_ASCII:		return _T("ASCII");
+	case NCP_UTF8:		return _T("UTF-8");
+	case NCP_UTF16:		return _T("UTF-16");
+	case NCP_UTF16BE:	return _T("UTF-16BE");
+	case NCP_UTF32:		return _T("UTF-32");
+	case NCP_UTF32BE:	return _T("UTF-32BE");
+	default:			return _T("?");
+	}
+}
+
+static TCHAR * LineFormatName(UINT format)
+{
+	switch(format)
+	{
+	case TXL_LF:	return _T("LF");
+	case TXL_CR:	return _T("CR");
+	case TXL_CRLF:	return _T("CRLF");
+	case TXL_ALL:	return _T("ALL");
+	default:		return _T("?");
+	}
+}
+
+void UpdateStatusBarFileInfo(void)
+{
+	if(g_hwndStatusbar == 0 || g_hwndTextView == 0)
+		return;
+
+	SetStatusBarText(g_hwndStatusbar, STATUS_PART_ENCODING, 0, _T(" %s"),
+		EncodingName((UINT)TextView_GetFormat(g_hwndTextView)));
+
+	SetStatusBarText(g_hwndStatusbar, STATUS_PART_LINEFMT, 0, _T(" %s"),
+		LineFormatName((UINT)TextView_GetLineFormat(g_hwndTextView)));
+}
+
+void UpdateStatusBarCursorInfo(void)
+{
+	if(TextView_GetCurLineKnown(g_hwndTextView))
+	{
+		SetStatusBarText(g_hwndStatusbar, STATUS_PART_CURSOR, 0, _T(" Ln %d, Col %d"),
+			TextView_GetCurLine(g_hwndTextView) + 1,
+			TextView_GetCurCol(g_hwndTextView) + 1 );
+	}
+	else
+	{
+		SetStatusBarText(g_hwndStatusbar, STATUS_PART_CURSOR, 0, _T(" Ln ???, Col %d"),
+			TextView_GetCurCol(g_hwndTextView) + 1 );
+	}
 }
 
 //
@@ -177,24 +231,13 @@ UINT TextViewNotifyHandler(HWND hwnd, NMHDR *nmhdr)
 	// cursor position has changed, update the statusbar info
 	case TVN_CURSOR_CHANGE:
 
-		if(TextView_GetCurLineKnown(g_hwndTextView))
-		{
-			SetStatusBarText(g_hwndStatusbar, 1, 0, _T(" Ln %d, Col %d"),
-				TextView_GetCurLine(g_hwndTextView) + 1,
-				TextView_GetCurCol(g_hwndTextView) + 1 );
-		}
-		else
-		{
-			SetStatusBarText(g_hwndStatusbar, 1, 0, _T(" Ln ???, Col %d"),
-				TextView_GetCurCol(g_hwndTextView) + 1 );
-		}
-
+		UpdateStatusBarCursorInfo();
 		break;
 
 	// edit/insert mode changed, update statusbar info
 	case TVN_EDITMODE_CHANGE:
 
-		SetStatusBarText(g_hwndStatusbar, 2, 0, 
+		SetStatusBarText(g_hwndStatusbar, STATUS_PART_EDITMODE, 0,
 			g_szEditMode[TextView_GetEditMode(g_hwndTextView)] );
 
 		break;
@@ -222,14 +265,14 @@ UINT NotifyHandler(HWND hwnd, NMHDR *nmhdr)
 		nmmouse = (NMMOUSE *)nmhdr;
 
 		// toggle the Readonly/Insert/Overwrite mode
-		if(nmmouse->dwItemSpec == 2)
+		if(nmmouse->dwItemSpec == STATUS_PART_EDITMODE)
 		{
 			nMode   = TextView_GetEditMode(g_hwndTextView);
 			nMode	= (nMode + 1) % 3;
 	
 			TextView_SetEditMode(g_hwndTextView, nMode);
 		
-			SetStatusBarText(g_hwndStatusbar, 2, 0, g_szEditMode[nMode]);
+			SetStatusBarText(g_hwndStatusbar, STATUS_PART_EDITMODE, 0, g_szEditMode[nMode]);
 		}
 
 		break;
@@ -401,6 +444,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 	case WM_CREATE:
 		g_hwndTextView  = CreateTextView(hwnd);
 		g_hwndStatusbar = CreateStatusBar(hwnd);
+		UpdateStatusBarFileInfo();
 
 		TextView_SetContextMenu(g_hwndTextView, GetSubMenu(LoadMenu(GetModuleHandle(0),
 			MAKEINTRESOURCE(IDR_MENU2)), 0));

@@ -66,13 +66,14 @@ bool TextLineIndex::init(TextDocument *doc)
 
 		page->offset_bytes = i * MEM_BLOCK_SIZE;
 		page->length_bytes = min((ULONG)MEM_BLOCK_SIZE, bytes - page->offset_bytes);
-		page->offset_chars = char_from_byte(page->offset_bytes);
-		page->length_chars = char_from_byte(page->offset_bytes + page->length_bytes) - page->offset_chars;
+		page->offset_chars = direct_offset_mapping() || i == 0 ? char_from_byte(page->offset_bytes) : 0;
+		page->length_chars = direct_offset_mapping() ? char_from_byte(page->offset_bytes + page->length_bytes) - page->offset_chars : 0;
 		page->line_offsets_bytes = 0;
 		page->line_offsets_chars = 0;
 		page->line_count = 0;
 		page->line_base = 0;
 		page->indexed = false;
+		page->offset_known = direct_offset_mapping() || i == 0;
 		page->line_base_known = false;
 		page->starts_with_lf = false;
 		page->ends_with_cr = false;
@@ -112,6 +113,14 @@ ULONG TextLineIndex::text_length() const
 	return m_pTextDoc ? m_pTextDoc->text_length() : 0;
 }
 
+bool TextLineIndex::direct_offset_mapping() const
+{
+	// Fixed-width encodings can map byte offsets to UTF-16 offsets without scanning.
+	return m_pTextDoc->m_nFileFormat == NCP_ASCII ||
+		   m_pTextDoc->m_nFileFormat == NCP_UTF16 ||
+		   m_pTextDoc->m_nFileFormat == NCP_UTF16BE;
+}
+
 ULONG TextLineIndex::byte_from_char(ULONG offset_chars) const
 {
 	switch(m_pTextDoc->m_nFileFormat)
@@ -121,6 +130,11 @@ ULONG TextLineIndex::byte_from_char(ULONG offset_chars) const
 		return offset_chars * sizeof(WCHAR);
 
 	case NCP_ASCII:
+		return offset_chars;
+
+	case NCP_UTF8:
+		return m_pTextDoc->count_chars(0, offset_chars);
+
 	default:
 		return offset_chars;
 	}
@@ -135,6 +149,11 @@ ULONG TextLineIndex::char_from_byte(ULONG offset_bytes) const
 		return offset_bytes / sizeof(WCHAR);
 
 	case NCP_ASCII:
+		return offset_bytes;
+
+	case NCP_UTF8:
+		return m_pTextDoc->count_code_units(0, offset_bytes);
+
 	default:
 		return offset_bytes;
 	}
@@ -153,6 +172,16 @@ bool TextLineIndex::is_linebreak_char(ULONG ch32) const
 		ch32 == 0x2029;
 }
 
+void TextLineIndex::ensure_page_offset(LinePage *page)
+{
+	if(page->offset_known)
+		return;
+
+	// Variable-width pages learn their UTF-16 base offset when first indexed.
+	page->offset_chars = char_from_byte(page->offset_bytes);
+	page->offset_known = true;
+}
+
 ULONG TextLineIndex::scan_lines(LinePage *page, ULONG *line_offsets_bytes, ULONG *line_offsets_chars)
 {
 	ULONG count = 0;
@@ -164,6 +193,8 @@ ULONG TextLineIndex::scan_lines(LinePage *page, ULONG *line_offsets_bytes, ULONG
 	page->starts_with_lf = false;
 	page->ends_with_cr = false;
 	page->length_chars = 0;
+	ensure_page_offset(page);
+	pos_chars = page->offset_chars;
 
 	while(pos_bytes < end)
 	{
@@ -292,6 +323,17 @@ void TextLineIndex::index_lines(ULONG offset_chars, ULONG length_chars)
 			scan_lines(page, page->line_offsets_bytes, page->line_offsets_chars);
 
 		page->indexed = true;
+
+		if(page_index + 1 < m_nLinePageCount)
+		{
+			LinePage *next = &m_pLinePages[page_index + 1];
+
+			if(!next->offset_known)
+			{
+				next->offset_chars = page->offset_chars + page->length_chars;
+				next->offset_known = true;
+			}
+		}
 	}
 
 	for(ULONG page_index = 0; page_index < m_nLinePageCount; page_index++)

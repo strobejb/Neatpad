@@ -289,14 +289,18 @@ size_t utf8_to_utf16(UTF8 *utf8str, size_t utf8len, UTF16 *utf16str, size_t *utf
 	{
 		// convert to utf-32
 		len		     = utf8_to_utf32(utf8str, utf8len, &ch32);
-		utf8str     += len;
-		utf8len     -= len;
 
 		// convert to utf-16
 		tmp16len     = *utf16len;
-		len          = utf32_to_utf16(&ch32, 1, utf16str, &tmp16len);
-		utf16str    += len;
-		(*utf16len) -= len;
+		utf32_to_utf16(&ch32, 1, utf16str, &tmp16len);
+
+		if(tmp16len == 0)
+			break;
+
+		utf8str     += len;
+		utf8len     -= len;
+		utf16str    += tmp16len;
+		(*utf16len) -= tmp16len;
 	}
 
 	*utf16len = utf16str - utf16start;

@@ -22,18 +22,28 @@ DWORD dwStatusBarStyles = WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLI
 						  ;
 
 
-#define MAX_STATUS_PARTS 3
+#define MAX_STATUS_PARTS 5
 
 //
 //	Process WM_MENUSELECT message to display menu-item hints in statusbar
 //
 int StatusBarMenuSelect(HWND hwnd, HWND hwndSB, WPARAM wParam, LPARAM lParam)
 {
-	UINT lookup[] = { 0, 0 };
+	TCHAR buf[100];
+	UINT  id    = LOWORD(wParam);
+	UINT  flags = HIWORD(wParam);
+
+	if((flags == 0xffff && lParam == 0) || (flags & (MF_POPUP | MF_SEPARATOR)))
+	{
+		SetStatusBarText(hwndSB, STATUS_PART_MESSAGE, 1, _T(""));
+		return 0;
+	}
 
 	// Display helpful text in status bar
-	MenuHelp(WM_MENUSELECT, wParam, lParam, GetMenu(hwnd), g_hResourceModule,
-		hwndSB, (UINT *)lookup);
+	if(LoadString(g_hResourceModule, id, buf, sizeof(buf) / sizeof(buf[0])))
+		SetStatusBarText(hwndSB, STATUS_PART_MESSAGE, 1, _T("%s"), buf);
+	else
+		SetStatusBarText(hwndSB, STATUS_PART_MESSAGE, 1, _T(""));
 
 	return 0;
 }
@@ -51,10 +61,12 @@ void SetStatusBarParts(HWND hwndSB)
 
 	GetClientRect(hwndParent, &r);
 
-	parentwidth = r.right < 400 ? 400 : r.right;
-	parts[0] = parentwidth - 250;
-	parts[1] = parentwidth - 70;		
-	parts[2] = parentwidth;//-1;
+	parentwidth = r.right < 620 ? 620 : r.right;
+	parts[STATUS_PART_CURSOR]   = 170;
+	parts[STATUS_PART_MESSAGE]  = parentwidth - 265;
+	parts[STATUS_PART_EDITMODE] = parentwidth - 210;
+	parts[STATUS_PART_LINEFMT]  = parentwidth - 120;
+	parts[STATUS_PART_ENCODING] = parentwidth;
 
 	// Tell the status bar to create the window parts. 
     SendMessage(hwndSB, SB_SETPARTS, MAX_STATUS_PARTS, (LPARAM)parts); 
@@ -87,9 +99,11 @@ HWND CreateStatusBar (HWND hwndParent)
 
 	SetStatusBarParts(hwndSB);
 
-	SetStatusBarText(hwndSB, 0, 1, _T(""));
-	SetStatusBarText(hwndSB, 1, 0, _T(" Ln %d, Col %d"), 1, 1);
-	SetStatusBarText(hwndSB, 2, 0, _T(" INS"));
+	SetStatusBarText(hwndSB, STATUS_PART_CURSOR, 0, _T(" Ln %d, Col %d"), 1, 1);
+	SetStatusBarText(hwndSB, STATUS_PART_MESSAGE, 1, _T(""));
+	SetStatusBarText(hwndSB, STATUS_PART_EDITMODE, 0, _T(" INS"));
+	SetStatusBarText(hwndSB, STATUS_PART_LINEFMT, 0, _T(" CRLF"));
+	SetStatusBarText(hwndSB, STATUS_PART_ENCODING, 0, _T(" ASCII"));
 
 	return hwndSB ;
 }

@@ -118,6 +118,13 @@ HWND CreateStatusBar (HWND hwndParent);
 void SetStatusBarParts(HWND hwndSB);
 int  StatusBarMenuSelect(HWND hwnd, HWND hwndSB, WPARAM wParam, LPARAM lParam);
 void SetStatusBarText(HWND hwndSB, UINT nPart, UINT uStyle, TCHAR *fmt, ...);
+void UpdateStatusBarFileInfo(void);
+
+#define STATUS_PART_CURSOR		0
+#define STATUS_PART_MESSAGE		1
+#define STATUS_PART_EDITMODE	2
+#define STATUS_PART_LINEFMT		3
+#define STATUS_PART_ENCODING	4
 
 #ifdef __cplusplus
 }

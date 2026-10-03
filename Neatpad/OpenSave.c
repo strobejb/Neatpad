@@ -282,6 +282,7 @@ BOOL DoOpenFile(HWND hwndMain, TCHAR *szFileName, TCHAR *szFileTitle)
 			IDM_VIEW_ASCII, IDM_VIEW_UTF16BE, 
 			fmtlook[fmt], MF_BYCOMMAND);
 
+		UpdateStatusBarFileInfo();
 		NotifyFileChange(szFileName, hwndMain, 0);
 		AddRecentFile(szFileName);
 		return TRUE;

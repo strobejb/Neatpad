@@ -58,6 +58,7 @@ COLORREF RealizeColour(COLORREF col);
 #define TXM_GETEDITMODE			(TXM_BASE + 23)
 #define TXM_SETCONTEXTMENU		(TXM_BASE + 24)
 #define TXM_GETCURLINEKNOWN		(TXM_BASE + 25)
+#define TXM_GETLINEFORMAT		(TXM_BASE + 26)
 
 //
 //	TextView Notification Messages defined here - 
@@ -165,6 +166,9 @@ typedef struct
 
 #define TextView_GetFormat(hwndTV) \
 	SendMessage((hwndTV), TXM_GETFORMAT, 0, 0)
+
+#define TextView_GetLineFormat(hwndTV) \
+	SendMessage((hwndTV), TXM_GETLINEFORMAT, 0, 0)
 
 #define TextView_Undo(hwndTV) \
 	SendMessage((hwndTV), TXM_UNDO, 0, 0)

@@ -269,13 +269,21 @@ ULONG TextDocument::decode_text(ULONG offset, ULONG lenbytes, TCHAR *buf, ULONG 
 	{
 		BYTE   rawdata[0x100];
 		size_t rawlen = min(lenbytes, 0x100);
+		size_t rendered;
 
 		// get next block of data from the piece-table
-		m_seq.render(offset + m_nHeaderSize, rawdata, rawlen);
+		rendered = m_seq.render(offset + m_nHeaderSize, rawdata, rawlen);
+
+		if(rendered == 0)
+			break;
 
 		// convert to UTF-16 
 		size_t tmplen = *buflen;
-		rawlen = rawdata_to_utf16(rawdata, rawlen, buf, &tmplen);
+		rawlen = rawdata_to_utf16(rawdata, rendered, buf, &tmplen);
+
+		// Stop before consuming a raw character that will not fit in the UTF-16 output buffer.
+		if(rawlen == 0 && tmplen == 0)
+			break;
 
 		lenbytes		-= rawlen;
 		offset			+= rawlen;
@@ -293,6 +301,7 @@ ULONG TextDocument::decode_text(ULONG offset, ULONG lenbytes, TCHAR *buf, ULONG 
 bool TextDocument::use_document_line_index() const
 {
 	return m_nFileFormat == NCP_ASCII ||
+		   m_nFileFormat == NCP_UTF8 ||
 		   m_nFileFormat == NCP_UTF16 ||
 		   m_nFileFormat == NCP_UTF16BE;
 }
@@ -1001,6 +1010,8 @@ ULONG TextDocument::erase_raw(ULONG offset_bytes, ULONG length)
 //
 ULONG TextDocument::count_chars(ULONG offset_bytes, ULONG length_chars)
 {
+	ULONG rawLength = m_seq.size() - m_nHeaderSize;
+
 	switch(m_nFileFormat)
 	{
 	case NCP_ASCII:
@@ -1016,13 +1027,33 @@ ULONG TextDocument::count_chars(ULONG offset_bytes, ULONG length_chars)
 
 	ULONG offset_start = offset_bytes;
 
-	while(length_chars && offset_bytes < m_seq.size())
+	while(length_chars && offset_bytes < rawLength)
 	{
 		TCHAR buf[0x100];
 		ULONG charlen = min(length_chars, 0x100);
 		ULONG bytelen;
 
-		bytelen = decode_text(offset_bytes, m_seq.size() - offset_bytes, buf, &charlen);
+		bytelen = decode_text(offset_bytes, rawLength - offset_bytes, buf, &charlen);
+
+		if(bytelen == 0 || charlen == 0)
+		{
+			ULONG ch32 = 0;
+			ULONG chlen = decode_char(offset_bytes, rawLength - offset_bytes, &ch32);
+			ULONG units = ch32 > 0xffff ? 2 : 1;
+
+			if(chlen == 0)
+				break;
+
+			// A UTF-16 offset can point inside a surrogate pair encoded as one raw character.
+			offset_bytes += chlen;
+
+			if(length_chars > units)
+				length_chars -= units;
+			else
+				length_chars = 0;
+
+			continue;
+		}
 
 		length_chars -= charlen;
 		offset_bytes += bytelen;
@@ -1034,12 +1065,13 @@ ULONG TextDocument::count_chars(ULONG offset_bytes, ULONG length_chars)
 ULONG TextDocument::count_code_units(ULONG offset_bytes, ULONG length_bytes)
 {
 	ULONG chars = 0;
+	ULONG rawLength = m_seq.size() - m_nHeaderSize;
 
-	while(length_bytes && offset_bytes < m_seq.size())
+	while(length_bytes && offset_bytes < rawLength)
 	{
 		TCHAR buf[0x100];
 		ULONG charlen = 0x100;
-		ULONG bytelen = decode_text(offset_bytes, length_bytes, buf, &charlen);
+		ULONG bytelen = decode_text(offset_bytes, min(length_bytes, rawLength - offset_bytes), buf, &charlen);
 
 		if(bytelen == 0)
 			break;
