@@ -166,6 +166,7 @@ bool TextDocument::clear()
 	m_nDocLength_chars = 0;
 	m_nFileFormat = NCP_ASCII;
 	m_nHeaderSize = 0;
+	m_lineBuffer.clear();
 
 	if(m_pLineBuf_byte)
 	{
@@ -348,8 +349,22 @@ ULONG TextDocument::decode_text(ULONG offset, ULONG lenbytes, TCHAR *buf, ULONG 
 	}*/
 }
 
+bool TextDocument::use_document_line_index() const
+{
+	return encoding_info(m_nFileFormat)->byte_offset_equals_char_offset && m_nHeaderSize == 0;
+}
+
+void TextDocument::copy_linebuffer_info(TextLineBufferInfo *source, RawLineInfo *dest)
+{
+	dest->lineno = source->lineno;
+	dest->lineoff_chars = source->lineoff_chars;
+	dest->linelen_chars = source->linelen_chars;
+	dest->lineoff_bytes = source->lineoff_bytes;
+	dest->linelen_bytes = source->linelen_bytes;
+}
+
 //
-//	Initialize the legacy line-buffer used by non-sequence-indexed encodings.
+//	Initialize the legacy line-buffer used by non-document-indexed encodings.
 //
 //	With Unicode a newline sequence is defined as any of the following:
 //
@@ -361,7 +376,6 @@ bool TextDocument::init_line_index()
 	ULONG offset_chars		= 0;
 	ULONG linestart_bytes	= 0;
 	ULONG linestart_chars	= 0;
-	ULONG bytes_left	    = m_seq.size() - m_nHeaderSize;
 
 	ULONG buflen  = m_seq.size() - m_nHeaderSize;
 
@@ -377,11 +391,12 @@ bool TextDocument::init_line_index()
 		m_pLineBuf_char = 0;
 	}
 
-	if(use_sequence_linebuffer())
+	m_lineBuffer.clear();
+
+	if(use_document_line_index())
 	{
-		m_nNumLines = m_seq.linecount();
 		m_nDocLength_chars = m_seq.size() - m_nHeaderSize;
-		return true;
+		return m_lineBuffer.init(this);
 	}
 
 	// allocate the line-buffer for storing each line's BYTE offset
@@ -462,50 +477,45 @@ bool TextDocument::init_line_index()
 	return true;
 }
 
-bool TextDocument::use_sequence_linebuffer() const
-{
-	return encoding_info(m_nFileFormat)->byte_offset_equals_char_offset && m_nHeaderSize == 0;
-}
-
 //
 //	Return the number of lines
 //
 ULONG TextDocument::linecount()
 {
-	if(use_sequence_linebuffer())
-		return m_seq.linecount();
+	if(use_document_line_index())
+		return m_lineBuffer.linecount();
 
 	return m_nNumLines;
 }
 
 bool TextDocument::linecount_known()
 {
-	if(use_sequence_linebuffer())
-		return m_seq.linecount_known();
+	if(use_document_line_index())
+		return m_lineBuffer.linecount_known();
 
 	return true;
 }
 
 bool TextDocument::lineno_known(ULONG lineno)
 {
-	if(!use_sequence_linebuffer())
+	if(!use_document_line_index())
 		return lineno < m_nNumLines;
 
-	return m_seq.line_number_known(lineno);
+	return m_lineBuffer.lineno_known(lineno);
 }
 
 bool TextDocument::line_number_range_known(ULONG offset_chars, ULONG length_chars)
 {
-	if(use_sequence_linebuffer())
-		return m_seq.line_numbers_known(offset_chars, length_chars);
+	if(use_document_line_index())
+		return m_lineBuffer.line_number_range_known(offset_chars, length_chars);
 
 	return true;
 }
 
 void TextDocument::index_lines(ULONG offset_chars, ULONG length_chars)
 {
-	if(use_sequence_linebuffer())
-		m_seq.index_lines(offset_chars, length_chars);
+	if(use_document_line_index())
+		m_lineBuffer.index_lines(offset_chars, length_chars);
 }
 
 //
@@ -555,44 +565,14 @@ bool TextDocument::raw_lineinfo_from_lineno(ULONG lineno, RawLineInfo *lineinfo)
 	if(lineinfo == 0)
 		return false;
 
-	// Use the sequence line index when the document is backed by lazy file buffers.
-	if(use_sequence_linebuffer())
+	if(use_document_line_index())
 	{
-		size_w lineoff;
-		size_w nextoff;
-		size_w numlines = m_seq.linecount();
+		TextLineBufferInfo bufferinfo;
 
-		if((m_seq.linecount_known() && lineno >= numlines) || !m_seq.lineoffset(lineno, &lineoff))
+		if(!m_lineBuffer.lineinfo_from_lineno(lineno, &bufferinfo))
 			return false;
 
-		// Lazy files may not know the next line number, so scan forward from this line's offset.
-		if(!m_seq.linecount_known())
-		{
-			if(!m_seq.next_lineoffset(lineoff, &nextoff))
-				nextoff = m_seq.size();
-		}
-		else if(lineno + 1 >= numlines || !m_seq.lineoffset(lineno + 1, &nextoff))
-			nextoff = m_seq.size();
-
-		// Index the visible line range so later line-number queries can become exact.
-		if(!m_seq.linecount_known())
-		{
-			size_w length = nextoff - lineoff;
-
-			if(length == 0)
-				length = 1;
-			else if(length > MEM_BLOCK_SIZE)
-				length = MEM_BLOCK_SIZE;
-
-			m_seq.index_lines(lineoff, length);
-		}
-
-		lineinfo->lineno = lineno;
-		lineinfo->lineoff_chars = lineoff;
-		lineinfo->linelen_chars = nextoff - lineoff;
-		lineinfo->lineoff_bytes = lineoff;
-		lineinfo->linelen_bytes = nextoff - lineoff;
-
+		copy_linebuffer_info(&bufferinfo, lineinfo);
 		return true;
 	}
 
@@ -637,57 +617,14 @@ bool TextDocument::raw_lineinfo_from_offset(ULONG offset_chars, RawLineInfo *lin
 	if(lineinfo == 0)
 		return false;
 
-	// Use the sequence line index when translating a file offset back to a line.
-	if(use_sequence_linebuffer())
+	if(use_document_line_index())
 	{
-		size_w line;
-		size_w lineoff;
-		size_w nextoff;
-		size_w numlines = m_seq.linecount();
+		TextLineBufferInfo bufferinfo;
 
-		if(numlines == 0)
-		{
-			lineinfo->lineno = 0;
-			lineinfo->lineoff_chars = 0;
-			lineinfo->linelen_chars = 0;
-			lineinfo->lineoff_bytes = 0;
-			lineinfo->linelen_bytes = 0;
-
-			return false;
-		}
-
-		// Ask the sequence for the physical line start containing this offset.
-		if(!m_seq.linefromoffset(offset_chars, &line, &lineoff))
+		if(!m_lineBuffer.lineinfo_from_offset(offset_chars, &bufferinfo))
 			return false;
 
-		// Lazy files find the current line exactly, then scan to discover its end.
-		if(!m_seq.linecount_known())
-		{
-			if(!m_seq.next_lineoffset(lineoff, &nextoff))
-				nextoff = m_seq.size();
-		}
-		else if(line + 1 >= numlines || !m_seq.lineoffset(line + 1, &nextoff))
-			nextoff = m_seq.size();
-
-		// Opportunistically index the line we just touched without scanning the whole file.
-		if(!m_seq.linecount_known())
-		{
-			size_w length = nextoff - lineoff;
-
-			if(length == 0)
-				length = 1;
-			else if(length > MEM_BLOCK_SIZE)
-				length = MEM_BLOCK_SIZE;
-
-			m_seq.index_lines(lineoff, length);
-		}
-
-		lineinfo->lineno = line;
-		lineinfo->lineoff_chars = lineoff;
-		lineinfo->linelen_chars = nextoff - lineoff;
-		lineinfo->lineoff_bytes = lineoff;
-		lineinfo->linelen_bytes = nextoff - lineoff;
-
+		copy_linebuffer_info(&bufferinfo, lineinfo);
 		return true;
 	}
 

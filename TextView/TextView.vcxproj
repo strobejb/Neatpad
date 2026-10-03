@@ -66,6 +66,7 @@
     <ClCompile Include="sequence_buf.cpp" />
     <ClCompile Include="sequence_lines.cpp" />
     <ClCompile Include="TextDocument.cpp" />
+    <ClCompile Include="TextLineBuffer.cpp" />
     <ClCompile Include="TextView.cpp" />
     <ClCompile Include="TextViewClipboard.cpp" />
     <ClCompile Include="TextViewFile.cpp" />
@@ -82,6 +83,7 @@
     <ClInclude Include="codepages.h" />
     <ClInclude Include="sequence.h" />
     <ClInclude Include="TextDocument.h" />
+    <ClInclude Include="TextLineBuffer.h" />
     <ClInclude Include="TextView.h" />
     <ClInclude Include="TextViewInternal.h" />
     <ClInclude Include="Unicode.h" />

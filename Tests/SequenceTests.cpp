@@ -844,7 +844,7 @@ void textdocument_final_sparse_line_ignores_estimated_linecount()
     CHECK(doc.init(path));
 
     CHECK(doc.insert_text(insert_offset, crlf, 2) == 2);
-    CHECK(doc.lineinfo_from_lineno(final_line, &line_offset, &line_length_chars));
+    CHECK(doc.lineinfo_from_offset(final_line_offset, 0, &line_offset, &line_length_chars));
     CHECK(line_offset == final_line_offset);
     CHECK(line_length_chars == doc.text_length() - final_line_offset);
 
@@ -880,7 +880,8 @@ void textdocument_ctrl_end_uses_final_page_when_lines_are_lazy()
     CHECK(doc.lineinfo_from_offset(doc.text_length(), &line_no, &line_offset, &line_length_chars));
     CHECK(line_offset == doc.text_length());
     CHECK(line_length_chars == 0);
-    CHECK(line_no + 1 == doc.linecount());
+    CHECK(!doc.linecount_known());
+    CHECK(!doc.lineno_known(line_no));
     CHECK(doc.previous_lineinfo_from_offset(doc.text_length(), 1, &lineinfo));
     CHECK(lineinfo.lineoff_chars == doc.text_length() - line_length);
     CHECK(doc.line_text_end(&lineinfo) == doc.text_length() - 2);
