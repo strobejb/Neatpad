@@ -25,6 +25,27 @@ static BOM_LOOKUP BOMLOOK[] =
 	{ 0,          0, NCP_ASCII	  },
 };
 
+static TEXT_ENCODING_INFO ENCODINGINFO[] =
+{
+	{ NCP_ASCII,   8,  TRUE,  TRUE  },
+	{ NCP_UTF8,    8,  FALSE, FALSE },
+	{ NCP_UTF16,  16, TRUE,  FALSE },
+	{ NCP_UTF16BE,16, TRUE,  FALSE },
+	{ NCP_UTF32,  32, TRUE,  FALSE },
+	{ NCP_UTF32BE,32, TRUE,  FALSE },
+};
+
+static const TEXT_ENCODING_INFO * encoding_info(TEXT_ENCODING encoding)
+{
+	for(int i = 0; i < sizeof(ENCODINGINFO) / sizeof(ENCODINGINFO[0]); i++)
+	{
+		if(ENCODINGINFO[i].encoding == encoding)
+			return &ENCODINGINFO[i];
+	}
+
+	return &ENCODINGINFO[0];
+}
+
 static bool is_linebreak(TCHAR ch)
 {
 	return ch == '\r' || ch == '\n' ||
@@ -443,7 +464,7 @@ bool TextDocument::init_line_index()
 
 bool TextDocument::use_sequence_linebuffer() const
 {
-	return m_nFileFormat == NCP_ASCII && m_nHeaderSize == 0;
+	return encoding_info(m_nFileFormat)->byte_offset_equals_char_offset && m_nHeaderSize == 0;
 }
 
 //

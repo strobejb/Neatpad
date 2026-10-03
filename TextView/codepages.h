@@ -21,4 +21,14 @@ typedef struct BOM_LOOKUP
 	TEXT_ENCODING encoding;
 } BOM_LOOKUP;
 
+typedef struct TEXT_ENCODING_INFO
+{
+	TEXT_ENCODING encoding;
+	ULONG		  code_unit_bits;
+	BOOL		  fixed_width;
+
+	// TextDocument character offsets are UTF-16 code units.
+	BOOL		  byte_offset_equals_char_offset;
+} TEXT_ENCODING_INFO;
+
 #endif
