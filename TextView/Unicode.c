@@ -124,6 +124,78 @@ size_t utf8_to_utf32(UTF8 *utf8str, size_t utf8len, UTF32 *pch32)
 }
 
 //
+//	utf16_to_utf32_char
+//
+//	Converts a single codepoint in the specified UTF-16LE stream of text
+//	into a UTF-32 value.
+//
+//	Returns number of bytes processed from utf16str.
+//
+size_t utf16_to_utf32_char(UTF8 *utf16str, size_t utf16len, UTF32 *pch32)
+{
+	UTF32 ch;
+
+	if(utf16str == 0 || utf16len < 2 || pch32 == 0)
+		return 0;
+
+	ch = (UTF32)utf16str[0] | ((UTF32)utf16str[1] << 8);
+
+	if(ch >= UNI_SUR_HIGH_START && ch <= UNI_SUR_HIGH_END && utf16len >= 4)
+	{
+		UTF32 ch2 = (UTF32)utf16str[2] | ((UTF32)utf16str[3] << 8);
+
+		if(ch2 >= UNI_SUR_LOW_START && ch2 <= UNI_SUR_LOW_END)
+		{
+			*pch32 = ((ch - UNI_SUR_HIGH_START) << 10) +
+					 ((ch2 - UNI_SUR_LOW_START) + 0x00010000);
+			return 4;
+		}
+
+		*pch32 = UNI_REPLACEMENT_CHAR;
+		return 2;
+	}
+
+	*pch32 = ch;
+	return 2;
+}
+
+//
+//	utf16be_to_utf32_char
+//
+//	Converts a single codepoint in the specified UTF-16BE stream of text
+//	into a UTF-32 value.
+//
+//	Returns number of bytes processed from utf16str.
+//
+size_t utf16be_to_utf32_char(UTF8 *utf16str, size_t utf16len, UTF32 *pch32)
+{
+	UTF32 ch;
+
+	if(utf16str == 0 || utf16len < 2 || pch32 == 0)
+		return 0;
+
+	ch = ((UTF32)utf16str[0] << 8) | (UTF32)utf16str[1];
+
+	if(ch >= UNI_SUR_HIGH_START && ch <= UNI_SUR_HIGH_END && utf16len >= 4)
+	{
+		UTF32 ch2 = ((UTF32)utf16str[2] << 8) | (UTF32)utf16str[3];
+
+		if(ch2 >= UNI_SUR_LOW_START && ch2 <= UNI_SUR_LOW_END)
+		{
+			*pch32 = ((ch - UNI_SUR_HIGH_START) << 10) +
+					 ((ch2 - UNI_SUR_LOW_START) + 0x00010000);
+			return 4;
+		}
+
+		*pch32 = UNI_REPLACEMENT_CHAR;
+		return 2;
+	}
+
+	*pch32 = ch;
+	return 2;
+}
+
+//
 //	utf32_to_utf8
 //
 //	Converts the specified UTF-32 value to UTF-8

@@ -1003,6 +1003,104 @@ void textdocument_large_lazy_file_line_estimate_does_not_overflow()
     DeleteFile(path);
 }
 
+void textdocument_utf16_line_index_uses_utf16_offsets()
+{
+    TextDocument doc;
+    TCHAR path[MAX_PATH];
+    const WCHAR text[] = { 0xfeff, 'a', '\r', '\n', 'b', 0xd83d, 0xde00, '\r', '\n', 'c' };
+    ULONG line_no = 0;
+    ULONG line_offset = 0;
+    ULONG line_length_chars = 0;
+    TextLineInfo lineinfo;
+    TCHAR buf[16];
+    ULONG line_start = 0;
+    ULONG read_len = 16;
+
+    CHECK(write_temp_file(reinterpret_cast<const char *>(text), sizeof(text), path));
+    CHECK(doc.init(path));
+
+    CHECK(doc.getformat() == NCP_UTF16);
+    CHECK(doc.text_length() == 9);
+
+    CHECK(doc.lineinfo_from_lineno(1, &line_offset, &line_length_chars));
+    CHECK(line_offset == 3);
+    CHECK(line_length_chars == 5);
+
+    CHECK(doc.lineinfo_from_offset(5, &line_no, &line_offset, &line_length_chars));
+    CHECK(line_no == 1);
+    CHECK(line_offset == 3);
+    CHECK(line_length_chars == 5);
+
+    CHECK(doc.lineinfo_from_offset(5, &lineinfo));
+    CHECK(doc.line_text_end(&lineinfo) == 6);
+
+    CHECK(doc.getline(1, buf, read_len, &line_start) == 5);
+    CHECK(line_start == 3);
+    CHECK(buf[0] == 'b');
+    CHECK(buf[1] == 0xd83d);
+    CHECK(buf[2] == 0xde00);
+    CHECK(buf[3] == '\r');
+    CHECK(buf[4] == '\n');
+
+    doc.clear();
+    DeleteFile(path);
+}
+
+void textdocument_utf16be_line_index_uses_utf16_offsets()
+{
+    TextDocument doc;
+    TCHAR path[MAX_PATH];
+    const unsigned char text[] =
+    {
+        0xfe, 0xff,
+        0x00, 'a',
+        0x00, '\r',
+        0x00, '\n',
+        0x00, 'b',
+        0xd8, 0x3d,
+        0xde, 0x00,
+        0x00, '\r',
+        0x00, '\n',
+        0x00, 'c'
+    };
+    ULONG line_no = 0;
+    ULONG line_offset = 0;
+    ULONG line_length_chars = 0;
+    TextLineInfo lineinfo;
+    TCHAR buf[16];
+    ULONG line_start = 0;
+    ULONG read_len = 16;
+
+    CHECK(write_temp_file(reinterpret_cast<const char *>(text), sizeof(text), path));
+    CHECK(doc.init(path));
+
+    CHECK(doc.getformat() == NCP_UTF16BE);
+    CHECK(doc.text_length() == 9);
+
+    CHECK(doc.lineinfo_from_lineno(1, &line_offset, &line_length_chars));
+    CHECK(line_offset == 3);
+    CHECK(line_length_chars == 5);
+
+    CHECK(doc.lineinfo_from_offset(5, &line_no, &line_offset, &line_length_chars));
+    CHECK(line_no == 1);
+    CHECK(line_offset == 3);
+    CHECK(line_length_chars == 5);
+
+    CHECK(doc.lineinfo_from_offset(5, &lineinfo));
+    CHECK(doc.line_text_end(&lineinfo) == 6);
+
+    CHECK(doc.getline(1, buf, read_len, &line_start) == 5);
+    CHECK(line_start == 3);
+    CHECK(buf[0] == 'b');
+    CHECK(buf[1] == 0xd83d);
+    CHECK(buf[2] == 0xde00);
+    CHECK(buf[3] == '\r');
+    CHECK(buf[4] == '\n');
+
+    doc.clear();
+    DeleteFile(path);
+}
+
 struct test_case
 {
     const char *name;
@@ -1058,6 +1156,8 @@ const test_case tests[] =
     { "textdocument_lazy_eof_without_final_crlf_maps_to_final_line", textdocument_lazy_eof_without_final_crlf_maps_to_final_line },
     { "textdocument_lazy_line_numbers_continue_after_first_page", textdocument_lazy_line_numbers_continue_after_first_page },
     { "textdocument_large_lazy_file_line_estimate_does_not_overflow", textdocument_large_lazy_file_line_estimate_does_not_overflow },
+    { "textdocument_utf16_line_index_uses_utf16_offsets", textdocument_utf16_line_index_uses_utf16_offsets },
+    { "textdocument_utf16be_line_index_uses_utf16_offsets", textdocument_utf16be_line_index_uses_utf16_offsets },
 };
 }
 

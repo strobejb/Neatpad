@@ -29,6 +29,8 @@ typedef unsigned char	UTF8;
 //
 size_t	utf8_to_utf32(UTF8 *utf8str, size_t utf8len, UTF32 *pcp32);
 size_t  utf32_to_utf8(UTF8 *utf8str, size_t utf8len, UTF32 ch32);
+size_t	utf16_to_utf32_char(UTF8 *utf16str, size_t utf16len, UTF32 *pch32);
+size_t	utf16be_to_utf32_char(UTF8 *utf16str, size_t utf16len, UTF32 *pch32);
 
 //
 //	Conversions between UTF-16 and UTF-8 strings

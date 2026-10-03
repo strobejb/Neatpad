@@ -3,7 +3,7 @@
 
 #include "codepages.h"
 #include "sequence.h"
-#include "TextLineBuffer.h"
+#include "TextLineIndex.h"
 
 class TextReader;
 
@@ -29,7 +29,7 @@ struct TextLineInfo
 class TextDocument
 {
 	friend class TextReader;
-	friend class TextLineBuffer;
+	friend class TextLineIndex;
 
 public:
 	TextDocument();
@@ -122,7 +122,7 @@ private:
 
 	bool init_line_index();
 	bool use_document_line_index() const;
-	void copy_linebuffer_info(TextLineBufferInfo *source, RawLineInfo *dest);
+	void copy_lineindex_info(TextLineIndexInfo *source, RawLineInfo *dest);
 	bool raw_lineinfo_from_offset(ULONG offset_chars, RawLineInfo *lineinfo);
 	bool raw_lineinfo_from_lineno(ULONG lineno, RawLineInfo *lineinfo);
 
@@ -163,7 +163,7 @@ private:
 	ULONG  m_nDocLength_chars;
 
 	// Lazy document line index. Offsets are stored in TextDocument's UTF-16 coordinate space.
-	TextLineBuffer m_lineBuffer;
+	TextLineIndex m_lineIndex;
 
 	// Legacy contiguous line buffer, retained for non-sequence-indexed formats.
 	ULONG *m_pLineBuf_byte;

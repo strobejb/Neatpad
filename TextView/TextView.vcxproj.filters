@@ -24,7 +24,7 @@
     <ClCompile Include="TextDocument.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="TextLineBuffer.cpp">
+    <ClCompile Include="TextLineIndex.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="TextView.cpp">
@@ -71,7 +71,7 @@
     <ClInclude Include="TextDocument.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="TextLineBuffer.h">
+    <ClInclude Include="TextLineIndex.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="TextView.h">

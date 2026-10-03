@@ -166,7 +166,7 @@ bool TextDocument::clear()
 	m_nDocLength_chars = 0;
 	m_nFileFormat = NCP_ASCII;
 	m_nHeaderSize = 0;
-	m_lineBuffer.clear();
+	m_lineIndex.clear();
 
 	if(m_pLineBuf_byte)
 	{
@@ -191,15 +191,18 @@ int TextDocument::decode_char(ULONG offset, ULONG lenbytes, ULONG *pch32)
 {
 //	BYTE	*rawdata   = (BYTE *)(buffer + offset + m_nHeaderSize);
 	BYTE	rawdata[16];
+	ULONG   rendered;
 
 	lenbytes = min(16, lenbytes);
-	m_seq.render(offset+ m_nHeaderSize, rawdata, lenbytes);
+	rendered = (ULONG)m_seq.render(offset + m_nHeaderSize, rawdata, lenbytes);
+	lenbytes = min(lenbytes, rendered);
+
+	if(lenbytes == 0 || pch32 == 0)
+		return 0;
 
 #ifdef UNICODE
 
-	UTF16   *rawdata_w = (UTF16 *)rawdata;//(WCHAR*)(buffer + offset + m_nHeaderSize);
 	WCHAR     ch16;
-	size_t   ch32len = 1;
 
 	switch(m_nFileFormat)
 	{
@@ -209,10 +212,10 @@ int TextDocument::decode_char(ULONG offset, ULONG lenbytes, ULONG *pch32)
 		return 1;
 
 	case NCP_UTF16:
-		return utf16_to_utf32(rawdata_w, lenbytes / 2, pch32, &ch32len) * sizeof(WCHAR);
+		return utf16_to_utf32_char(rawdata, lenbytes, pch32);
 		
 	case NCP_UTF16BE:
-		return utf16be_to_utf32(rawdata_w, lenbytes / 2, pch32, &ch32len) * sizeof(WCHAR);
+		return utf16be_to_utf32_char(rawdata, lenbytes, pch32);
 
 	case NCP_UTF8:
 		return utf8_to_utf32(rawdata, lenbytes, pch32);
@@ -285,76 +288,16 @@ ULONG TextDocument::decode_text(ULONG offset, ULONG lenbytes, TCHAR *buf, ULONG 
 
 	*buflen = chars_copied;
 	return bytes_processed;
-
-	//ULONG remaining = lenbytes;
-	//int   charbuflen = *buflen;
-
-	//while(remaining)
-/*	{
-		lenbytes = min(lenbytes, sizeof(rawdata));
-		m_seq.render(offset + m_nHeaderSize, rawdata, lenbytes);
-
-#ifdef UNICODE
-
-	switch(m_nFileFormat)
-	{
-	// convert from ANSI->UNICODE
-	case NCP_ASCII:
-		return ascii_to_utf16(rawdata, lenbytes, buf, (size_t*)buflen);
-		
-	case NCP_UTF8:
-		return utf8_to_utf16(rawdata, lenbytes, buf, (size_t*)buflen);
-
-	// already unicode, do a straight memory copy
-	case NCP_UTF16:
-		return copy_utf16((WCHAR*)rawdata, lenbytes/sizeof(WCHAR), buf, (size_t*)buflen);
-
-	// need to convert from big-endian to little-endian
-	case NCP_UTF16BE:
-		return swap_utf16((WCHAR*)rawdata, lenbytes/sizeof(WCHAR), buf, (size_t*)buflen);
-
-	// error! we should *never* reach this point
-	default:
-		*buflen = 0;
-		return 0;	
-	}
-
-#else
-
-	switch(m_nFileFormat)
-	{
-	// we are already an ASCII app, so do a straight memory copy
-	case NCP_ASCII:
-
-		int len;
-		
-		len = min(*buflen, lenbytes);
-		memcpy(buf, rawdata, len);
-
-		*buflen = len;
-		return len;
-
-	// anything else is an error - we cannot support Unicode or multibyte
-	// character sets with a plain ASCII app.
-	default:
-		*buflen = 0;
-		return 0;
-	}
-
-#endif
-
-	//	remaining -= lenbytes;
-	//	buf       += lenbytes;
-	//	offset    += lenbytes;
-	}*/
 }
 
 bool TextDocument::use_document_line_index() const
 {
-	return encoding_info(m_nFileFormat)->byte_offset_equals_char_offset && m_nHeaderSize == 0;
+	return m_nFileFormat == NCP_ASCII ||
+		   m_nFileFormat == NCP_UTF16 ||
+		   m_nFileFormat == NCP_UTF16BE;
 }
 
-void TextDocument::copy_linebuffer_info(TextLineBufferInfo *source, RawLineInfo *dest)
+void TextDocument::copy_lineindex_info(TextLineIndexInfo *source, RawLineInfo *dest)
 {
 	dest->lineno = source->lineno;
 	dest->lineoff_chars = source->lineoff_chars;
@@ -391,12 +334,12 @@ bool TextDocument::init_line_index()
 		m_pLineBuf_char = 0;
 	}
 
-	m_lineBuffer.clear();
+	m_lineIndex.clear();
 
 	if(use_document_line_index())
 	{
-		m_nDocLength_chars = m_seq.size() - m_nHeaderSize;
-		return m_lineBuffer.init(this);
+		m_nDocLength_chars = byteoffset_to_charoffset(m_seq.size() - m_nHeaderSize);
+		return m_lineIndex.init(this);
 	}
 
 	// allocate the line-buffer for storing each line's BYTE offset
@@ -483,7 +426,7 @@ bool TextDocument::init_line_index()
 ULONG TextDocument::linecount()
 {
 	if(use_document_line_index())
-		return m_lineBuffer.linecount();
+		return m_lineIndex.linecount();
 
 	return m_nNumLines;
 }
@@ -491,7 +434,7 @@ ULONG TextDocument::linecount()
 bool TextDocument::linecount_known()
 {
 	if(use_document_line_index())
-		return m_lineBuffer.linecount_known();
+		return m_lineIndex.linecount_known();
 
 	return true;
 }
@@ -501,13 +444,13 @@ bool TextDocument::lineno_known(ULONG lineno)
 	if(!use_document_line_index())
 		return lineno < m_nNumLines;
 
-	return m_lineBuffer.lineno_known(lineno);
+	return m_lineIndex.lineno_known(lineno);
 }
 
 bool TextDocument::line_number_range_known(ULONG offset_chars, ULONG length_chars)
 {
 	if(use_document_line_index())
-		return m_lineBuffer.line_number_range_known(offset_chars, length_chars);
+		return m_lineIndex.line_number_range_known(offset_chars, length_chars);
 
 	return true;
 }
@@ -515,7 +458,7 @@ bool TextDocument::line_number_range_known(ULONG offset_chars, ULONG length_char
 void TextDocument::index_lines(ULONG offset_chars, ULONG length_chars)
 {
 	if(use_document_line_index())
-		m_lineBuffer.index_lines(offset_chars, length_chars);
+		m_lineIndex.index_lines(offset_chars, length_chars);
 }
 
 //
@@ -567,12 +510,12 @@ bool TextDocument::raw_lineinfo_from_lineno(ULONG lineno, RawLineInfo *lineinfo)
 
 	if(use_document_line_index())
 	{
-		TextLineBufferInfo bufferinfo;
+		TextLineIndexInfo indexinfo;
 
-		if(!m_lineBuffer.lineinfo_from_lineno(lineno, &bufferinfo))
+		if(!m_lineIndex.lineinfo_from_lineno(lineno, &indexinfo))
 			return false;
 
-		copy_linebuffer_info(&bufferinfo, lineinfo);
+		copy_lineindex_info(&indexinfo, lineinfo);
 		return true;
 	}
 
@@ -619,12 +562,12 @@ bool TextDocument::raw_lineinfo_from_offset(ULONG offset_chars, RawLineInfo *lin
 
 	if(use_document_line_index())
 	{
-		TextLineBufferInfo bufferinfo;
+		TextLineIndexInfo indexinfo;
 
-		if(!m_lineBuffer.lineinfo_from_offset(offset_chars, &bufferinfo))
+		if(!m_lineIndex.lineinfo_from_offset(offset_chars, &indexinfo))
 			return false;
 
-		copy_linebuffer_info(&bufferinfo, lineinfo);
+		copy_lineindex_info(&indexinfo, lineinfo);
 		return true;
 	}
 
