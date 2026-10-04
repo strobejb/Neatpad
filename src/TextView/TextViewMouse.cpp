@@ -493,7 +493,8 @@ BOOL TextView::MouseCoordToFilePos(	int		 mx,			// [in]  mouse x-coord
 	if(my >= rect.bottom)	my = rect.bottom - 1;
 	if(mx >= rect.right)	mx = rect.right  - 1;
 
-	// It's easy to find the line-number: just divide 'y' by the line-height
+	// Use the displayed row. Lazy indexing may make this line number provisional,
+	// but GetUspData returns the matching physical line offset for that row.
 	nLineNo = (my / m_nLineHeight) + m_nVScrollPos;
 	
 	// make sure we don't go outside of the document

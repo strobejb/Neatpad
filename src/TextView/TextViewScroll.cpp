@@ -276,7 +276,8 @@ VOID TextView::ScrollToDocumentEnd()
 
 	ULONG offset = docLength > MEM_BLOCK_SIZE ? docLength - MEM_BLOCK_SIZE : 0;
 
-	// The lazy line count is only an estimate, so bottom scrolling is anchored at EOF.
+	// linecount() may still be an estimate, so bottom scrolling is anchored
+	// by resolving the exact EOF offset and deriving the visible range from it.
 	m_pTextDoc->index_lines(offset, docLength - offset);
 	m_nLineCount = m_pTextDoc->linecount();
 

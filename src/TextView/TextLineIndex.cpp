@@ -254,6 +254,10 @@ ULONG TextLineIndex::scan_lines(LinePage *page, ULONG *line_offsets_bytes, ULONG
 	return count;
 }
 
+//
+//	Estimate a whole-file line count from the contiguous indexed prefix.
+//	This is only suitable for scrollbar scale until linecount_known() is true.
+//
 ULONG TextLineIndex::estimate_line_count() const
 {
 	ULONG indexed_bytes = 0;
@@ -280,6 +284,11 @@ ULONG TextLineIndex::estimate_line_count() const
 	return estimate_muldiv(indexed_breaks, bytes, indexed_bytes) + 1;
 }
 
+//
+//	Index the requested range of file pages.
+//	Line bases are exact only for the contiguous indexed prefix; pages indexed
+//	beyond that prefix keep provisional bases until the gaps are filled.
+//
 void TextLineIndex::index_lines(ULONG offset_chars, ULONG length_chars)
 {
 	ULONG bytes = raw_length();
@@ -556,6 +565,11 @@ bool TextLineIndex::next_lineoffset(ULONG lineoff_chars, ULONG *nextoff_chars)
 	return false;
 }
 
+//
+//	Map a line number to an offset. Prefer exact indexed prefix data, then
+//	locally indexed provisional pages, then the final-page EOF guard, and only
+//	then fall back to an estimated nearby offset.
+//
 bool TextLineIndex::lineoffset_from_lineno(ULONG lineno, ULONG *offset_chars)
 {
 	ULONG docLength = text_length();
@@ -664,6 +678,10 @@ bool TextLineIndex::lineinfo_from_lineno(ULONG lineno, TextLineIndexInfo *linein
 	return true;
 }
 
+//
+//	Map an exact offset to its containing line. The offset and returned line
+//	range are usable immediately, but the line number may still be provisional.
+//
 bool TextLineIndex::lineinfo_from_offset(ULONG offset_chars, TextLineIndexInfo *lineinfo)
 {
 	ULONG docLength = text_length();

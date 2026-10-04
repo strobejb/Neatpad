@@ -249,6 +249,7 @@ private:
 	ULONG		m_uStyleFlags;
 
 	// File-related data
+	// Display/scroll line count; may be estimated or EOF-clamped while lazy indexing is incomplete.
 	ULONG		m_nLineCount;
 
 	// Font-related data	

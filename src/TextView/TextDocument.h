@@ -64,7 +64,8 @@ public:
 	//	Line lookup
 	//
 
-	// Line/offset lookup. Use lineno_known() before presenting a returned line number as exact.
+	// Line/offset lookup. Offsets and lengths describe the resolved physical text.
+	// Returned line numbers can be provisional until lineno_known() says otherwise.
 	ULONG lineno_from_offset(ULONG offset);
 	ULONG offset_from_lineno(ULONG lineno);
 
