@@ -1152,6 +1152,63 @@ void textdocument_utf8_line_index_uses_utf16_offsets()
     DeleteFile(path);
 }
 
+void textdocument_utf8_lf_lazy_lookup_returns_bounded_line()
+{
+    TextDocument doc;
+    TCHAR path[MAX_PATH];
+    const unsigned char bom[] = { 0xef, 0xbb, 0xbf };
+    const char *line = "line UTF-8 LF cafe\xcc\x81 omega \xce\xa9 emoji \xf0\x9f\x98\x80 0123456789\n";
+    const size_t line_length = strlen(line);
+    const size_t line_count = (MEM_BLOCK_SIZE * 4) / line_length;
+    const size_t file_length = sizeof(bom) + line_length * line_count;
+    const ULONG target_line = static_cast<ULONG>(line_count / 2);
+    char *data = new char[file_length];
+    TCHAR buf[128];
+    ULONG line_start = 0;
+    ULONG line_no = 0;
+    ULONG roundtrip_start = 0;
+    ULONG roundtrip_len = 0;
+    ULONG chars;
+    TextLineInfo prevline;
+    TextLineInfo nextline;
+
+    memcpy(data, bom, sizeof(bom));
+
+    for(size_t i = 0; i < line_count; i++)
+        memcpy(data + sizeof(bom) + i * line_length, line, line_length);
+
+    CHECK(write_temp_file(data, file_length, path));
+    CHECK(doc.init(path));
+    CHECK(doc.getformat() == NCP_UTF8);
+    CHECK(!doc.lineno_known(target_line));
+
+    CHECK(doc.lineinfo_from_lineno(target_line, &line_start, &chars));
+    CHECK(line_start == target_line * line_length);
+
+    CHECK(doc.lineinfo_from_offset(line_start + 20, &line_no, &roundtrip_start, &roundtrip_len));
+    CHECK(line_no == target_line);
+    CHECK(roundtrip_start == line_start);
+
+    CHECK(doc.lineinfo_from_offset(line_start + 21, &line_no, &roundtrip_start, &roundtrip_len));
+    CHECK(line_no == target_line);
+    CHECK(roundtrip_start == line_start);
+
+    CHECK(doc.previous_lineinfo_from_offset(line_start + 20, 1, &prevline));
+    CHECK(prevline.lineno == target_line - 1);
+
+    CHECK(doc.next_lineinfo_from_offset(line_start + 20, 1, &nextline));
+    CHECK(nextline.lineno == target_line + 1);
+
+    chars = doc.getline(target_line, buf, 128, &line_start);
+    CHECK(chars > 0);
+    CHECK(chars < 128);
+    CHECK(buf[chars - 1] == '\n');
+
+    doc.clear();
+    DeleteFile(path);
+    delete[] data;
+}
+
 struct test_case
 {
     const char *name;
@@ -1210,6 +1267,7 @@ const test_case tests[] =
     { "textdocument_utf16_line_index_uses_utf16_offsets", textdocument_utf16_line_index_uses_utf16_offsets },
     { "textdocument_utf16be_line_index_uses_utf16_offsets", textdocument_utf16be_line_index_uses_utf16_offsets },
     { "textdocument_utf8_line_index_uses_utf16_offsets", textdocument_utf8_line_index_uses_utf16_offsets },
+    { "textdocument_utf8_lf_lazy_lookup_returns_bounded_line", textdocument_utf8_lf_lazy_lookup_returns_bounded_line },
 };
 }
 

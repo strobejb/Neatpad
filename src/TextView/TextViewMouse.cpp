@@ -348,6 +348,7 @@ LONG TextView::OnMouseMove(UINT nFlags, int mx, int my)
 
 			// redraw from old selection-pos to new position
 			InvalidateRange(m_nSelectionEnd, nFileOff);
+			InvalidateLine(nLineNo, true);
 
 			// adjust the cursor + selection to the new offset
 			m_nSelectionEnd = nFileOff;
@@ -475,7 +476,7 @@ BOOL TextView::MouseCoordToFilePos(	int		 mx,			// [in]  mouse x-coord
 									)
 {
 	ULONG nLineNo;
-	ULONG off_chars;
+	ULONG off_chars = 0;
 	RECT  rect;
 	int	  cp;
 
@@ -505,13 +506,13 @@ BOOL TextView::MouseCoordToFilePos(	int		 mx,			// [in]  mouse x-coord
 	mx += m_nHScrollPos * m_nFontWidth;
 
 	// get the USPDATA object for the selected line!!
-	USPDATA *uspData = GetUspData(0, nLineNo);
+	USPDATA *uspData = GetUspData(0, nLineNo, &off_chars);
 
 	// convert mouse-x coordinate to a character-offset relative to start of line
 	UspSnapXToOffset(uspData, mx, &mx, &cp, 0);
 	
-	// return coords!
-	m_pTextDoc->lineinfo_from_lineno(nLineNo, &off_chars, 0);
+	// Use the offset for the line we actually displayed. Lazy line indexing can
+	// make a second line lookup resolve to a different provisional location.
 	*pnLineNo		= nLineNo;
 	*pnFileOffset	= cp + off_chars;
 	*psnappedX		= mx;// - m_nHScrollPos * m_nFontWidth;
@@ -690,8 +691,12 @@ VOID TextView::UpdateCaretOffset(ULONG offset, BOOL fTrailing, int *outx, ULONG 
 		// locate the USPDATA for this line
 		if((uspData = GetUspData(NULL, lineno)) != 0)
 		{	
-			// convert character-offset to x-coordinate
-			off_chars = m_nCursorOffset - off_chars;
+			// Provisional lazy offsets can disagree slightly; keep the caret
+			// position relative to the analyzed line instead of wrapping.
+			if(m_nCursorOffset <= off_chars)
+				off_chars = 0;
+			else
+				off_chars = min(m_nCursorOffset - off_chars, (ULONG)uspData->stringLen);
 			
 			if(fTrailing && off_chars > 0)
 				UspOffsetToX(uspData, off_chars-1, TRUE, &xpos);

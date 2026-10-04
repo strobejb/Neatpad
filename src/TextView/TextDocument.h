@@ -118,6 +118,7 @@ private:
 		ULONG linelen_chars;
 		ULONG lineoff_bytes;
 		ULONG linelen_bytes;
+		bool  chars_known;
 	};
 
 	bool init_line_index();
@@ -159,7 +160,7 @@ private:
 	// Raw byte storage.
 	sequence m_seq;
 
-	// Cached document length in UTF-16 code units.
+	// Cached document length. This is UTF-16 for decoded documents, and provisional for large lazy UTF-8 files.
 	ULONG  m_nDocLength_chars;
 
 	// Lazy document line index. Offsets are stored in TextDocument's UTF-16 coordinate space.

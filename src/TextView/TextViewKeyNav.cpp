@@ -30,6 +30,19 @@ bool IsKeyPressed(UINT nVirtKey)
 	return GetKeyState(nVirtKey) < 0 ? true : false;
 }
 
+static int OffsetToLineCharPos(ULONG offset, ULONG lineOffset, int lineLength)
+{
+	if(offset <= lineOffset)
+		return 0;
+
+	offset -= lineOffset;
+
+	if(offset > (ULONG)lineLength)
+		return lineLength;
+
+	return (int)offset;
+}
+
 //
 //	Get the UspCache and logical attributes for specified line
 //
@@ -128,7 +141,7 @@ VOID TextView::MoveWordPrev()
 		return;
 
 	// move 1 character to left
-	charPos = m_nCursorOffset - lineOffset - 1; 
+	charPos = OffsetToLineCharPos(m_nCursorOffset, lineOffset, uspCache->length_CRLF) - 1; 
 
 	// skip to end of *previous* line if necessary
 	if(charPos < 0)
@@ -170,7 +183,7 @@ VOID TextView::MoveWordNext()
 	if(!GetLogAttr(m_nCurrentLine, &uspCache, &logAttr, &lineOffset))
 		return;
 
-	charPos = m_nCursorOffset - lineOffset;
+	charPos = OffsetToLineCharPos(m_nCursorOffset, lineOffset, uspCache->length_CRLF);
 
 	// if already at end-of-line, skip to next line
 	if(charPos == uspCache->length_CRLF)
@@ -213,7 +226,7 @@ VOID TextView::MoveWordStart()
 	if(!GetLogAttr(m_nCurrentLine, &uspCache, &logAttr, &lineOffset))
 		return;
 
-	charPos  = m_nCursorOffset - lineOffset;
+	charPos  = OffsetToLineCharPos(m_nCursorOffset, lineOffset, uspCache->length_CRLF);
 
 	while(charPos > 0 && !logAttr[charPos-1].fWhiteSpace)
 		charPos--;
@@ -235,7 +248,7 @@ VOID TextView::MoveWordEnd()
 	if(!GetLogAttr(m_nCurrentLine, &uspCache, &logAttr, &lineOffset))
 		return;
 
-	charPos  = m_nCursorOffset - lineOffset;
+	charPos  = OffsetToLineCharPos(m_nCursorOffset, lineOffset, uspCache->length_CRLF);
 
 	while(charPos < uspCache->length_CRLF && !logAttr[charPos].fWhiteSpace)
 		charPos++;
@@ -257,7 +270,7 @@ VOID TextView::MoveCharPrev()
 	if(!GetLogAttr(m_nCurrentLine, &uspCache, &logAttr, &lineOffset))
 		return;
 
-	charPos = m_nCursorOffset - lineOffset;
+	charPos = OffsetToLineCharPos(m_nCursorOffset, lineOffset, uspCache->length_CRLF);
 
 	// find the previous valid character-position
 	for( --charPos; charPos >= 0; charPos--)
@@ -296,7 +309,7 @@ VOID TextView::MoveCharNext()
 	if(!GetLogAttr(m_nCurrentLine, &uspCache, &logAttr, &lineOffset))
 		return;
 
-	charPos = m_nCursorOffset - lineOffset;
+	charPos = OffsetToLineCharPos(m_nCursorOffset, lineOffset, uspCache->length_CRLF);
 
 	// find the next valid character-position
 	for( ++charPos; charPos <= uspCache->length_CRLF; charPos++)
@@ -332,14 +345,17 @@ VOID TextView::MoveLineStart(ULONG lineNo)
 	if(!GetLogAttr(lineNo, &uspCache, &logAttr, &lineOffset))
 		return;
 
-	charPos  = m_nCursorOffset - lineOffset;
+	charPos  = OffsetToLineCharPos(m_nCursorOffset, lineOffset, uspCache->length_CRLF);
 	
 	// if already at start of line, skip *forwards* past any whitespace
 	if(m_nCursorOffset == lineOffset)
 	{
 		// skip whitespace
-		while(logAttr[m_nCursorOffset - lineOffset].fWhiteSpace)
+		while(charPos < uspCache->length_CRLF && logAttr[charPos].fWhiteSpace)
+		{
 			m_nCursorOffset++;
+			charPos++;
+		}
 	}
 	// if not at start, goto start
 	else

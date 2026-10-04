@@ -308,11 +308,22 @@ bool TextDocument::use_document_line_index() const
 
 void TextDocument::copy_lineindex_info(TextLineIndexInfo *source, RawLineInfo *dest)
 {
+	ULONG rawLength = m_seq.size() - m_nHeaderSize;
+
 	dest->lineno = source->lineno;
 	dest->lineoff_chars = source->lineoff_chars;
 	dest->linelen_chars = source->linelen_chars;
 	dest->lineoff_bytes = source->lineoff_bytes;
 	dest->linelen_bytes = source->linelen_bytes;
+	dest->chars_known = source->chars_known;
+
+	if(!dest->chars_known && rawLength <= MEM_BLOCK_SIZE)
+	{
+		// Small documents can cheaply translate raw line ranges back into TextView's UTF-16 coordinates.
+		dest->lineoff_chars = byteoffset_to_charoffset(dest->lineoff_bytes);
+		dest->linelen_chars = count_code_units(dest->lineoff_bytes, dest->linelen_bytes);
+		dest->chars_known = true;
+	}
 }
 
 //
@@ -347,7 +358,15 @@ bool TextDocument::init_line_index()
 
 	if(use_document_line_index())
 	{
-		m_nDocLength_chars = byteoffset_to_charoffset(m_seq.size() - m_nHeaderSize);
+		if(m_nFileFormat == NCP_UTF8 && buflen > MEM_BLOCK_SIZE)
+		{
+			m_nDocLength_chars = buflen;
+		}
+		else
+		{
+			m_nDocLength_chars = byteoffset_to_charoffset(buflen);
+		}
+
 		return m_lineIndex.init(this);
 	}
 
@@ -535,6 +554,7 @@ bool TextDocument::raw_lineinfo_from_lineno(ULONG lineno, RawLineInfo *lineinfo)
 		lineinfo->linelen_chars = m_pLineBuf_char[lineno+1] - m_pLineBuf_char[lineno];
 		lineinfo->lineoff_bytes = m_pLineBuf_byte[lineno];
 		lineinfo->linelen_bytes = m_pLineBuf_byte[lineno+1] - m_pLineBuf_byte[lineno];
+		lineinfo->chars_known = true;
 
 		return true;
 	}
@@ -587,6 +607,7 @@ bool TextDocument::raw_lineinfo_from_offset(ULONG offset_chars, RawLineInfo *lin
 		lineinfo->linelen_chars = 0;
 		lineinfo->lineoff_bytes = 0;
 		lineinfo->linelen_bytes = 0;
+		lineinfo->chars_known = true;
 
 		return false;
 	}
@@ -614,6 +635,7 @@ bool TextDocument::raw_lineinfo_from_offset(ULONG offset_chars, RawLineInfo *lin
 	lineinfo->linelen_chars = m_pLineBuf_char[line+1] - m_pLineBuf_char[line];
 	lineinfo->lineoff_bytes = m_pLineBuf_byte[line];
 	lineinfo->linelen_bytes = m_pLineBuf_byte[line+1] - m_pLineBuf_byte[line];
+	lineinfo->chars_known = true;
 
 	return true;
 }

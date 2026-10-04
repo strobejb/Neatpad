@@ -76,7 +76,7 @@ static TCHAR * LineFormatName(UINT format)
 {
 	switch(format)
 	{
-	case TXL_LF:	return _T("UINX (LF)");
+	case TXL_LF:	return _T("UNIX (LF)");
 	case TXL_CR:	return _T("Mac (CR)");
 	case TXL_CRLF:	return _T("Windows (CRLF)");
 	case TXL_ALL:	return _T("ALL");

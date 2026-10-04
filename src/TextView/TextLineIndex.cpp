@@ -24,6 +24,17 @@ static ULONG estimate_muldiv(ULONG numerator, ULONG multiplier, ULONG divisor)
 	return (ULONG)result;
 }
 
+static ULONG read_codeunit(TEXT_ENCODING encoding, BYTE *data, ULONG index, ULONG unit)
+{
+	if(unit == 1)
+		return data[index];
+
+	if(encoding == NCP_UTF16BE)
+		return ((ULONG)data[index] << 8) | data[index + 1];
+
+	return data[index] | ((ULONG)data[index + 1] << 8);
+}
+
 TextLineIndex::TextLineIndex()
 {
 	m_pTextDoc = 0;
@@ -74,6 +85,7 @@ bool TextLineIndex::init(TextDocument *doc)
 		page->line_base = 0;
 		page->indexed = false;
 		page->offset_known = direct_offset_mapping() || i == 0;
+		page->chars_known = direct_offset_mapping();
 		page->line_base_known = false;
 		page->starts_with_lf = false;
 		page->ends_with_cr = false;
@@ -115,61 +127,34 @@ ULONG TextLineIndex::text_length() const
 
 bool TextLineIndex::direct_offset_mapping() const
 {
-	// Fixed-width encodings can map byte offsets to UTF-16 offsets without scanning.
 	return m_pTextDoc->m_nFileFormat == NCP_ASCII ||
 		   m_pTextDoc->m_nFileFormat == NCP_UTF16 ||
 		   m_pTextDoc->m_nFileFormat == NCP_UTF16BE;
 }
 
-ULONG TextLineIndex::byte_from_char(ULONG offset_chars) const
+ULONG TextLineIndex::codeunit_size() const
 {
 	switch(m_pTextDoc->m_nFileFormat)
 	{
 	case NCP_UTF16:
 	case NCP_UTF16BE:
-		return offset_chars * sizeof(WCHAR);
+		return sizeof(WCHAR);
 
 	case NCP_ASCII:
-		return offset_chars;
-
 	case NCP_UTF8:
-		return m_pTextDoc->count_chars(0, offset_chars);
-
 	default:
-		return offset_chars;
+		return 1;
 	}
+}
+
+ULONG TextLineIndex::byte_from_char(ULONG offset_chars) const
+{
+	return offset_chars * codeunit_size();
 }
 
 ULONG TextLineIndex::char_from_byte(ULONG offset_bytes) const
 {
-	switch(m_pTextDoc->m_nFileFormat)
-	{
-	case NCP_UTF16:
-	case NCP_UTF16BE:
-		return offset_bytes / sizeof(WCHAR);
-
-	case NCP_ASCII:
-		return offset_bytes;
-
-	case NCP_UTF8:
-		return m_pTextDoc->count_code_units(0, offset_bytes);
-
-	default:
-		return offset_bytes;
-	}
-}
-
-ULONG TextLineIndex::utf16_length(ULONG ch32) const
-{
-	return ch32 > 0xffff ? 2 : 1;
-}
-
-bool TextLineIndex::is_linebreak_char(ULONG ch32) const
-{
-	return ch32 == '\r' || ch32 == '\n' ||
-		ch32 == '\x0b' || ch32 == '\x0c' ||
-		ch32 == 0x0085 || ch32 == 0x2028 ||
-		ch32 == 0x2029;
+	return offset_bytes / codeunit_size();
 }
 
 void TextLineIndex::ensure_page_offset(LinePage *page)
@@ -180,56 +165,66 @@ void TextLineIndex::ensure_page_offset(LinePage *page)
 	// Variable-width pages learn their UTF-16 base offset when first indexed.
 	page->offset_chars = char_from_byte(page->offset_bytes);
 	page->offset_known = true;
+	page->chars_known = direct_offset_mapping();
 }
 
 ULONG TextLineIndex::scan_lines(LinePage *page, ULONG *line_offsets_bytes, ULONG *line_offsets_chars)
 {
 	ULONG count = 0;
-	ULONG pos_bytes = page->offset_bytes;
-	ULONG pos_chars = page->offset_chars;
+	ULONG pos_bytes;
 	ULONG end = page->offset_bytes + page->length_bytes;
+	ULONG unit = codeunit_size();
 	bool first_char = true;
+	BYTE *data;
+	ULONG bytes_read;
 
 	page->starts_with_lf = false;
 	page->ends_with_cr = false;
-	page->length_chars = 0;
+	page->length_chars = page->length_bytes / unit;
 	ensure_page_offset(page);
-	pos_chars = page->offset_chars;
 
-	while(pos_bytes < end)
+	data = new BYTE[page->length_bytes];
+	if(data == 0)
+		return 0;
+
+	bytes_read = (ULONG)m_pTextDoc->m_seq.render(m_pTextDoc->m_nHeaderSize + page->offset_bytes, data, page->length_bytes);
+	bytes_read -= bytes_read % unit;
+	end = page->offset_bytes + bytes_read;
+
+	for(pos_bytes = page->offset_bytes; pos_bytes + unit <= end; pos_bytes += unit)
 	{
-		ULONG ch32 = 0;
-		ULONG len = m_pTextDoc->decode_char(pos_bytes, end - pos_bytes, &ch32);
-		ULONG next_bytes;
-		ULONG next_chars;
+		ULONG index = pos_bytes - page->offset_bytes;
+		ULONG ch;
 
-		if(len == 0)
-			break;
-
-		next_bytes = pos_bytes + len;
-		next_chars = pos_chars + utf16_length(ch32);
+		ch = read_codeunit(m_pTextDoc->m_nFileFormat, data, index, unit);
 
 		if(first_char)
 		{
-			page->starts_with_lf = ch32 == '\n';
+			page->starts_with_lf = ch == '\n';
 			first_char = false;
 		}
 
-		page->ends_with_cr = ch32 == '\r';
+		page->ends_with_cr = ch == '\r';
 
-		if(ch32 == '\r')
+		if(ch == '\r')
 		{
-			ULONG nextch32 = 0;
-			ULONG nextlen = 0;
+			ULONG next_bytes = pos_bytes + unit;
+			ULONG next_chars = char_from_byte(next_bytes);
 
-			if(next_bytes < end)
-				nextlen = m_pTextDoc->decode_char(next_bytes, end - next_bytes, &nextch32);
-
-			if(nextlen && nextch32 == '\n')
+			if(next_bytes + unit <= end)
 			{
-				next_bytes += nextlen;
-				next_chars += utf16_length(nextch32);
-				page->ends_with_cr = false;
+				ULONG next_index = next_bytes - page->offset_bytes;
+				ULONG next_ch;
+
+				next_ch = read_codeunit(m_pTextDoc->m_nFileFormat, data, next_index, unit);
+
+				if(next_ch == '\n')
+				{
+					next_bytes += unit;
+					next_chars++;
+					pos_bytes += unit;
+					page->ends_with_cr = false;
+				}
 			}
 
 			if(line_offsets_bytes)
@@ -240,8 +235,11 @@ ULONG TextLineIndex::scan_lines(LinePage *page, ULONG *line_offsets_bytes, ULONG
 
 			count++;
 		}
-		else if(is_linebreak_char(ch32))
+		else if(ch == '\n')
 		{
+			ULONG next_bytes = pos_bytes + unit;
+			ULONG next_chars = char_from_byte(next_bytes);
+
 			if(line_offsets_bytes)
 				line_offsets_bytes[count] = next_bytes;
 
@@ -250,12 +248,9 @@ ULONG TextLineIndex::scan_lines(LinePage *page, ULONG *line_offsets_bytes, ULONG
 
 			count++;
 		}
-
-		pos_bytes = next_bytes;
-		pos_chars = next_chars;
 	}
 
-	page->length_chars = pos_chars - page->offset_chars;
+	delete[] data;
 	return count;
 }
 
@@ -324,6 +319,9 @@ void TextLineIndex::index_lines(ULONG offset_chars, ULONG length_chars)
 
 		page->indexed = true;
 
+		if(!page->line_base_known)
+			page->line_base = estimate_muldiv(page->offset_bytes, estimate_line_count(), bytes);
+
 		if(page_index + 1 < m_nLinePageCount)
 		{
 			LinePage *next = &m_pLinePages[page_index + 1];
@@ -332,6 +330,9 @@ void TextLineIndex::index_lines(ULONG offset_chars, ULONG length_chars)
 			{
 				next->offset_chars = page->offset_chars + page->length_chars;
 				next->offset_known = true;
+			
+				if(page->chars_known)
+					next->chars_known = true;
 			}
 		}
 	}
@@ -432,9 +433,10 @@ bool TextLineIndex::find_line_start_near_offset(ULONG near_offset_chars, ULONG *
 	ULONG near_offset_bytes = byte_from_char(near_offset_chars);
 	ULONG start = near_offset_bytes > MEM_BLOCK_SIZE ? near_offset_bytes - MEM_BLOCK_SIZE : 0;
 	ULONG end = min(raw_length(), near_offset_bytes + (ULONG)MEM_BLOCK_SIZE);
-	ULONG pos_bytes = start;
-	ULONG pos_chars = char_from_byte(start);
-	ULONG last_line_start = pos_chars;
+	ULONG unit = codeunit_size();
+	ULONG last_line_start = char_from_byte(start);
+	BYTE *data;
+	ULONG bytes_read;
 
 	if(offset_chars == 0)
 		return false;
@@ -442,51 +444,54 @@ bool TextLineIndex::find_line_start_near_offset(ULONG near_offset_chars, ULONG *
 	if(near_offset_chars > docLength)
 		near_offset_chars = docLength;
 
-	while(pos_bytes < end)
+	start -= start % unit;
+	data = new BYTE[end - start];
+	if(data == 0)
+		return false;
+
+	bytes_read = (ULONG)m_pTextDoc->m_seq.render(m_pTextDoc->m_nHeaderSize + start, data, end - start);
+	bytes_read -= bytes_read % unit;
+
+	for(ULONG pos_bytes = start; pos_bytes + unit <= start + bytes_read; pos_bytes += unit)
 	{
-		ULONG ch32 = 0;
-		ULONG len = m_pTextDoc->decode_char(pos_bytes, end - pos_bytes, &ch32);
-		ULONG next_bytes;
-		ULONG next_chars;
+		ULONG index = pos_bytes - start;
+		ULONG ch = read_codeunit(m_pTextDoc->m_nFileFormat, data, index, unit);
 
-		if(len == 0)
-			break;
-
-		next_bytes = pos_bytes + len;
-		next_chars = pos_chars + utf16_length(ch32);
-
-		if(ch32 == '\r')
+		if(ch == '\r' || ch == '\n')
 		{
-			ULONG nextch32 = 0;
-			ULONG nextlen = 0;
+			ULONG next_bytes = pos_bytes + unit;
+			ULONG next_chars;
 
-			if(next_bytes < end)
-				nextlen = m_pTextDoc->decode_char(next_bytes, end - next_bytes, &nextch32);
-
-			if(nextlen && nextch32 == '\n')
+			if(ch == '\r' && next_bytes + unit <= start + bytes_read)
 			{
-				next_bytes += nextlen;
-				next_chars += utf16_length(nextch32);
+				ULONG next_index = next_bytes - start;
+				ULONG next_ch = read_codeunit(m_pTextDoc->m_nFileFormat, data, next_index, unit);
+
+				if(next_ch == '\n')
+					next_bytes += unit;
+			}
+			else if(ch == '\r' && next_bytes + unit <= raw_length())
+			{
+				BYTE nextbuf[2];
+
+				if(m_pTextDoc->m_seq.render(m_pTextDoc->m_nHeaderSize + next_bytes, nextbuf, unit) == unit &&
+				   read_codeunit(m_pTextDoc->m_nFileFormat, nextbuf, 0, unit) == '\n')
+				{
+					next_bytes += unit;
+				}
 			}
 
-			if(next_chars <= near_offset_chars)
-				last_line_start = next_chars;
-			else
-				break;
-		}
-		else if(is_linebreak_char(ch32))
-		{
-			if(next_chars <= near_offset_chars)
-				last_line_start = next_chars;
-			else
-				break;
-		}
+			next_chars = char_from_byte(next_bytes);
 
-		pos_bytes = next_bytes;
-		pos_chars = next_chars;
+			if(next_chars <= near_offset_chars)
+				last_line_start = next_chars;
+			else
+				break;
+		}
 	}
 
 	*offset_chars = last_line_start;
+	delete[] data;
 	return true;
 }
 
@@ -494,50 +499,58 @@ bool TextLineIndex::next_lineoffset(ULONG lineoff_chars, ULONG *nextoff_chars)
 {
 	ULONG docLength = text_length();
 	ULONG pos_bytes = byte_from_char(lineoff_chars);
-	ULONG pos_chars = lineoff_chars;
 	ULONG rawLength = raw_length();
+	ULONG unit = codeunit_size();
+	BYTE buf[4096];
 
 	if(nextoff_chars == 0 || lineoff_chars >= docLength)
 		return false;
 
+	pos_bytes -= pos_bytes % unit;
+
 	while(pos_bytes < rawLength)
 	{
-		ULONG ch32 = 0;
-		ULONG len = m_pTextDoc->decode_char(pos_bytes, rawLength - pos_bytes, &ch32);
-		ULONG next_bytes;
-		ULONG next_chars;
+		ULONG chunk = min((ULONG)sizeof(buf), rawLength - pos_bytes);
+		ULONG got = (ULONG)m_pTextDoc->m_seq.render(m_pTextDoc->m_nHeaderSize + pos_bytes, buf, chunk);
 
-		if(len == 0)
+		got -= got % unit;
+		if(got == 0)
 			break;
 
-		next_bytes = pos_bytes + len;
-		next_chars = pos_chars + utf16_length(ch32);
-
-		if(ch32 == '\r')
+		for(ULONG i = 0; i + unit <= got; i += unit)
 		{
-			ULONG nextch32 = 0;
-			ULONG nextlen = 0;
+			ULONG ch = read_codeunit(m_pTextDoc->m_nFileFormat, buf, i, unit);
+			ULONG next_bytes;
 
-			if(next_bytes < rawLength)
-				nextlen = m_pTextDoc->decode_char(next_bytes, rawLength - next_bytes, &nextch32);
+			if(ch != '\r' && ch != '\n')
+				continue;
 
-			if(nextlen && nextch32 == '\n')
+			next_bytes = pos_bytes + i + unit;
+
+			if(ch == '\r')
 			{
-				next_bytes += nextlen;
-				next_chars += utf16_length(nextch32);
+				ULONG next_ch = 0;
+
+				if(i + unit + unit <= got)
+				{
+					next_ch = read_codeunit(m_pTextDoc->m_nFileFormat, buf, i + unit, unit);
+				}
+				else if(next_bytes + unit <= rawLength)
+				{
+					BYTE nextbuf[2];
+					if(m_pTextDoc->m_seq.render(m_pTextDoc->m_nHeaderSize + next_bytes, nextbuf, unit) == unit)
+						next_ch = read_codeunit(m_pTextDoc->m_nFileFormat, nextbuf, 0, unit);
+				}
+
+				if(next_ch == '\n')
+					next_bytes += unit;
 			}
 
-			*nextoff_chars = next_chars;
-			return true;
-		}
-		else if(is_linebreak_char(ch32))
-		{
-			*nextoff_chars = next_chars;
+			*nextoff_chars = char_from_byte(next_bytes);
 			return true;
 		}
 
-		pos_bytes = next_bytes;
-		pos_chars = next_chars;
+		pos_bytes += got;
 	}
 
 	return false;
@@ -592,6 +605,25 @@ bool TextLineIndex::lineoffset_from_lineno(ULONG lineno, ULONG *offset_chars)
 		}
 	}
 
+	for(ULONG i = 0; i < m_nLinePageCount; i++)
+	{
+		LinePage *page = &m_pLinePages[i];
+
+		if(!page->indexed || page->line_base_known)
+			continue;
+
+		if(lineno <= page->line_base || lineno > page->line_base + page->line_count)
+			continue;
+
+		ULONG local_line = lineno - page->line_base;
+
+		if(local_line - 1 < page->line_count)
+		{
+			*offset_chars = page->line_offsets_chars[local_line - 1];
+			return true;
+		}
+	}
+
 	ULONG estimate = estimate_muldiv(lineno, docLength, estimate_line_count());
 	return find_line_start_near_offset(estimate, offset_chars);
 }
@@ -618,6 +650,8 @@ bool TextLineIndex::lineinfo_from_lineno(ULONG lineno, TextLineIndexInfo *linein
 	lineinfo->lineoff_bytes = byte_from_char(lineoff);
 	lineinfo->linelen_bytes = byte_from_char(nextoff) - lineinfo->lineoff_bytes;
 
+	lineinfo->chars_known = direct_offset_mapping();
+
 	return true;
 }
 
@@ -642,7 +676,7 @@ bool TextLineIndex::lineinfo_from_offset(ULONG offset_chars, TextLineIndexInfo *
 	ULONG page_index = offset_bytes / MEM_BLOCK_SIZE;
 	LinePage *page = &m_pLinePages[page_index];
 
-	if(page->indexed && page->line_base_known)
+	if(page->indexed)
 	{
 		line = page->line_base;
 		lineoff = page->offset_chars;
@@ -672,6 +706,8 @@ bool TextLineIndex::lineinfo_from_offset(ULONG offset_chars, TextLineIndexInfo *
 	lineinfo->linelen_chars = nextoff - lineoff;
 	lineinfo->lineoff_bytes = byte_from_char(lineoff);
 	lineinfo->linelen_bytes = byte_from_char(nextoff) - lineinfo->lineoff_bytes;
+
+	lineinfo->chars_known = direct_offset_mapping();
 
 	return true;
 }

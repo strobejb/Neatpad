@@ -23,6 +23,17 @@ LONG TextView::OpenFile(TCHAR *szFileName)
 
 	if(m_pTextDoc->init(szFileName))
 	{
+		TCHAR linebuf[TEXTBUFSIZE];
+		ULONG lineoff = 0;
+		ULONG linelen = m_pTextDoc->getline(0, linebuf, TEXTBUFSIZE, &lineoff);
+
+		if(linelen >= 2 && linebuf[linelen - 2] == '\r' && linebuf[linelen - 1] == '\n')
+			m_nCRLFMode = TXL_CRLF;
+		else if(linelen >= 1 && linebuf[linelen - 1] == '\n')
+			m_nCRLFMode = TXL_LF;
+		else if(linelen >= 1 && linebuf[linelen - 1] == '\r')
+			m_nCRLFMode = TXL_CR;
+
 		m_nLineCount   = m_pTextDoc->linecount();
 		m_nLongestLine = m_pTextDoc->longestline(m_nTabWidthChars);
 

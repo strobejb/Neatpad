@@ -13,6 +13,7 @@ struct TextLineIndexInfo
 	ULONG linelen_chars;
 	ULONG lineoff_bytes;
 	ULONG linelen_bytes;
+	bool  chars_known;
 };
 
 class TextLineIndex
@@ -34,7 +35,7 @@ public:
 	bool  lineinfo_from_offset(ULONG offset_chars, TextLineIndexInfo *lineinfo);
 
 private:
-	// One lazily indexed page of document text.
+	// One lazily indexed page of native text code-units.
 	struct LinePage
 	{
 		ULONG   offset_bytes;
@@ -48,6 +49,7 @@ private:
 
 		bool    indexed;
 		bool    offset_known;
+		bool    chars_known;
 		bool    line_base_known;
 		bool    starts_with_lf;
 		bool    ends_with_cr;
@@ -62,10 +64,9 @@ private:
 	bool   find_line_start_near_offset(ULONG near_offset_chars, ULONG *offset_chars);
 	ULONG  text_length() const;
 	ULONG  raw_length() const;
+	ULONG  codeunit_size() const;
 	ULONG  byte_from_char(ULONG offset_chars) const;
 	ULONG  char_from_byte(ULONG offset_bytes) const;
-	ULONG  utf16_length(ULONG ch32) const;
-	bool   is_linebreak_char(ULONG ch32) const;
 
 	TextDocument * m_pTextDoc;
 	LinePage     * m_pLinePages;

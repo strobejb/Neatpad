@@ -41,6 +41,7 @@ USPCACHE *TextView::GetUspCache(HDC hdc, ULONG nLineNo, ULONG *nOffset/*=0*/)
 	USPDATA *uspData;
 	ULONG    lru_usage = -1;
 	int		 lru_index = 0;
+	bool     lineno_known = m_pTextDoc->lineno_known(nLineNo);
 
 	//
 	//	Search the cache to see if we've already analyzed the requested line
@@ -54,8 +55,9 @@ USPCACHE *TextView::GetUspCache(HDC hdc, ULONG nLineNo, ULONG *nOffset/*=0*/)
 			lru_usage = m_uspCache[i].usage;
 		}
 
-		// match the line#
-		if(m_uspCache[i].usage > 0 && m_uspCache[i].lineno == nLineNo)
+		// Approximate lazy line numbers can later resolve to a different
+		// offset, so only reuse cache entries keyed by exact line numbers.
+		if(lineno_known && m_uspCache[i].usage > 0 && m_uspCache[i].lineno_known && m_uspCache[i].lineno == nLineNo)
 		{
 			if(nOffset)
 				*nOffset = m_uspCache[i].offset;
@@ -69,6 +71,7 @@ USPCACHE *TextView::GetUspCache(HDC hdc, ULONG nLineNo, ULONG *nOffset/*=0*/)
 	// not found? overwrite the "least-recently-used" entry
 	//
 	m_uspCache[lru_index].lineno	= nLineNo;
+	m_uspCache[lru_index].lineno_known = lineno_known;
 	m_uspCache[lru_index].usage		= 1;
 	uspData = m_uspCache[lru_index].uspData;
 
@@ -157,6 +160,7 @@ void TextView::ResetLineCache()
 	for(int i = 0; i < USP_CACHE_SIZE; i++)
 	{
 		m_uspCache[i].usage	= 0;
+		m_uspCache[i].lineno_known = false;
 	}
 }
 
@@ -458,7 +462,13 @@ void TextView::PaintText(HDC hdc, ULONG nLineNo, int xpos, int ypos, RECT *bound
 		UspSetSelColor(uspData, GetColour(TXC_HIGHLIGHTTEXT2), GetColour(TXC_HIGHLIGHT2));
 
 	// update selection-attribute information for the line
-	UspApplySelection(uspData, m_nSelectionStart - lineOffset, m_nSelectionEnd - lineOffset);
+	ULONG selStart = m_nSelectionStart > lineOffset ? m_nSelectionStart - lineOffset : 0;
+	ULONG selEnd   = m_nSelectionEnd   > lineOffset ? m_nSelectionEnd   - lineOffset : 0;
+
+	selStart = min(selStart, (ULONG)uspData->stringLen);
+	selEnd   = min(selEnd,   (ULONG)uspData->stringLen);
+
+	UspApplySelection(uspData, selStart, selEnd);
 
 	ApplySelection(uspData, nLineNo, lineOffset, uspData->stringLen);
 

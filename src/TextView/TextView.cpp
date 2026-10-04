@@ -74,6 +74,7 @@ TextView::TextView(HWND hwnd)
 	{
 		m_uspCache[i].usage   = 0;
 		m_uspCache[i].lineno  = 0;
+		m_uspCache[i].lineno_known = false;
 		m_uspCache[i].uspData = UspAllocate();
 	}
 
@@ -486,7 +487,7 @@ LONG WINAPI TextView::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 	case TXM_GETCURCOL:
 		ULONG nOffset;
 		GetUspData(0, m_nCurrentLine, &nOffset);
-		return m_nCursorOffset - nOffset;
+		return m_nCursorOffset > nOffset ? m_nCursorOffset - nOffset : 0;
 
 	case TXM_GETEDITMODE:
 		return m_nEditMode;

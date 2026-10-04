@@ -24,6 +24,7 @@ typedef struct
 	ULONG	 lineno;		// line#
 	ULONG	 offset;		// offset (in WCHAR's) of this line
 	ULONG	 usage;			// cache-count
+	bool     lineno_known;	// true if this cache entry was keyed by an exact line number
 
 	int		 length;		// length in chars INCLUDING CR/LF
 	int		 length_CRLF;	// length in chars EXCLUDING CR/LF
