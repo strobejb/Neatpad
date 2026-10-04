@@ -390,18 +390,9 @@ VOID TextView::MoveFileStart()
 //
 VOID TextView::MoveFileEnd()
 {
-	ULONG docLength = m_pTextDoc->text_length();
-
-	if(docLength > 0)
-	{
-		ULONG offset = docLength > MEM_BLOCK_SIZE ? docLength - MEM_BLOCK_SIZE : 0;
-
-		m_pTextDoc->index_lines(offset, docLength - offset);
-		m_nLineCount = m_pTextDoc->linecount();
-		SetupScrollbars();
-	}
-
-	m_nCursorOffset = docLength;
+	m_nCursorOffset = m_pTextDoc->text_length();
+	ScrollToDocumentEnd();
+	RefreshWindow();
 }
 
 

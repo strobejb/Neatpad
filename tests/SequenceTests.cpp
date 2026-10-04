@@ -1119,6 +1119,30 @@ void textdocument_ctrl_end_uses_final_page_when_lines_are_lazy()
     delete[] data;
 }
 
+void textdocument_lazy_eof_line_number_maps_back_to_same_line()
+{
+    TextDocument doc;
+    TCHAR path[MAX_PATH];
+    const size_t line_count = 200000;
+    ULONG eof_line = 0;
+    ULONG eof_line_offset = 0;
+    ULONG eof_line_length = 0;
+    ULONG line_offset = 0;
+    ULONG line_length = 0;
+
+    CHECK(write_numbered_lines_file(line_count, path));
+    CHECK(doc.init(path));
+
+    CHECK(doc.lineinfo_from_offset(doc.text_length(), &eof_line, &eof_line_offset, &eof_line_length));
+    CHECK(doc.lineinfo_from_lineno(eof_line, &line_offset, &line_length));
+    CHECK(line_offset == eof_line_offset);
+    CHECK(line_length == eof_line_length);
+    CHECK(!doc.lineinfo_from_lineno(eof_line + 1, &line_offset, &line_length));
+
+    doc.clear();
+    DeleteFile(path);
+}
+
 void textdocument_lazy_eof_without_final_crlf_maps_to_final_line()
 {
     TextDocument doc;
@@ -1491,6 +1515,7 @@ const test_case tests[] =
     { "textdocument_lineinfo_handles_lazy_end_after_insert", textdocument_lineinfo_handles_lazy_end_after_insert },
     { "textdocument_final_sparse_line_ignores_estimated_linecount", textdocument_final_sparse_line_ignores_estimated_linecount },
     { "textdocument_ctrl_end_uses_final_page_when_lines_are_lazy", textdocument_ctrl_end_uses_final_page_when_lines_are_lazy },
+    { "textdocument_lazy_eof_line_number_maps_back_to_same_line", textdocument_lazy_eof_line_number_maps_back_to_same_line },
     { "textdocument_lazy_eof_without_final_crlf_maps_to_final_line", textdocument_lazy_eof_without_final_crlf_maps_to_final_line },
     { "textdocument_lazy_line_numbers_continue_after_first_page", textdocument_lazy_line_numbers_continue_after_first_page },
     { "textdocument_large_lazy_file_line_estimate_does_not_overflow", textdocument_large_lazy_file_line_estimate_does_not_overflow },

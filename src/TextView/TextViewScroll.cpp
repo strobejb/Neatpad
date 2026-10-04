@@ -279,31 +279,21 @@ VOID TextView::ScrollToDocumentEnd()
 	// The lazy line count is only an estimate, so bottom scrolling is anchored at EOF.
 	m_pTextDoc->index_lines(offset, docLength - offset);
 	m_nLineCount = m_pTextDoc->linecount();
-	SetupScrollbars();
-
-	if(!m_pTextDoc->linecount_known())
-	{
-		m_nVScrollPos = m_nVScrollMax;
-		SetupScrollbars();
-		return;
-	}
 
 	if(!m_pTextDoc->lineinfo_from_offset(docLength, &eofLine))
 	{
+		SetupScrollbars();
 		m_nVScrollPos = m_nVScrollMax;
 	}
 	else if(eofLine.lineno + 1 > (ULONG)m_nWindowLines)
 	{
-		if(eofLine.lineno + 1 > m_nLineCount)
-			m_nLineCount = eofLine.lineno + 1;
-
+		// The final indexed page gives a usable EOF anchor, even while the whole-file count is estimated.
+		m_nLineCount = eofLine.lineno + 1;
 		m_nVScrollPos = eofLine.lineno - m_nWindowLines + 1;
 	}
 	else
 	{
-		if(eofLine.lineno + 1 > m_nLineCount)
-			m_nLineCount = eofLine.lineno + 1;
-
+		m_nLineCount = eofLine.lineno + 1;
 		m_nVScrollPos = 0;
 	}
 

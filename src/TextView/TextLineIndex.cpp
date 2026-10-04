@@ -624,6 +624,15 @@ bool TextLineIndex::lineoffset_from_lineno(ULONG lineno, ULONG *offset_chars)
 		}
 	}
 
+	if(m_nLinePageCount > 0)
+	{
+		LinePage *last_page = &m_pLinePages[m_nLinePageCount - 1];
+
+		// The final indexed page proves where EOF is, even if its global line number is only estimated.
+		if(last_page->indexed && !last_page->line_base_known && lineno > last_page->line_base + last_page->line_count)
+			return false;
+	}
+
 	ULONG estimate = estimate_muldiv(lineno, docLength, estimate_line_count());
 	return find_line_start_near_offset(estimate, offset_chars);
 }

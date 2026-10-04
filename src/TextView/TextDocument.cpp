@@ -300,6 +300,7 @@ ULONG TextDocument::decode_text(ULONG offset, ULONG lenbytes, TCHAR *buf, ULONG 
 
 bool TextDocument::use_document_line_index() const
 {
+	return true;
 	return m_nFileFormat == NCP_ASCII ||
 		   m_nFileFormat == NCP_UTF8 ||
 		   m_nFileFormat == NCP_UTF16 ||
