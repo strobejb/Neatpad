@@ -63,10 +63,6 @@ TextDocument::TextDocument()
 	
 	m_nDocLength_chars  = 0;
 
-	m_pLineBuf_byte		= 0;
-	m_pLineBuf_char		= 0;
-	m_nNumLines			= 0;
-
 	m_nFileFormat		= NCP_ASCII;
 	m_nHeaderSize		= 0;
 }
@@ -92,7 +88,7 @@ bool TextDocument::init(TCHAR *filename)
 	// try to detect if this is an ascii/unicode/utf8 file
 	m_nFileFormat = detect_file_format(&m_nHeaderSize);
 
-	// Initialize either the sequence-backed lazy index or the legacy line buffer.
+	// Initialize the document's lazy line index.
 	if(!init_line_index())
 	{
 		clear();
@@ -167,20 +163,6 @@ bool TextDocument::clear()
 	m_nFileFormat = NCP_ASCII;
 	m_nHeaderSize = 0;
 	m_lineIndex.clear();
-
-	if(m_pLineBuf_byte)
-	{
-		delete[] m_pLineBuf_byte;
-		m_pLineBuf_byte = 0;
-	}
-
-	if(m_pLineBuf_char)
-	{
-		delete[] m_pLineBuf_char;
-		m_pLineBuf_char = 0;
-	}
-		
-	m_nNumLines = 0;
 	return true;
 }
 
@@ -298,15 +280,6 @@ ULONG TextDocument::decode_text(ULONG offset, ULONG lenbytes, TCHAR *buf, ULONG 
 	return bytes_processed;
 }
 
-bool TextDocument::use_document_line_index() const
-{
-	return true;
-	return m_nFileFormat == NCP_ASCII ||
-		   m_nFileFormat == NCP_UTF8 ||
-		   m_nFileFormat == NCP_UTF16 ||
-		   m_nFileFormat == NCP_UTF16BE;
-}
-
 void TextDocument::copy_lineindex_info(TextLineIndexInfo *source, RawLineInfo *dest)
 {
 	ULONG rawLength = m_seq.size() - m_nHeaderSize;
@@ -327,126 +300,22 @@ void TextDocument::copy_lineindex_info(TextLineIndexInfo *source, RawLineInfo *d
 	}
 }
 
-//
-//	Initialize the legacy line-buffer used by non-document-indexed encodings.
-//
-//	With Unicode a newline sequence is defined as any of the following:
-//
-//	\u000A | \u000B | \u000C | \u000D | \u0085 | \u2028 | \u2029 | \u000D\u000A
-//
 bool TextDocument::init_line_index()
 {
-	ULONG offset_bytes		= 0;
-	ULONG offset_chars		= 0;
-	ULONG linestart_bytes	= 0;
-	ULONG linestart_chars	= 0;
-
 	ULONG buflen  = m_seq.size() - m_nHeaderSize;
-
-	if(m_pLineBuf_byte)
-	{
-		delete[] m_pLineBuf_byte;
-		m_pLineBuf_byte = 0;
-	}
-
-	if(m_pLineBuf_char)
-	{
-		delete[] m_pLineBuf_char;
-		m_pLineBuf_char = 0;
-	}
 
 	m_lineIndex.clear();
 
-	if(use_document_line_index())
+	if(m_nFileFormat == NCP_UTF8 && buflen > MEM_BLOCK_SIZE)
 	{
-		if(m_nFileFormat == NCP_UTF8 && buflen > MEM_BLOCK_SIZE)
-		{
-			m_nDocLength_chars = buflen;
-		}
-		else
-		{
-			m_nDocLength_chars = byteoffset_to_charoffset(buflen);
-		}
-
-		return m_lineIndex.init(this);
+		m_nDocLength_chars = buflen;
+	}
+	else
+	{
+		m_nDocLength_chars = byteoffset_to_charoffset(buflen);
 	}
 
-	// allocate the line-buffer for storing each line's BYTE offset
-	if((m_pLineBuf_byte = new ULONG[buflen+1]) == 0)
-		return false;
-
-	// allocate the line-buffer for storing each line's CHARACTER offset
-	if((m_pLineBuf_char = new ULONG[buflen+1]) == 0)
-		return false;
-
-	m_nNumLines = 0;
-
-
-	// loop through every byte in the file
-	for(offset_bytes = 0; offset_bytes < buflen; )
-	{
-		ULONG ch32;
-
-		// get a UTF-32 character from the underlying file format.
-		// this needs serious thought. Currently 
-		ULONG len = decode_char(offset_bytes, buflen - offset_bytes, &ch32);
-		offset_bytes += len;
-		offset_chars += 1;
-
-		if(ch32 == '\r')
-		{
-			// record where the line starts
-			m_pLineBuf_byte[m_nNumLines] = linestart_bytes;
-			m_pLineBuf_char[m_nNumLines] = linestart_chars;
-			linestart_bytes				= offset_bytes;
-			linestart_chars				= offset_chars;
-
-			// look ahead to next char
-			len = decode_char(offset_bytes, buflen - offset_bytes, &ch32);
-			offset_bytes += len;
-			offset_chars += 1;
-
-			// carriage-return / line-feed combination
-			if(ch32 == '\n')
-			{
-				linestart_bytes		= offset_bytes;
-				linestart_chars		= offset_chars;
-			}
-			
-			m_nNumLines++;
-		}
-		else if(ch32 == '\n' || ch32 == '\x0b' || ch32 == '\x0c' || ch32 == 0x0085 || ch32 == 0x2029 || ch32 == 0x2028)
-		{
-			// record where the line starts
-			m_pLineBuf_byte[m_nNumLines] = linestart_bytes;
-			m_pLineBuf_char[m_nNumLines] = linestart_chars;
-			linestart_bytes				= offset_bytes;
-			linestart_chars				= offset_chars;
-			m_nNumLines++;
-		}
-		// force a 'hard break' 
-		else if(offset_chars - linestart_chars > 128)
-		{
-			m_pLineBuf_byte[m_nNumLines] = linestart_bytes;
-			m_pLineBuf_char[m_nNumLines] = linestart_chars;
-			linestart_bytes				= offset_bytes;
-			linestart_chars				= offset_chars;
-			m_nNumLines++;
-		}
-	}
-
-	if(buflen > 0)
-	{
-		m_pLineBuf_byte[m_nNumLines] = linestart_bytes;
-		m_pLineBuf_char[m_nNumLines] = linestart_chars;
-		m_nNumLines++;
-	}
-
-	m_pLineBuf_byte[m_nNumLines] = buflen;
-	m_pLineBuf_char[m_nNumLines] = offset_chars;
-	m_nDocLength_chars = offset_chars;
-
-	return true;
+	return m_lineIndex.init(this);
 }
 
 //
@@ -454,40 +323,27 @@ bool TextDocument::init_line_index()
 //
 ULONG TextDocument::linecount()
 {
-	if(use_document_line_index())
-		return m_lineIndex.linecount();
-
-	return m_nNumLines;
+	return m_lineIndex.linecount();
 }
 
 bool TextDocument::linecount_known()
 {
-	if(use_document_line_index())
-		return m_lineIndex.linecount_known();
-
-	return true;
+	return m_lineIndex.linecount_known();
 }
 
 bool TextDocument::lineno_known(ULONG lineno)
 {
-	if(!use_document_line_index())
-		return lineno < m_nNumLines;
-
 	return m_lineIndex.lineno_known(lineno);
 }
 
 bool TextDocument::line_number_range_known(ULONG offset_chars, ULONG length_chars)
 {
-	if(use_document_line_index())
-		return m_lineIndex.line_number_range_known(offset_chars, length_chars);
-
-	return true;
+	return m_lineIndex.line_number_range_known(offset_chars, length_chars);
 }
 
 void TextDocument::index_lines(ULONG offset_chars, ULONG length_chars)
 {
-	if(use_document_line_index())
-		m_lineIndex.index_lines(offset_chars, length_chars);
+	m_lineIndex.index_lines(offset_chars, length_chars);
 }
 
 //
@@ -534,35 +390,16 @@ ULONG TextDocument::longestline(int tabwidth)
 //
 bool TextDocument::raw_lineinfo_from_lineno(ULONG lineno, RawLineInfo *lineinfo)
 {
+	TextLineIndexInfo indexinfo;
+
 	if(lineinfo == 0)
 		return false;
 
-	if(use_document_line_index())
-	{
-		TextLineIndexInfo indexinfo;
-
-		if(!m_lineIndex.lineinfo_from_lineno(lineno, &indexinfo))
-			return false;
-
-		copy_lineindex_info(&indexinfo, lineinfo);
-		return true;
-	}
-
-	if(lineno < m_nNumLines)
-	{
-		lineinfo->lineno = lineno;
-		lineinfo->lineoff_chars = m_pLineBuf_char[lineno];
-		lineinfo->linelen_chars = m_pLineBuf_char[lineno+1] - m_pLineBuf_char[lineno];
-		lineinfo->lineoff_bytes = m_pLineBuf_byte[lineno];
-		lineinfo->linelen_bytes = m_pLineBuf_byte[lineno+1] - m_pLineBuf_byte[lineno];
-		lineinfo->chars_known = true;
-
-		return true;
-	}
-	else
-	{
+	if(!m_lineIndex.lineinfo_from_lineno(lineno, &indexinfo))
 		return false;
-	}
+
+	copy_lineindex_info(&indexinfo, lineinfo);
+	return true;
 }
 
 bool TextDocument::lineinfo_from_lineno(ULONG lineno, ULONG *lineoff_chars, ULONG *linelen_chars)
@@ -583,61 +420,15 @@ bool TextDocument::lineinfo_from_lineno(ULONG lineno, ULONG *lineoff_chars, ULON
 //
 bool TextDocument::raw_lineinfo_from_offset(ULONG offset_chars, RawLineInfo *lineinfo)
 {
-	ULONG low  = 0;
-	ULONG high = m_nNumLines-1;
-	ULONG line = 0;
+	TextLineIndexInfo indexinfo;
 
 	if(lineinfo == 0)
 		return false;
 
-	if(use_document_line_index())
-	{
-		TextLineIndexInfo indexinfo;
-
-		if(!m_lineIndex.lineinfo_from_offset(offset_chars, &indexinfo))
-			return false;
-
-		copy_lineindex_info(&indexinfo, lineinfo);
-		return true;
-	}
-
-	if(m_nNumLines == 0)
-	{
-		lineinfo->lineno = 0;
-		lineinfo->lineoff_chars = 0;
-		lineinfo->linelen_chars = 0;
-		lineinfo->lineoff_bytes = 0;
-		lineinfo->linelen_bytes = 0;
-		lineinfo->chars_known = true;
-
+	if(!m_lineIndex.lineinfo_from_offset(offset_chars, &indexinfo))
 		return false;
-	}
 
-	while(low <= high)
-	{
-		line = (high + low) / 2;
-
-		if(offset_chars >= m_pLineBuf_char[line] && offset_chars < m_pLineBuf_char[line+1])
-		{
-			break;
-		}
-		else if(offset_chars < m_pLineBuf_char[line])
-		{
-			high = line-1;
-		}
-		else
-		{
-			low = line+1;
-		}
-	}
-
-	lineinfo->lineno = line;
-	lineinfo->lineoff_chars = m_pLineBuf_char[line];
-	lineinfo->linelen_chars = m_pLineBuf_char[line+1] - m_pLineBuf_char[line];
-	lineinfo->lineoff_bytes = m_pLineBuf_byte[line];
-	lineinfo->linelen_bytes = m_pLineBuf_byte[line+1] - m_pLineBuf_byte[line];
-	lineinfo->chars_known = true;
-
+	copy_lineindex_info(&indexinfo, lineinfo);
 	return true;
 }
 

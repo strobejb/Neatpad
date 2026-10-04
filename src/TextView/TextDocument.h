@@ -123,7 +123,6 @@ private:
 	};
 
 	bool init_line_index();
-	bool use_document_line_index() const;
 	void copy_lineindex_info(TextLineIndexInfo *source, RawLineInfo *dest);
 	bool raw_lineinfo_from_offset(ULONG offset_chars, RawLineInfo *lineinfo);
 	bool raw_lineinfo_from_lineno(ULONG lineno, RawLineInfo *lineinfo);
@@ -166,11 +165,6 @@ private:
 
 	// Lazy document line index. Offsets are stored in TextDocument's UTF-16 coordinate space.
 	TextLineIndex m_lineIndex;
-
-	// Legacy contiguous line buffer, retained for non-sequence-indexed formats.
-	ULONG *m_pLineBuf_byte;
-	ULONG *m_pLineBuf_char;
-	ULONG  m_nNumLines;
 	
 	TEXT_ENCODING m_nFileFormat;
 	int    m_nHeaderSize;
