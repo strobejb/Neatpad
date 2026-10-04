@@ -18,9 +18,6 @@
     <ClCompile Include="..\src\TextView\sequence_buf.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\src\TextView\sequence_lines.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="..\src\TextView\TextDocument.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>

@@ -102,7 +102,6 @@ bool sequence::init (const seqchar *buffer, size_t length)
 
 	buffer_control *bc = alloc_modifybuffer(length);
 	bc->append(buffer, length, 0);
-	update_buffer_lines(bc);
 
 	span *sptr = alloc_span(0, length, bc->id, tail, head);
 	head->next = sptr;
@@ -132,11 +131,6 @@ bool sequence::open(TCHAR *filename, bool readonly)
 
 	bc->id = buffer_list.size();
 	buffer_list.push_back(bc);
-
-	if(bc->length <= MEM_BLOCK_SIZE)
-		update_buffer_lines(bc);
-	else
-		bc->build_line_index(0, MEM_BLOCK_SIZE);
 
 	span *sptr = alloc_span(0, bc->length, bc->id, tail, head);
 	head->next = sptr;
@@ -226,49 +220,7 @@ void sequence::debug2 ()
 
 sequence::span* sequence::alloc_span(size_w offset, size_w length, int buffer, span *next, span *prev)
 {
-	span *sptr = new span(offset, length, buffer, next, prev);
-	update_span_line_data(sptr);
-	return sptr;
-}
-
-
-
-//
-//	sequence::update_span_line_data
-//
-//  Cache the line metadata for a span from its backing buffer.
-// 
-void sequence::update_span_line_data(span *sptr)
-{
-	buffer_control *bc = buffer_list[sptr->buffer];
-	size_w span_end = sptr->offset + sptr->length;
-	size_w line_end;
-
-	sptr->line_index = 0;
-	sptr->line_count = 0;
-	sptr->starts_with_lf = 0;
-	sptr->ends_with_cr = 0;
-
-	if(sptr->length == 0)
-		return;
-
-	seqchar *first = bc->getptr(sptr->offset, 1);
-	seqchar *last  = bc->getptr(sptr->offset + sptr->length - 1, 1);
-
-	if(first == 0 || last == 0)
-		return;
-
-	sptr->starts_with_lf = *first == '\n';
-	sptr->ends_with_cr = *last == '\r';
-
-	if(bc->line_count == 0)
-		return;
-
-	sptr->line_index = bc->first_line_after(sptr->offset);
-	line_end         = bc->first_line_after(span_end);
-
-	if(sptr->line_index < line_end)
-		sptr->line_count = line_end - sptr->line_index;
+	return new span(offset, length, buffer, next, prev);
 }
 
 //
@@ -593,7 +545,6 @@ bool sequence::insert_worker (size_w index, const seqchar *buf, size_w length, a
 		// simply extend the last span's length
 		span_range *event = undostack.back();
 		sptr->prev->length	+= length;
-		update_span_line_data(sptr->prev);
 		event->length		+= length;
 	}
 	// general-case #1: inserting at a span boundary?
@@ -746,7 +697,6 @@ bool sequence::erase_worker (size_w index, size_w length, action act)
 			{
 				frag2->length	-= length;
 				frag2->offset	+= length;
-				update_span_line_data(frag2);
 				sequence_length -= length;
 				return true;
 			}
@@ -778,7 +728,6 @@ bool sequence::erase_worker (size_w index, size_w length, action act)
 			{
 				frag1->length	-= length;
 				frag1->offset	+= 0;
-				update_span_line_data(frag1);
 				sequence_length -= length;
 				return true;
 			}

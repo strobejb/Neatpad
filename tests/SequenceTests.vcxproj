@@ -75,7 +75,6 @@
     <ClCompile Include="..\src\TextView\TextLineIndex.cpp" />
     <ClCompile Include="..\src\TextView\sequence.cpp" />
     <ClCompile Include="..\src\TextView\sequence_buf.cpp" />
-    <ClCompile Include="..\src\TextView\sequence_lines.cpp" />
     <ClCompile Include="..\src\TextView\Unicode.c" />
   </ItemGroup>
   <ItemGroup>

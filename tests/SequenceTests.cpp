@@ -269,23 +269,6 @@ void expect_content(const sequence &seq, const char *expected)
     CHECK(render_content(seq) == expected);
 }
 
-void expect_line_offset(const sequence &seq, size_w line, size_w expected)
-{
-    size_w actual = static_cast<size_w>(-1);
-    CHECK(seq.lineoffset(line, &actual));
-    CHECK(actual == expected);
-}
-
-void expect_line_from_offset(const sequence &seq, size_w offset, size_w expected_line, size_w expected_line_offset)
-{
-    size_w actual_line = static_cast<size_w>(-1);
-    size_w actual_line_offset = static_cast<size_w>(-1);
-
-    CHECK(seq.linefromoffset(offset, &actual_line, &actual_line_offset));
-    CHECK(actual_line == expected_line);
-    CHECK(actual_line_offset == expected_line_offset);
-}
-
 void expect_doc_line_offset(TextDocument &doc, ULONG line, ULONG expected)
 {
     ULONG actual = static_cast<ULONG>(-1);
@@ -668,110 +651,6 @@ void render_past_end_returns_available_bytes()
     CHECK(seq.render(3, actual, 5) == 0);
 }
 
-void linecount_handles_basic_newlines()
-{
-    sequence seq;
-    init(seq, "abc\n");
-
-    CHECK(seq.linecount() == 2);
-    expect_line_offset(seq, 0, 0);
-    expect_line_offset(seq, 1, 4);
-    CHECK(!seq.lineoffset(2, 0));
-}
-
-void linecount_handles_crlf()
-{
-    sequence seq;
-    init(seq, "abc\r\nxyz\nlast");
-
-    CHECK(seq.linecount() == 3);
-    expect_line_offset(seq, 0, 0);
-    expect_line_offset(seq, 1, 5);
-    expect_line_offset(seq, 2, 9);
-}
-
-void linecount_handles_crlf_split_across_spans()
-{
-    sequence seq;
-    init(seq, "abc\rxyz");
-
-    CHECK(insert_bytes(seq, 4, "\n"));
-    expect_content(seq, "abc\r\nxyz");
-    CHECK(seq.linecount() == 2);
-    expect_line_offset(seq, 1, 5);
-}
-
-void linecount_updates_after_insert_delete_replace()
-{
-    sequence seq;
-    init(seq, "abc");
-
-    CHECK(seq.linecount() == 1);
-    CHECK(insert_bytes(seq, 1, "\nX"));
-    expect_content(seq, "a\nXbc");
-    CHECK(seq.linecount() == 2);
-    expect_line_offset(seq, 1, 2);
-
-    CHECK(seq.erase(1, 2));
-    expect_content(seq, "abc");
-    CHECK(seq.linecount() == 1);
-
-    CHECK(replace_bytes(seq, 1, "\r\nZ\n", 1));
-    expect_content(seq, "a\r\nZ\nc");
-    CHECK(seq.linecount() == 3);
-    expect_line_offset(seq, 1, 3);
-    expect_line_offset(seq, 2, 5);
-}
-
-void linecount_restores_on_undo_redo()
-{
-    sequence seq;
-    init(seq, "abc");
-
-    CHECK(insert_bytes(seq, seq.size(), "\nxyz"));
-    CHECK(seq.linecount() == 2);
-
-    CHECK(seq.undo());
-    CHECK(seq.linecount() == 1);
-
-    CHECK(seq.redo());
-    CHECK(seq.linecount() == 2);
-    expect_line_offset(seq, 1, 4);
-}
-
-void linefromoffset_handles_basic_newlines()
-{
-    sequence seq;
-    init(seq, "abc\nxyz");
-
-    expect_line_from_offset(seq, 0, 0, 0);
-    expect_line_from_offset(seq, 3, 0, 0);
-    expect_line_from_offset(seq, 4, 1, 4);
-    expect_line_from_offset(seq, 7, 1, 4);
-}
-
-void linefromoffset_handles_crlf()
-{
-    sequence seq;
-    init(seq, "abc\r\nxyz");
-
-    expect_line_from_offset(seq, 4, 0, 0);
-    expect_line_from_offset(seq, 5, 1, 5);
-    expect_line_from_offset(seq, 8, 1, 5);
-}
-
-void linefromoffset_handles_crlf_split_across_spans()
-{
-    sequence seq;
-    init(seq, "abc\rxyz");
-
-    CHECK(insert_bytes(seq, 4, "\n"));
-    expect_content(seq, "abc\r\nxyz");
-    expect_line_from_offset(seq, 4, 0, 0);
-    expect_line_from_offset(seq, 5, 1, 5);
-    expect_line_from_offset(seq, 8, 1, 5);
-}
-
 void textdocument_linecount_handles_basic_newlines()
 {
     const DocTestEncoding encodings[] = { DOC_ASCII, DOC_UTF8_BOM, DOC_UTF16LE_BOM, DOC_UTF16BE_BOM };
@@ -925,9 +804,6 @@ void open_file_renders_file_backed_content()
     CHECK(write_temp_file(text, strlen(text), path));
     CHECK(seq.open(path, true));
     expect_content(seq, text);
-    CHECK(seq.linecount() == 3);
-    expect_line_offset(seq, 1, 7);
-    expect_line_offset(seq, 2, 14);
 
 	seq.clear();
     DeleteFile(path);
@@ -955,58 +831,6 @@ void open_file_renders_across_view_boundary()
     CHECK(memcmp(actual.data(), data + render_offset, render_length) == 0);
 
 	seq.clear();
-    DeleteFile(path);
-    delete[] data;
-}
-
-void open_file_handles_crlf_across_scan_boundary()
-{
-    sequence seq;
-    TCHAR path[MAX_PATH];
-    const size_w scan_size = MEM_BLOCK_SIZE;
-    const size_t file_length = scan_size + 16;
-    char *data = new char[file_length];
-
-    memset(data, 'A', file_length);
-    data[scan_size - 1] = '\r';
-    data[scan_size] = '\n';
-    data[scan_size + 1] = 'B';
-
-    CHECK(write_temp_file(data, file_length, path));
-    CHECK(seq.open(path, true));
-    CHECK(seq.linecount() == 2);
-    expect_line_offset(seq, 1, scan_size + 1);
-
-    seq.clear();
-    DeleteFile(path);
-    delete[] data;
-}
-
-void lazy_file_insert_crlf_updates_visible_line_offsets()
-{
-    sequence seq;
-    TCHAR path[MAX_PATH];
-    const char *line = "line abcdefghijklmnopqrstuvwxyz 0123456789\r\n";
-    const size_t line_length = strlen(line);
-    const size_t line_count = MEM_BLOCK_SIZE / line_length + 32;
-    const size_t file_length = line_length * line_count;
-    char *data = new char[file_length];
-    size_w insert_offset = line_length * 9 + 37;
-    size_w line_offset = 0;
-
-    for(size_t i = 0; i < line_count; i++)
-        memcpy(data + i * line_length, line, line_length);
-
-    CHECK(write_temp_file(data, file_length, path));
-    CHECK(seq.open(path, true));
-
-    CHECK(seq.insert(insert_offset, reinterpret_cast<const seqchar *>("\r\n"), 2));
-    CHECK(seq.lineoffset(10, &line_offset));
-    CHECK(line_offset == insert_offset + 2);
-    CHECK(seq.lineoffset(11, &line_offset));
-    CHECK(line_offset == line_length * 10 + 2);
-
-    seq.clear();
     DeleteFile(path);
     delete[] data;
 }
@@ -1495,14 +1319,6 @@ const test_case tests[] =
     { "redo_invalidated_by_new_edit", redo_invalidated_by_new_edit },
     { "invalid_operations_do_not_modify_content", invalid_operations_do_not_modify_content },
     { "render_past_end_returns_available_bytes", render_past_end_returns_available_bytes },
-    { "linecount_handles_basic_newlines", linecount_handles_basic_newlines },
-    { "linecount_handles_crlf", linecount_handles_crlf },
-    { "linecount_handles_crlf_split_across_spans", linecount_handles_crlf_split_across_spans },
-    { "linecount_updates_after_insert_delete_replace", linecount_updates_after_insert_delete_replace },
-    { "linecount_restores_on_undo_redo", linecount_restores_on_undo_redo },
-    { "linefromoffset_handles_basic_newlines", linefromoffset_handles_basic_newlines },
-    { "linefromoffset_handles_crlf", linefromoffset_handles_crlf },
-    { "linefromoffset_handles_crlf_split_across_spans", linefromoffset_handles_crlf_split_across_spans },
     { "textdocument_linecount_handles_basic_newlines", textdocument_linecount_handles_basic_newlines },
     { "textdocument_linecount_handles_crlf", textdocument_linecount_handles_crlf },
     { "textdocument_linecount_handles_crlf_split_across_lazy_page", textdocument_linecount_handles_crlf_split_across_lazy_page },
@@ -1510,8 +1326,6 @@ const test_case tests[] =
     { "textdocument_linecount_restores_on_undo_redo", textdocument_linecount_restores_on_undo_redo },
     { "open_file_renders_file_backed_content", open_file_renders_file_backed_content },
     { "open_file_renders_across_view_boundary", open_file_renders_across_view_boundary },
-    { "open_file_handles_crlf_across_scan_boundary", open_file_handles_crlf_across_scan_boundary },
-    { "lazy_file_insert_crlf_updates_visible_line_offsets", lazy_file_insert_crlf_updates_visible_line_offsets },
     { "textdocument_lineinfo_handles_lazy_end_after_insert", textdocument_lineinfo_handles_lazy_end_after_insert },
     { "textdocument_final_sparse_line_ignores_estimated_linecount", textdocument_final_sparse_line_ignores_estimated_linecount },
     { "textdocument_ctrl_end_uses_final_page_when_lines_are_lazy", textdocument_ctrl_end_uses_final_page_when_lines_are_lazy },

@@ -53,25 +53,9 @@ public:
 	bool		init(const seqchar *buffer, size_t length);
 
 	//
-	//	Sequence size and line index
+	//	Sequence size
 	//
 	size_w		size() const;
-
-	// linecount() may be estimated until every lazy file page has been indexed.
-	size_w		linecount() const;
-	bool		linecount_known() const;
-
-	// Exactness checks used by the UI before displaying line numbers as facts.
-	bool		line_number_known(size_w line) const;
-	bool		line_numbers_known(size_w offset, size_w length) const;
-
-	// Build lazy line metadata for a touched sequence range.
-	void		index_lines(size_w offset, size_w length);
-
-	// Physical line lookup. Offsets are exact; line numbers may be estimated while lazy.
-	bool		next_lineoffset(size_w lineoff, size_w *nextoff) const;
-	bool		lineoffset(size_w line, size_w *offset) const;
-	bool		linefromoffset(size_w offset, size_w *line, size_w *lineoffset) const;
 	
 	//
 	// sequence manipulation 
@@ -134,21 +118,6 @@ private:
 
 private:
 	//
-	// Internal helpers for lazy line lookup.
-	//
-	bool			exact_scan_offset_from_line(size_w line, size_w *offset, size_w max_offset = MAX_SEQUENCE_LENGTH) const;
-	bool			exact_scan_line_from_offset(size_w offset, size_w *line, size_w *lineoffset) const;
-	bool			exact_indexed_line_from_offset(size_w offset, size_w *line, size_w *lineoffset) const;
-
-	// Estimate helpers still return exact physical offsets when possible.
-	bool			estimate_offset_from_line(size_w line, size_w *offset) const;
-	bool			estimate_line_from_offset(size_w offset, size_w *line, size_w *lineoffset) const;
-	bool			find_exact_line_start_near_offset(size_w near_offset, size_w *offset) const;
-
-	void			update_span_line_data(span* sptr);
-
-	
-	//
 	//	Undo and redo stacks
 	//
 	span_range *	initundo(size_w index, size_w length, action act);
@@ -170,7 +139,6 @@ private:
 	//
 	buffer_control *alloc_buffer(size_t size);
 	buffer_control *alloc_modifybuffer(size_t size);
-	void			update_buffer_lines(buffer_control *bc);
 	bool			import_buffer(const seqchar *buf, size_t len, size_t *buffer_offset);
 
 	bufferlist		buffer_list;
@@ -225,11 +193,7 @@ public:
 			prev(pr),
 			offset(off), 
 			length(len), 
-			buffer(buf),
-			line_index(0),
-			line_count(0),
-			starts_with_lf(0),
-			ends_with_cr(0)
+			buffer(buf)
 	  {
 		  static int count=-2;
 		  id = count++;
@@ -244,10 +208,6 @@ private:
 	size_w  offset;
 	size_w  length;
 	int     buffer;
-	size_w	line_index;
-	size_w	line_count;
-	unsigned starts_with_lf : 1;
-	unsigned ends_with_cr   : 1;
 
 	int		id;
 };	
@@ -448,14 +408,7 @@ public:
 	bool	init_file(TCHAR *filename, bool readonly);
 	bool	append(const seqchar *buffer, size_t length, size_t *buffer_offset);
 	seqchar *getptr(size_w offset, size_w length);
-	size_w	scan_lines(size_w offset, size_w length, size_w *line_offsets);
-	size_w	known_line_count() const;
-	void	update_lines();
-	void	build_line_index(size_w offset, size_w length);
-	bool	lines_known(size_w offset, size_w length) const;
 	void	clear();
-
-	size_w  first_line_after(size_w offset) const;
 
 	enum { MAX_VIEWS = 4 };
 	struct buffer_view
@@ -466,28 +419,10 @@ public:
 		bool	 initialized;
 	};
 
-	struct line_page
-	{
-		size_w	 offset;
-		size_w	 length;
-		size_w	*line_offsets;
-		size_w	 line_count;
-		size_w	 line_base;
-		bool	 indexed;
-		bool	 line_base_known;
-		bool	 starts_with_lf;
-		bool	 ends_with_cr;
-	};
-
 	seqchar	*buffer;
 	buffer_view viewlist[MAX_VIEWS];
-	line_page *line_pages;
-	size_w	 line_page_count;
 	size_w	 length;
 	size_w	 maxsize;
-	size_w	*line_offsets;
-	size_w	 line_count;
-	bool	 line_count_known;
 	void	*fp;
 	bool	 own_memory;
 	bool	 readonly;
