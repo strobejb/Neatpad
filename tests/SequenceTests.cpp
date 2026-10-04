@@ -189,6 +189,65 @@ bool write_numbered_lines_file(size_t line_count, TCHAR path[MAX_PATH])
     return ok;
 }
 
+enum DocTestEncoding
+{
+    DOC_ASCII,
+    DOC_UTF8_BOM,
+    DOC_UTF16LE_BOM,
+    DOC_UTF16BE_BOM
+};
+
+bool write_textdocument_file(const char *text, DocTestEncoding encoding, TCHAR path[MAX_PATH])
+{
+    std::string bytes;
+    size_t len = strlen(text);
+
+    switch(encoding)
+    {
+    case DOC_UTF8_BOM:
+        bytes.push_back(static_cast<char>(0xef));
+        bytes.push_back(static_cast<char>(0xbb));
+        bytes.push_back(static_cast<char>(0xbf));
+        break;
+
+    case DOC_UTF16LE_BOM:
+        bytes.push_back(static_cast<char>(0xff));
+        bytes.push_back(static_cast<char>(0xfe));
+        break;
+
+    case DOC_UTF16BE_BOM:
+        bytes.push_back(static_cast<char>(0xfe));
+        bytes.push_back(static_cast<char>(0xff));
+        break;
+
+    case DOC_ASCII:
+    default:
+        break;
+    }
+
+    for(size_t i = 0; i < len; i++)
+    {
+        unsigned char ch = static_cast<unsigned char>(text[i]);
+
+        if(encoding == DOC_UTF16LE_BOM)
+        {
+            bytes.push_back(static_cast<char>(ch));
+            bytes.push_back(0);
+        }
+        else if(encoding == DOC_UTF16BE_BOM)
+        {
+            bytes.push_back(0);
+            bytes.push_back(static_cast<char>(ch));
+        }
+        else
+        {
+            bytes.push_back(static_cast<char>(ch));
+        }
+    }
+
+    return write_temp_file(bytes.data(), bytes.size(), path);
+}
+
 std::string render_content(const sequence &seq)
 {
     std::string actual;
@@ -223,6 +282,28 @@ void expect_line_from_offset(const sequence &seq, size_w offset, size_w expected
     size_w actual_line_offset = static_cast<size_w>(-1);
 
     CHECK(seq.linefromoffset(offset, &actual_line, &actual_line_offset));
+    CHECK(actual_line == expected_line);
+    CHECK(actual_line_offset == expected_line_offset);
+}
+
+void expect_doc_line_offset(TextDocument &doc, ULONG line, ULONG expected)
+{
+    ULONG actual = static_cast<ULONG>(-1);
+    CHECK(doc.lineinfo_from_lineno(line, &actual, 0));
+    CHECK(actual == expected);
+}
+
+void expect_doc_no_line(TextDocument &doc, ULONG line)
+{
+    CHECK(!doc.lineinfo_from_lineno(line, 0, 0));
+}
+
+void expect_doc_line_from_offset(TextDocument &doc, ULONG offset, ULONG expected_line, ULONG expected_line_offset)
+{
+    ULONG actual_line = static_cast<ULONG>(-1);
+    ULONG actual_line_offset = static_cast<ULONG>(-1);
+
+    CHECK(doc.lineinfo_from_offset(offset, &actual_line, &actual_line_offset, 0));
     CHECK(actual_line == expected_line);
     CHECK(actual_line_offset == expected_line_offset);
 }
@@ -689,6 +770,150 @@ void linefromoffset_handles_crlf_split_across_spans()
     expect_line_from_offset(seq, 4, 0, 0);
     expect_line_from_offset(seq, 5, 1, 5);
     expect_line_from_offset(seq, 8, 1, 5);
+}
+
+void textdocument_linecount_handles_basic_newlines()
+{
+    const DocTestEncoding encodings[] = { DOC_ASCII, DOC_UTF8_BOM, DOC_UTF16LE_BOM, DOC_UTF16BE_BOM };
+
+    for(size_t i = 0; i < sizeof(encodings) / sizeof(encodings[0]); i++)
+    {
+        TextDocument doc;
+        TCHAR path[MAX_PATH];
+
+        CHECK(write_textdocument_file("abc\n", encodings[i], path));
+        CHECK(doc.init(path));
+
+        CHECK(doc.linecount() == 2);
+        expect_doc_line_offset(doc, 0, 0);
+        expect_doc_line_offset(doc, 1, 4);
+        expect_doc_no_line(doc, 2);
+
+        doc.clear();
+        DeleteFile(path);
+    }
+}
+
+void textdocument_linecount_handles_crlf()
+{
+    const DocTestEncoding encodings[] = { DOC_ASCII, DOC_UTF8_BOM, DOC_UTF16LE_BOM, DOC_UTF16BE_BOM };
+
+    for(size_t i = 0; i < sizeof(encodings) / sizeof(encodings[0]); i++)
+    {
+        TextDocument doc;
+        TCHAR path[MAX_PATH];
+
+        CHECK(write_textdocument_file("abc\r\nxyz\nlast", encodings[i], path));
+        CHECK(doc.init(path));
+
+        CHECK(doc.linecount() == 3);
+        expect_doc_line_offset(doc, 0, 0);
+        expect_doc_line_offset(doc, 1, 5);
+        expect_doc_line_offset(doc, 2, 9);
+
+        expect_doc_line_from_offset(doc, 4, 0, 0);
+        expect_doc_line_from_offset(doc, 5, 1, 5);
+        expect_doc_line_from_offset(doc, 8, 1, 5);
+        expect_doc_line_from_offset(doc, 9, 2, 9);
+
+        doc.clear();
+        DeleteFile(path);
+    }
+}
+
+void textdocument_linecount_handles_crlf_split_across_lazy_page()
+{
+    const DocTestEncoding encodings[] = { DOC_ASCII, DOC_UTF8_BOM, DOC_UTF16LE_BOM, DOC_UTF16BE_BOM };
+
+    for(size_t i = 0; i < sizeof(encodings) / sizeof(encodings[0]); i++)
+    {
+        TextDocument doc;
+        TCHAR path[MAX_PATH];
+        ULONG cr_offset = encodings[i] == DOC_UTF16LE_BOM || encodings[i] == DOC_UTF16BE_BOM
+                            ? MEM_BLOCK_SIZE / 2 - 1
+                            : MEM_BLOCK_SIZE - 1;
+        ULONG next_line = cr_offset + 2;
+        char *text = new char[cr_offset + 4];
+
+        memset(text, 'a', cr_offset);
+        text[cr_offset] = '\r';
+        text[cr_offset + 1] = '\n';
+        text[cr_offset + 2] = 'z';
+        text[cr_offset + 3] = 0;
+
+        CHECK(write_textdocument_file(text, encodings[i], path));
+        CHECK(doc.init(path));
+
+        expect_doc_line_offset(doc, 1, next_line);
+        expect_doc_line_from_offset(doc, next_line - 1, 0, 0);
+        expect_doc_line_from_offset(doc, next_line, 1, next_line);
+
+        doc.clear();
+        DeleteFile(path);
+        delete[] text;
+    }
+}
+
+void textdocument_linecount_updates_after_insert_delete_replace()
+{
+    const DocTestEncoding encodings[] = { DOC_ASCII, DOC_UTF8_BOM, DOC_UTF16LE_BOM, DOC_UTF16BE_BOM };
+    TCHAR insert_text[] = TEXT("\nX");
+    TCHAR replace_text[] = TEXT("\r\nZ\n");
+
+    for(size_t i = 0; i < sizeof(encodings) / sizeof(encodings[0]); i++)
+    {
+        TextDocument doc;
+        TCHAR path[MAX_PATH];
+
+        CHECK(write_textdocument_file("abc", encodings[i], path));
+        CHECK(doc.init(path));
+
+        CHECK(doc.linecount() == 1);
+        CHECK(doc.insert_text(1, insert_text, 2) != 0);
+        CHECK(doc.linecount() == 2);
+        expect_doc_line_offset(doc, 1, 2);
+
+        CHECK(doc.erase_text(1, 2) == 2);
+        CHECK(doc.linecount() == 1);
+
+        CHECK(doc.replace_text(1, replace_text, 4, 1) != 0);
+        CHECK(doc.linecount() == 3);
+        expect_doc_line_offset(doc, 1, 3);
+        expect_doc_line_offset(doc, 2, 5);
+
+        doc.clear();
+        DeleteFile(path);
+    }
+}
+
+void textdocument_linecount_restores_on_undo_redo()
+{
+    const DocTestEncoding encodings[] = { DOC_ASCII, DOC_UTF8_BOM, DOC_UTF16LE_BOM, DOC_UTF16BE_BOM };
+    TCHAR insert_text[] = TEXT("\nxyz");
+
+    for(size_t i = 0; i < sizeof(encodings) / sizeof(encodings[0]); i++)
+    {
+        TextDocument doc;
+        TCHAR path[MAX_PATH];
+        ULONG start = 0;
+        ULONG end = 0;
+
+        CHECK(write_textdocument_file("abc", encodings[i], path));
+        CHECK(doc.init(path));
+
+        CHECK(doc.insert_text(doc.text_length(), insert_text, 4) != 0);
+        CHECK(doc.linecount() == 2);
+
+        CHECK(doc.undo(&start, &end));
+        CHECK(doc.linecount() == 1);
+
+        CHECK(doc.redo(&start, &end));
+        CHECK(doc.linecount() == 2);
+        expect_doc_line_offset(doc, 1, 4);
+
+        doc.clear();
+        DeleteFile(path);
+    }
 }
 
 void open_file_renders_file_backed_content()
@@ -1254,6 +1479,11 @@ const test_case tests[] =
     { "linefromoffset_handles_basic_newlines", linefromoffset_handles_basic_newlines },
     { "linefromoffset_handles_crlf", linefromoffset_handles_crlf },
     { "linefromoffset_handles_crlf_split_across_spans", linefromoffset_handles_crlf_split_across_spans },
+    { "textdocument_linecount_handles_basic_newlines", textdocument_linecount_handles_basic_newlines },
+    { "textdocument_linecount_handles_crlf", textdocument_linecount_handles_crlf },
+    { "textdocument_linecount_handles_crlf_split_across_lazy_page", textdocument_linecount_handles_crlf_split_across_lazy_page },
+    { "textdocument_linecount_updates_after_insert_delete_replace", textdocument_linecount_updates_after_insert_delete_replace },
+    { "textdocument_linecount_restores_on_undo_redo", textdocument_linecount_restores_on_undo_redo },
     { "open_file_renders_file_backed_content", open_file_renders_file_backed_content },
     { "open_file_renders_across_view_boundary", open_file_renders_across_view_boundary },
     { "open_file_handles_crlf_across_scan_boundary", open_file_handles_crlf_across_scan_boundary },

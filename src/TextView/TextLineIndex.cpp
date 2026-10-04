@@ -662,6 +662,7 @@ bool TextLineIndex::lineinfo_from_offset(ULONG offset_chars, TextLineIndexInfo *
 	ULONG line = 0;
 	ULONG lineoff = 0;
 	ULONG nextoff = 0;
+	ULONG unit = codeunit_size();
 
 	if(lineinfo == 0 || docLength == 0)
 		return false;
@@ -681,10 +682,39 @@ bool TextLineIndex::lineinfo_from_offset(ULONG offset_chars, TextLineIndexInfo *
 		line = page->line_base;
 		lineoff = page->offset_chars;
 
-		for(ULONG i = 0; i < page->line_count && page->line_offsets_chars[i] <= offset_chars; i++)
+		if(page->starts_with_lf && page->offset_bytes >= unit)
 		{
+			BYTE prevbuf[2];
+
+			if(m_pTextDoc->m_seq.render(m_pTextDoc->m_nHeaderSize + page->offset_bytes - unit, prevbuf, unit) == unit &&
+			   read_codeunit(m_pTextDoc->m_nFileFormat, prevbuf, 0, unit) == '\r')
+			{
+				if(line > 0)
+					line--;
+
+				if(lineoff > 0)
+					find_line_start_near_offset(lineoff, &lineoff);
+			}
+		}
+
+		for(ULONG i = 0; i < page->line_count; i++)
+		{
+			ULONG break_chars = page->line_offsets_chars[i];
+
+			// A CR at the end of one page and LF at the start of the next are one line break.
+			if(page->line_offsets_bytes[i] == page->offset_bytes + page->length_bytes && page->ends_with_cr)
+			{
+				ULONG nextch32 = 0;
+
+				if(m_pTextDoc->decode_char(page->line_offsets_bytes[i], raw_length() - page->line_offsets_bytes[i], &nextch32) && nextch32 == '\n')
+					break_chars++;
+			}
+
+			if(break_chars > offset_chars)
+				break;
+
 			line++;
-			lineoff = page->line_offsets_chars[i];
+			lineoff = break_chars;
 		}
 
 		if(lineoff == page->offset_chars && page->offset_chars > 0)
