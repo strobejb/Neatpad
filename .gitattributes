@@ -11,6 +11,7 @@
 *.filters text eol=crlf
 *.md text eol=crlf
 *.txt text eol=crlf
+/tests/samples/*.[tT][xX][tT] binary
 
 *.bmp binary
 *.cur binary
