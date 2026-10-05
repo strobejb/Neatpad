@@ -148,6 +148,9 @@ TextView::~TextView()
 
 	DestroyCursor(m_hMarginCursor);
 
+	for(int i = 0; i < m_nNumFonts; i++)
+		UspFreeFont(&m_uspFontList[i]);
+
 	for(int i = 0; i < USP_CACHE_SIZE; i++)
 		UspFree(m_uspCache[i].uspData);
 
@@ -447,6 +450,12 @@ LONG WINAPI TextView::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 
 	case TXM_ADDFONT:
 		return AddFont((HFONT)wParam);
+
+	case TXM_ADDFONTFALLBACK:
+		return AddFontFallback((int)wParam, (HFONT)lParam);
+
+	case TXM_CLEARFONTFALLBACKS:
+		return ClearFontFallbacks((int)wParam);
 
 	case TXM_SETCOLOR:
 		return SetColour(wParam, lParam);

@@ -152,6 +152,8 @@ private:
 	//	Font support
 	//
 	LONG		AddFont(HFONT);
+	LONG		AddFontFallback(int slot, HFONT hFont);
+	LONG		ClearFontFallbacks(int slot);
 	LONG		SetFont(HFONT, int idx);
 	LONG		SetLineSpacing(int nAbove, int nBelow);
 	LONG		SetLongLine(int nLength);

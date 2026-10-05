@@ -476,7 +476,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 	case WM_DESTROY:
 		SaveFileData(g_szFileName, hwnd);
 		PostQuitMessage(0);
-		DeleteObject(g_hFont);
+		DeleteRuntimeFonts();
 		return 0;
 
 	//case WM_NCCALCSIZE:

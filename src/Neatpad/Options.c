@@ -519,12 +519,50 @@ void SaveRegSettings()
 	RegCloseKey(hKey);
 }
 
-void ApplyRegSettings()
+static HFONT g_hFallbackFonts[3];
+
+static void DeleteFallbackFonts()
 {
 	int i;
 
+	if(g_hwndTextView)
+		TextView_ClearFontFallbacks(g_hwndTextView, 0);
+
+	for(i = 0; i < sizeof(g_hFallbackFonts) / sizeof(g_hFallbackFonts[0]); i++)
+	{
+		if(g_hFallbackFonts[i])
+		{
+			DeleteObject(g_hFallbackFonts[i]);
+			g_hFallbackFonts[i] = 0;
+		}
+	}
+}
+
+static void AddFallbackFont(int idx, TCHAR *faceName)
+{
+	g_hFallbackFonts[idx] = EasyCreateFont(g_nFontSize, g_fFontBold, g_nFontSmoothing, faceName);
+
+	if(g_hFallbackFonts[idx])
+		TextView_AddFontFallback(g_hwndTextView, 0, g_hFallbackFonts[idx]);
+}
+
+void DeleteRuntimeFonts()
+{
+	DeleteFallbackFonts();
+
 	if(g_hFont)
+	{
 		DeleteObject(g_hFont);
+		g_hFont = 0;
+	}
+}
+
+void ApplyRegSettings()
+{
+	int i;
+	HFONT oldFont = g_hFont;
+
+	DeleteFallbackFonts();
 
 	g_hFont = EasyCreateFont(g_nFontSize, g_fFontBold, g_nFontSmoothing, g_szFontName);
 
@@ -540,6 +578,13 @@ void ApplyRegSettings()
 	TextView_SetLongLine(g_hwndTextView, g_nLongLineLimit);
 	
 	SendMessage(g_hwndTextView, WM_SETFONT, (WPARAM)g_hFont, 0);
+
+	if(oldFont)
+		DeleteObject(oldFont);
+
+	AddFallbackFont(0, _T("Segoe UI"));
+	AddFallbackFont(1, _T("Nirmala UI"));
+	AddFallbackFont(2, _T("Leelawadee UI"));
 
 	for(i = 0; i < TXC_MAX_COLOURS; i++)
 	{

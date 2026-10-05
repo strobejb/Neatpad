@@ -24,8 +24,12 @@ typedef struct _ATTR
 
 } ATTR, *PATTR;
 
+typedef struct _USPFONT_FALLBACKS USPFONT_FALLBACKS;
+
+#define USP_MAX_FONT_FALLBACKS 8
+
 //
-//	USPFONT - use to provide UspAnalyze with font. 
+//	USPFONT - use to provide UspAnalyze with font.
 //	Only the yoffset member can be modified by the caller - after
 //  UspInitFont has been called
 //
@@ -41,8 +45,16 @@ typedef struct _USPFONT
 	int				numheight;			// height of numeric characters
 	int				xborder;
 	int				yborder;
+	USPFONT_FALLBACKS *fallbacks;		// private
 
 } USPFONT, *PUSPFONT;
+
+typedef struct _USPFONT_FALLBACKS
+{
+	USPFONT fallback[USP_MAX_FONT_FALLBACKS];
+	int fallbackCount;
+
+} USPFONT_FALLBACKS, *PUSPFONT_FALLBACKS;
 
 //
 //	ITEM_RUN - private to USPLIB
@@ -53,6 +65,7 @@ typedef struct _ITEM_RUN
 	int					charPos;
 	int					len;			// length of run in WCHARs
 	int					font;			// font index
+	USPFONT			* resolvedFont;	// concrete font chosen during shaping
 	
 	int					width;			// total width in pixels of this run
 	int					glyphPos;		// position within USPDATA's lists
@@ -135,6 +148,16 @@ USPDATA * WINAPI UspAllocate (
 
 VOID WINAPI UspFree (	
 		USPDATA *uspData 
+	);
+
+BOOL WINAPI UspAddFontFallback (
+		USPFONT      * uspFont,
+		HDC            hdc,
+		HFONT          hFont
+	);
+
+VOID WINAPI UspClearFontFallbacks (
+		USPFONT      * uspFont
 	);
 
 BOOL WINAPI UspAnalyze (	

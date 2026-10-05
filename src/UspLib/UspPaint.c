@@ -28,6 +28,7 @@
 #include <windows.h>
 #include <usp10.h>
 #include <tchar.h>
+#include <stdlib.h>
 #include "usplib.h"
 
 // UspLib.c
@@ -393,7 +394,7 @@ int PaintForeground (
 		}
 		
 		// select the appropriate font
-		uspFont = &uspData->uspFontList[itemRun->font];
+		uspFont = itemRun->resolvedFont;
 		SelectObject(hdc, uspFont->hFont);
 		yoff = uspFont->yoffset;
 	
@@ -510,6 +511,65 @@ void WINAPI UspSetSelColor (
 }
 
 //
+//	Free all fallback font script-caches attached to a font. The caller owns
+//	the HFONT handles and must delete them separately.
+//
+VOID WINAPI UspClearFontFallbacks (
+		USPFONT * uspFont
+	)
+{
+	USPFONT_FALLBACKS *fallbacks;
+	int i;
+
+	if(uspFont == 0 || uspFont->fallbacks == 0)
+		return;
+
+	fallbacks = uspFont->fallbacks;
+
+	for(i = 0; i < fallbacks->fallbackCount; i++)
+	{
+		UspFreeFont(&fallbacks->fallback[i]);
+		ZeroMemory(&fallbacks->fallback[i], sizeof(USPFONT));
+	}
+
+	free(fallbacks);
+	uspFont->fallbacks = 0;
+}
+
+//
+//	Add a fallback font to a font. Fallback fonts are tried in the order
+//	they are added whenever the primary font cannot shape a run.
+//
+BOOL WINAPI UspAddFontFallback (
+		USPFONT      * uspFont,
+		HDC            hdc,
+		HFONT          hFont
+	)
+{
+	USPFONT_FALLBACKS *fallbacks;
+
+	if(uspFont == 0)
+		return FALSE;
+
+	if(uspFont->fallbacks == 0)
+	{
+		uspFont->fallbacks = malloc(sizeof(USPFONT_FALLBACKS));
+		if(uspFont->fallbacks == 0)
+			return FALSE;
+
+		ZeroMemory(uspFont->fallbacks, sizeof(USPFONT_FALLBACKS));
+	}
+
+	fallbacks = uspFont->fallbacks;
+
+	if(fallbacks->fallbackCount >= USP_MAX_FONT_FALLBACKS)
+		return FALSE;
+
+	UspInitFont(&fallbacks->fallback[fallbacks->fallbackCount], hdc, hFont);
+	fallbacks->fallbackCount++;
+	return TRUE;
+}
+//
 //	Used to initialize a font. 
 //
 //	Caller must call UspFreeFont when he is finished, and manually 
@@ -543,5 +603,6 @@ void WINAPI UspFreeFont (
 	)
 {
 //	DeleteObject(uspFont->hFont);
+	UspClearFontFallbacks(uspFont);
 	ScriptFreeCache(&uspFont->scriptCache);
 }

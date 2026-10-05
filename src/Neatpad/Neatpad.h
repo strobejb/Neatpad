@@ -64,6 +64,7 @@ void ShowOptions(HWND hwndParent);
 void ApplyRegSettings();
 void LoadRegSettings();
 void SaveRegSettings();
+void DeleteRuntimeFonts();
 void LoadRegSysSettings();
 void SaveRegSysSettings();
 void AddRecentFile(TCHAR *szFileName);

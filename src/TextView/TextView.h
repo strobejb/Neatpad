@@ -59,6 +59,8 @@ COLORREF RealizeColour(COLORREF col);
 #define TXM_SETCONTEXTMENU		(TXM_BASE + 24)
 #define TXM_GETCURLINEKNOWN		(TXM_BASE + 25)
 #define TXM_GETLINEFORMAT		(TXM_BASE + 26)
+#define TXM_ADDFONTFALLBACK		(TXM_BASE + 27)
+#define TXM_CLEARFONTFALLBACKS	(TXM_BASE + 28)
 
 //
 //	TextView Notification Messages defined here - 
@@ -142,6 +144,12 @@ typedef struct
 
 #define TextView_AddFont(hwndTV, hFont) \
 	SendMessage((hwndTV), TXM_ADDFONT, (WPARAM)(HFONT)(hFont), 0)
+
+#define TextView_AddFontFallback(hwndTV, nSlot, hFont) \
+	SendMessage((hwndTV), TXM_ADDFONTFALLBACK, (WPARAM)(nSlot), (LPARAM)(HFONT)(hFont))
+
+#define TextView_ClearFontFallbacks(hwndTV, nSlot) \
+	SendMessage((hwndTV), TXM_CLEARFONTFALLBACKS, (WPARAM)(nSlot), 0)
 
 #define TextView_SetColor(hwndTV, nIdx, rgbColor) \
 	SendMessage((hwndTV), TXM_SETCOLOR, (WPARAM)(nIdx), (LPARAM)(rgbColor))

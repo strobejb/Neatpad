@@ -43,7 +43,7 @@ VOID TextView::RecalcLineHeight()
 	for(int i = 0; i < m_nNumFonts; i++)
 	{
 		// always include a font's external-leading
-		int fontheight = m_uspFontList[i].tm.tmHeight + 
+		int fontheight = m_uspFontList[i].tm.tmHeight +
 						 m_uspFontList[i].tm.tmExternalLeading;
 
 		m_nLineHeight = max(m_nLineHeight, fontheight);
@@ -93,14 +93,51 @@ LONG TextView::SetFont(HFONT hFont, int idx)
 //
 LONG TextView::AddFont(HFONT hFont)
 {
-	int idx = m_nNumFonts++;
+	int idx;
 
+	if(m_nNumFonts >= MAX_FONTS)
+		return -1;
+
+	idx = m_nNumFonts++;
 	SetFont(hFont, idx);
 	UpdateMetrics();
 
-	return 0;
+	return idx;
 }
 
+LONG TextView::AddFontFallback(int slot, HFONT hFont)
+{
+	HDC hdc;
+	LONG result;
+
+	if(slot < 0 || slot >= m_nNumFonts)
+		return FALSE;
+
+	hdc = GetDC(m_hWnd);
+	result = UspAddFontFallback(&m_uspFontList[slot], hdc, hFont);
+	ReleaseDC(m_hWnd, hdc);
+
+	if(result)
+	{
+		RecalcLineHeight();
+		UpdateMetrics();
+		ResetLineCache();
+	}
+
+	return result;
+}
+
+LONG TextView::ClearFontFallbacks(int slot)
+{
+	if(slot < 0 || slot >= m_nNumFonts)
+		return FALSE;
+
+	UspClearFontFallbacks(&m_uspFontList[slot]);
+	RecalcLineHeight();
+	UpdateMetrics();
+	ResetLineCache();
+	return TRUE;
+}
 //
 //	WM_SETFONT handler: set a new default font
 //

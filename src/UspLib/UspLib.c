@@ -67,7 +67,7 @@ BOOL ExpandTabs(USPDATA *uspData, WCHAR *wstr, int wlen, SCRIPT_TABDEF *tabdef)
 
 	// calculate average character-width
 	int charWidth = uspData->uspFontList ? uspData->uspFontList[0].tm.tmAveCharWidth :
-										   uspData->defaultFont.tm.tmAveCharWidth; 
+										   uspData->defaultFont.tm.tmAveCharWidth;
 
  	// validate the SCRIPT_TABDEF structure
 	if(tabdef->cTabStops != 0 && tabdef->pTabStops == 0 || tabdef->cTabStops < 0)
@@ -403,127 +403,229 @@ void ReverseClusterRun(WORD *sourceList, WORD *destList, int runLen)
 }*/
 
 //
-//	Call ScriptShape and ScriptPlace to return glyph information
-//	for the specified run of text. 
+//	Make sure the shared glyph output buffers are large enough for ScriptShape
+//	to append another run. The glyph buffers grow as runs are shaped.
 //
-static 
-BOOL ShapeAndPlaceItemRun(USPDATA *uspData, ITEM_RUN *itemRun, HDC hdc, WCHAR *wrunstr)
+static BOOL EnsureGlyphCapacity(USPDATA *uspData, int allocLen)
 {
-	ABC			abc;
-	HRESULT		hr;
-	USPFONT   *	uspFont		= 0;
-	HANDLE		holdFont	= 0;
-	int			reallocSize = 0;
-	
-	// select the appropriate font
-	uspFont  = &uspData->uspFontList[itemRun->font];
+	if(allocLen <= uspData->glyphAllocLen)
+		return TRUE;
+
+	uspData->glyphAllocLen = allocLen;
+	uspData->glyphList	 = realloc(uspData->glyphList,	 uspData->glyphAllocLen * sizeof(WORD));
+	uspData->offsetList  = realloc(uspData->offsetList,  uspData->glyphAllocLen * sizeof(GOFFSET));
+	uspData->widthList	 = realloc(uspData->widthList,	 uspData->glyphAllocLen * sizeof(int));
+	uspData->svaList     = realloc(uspData->svaList,	 uspData->glyphAllocLen * sizeof(SCRIPT_VISATTR));
+
+	return uspData->glyphList && uspData->offsetList && uspData->widthList && uspData->svaList;
+}
+
+//
+//	Shape an item-run with a specific font. This only produces glyph indices
+//	and visual attributes; ScriptPlace is called later once the final font is known.
+//
+static HRESULT ShapeItemRunWithFont(USPDATA *uspData, ITEM_RUN *itemRun, HDC hdc, WCHAR *wrunstr, USPFONT *uspFont, SCRIPT_ANALYSIS *analysis)
+{
+	HRESULT hr;
+	HANDLE holdFont;
+	int reallocSize = 0;
+	int growBy;
+
 	holdFont = SelectObject(hdc, uspFont->hFont);
 
-	// glyph data for this run is appended to the end 
-	itemRun->glyphPos = uspData->glyphCount;
-
-	//
-	// Generate glyph information for each character in the run
-	// keep looping until we find a buffer big enough
-	//
 	do
 	{
-		// guess at 1.5x the run-length
-		reallocSize += itemRun->len * 3 / 2;
+		growBy = itemRun->len * 3 / 2;
+		if(growBy < 1)
+			growBy = 1;
 
-		// perform memory allocations. Let ScriptShape catch any alloc-failures
+		reallocSize += growBy;
+
 		if(uspData->glyphCount + reallocSize >= uspData->glyphAllocLen)
 		{
-			uspData->glyphAllocLen += reallocSize;
-
-			uspData->glyphList	 = realloc(uspData->glyphList,	 uspData->glyphAllocLen * sizeof(WORD));
-			uspData->offsetList  = realloc(uspData->offsetList,  uspData->glyphAllocLen * sizeof(GOFFSET));
-			uspData->widthList	 = realloc(uspData->widthList,	 uspData->glyphAllocLen * sizeof(int));
-			uspData->svaList     = realloc(uspData->svaList,	 uspData->glyphAllocLen * sizeof(SCRIPT_VISATTR));
+			if(!EnsureGlyphCapacity(uspData, uspData->glyphCount + reallocSize + 16))
+			{
+				SelectObject(hdc, holdFont);
+				return E_OUTOFMEMORY;
+			}
 		}
 
-		//
-		//	Convert the unicode-text into an array of glyphs
-		//
 		hr = ScriptShape(
 			hdc,
-			&uspFont->scriptCache, 
-			wrunstr, 
-			itemRun->len, 
-			uspData->glyphAllocLen - uspData->glyphCount, 
-			&itemRun->analysis, 
+			&uspFont->scriptCache,
+			wrunstr,
+			itemRun->len,
+			uspData->glyphAllocLen - uspData->glyphCount,
+			analysis,
 			uspData->glyphList		+ itemRun->glyphPos,
-			uspData->clusterList	+ itemRun->charPos,		// already allocated in UspAnalyze
+			uspData->clusterList	+ itemRun->charPos,
 			uspData->svaList		+ itemRun->glyphPos,
 			&itemRun->glyphCount
 			);
-	
-		// no glyphs in the font - try again
+	}
+	while(hr == E_OUTOFMEMORY);
+
+	SelectObject(hdc, holdFont);
+	return hr;
+}
+
+//
+//	Some fonts shape unsupported characters as default/invalid glyphs instead of
+//	returning USP_E_SCRIPT_NOT_IN_FONT, so treat those runs as fallback candidates.
+//
+static BOOL GlyphRunHasMissingGlyphs(USPFONT *uspFont, HDC hdc, WORD *glyphList, int glyphCount)
+{
+	SCRIPT_FONTPROPERTIES fontProps;
+	HANDLE holdFont;
+	int i;
+
+	ZeroMemory(&fontProps, sizeof(fontProps));
+	fontProps.cBytes = sizeof(fontProps);
+
+	holdFont = SelectObject(hdc, uspFont->hFont);
+
+	if(ScriptGetFontProperties(hdc, &uspFont->scriptCache, &fontProps) != S_OK)
+	{
+		SelectObject(hdc, holdFont);
+		return FALSE;
+	}
+
+	SelectObject(hdc, holdFont);
+
+	for(i = 0; i < glyphCount; i++)
+	{
+		if(glyphList[i] == fontProps.wgDefault || glyphList[i] == fontProps.wgInvalid)
+			return TRUE;
+	}
+
+	return FALSE;
+}
+
+//
+//	Try each fallback font attached to the primary font until one shapes the
+//	item-run without missing glyphs.
+//
+static HRESULT TryShapeFallbackFonts(USPDATA *uspData, ITEM_RUN *itemRun, HDC hdc, WCHAR *wrunstr, USPFONT *primaryFont, SCRIPT_ANALYSIS *sourceAnalysis, USPFONT **resolvedFont, SCRIPT_ANALYSIS *resolvedAnalysis)
+{
+	HRESULT hr;
+	SCRIPT_ANALYSIS analysis;
+	USPFONT_FALLBACKS *fallbacks;
+	USPFONT *uspFont;
+	int i;
+
+	fallbacks = primaryFont->fallbacks;
+	if(fallbacks == 0)
+		return USP_E_SCRIPT_NOT_IN_FONT;
+
+	for(i = 0; i < fallbacks->fallbackCount; i++)
+	{
+		uspFont = &fallbacks->fallback[i];
+		if(uspFont->hFont == 0)
+			continue;
+
+		analysis = *sourceAnalysis;
+		hr = ShapeItemRunWithFont(uspData, itemRun, hdc, wrunstr, uspFont, &analysis);
+
 		if(hr == USP_E_SCRIPT_NOT_IN_FONT)
 		{
-			itemRun->analysis.eScript = SCRIPT_UNDEFINED;
+			analysis = *sourceAnalysis;
+			analysis.eScript = SCRIPT_UNDEFINED;
+			hr = ShapeItemRunWithFont(uspData, itemRun, hdc, wrunstr, uspFont, &analysis);
 		}
-		// unknown failure
-		else if(hr != S_OK && hr != E_OUTOFMEMORY)
+
+		if(hr == S_OK && !GlyphRunHasMissingGlyphs(uspFont, hdc, uspData->glyphList + itemRun->glyphPos, itemRun->glyphCount))
 		{
-			SelectObject(hdc, holdFont);
-			return FALSE;
+			*resolvedFont = uspFont;
+			*resolvedAnalysis = analysis;
+			return S_OK;
 		}
+	}
 
-	} while(hr != S_OK);
+	return USP_E_SCRIPT_NOT_IN_FONT;
+}
 
-	// expand the glyph-list to include this item-run
+//
+//	Call ScriptShape and ScriptPlace to return glyph information
+//	for the specified run of text.
+//
+static BOOL ShapeAndPlaceItemRun(USPDATA *uspData, ITEM_RUN *itemRun, HDC hdc, WCHAR *wrunstr)
+{
+	ABC abc;
+	HRESULT hr;
+	USPFONT *uspFont;
+	HANDLE holdFont;
+	SCRIPT_ANALYSIS sourceAnalysis;
+	SCRIPT_ANALYSIS shapedAnalysis;
+
+	uspFont = &uspData->uspFontList[itemRun->font];
+	itemRun->resolvedFont = uspFont;
+	itemRun->glyphPos = uspData->glyphCount;
+	sourceAnalysis = itemRun->analysis;
+	shapedAnalysis = sourceAnalysis;
+
+	hr = ShapeItemRunWithFont(uspData, itemRun, hdc, wrunstr, uspFont, &shapedAnalysis);
+
+	if (hr == S_OK)
+	{
+		if (GlyphRunHasMissingGlyphs(uspFont, hdc, uspData->glyphList + itemRun->glyphPos, itemRun->glyphCount))
+			hr = USP_E_SCRIPT_NOT_IN_FONT;
+	}
+
+	if (hr == USP_E_SCRIPT_NOT_IN_FONT && !itemRun->ctrl)
+	{
+		hr = TryShapeFallbackFonts(uspData, itemRun, hdc, wrunstr, uspFont, &sourceAnalysis, &uspFont, &shapedAnalysis);
+	}
+
+	if(hr != S_OK)
+	{
+		uspFont = &uspData->uspFontList[itemRun->font];
+		shapedAnalysis = sourceAnalysis;
+		hr = ShapeItemRunWithFont(uspData, itemRun, hdc, wrunstr, uspFont, &shapedAnalysis);
+
+		if(hr == USP_E_SCRIPT_NOT_IN_FONT)
+		{
+			shapedAnalysis = sourceAnalysis;
+			shapedAnalysis.eScript = SCRIPT_UNDEFINED;
+			hr = ShapeItemRunWithFont(uspData, itemRun, hdc, wrunstr, uspFont, &shapedAnalysis);
+		}
+	}
+
+	if(hr != S_OK)
+		return FALSE;
+
+	itemRun->analysis = shapedAnalysis;
+	itemRun->resolvedFont = uspFont;
 	uspData->glyphCount += itemRun->glyphCount;
 
+	holdFont = SelectObject(hdc, uspFont->hFont);
 
-	//
-	//	Generate glyph advance-widths for this run
-	//
 	ScriptPlace(
 		hdc,
 		&uspFont->scriptCache,
 		uspData->glyphList	+ itemRun->glyphPos,
 		itemRun->glyphCount,
 		uspData->svaList	+ itemRun->glyphPos,
-		&itemRun->analysis, 
+		&itemRun->analysis,
 		uspData->widthList	+ itemRun->glyphPos,
 		uspData->offsetList	+ itemRun->glyphPos,
 		&abc
 		);
 
-	// 
-	//	Control-characters require special handling
-	//
 	if(itemRun->ctrl && itemRun->chcode != '\t')
 	{
-		// chcode is only valid for control-characters
 		int chwidth = CtrlCharWidth(uspFont, hdc, itemRun->chcode);
-		
 		uspData->widthList[itemRun->glyphPos]	= chwidth;
 		itemRun->width							= chwidth;
 	}
 	else
 	{
-		// remember the item-run width
 		itemRun->width = abc.abcA + abc.abcB + abc.abcC;
 	}
 
-	// restore the font
 	SelectObject(hdc, holdFont);
 	return TRUE;
 }
 
-//
-//	Remember the selection-state of an ITEM_RUN:
-//
-//	0 - no characters selected
-//  1 - all characters selected
-//  2 - some characters selected
-//
-//	This is a useful optimization used for drawing - under some
-//  circumstances, an ITEM_RUN can be skipped if it's neighbouring
-//  runs share the same selection-state
-//
 static
 void IdentifyRunSelections(USPDATA *uspData, ITEM_RUN *itemRun)
 {
@@ -653,7 +755,7 @@ BOOL WINAPI UspAnalyze (
 	// use the default font if no user-supplied list
 	if(uspFontList == 0)
 	{
-		uspData->defaultFont.hFont = 0;
+		ZeroMemory(&uspData->defaultFont, sizeof(uspData->defaultFont));
 		uspData->uspFontList = &uspData->defaultFont;
 	}
 
@@ -695,7 +797,7 @@ BOOL WINAPI UspAnalyze (
 	//	reallocate BIDI-arrays if item-run-list changed size
 	if(itemRunAllocLen < uspData->itemRunAllocLen)
 	{
-		uspData->bidiLevels	= realloc(uspData->bidiLevels, uspData->itemRunAllocLen * sizeof(BYTE));
+		uspData->bidiLevels	         = realloc(uspData->bidiLevels,          uspData->itemRunAllocLen * sizeof(BYTE));
 		uspData->visualToLogicalList = realloc(uspData->visualToLogicalList, uspData->itemRunAllocLen * sizeof(int));
 	}
 
@@ -802,7 +904,7 @@ VOID WINAPI UspFree(USPDATA *uspData)
 	if(uspData)
 	{
 		// free the script-cache (will be NULL if a user-supplied fontlist was specified)
-		ScriptFreeCache(&uspData->defaultFont.scriptCache);
+		UspFreeFont(&uspData->defaultFont);
 
 		// free the glyph-buffers
 		free(uspData->glyphList);
