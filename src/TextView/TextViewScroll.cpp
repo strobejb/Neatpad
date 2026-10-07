@@ -10,11 +10,47 @@
 #define WIN32_LEAN_AND_MEAN
 
 #include <windows.h>
+#include <limits.h>
 #include <tchar.h>
 #include "TextView.h"
 #include "TextViewInternal.h"
 
 bool IsKeyPressed(UINT nVirtKey);
+
+static int ScrollIntFromSize(size_w value)
+{
+	return value > (size_w)INT_MAX ? INT_MAX : (int)value;
+}
+
+static UINT ScrollPageFromSize(size_w value)
+{
+	return value > (size_w)UINT_MAX ? UINT_MAX : (UINT)value;
+}
+
+static int ScrollPosFromOffset(size_w offset, size_w docBytes)
+{
+	if(docBytes <= (size_w)INT_MAX)
+		return ScrollIntFromSize(offset);
+
+	return (int)((long double)offset * INT_MAX / (docBytes - 1));
+}
+
+static UINT ScrollPageFromBytes(size_w pageBytes, size_w docBytes)
+{
+	if(docBytes <= (size_w)INT_MAX)
+		return ScrollPageFromSize(pageBytes);
+
+	size_w page = (size_w)((long double)pageBytes * INT_MAX / docBytes);
+	return ScrollPageFromSize(max(page, (size_w)1));
+}
+
+static size_w ScrollOffsetFromPos(int pos, size_w docBytes)
+{
+	if(docBytes <= (size_w)INT_MAX)
+		return (size_w)max(pos, 0);
+
+	return (size_w)((long double)max(pos, 0) * (docBytes - 1) / INT_MAX);
+}
 
 //
 //	Set scrollbar positions and range
@@ -24,9 +60,9 @@ VOID TextView::SetupScrollbars()
 	SCROLLINFO si = { sizeof(si) };
 	ULONG windowColumns = m_nWindowColumns > 0 ? (ULONG)m_nWindowColumns : 0;
 	ULONG longestLine = m_nLongestLine > 0 ? (ULONG)m_nLongestLine : 0;
-	ULONG docBytes = m_pTextDoc->byte_length();
+	size_w docBytes = m_pTextDoc->byte_length();
 	TextCoord belowWindow;
-	ULONG pageEnd;
+	size_w pageEnd;
 
 	m_nHScrollMax = longestLine > windowColumns ? (int)(longestLine - windowColumns) : 0;
 
@@ -41,10 +77,10 @@ VOID TextView::SetupScrollbars()
 	//
 	pageEnd = ViewportLineFromRow(m_nWindowLines, &belowWindow) ? belowWindow.line_begin : docBytes;
 
-	si.nPos  = m_scrollVPos.line_begin;
-	si.nPage = max(pageEnd - m_scrollVPos.line_begin, 1);
+	si.nPos  = ScrollPosFromOffset(m_scrollVPos.line_begin, docBytes);
+	si.nPage = ScrollPageFromBytes(max(pageEnd - m_scrollVPos.line_begin, (size_w)1), docBytes);
 	si.nMin  = 0;
-	si.nMax  = docBytes ? docBytes - 1 : 0;
+	si.nMax  = docBytes > (size_w)INT_MAX ? INT_MAX : (docBytes ? ScrollIntFromSize(docBytes - 1) : 0);
 
 	SetScrollInfo(m_hWnd, SB_VERT, &si, TRUE);
 
@@ -52,9 +88,9 @@ VOID TextView::SetupScrollbars()
 	//	Horizontal scrollbar
 	//
 	si.nPos  = m_nHScrollPos;		// scrollbar thumb position
-	si.nPage = m_nWindowColumns;	// number of lines in a page
+	si.nPage = ScrollPageFromSize(windowColumns);	// number of lines in a page
 	si.nMin  = 0;
-	si.nMax  = longestLine ? longestLine - 1 : 0;	// total number of lines in file
+	si.nMax  = longestLine ? ScrollIntFromSize(longestLine - 1) : 0;	// total number of lines in file
 
 	SetScrollInfo(m_hWnd, SB_HORZ, &si, TRUE);
 }
@@ -65,7 +101,7 @@ VOID TextView::SetupScrollbars()
 bool TextView::PinToBottomCorner()
 {
 	bool repos = false;
-	ULONG topLine = m_scrollVPos.line_begin;
+	size_w topLine = m_scrollVPos.line_begin;
 	ULONG windowColumns = m_nWindowColumns > 0 ? (ULONG)m_nWindowColumns : 0;
 	ULONG longestLine = m_nLongestLine > 0 ? (ULONG)m_nLongestLine : 0;
 
@@ -494,7 +530,7 @@ LONG GetTrackPos32(HWND hwnd, int nBar)
 //
 LONG TextView::OnVScroll(UINT nSBCode, UINT nPos)
 {
-	ULONG oldpos = m_scrollVPos.line_begin;
+	size_w oldpos = m_scrollVPos.line_begin;
 	TextCoord coord;
 
 	switch(nSBCode)
@@ -531,7 +567,7 @@ LONG TextView::OnVScroll(UINT nSBCode, UINT nPos)
 	case SB_THUMBTRACK:
 
 		// the thumb is a byte offset: show the line containing it
-		if(m_pTextDoc->coord_from_byte_anchor(GetTrackPos32(m_hWnd, SB_VERT), &coord))
+		if(m_pTextDoc->coord_from_byte_anchor(ScrollOffsetFromPos(GetTrackPos32(m_hWnd, SB_VERT), m_pTextDoc->byte_length()), &coord))
 			SetScrollCoord(&coord);
 
 		RefreshWindow();

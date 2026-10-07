@@ -68,10 +68,13 @@ bool sequence::buffer_control::init(const seqchar *source, size_w len)
 {
 	clear();
 
-	if((buffer = new seqchar[len]) == 0)
+	if(len > (size_w)(size_t)-1)
 		return false;
 
-	memcpy(buffer, source, len * sizeof(seqchar));
+	if((buffer = new seqchar[(size_t)len]) == 0)
+		return false;
+
+	memcpy(buffer, source, (size_t)len * sizeof(seqchar));
 
 	viewlist[0].buffer = buffer;
 	viewlist[0].offset = 0;
@@ -105,9 +108,9 @@ static size_w calc_view_base(size_w offset, size_w length)
 static bool read_data(void *file, seqchar *buffer, size_w offset, size_w length)
 {
 	FILE *fp = (FILE *)file;
-	size_t bytes = length * sizeof(seqchar);
+	size_t bytes = (size_t)length * sizeof(seqchar);
 
-	if(fseek(fp, offset * sizeof(seqchar), SEEK_SET) != 0)
+	if(_fseeki64(fp, (__int64)(offset * sizeof(seqchar)), SEEK_SET) != 0)
 		return false;
 
 	return fread(buffer, 1, bytes, fp) == bytes;
@@ -116,7 +119,7 @@ static bool read_data(void *file, seqchar *buffer, size_w offset, size_w length)
 bool sequence::buffer_control::init_file(TCHAR *filename, bool read_only)
 {
 	FILE *file;
-	long file_length;
+	__int64 file_length;
 
 	clear();
 	readonly = read_only;
@@ -134,13 +137,13 @@ bool sequence::buffer_control::init_file(TCHAR *filename, bool read_only)
 	if(file == 0)
 		return false;
 
-	if(fseek(file, 0, SEEK_END) != 0)
+	if(_fseeki64(file, 0, SEEK_END) != 0)
 	{
 		fclose(file);
 		return false;
 	}
 
-	file_length = ftell(file);
+	file_length = _ftelli64(file);
 
 	if(file_length < 0)
 	{
@@ -148,7 +151,7 @@ bool sequence::buffer_control::init_file(TCHAR *filename, bool read_only)
 		return false;
 	}
 
-	length = file_length / sizeof(seqchar);
+	length = (size_w)(file_length / sizeof(seqchar));
 	maxsize = length;
 	own_memory = true;
 	fp = file;
@@ -174,7 +177,7 @@ bool sequence::buffer_control::append(const seqchar *source, size_t len, size_t 
 		return false;
 
 	if(buffer_offset)
-		*buffer_offset = length;
+		*buffer_offset = (size_t)length;
 
 	memcpy(buffer + length, source, len * sizeof(seqchar));
 	length += len;
@@ -281,7 +284,10 @@ bool sequence::buffer_control::alloc_line_pages(size_w size)
 	if(line_page_count == 0)
 		return true;
 
-	if((line_pages = new line_page[line_page_count]) == 0)
+	if(line_page_count > (size_w)(size_t)-1)
+		return false;
+
+	if((line_pages = new line_page[(size_t)line_page_count]) == 0)
 	{
 		line_page_count = 0;
 		return false;
@@ -317,7 +323,7 @@ sequence::buffer_control* sequence::alloc_buffer(size_t maxsize)
 	}
 
 	bc->set_line_scan_mode(line_mode);
-	bc->id = buffer_list.size();		// assign the id
+	bc->id = (int)buffer_list.size();		// assign the id
 	buffer_list.push_back(bc);
 
 	return bc;

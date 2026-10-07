@@ -30,7 +30,7 @@ extern HWND g_hwndSearchBar;
 
 HWND g_hwndFindPane[MAX_FIND_PANES];
 
-BOOL CALLBACK FindHexDlg(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
+INT_PTR CALLBACK FindHexDlg(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
 	switch(msg)
 	{
@@ -135,7 +135,7 @@ void AddSearchTabs(HWND hwnd)
 //	ShowWindow(g_hwndFindPane[0], SW_SHOW);
 }
 
-BOOL CALLBACK SearchDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
+INT_PTR CALLBACK SearchDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
 	NMHDR *nmhdr;
 	static BOOL fMouseDown = FALSE;

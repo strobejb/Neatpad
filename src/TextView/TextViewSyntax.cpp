@@ -131,6 +131,16 @@ void xSetStyle(ATTR *attr, ULONG nPos, ULONG nLen, COLORREF fg, COLORREF bg, int
 	}
 }
 
+static ULONG TextOffset(TCHAR *base, TCHAR *ptr)
+{
+	return (ULONG)(ptr - base);
+}
+
+static ULONG TextLength(TCHAR *first, TCHAR *last)
+{
+	return (ULONG)(last - first);
+}
+
 typedef struct
 {
 	TCHAR firstchar[256];
@@ -154,33 +164,33 @@ int TextView::SyntaxColour(TCHAR *szText, ULONG nTextLen, ATTR *attr)
 		if(isdigit(tok[0]))
 		{
 			//xSetStyle(attr, ptr1 - szText, ptr2-ptr1, RGB(200,0,0), RGB(255,255,255), 0);
-			xSetStyle(attr, ptr1 - szText, ptr2-ptr1, RGB(255,80,80), RGB(255,255,255), 0);
+			xSetStyle(attr, TextOffset(szText, ptr1), TextLength(ptr1, ptr2), RGB(255,80,80), RGB(255,255,255), 0);
 		}
 		else if(memcmp(tok, _T("if"), 2) == 0 || 
 			memcmp(tok, _T("for"), 3) == 0)
 		{
 			//xSetStyle(attr, ptr1 - szText, ptr2-ptr1, RGB(0,0,128), RGB(255,255,255), 1);
-			xSetStyle(attr, ptr1 - szText, ptr2-ptr1, RGB(240,240,240), RGB(255,255,255), 1);
+			xSetStyle(attr, TextOffset(szText, ptr1), TextLength(ptr1, ptr2), RGB(240,240,240), RGB(255,255,255), 1);
 		}
 		else if(tok[0] == '\"' || tok[0] == '<' || tok[0] == '\'')
 		{
 			//xSetStyle(attr, ptr1 - szText, ptr2-ptr1, RGB(128,0,128), RGB(255,255,255));
-			xSetStyle(attr, ptr1 - szText, ptr2-ptr1, RGB(200,100,200), RGB(255,255,255));
+			xSetStyle(attr, TextOffset(szText, ptr1), TextLength(ptr1, ptr2), RGB(200,100,200), RGB(255,255,255));
 		}
 		else if(tok[0] == '#')//lstrcmp(tok, _T("#include")) == 0)
 		{
 			//SetStyle(attr, ptr1 - szText, ptr2 - ptr1, RGB(255,255,0), RGB(255,0,0));
 			//xSetStyle(attr, ptr1 - szText, ptr2-ptr1, RGB(65,102,190), RGB(255,255,255));
-			xSetStyle(attr, ptr1 - szText, ptr2-ptr1, RGB(100,150,200), RGB(255,255,255));
+			xSetStyle(attr, TextOffset(szText, ptr1), TextLength(ptr1, ptr2), RGB(100,150,200), RGB(255,255,255));
 		}		
 		else if(lstrcmp(tok, _T("ULONG")) == 0)
 		{
-			xSetStyle(attr, ptr1 - szText, ptr2 - ptr1, RGB(100,200,255), RGB(255,255,255));
+			xSetStyle(attr, TextOffset(szText, ptr1), TextLength(ptr1, ptr2), RGB(100,200,255), RGB(255,255,255));
 		}
 		else if(lstrcmp(tok, _T("//")) == 0)
 		{
 			//xSetStyle(attr, ptr1 - szText, nTextLen - (ptr1-szText), RGB(128,90,20), RGB(255,255,255));
-			xSetStyle(attr, ptr1 - szText, nTextLen - (ptr1-szText), RGB(128,110,90), RGB(255,255,255));
+			xSetStyle(attr, TextOffset(szText, ptr1), (ULONG)(nTextLen - (ptr1-szText)), RGB(128,110,90), RGB(255,255,255));
 			break;
 		}
 		else

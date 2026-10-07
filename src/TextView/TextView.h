@@ -173,10 +173,10 @@ typedef struct
 	SendMessage((hwndTV), TXM_SETLINEIMAGE, (WPARAM)(ULONG)(nLineNo), (LPARAM)(ULONG)nImageIdx)
 
 #define TextView_GetFormat(hwndTV) \
-	SendMessage((hwndTV), TXM_GETFORMAT, 0, 0)
+	((UINT)SendMessage((hwndTV), TXM_GETFORMAT, 0, 0))
 
 #define TextView_GetLineFormat(hwndTV) \
-	SendMessage((hwndTV), TXM_GETLINEFORMAT, 0, 0)
+	((UINT)SendMessage((hwndTV), TXM_GETLINEFORMAT, 0, 0))
 
 #define TextView_Undo(hwndTV) \
 	SendMessage((hwndTV), TXM_UNDO, 0, 0)
@@ -185,34 +185,34 @@ typedef struct
 	SendMessage((hwndTV), TXM_REDO, 0, 0)
 
 #define TextView_CanUndo(hwndTV) \
-	SendMessage((hwndTV), TXM_CANUNDO, 0, 0)
+	((BOOL)SendMessage((hwndTV), TXM_CANUNDO, 0, 0))
 
 #define TextView_CanRedo(hwndTV) \
-	SendMessage((hwndTV), TXM_CANREDO, 0, 0)
+	((BOOL)SendMessage((hwndTV), TXM_CANREDO, 0, 0))
 
 #define TextView_GetSelSize(hwndTV) \
-	SendMessage((hwndTV), TXM_GETSELSIZE, 0, 0)
+	((UINT_PTR)SendMessage((hwndTV), TXM_GETSELSIZE, 0, 0))
 
 #define TextView_SelectAll(hwndTV) \
 	SendMessage((hwndTV), TXM_SETSELALL, 0, 0)
 
 #define TextView_GetCurPos(hwndTV) \
-	SendMessage((hwndTV), TXM_GETCURPOS, 0, 0)
+	((UINT_PTR)SendMessage((hwndTV), TXM_GETCURPOS, 0, 0))
 
 #define TextView_GetCurLine(hwndTV) \
-	SendMessage((hwndTV), TXM_GETCURLINE, 0, 0)
+	((UINT_PTR)SendMessage((hwndTV), TXM_GETCURLINE, 0, 0))
 
 #define TextView_GetCurLineKnown(hwndTV) \
 	SendMessage((hwndTV), TXM_GETCURLINEKNOWN, 0, 0)
 
 #define TextView_GetCurCol(hwndTV) \
-	SendMessage((hwndTV), TXM_GETCURCOL, 0, 0)
+	((UINT_PTR)SendMessage((hwndTV), TXM_GETCURCOL, 0, 0))
 
 #define TextView_SetEditMode(hwndTV, nEditMode) \
-	SendMessage((hwndTV), TXM_SETEDITMODE, (WPARAM)(nEditMode), 0)
+	((UINT)SendMessage((hwndTV), TXM_SETEDITMODE, (WPARAM)(nEditMode), 0))
 
 #define TextView_GetEditMode(hwndTV) \
-	SendMessage((hwndTV), TXM_GETEDITMODE, 0, 0)
+	((UINT)SendMessage((hwndTV), TXM_GETEDITMODE, 0, 0))
 
 #define TextView_SetContextMenu(hwndTV, hPopupMenu) \
 	SendMessage((hwndTV), TXM_SETCONTEXTMENU, (WPARAM)(hPopupMenu), 0)

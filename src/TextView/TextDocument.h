@@ -32,16 +32,16 @@ struct TextCoord
 	}
 
 	// Exact byte position in the document payload, excluding any BOM/header.
-	ULONG byte_anchor;
+	size_w byte_anchor;
 
 	// Exact byte bounds for the containing physical line, in the same coordinate
 	// space as byte_anchor. These avoid rediscovering the local line span when
 	// moving/rendering around the anchor.
-	ULONG line_begin;
-	ULONG line_next;
+	size_w line_begin;
+	size_w line_next;
 
 	// Exact UTF-16 code-unit offset from line_begin to byte_anchor.
-	ULONG line_offset_chars;
+	size_w line_offset_chars; 
 };
 
 struct TextRange
@@ -54,9 +54,9 @@ struct TextRange
 // bytes [offset, offset + erased) were replaced by [offset, offset + inserted).
 struct TextChange
 {
-	ULONG offset;
-	ULONG erased;
-	ULONG inserted;
+	size_w offset;
+	size_w erased;
+	size_w inserted;
 };
 
 // Byte-backed reader which decodes UTF-16 text for callers.
@@ -79,12 +79,12 @@ public:
 private:
 	friend class TextDocument;
 
-	TextReader(ULONG off, ULONG len, TextDocument *td);
+	TextReader(size_w off, size_w len, TextDocument *td);
 
 	TextDocument *text_doc;
 
-	ULONG off_bytes;
-	ULONG len_bytes;
+	size_w off_bytes;
+	size_w len_bytes;
 };
 
 class TextDocument
@@ -119,16 +119,16 @@ public:
 	// Edits by coordinate. A range is [from, to) in either order; each returns the bytes
 	// it inserted (insert/replace) or erased (erase), and can report the bytes it changed
 	// so callers can move their TextCoords across it.
-	ULONG	insert_text  (const TextCoord *at, TCHAR *text, ULONG length, TextChange *change);
-	ULONG	replace_text (const TextCoord *from, const TextCoord *to, TCHAR *text, ULONG length, TextChange *change);
-	ULONG	erase_text   (const TextCoord *from, const TextCoord *to, TextChange *change);
+	size_w	insert_text  (const TextCoord *at, TCHAR *text, ULONG length, TextChange *change);
+	size_w	replace_text (const TextCoord *from, const TextCoord *to, TCHAR *text, ULONG length, TextChange *change);
+	size_w	erase_text   (const TextCoord *from, const TextCoord *to, TextChange *change);
 
 	//
 	//	Coordinates
 	//
-	bool  coord_from_byte_anchor(ULONG byte_anchor, TextCoord *coord);
+	bool  coord_from_byte_anchor(size_w byte_anchor, TextCoord *coord);
 	bool  coord_from_document_end(TextCoord *coord);
-	bool  coord_from_line_pos(TextCoord *line, ULONG line_offset_chars, TextCoord *coord);
+	bool  coord_from_line_pos(TextCoord *line, size_w line_offset_chars, TextCoord *coord);
 	bool  previous_line_from_coord(TextCoord *coord, ULONG num_lines, TextCoord *line);
 	bool  next_line_from_coord(TextCoord *coord, ULONG num_lines, TextCoord *line);
 
@@ -137,11 +137,11 @@ public:
 	bool  coord_after_change(TextCoord *coord, const TextChange *change);
 
 	// Line numbers are a query, never stored in a coordinate. Returns an estimate when *exact is false.
-	ULONG lineno_from_coord(const TextCoord *coord, bool *exact);
+	size_w lineno_from_coord(const TextCoord *coord, bool *exact);
 
 	// UTF-16 offset of a coordinate from the start of the document. Only fixed-width
 	// encodings can answer without scanning the file; the others return false.
-	bool  charoffset_from_coord(const TextCoord *coord, ULONG *offset_chars);
+	bool  charoffset_from_coord(const TextCoord *coord, size_w *offset_chars);
 
 	// The line break ending a coordinate's line: TXL_CRLF, TXL_LF or TXL_CR, or 0 for a last line without one.
 	ULONG linebreak_from_coord(const TextCoord *line);
@@ -158,25 +158,25 @@ public:
 
 	// Document-wide facts. linecount() may be estimated until linecount_known() is true.
 	TEXT_ENCODING getformat();
-	ULONG linecount();
+	size_w linecount();
 	bool  linecount_known();
 
-	ULONG byte_length();
+	size_w byte_length();
 
 private:
 
 	//
 	//	Line navigation
 	//
-	bool unit_before(ULONG offset_bytes, ULONG *ch, ULONG *size);
-	bool line_bounds_from_offset(ULONG offset_bytes, ULONG *line_begin, ULONG *line_next);
-	void coord_in_line(ULONG line_begin, ULONG line_next, ULONG line_offset_chars, TextCoord *coord);
+	bool unit_before(size_w offset_bytes, ULONG *ch, ULONG *size);
+	bool line_bounds_from_offset(size_w offset_bytes, size_w *line_begin, size_w *line_next);
+	void coord_in_line(size_w line_begin, size_w line_next, size_w line_offset_chars, TextCoord *coord);
 
 	//
 	//	UTF-16 / backing-byte conversion
 	//
-	ULONG count_chars(ULONG offset_bytes, ULONG length_chars);
-	ULONG count_code_units(ULONG offset_bytes, ULONG length_bytes);
+	size_w count_chars(size_w offset_bytes, size_w length_chars);
+	size_w count_code_units(size_w offset_bytes, size_w length_bytes);
 
 	size_t utf16_to_rawdata(TCHAR *utf16str, size_t utf16len, BYTE *rawdata, size_t *rawlen);
 	size_t rawdata_to_utf16(BYTE *rawdata, size_t rawlen, TCHAR *utf16str, size_t *utf16len);
@@ -186,15 +186,15 @@ private:
 	//
 
 	TEXT_ENCODING detect_file_format(int *headersize);
-	ULONG decode_text(ULONG offset_bytes, ULONG lenbytes, TCHAR *buf, ULONG *len);
-	int   decode_char(ULONG offset_bytes, ULONG lenbytes, ULONG *pch32);
+	size_w decode_text(size_w offset_bytes, size_w lenbytes, TCHAR *buf, ULONG *len);
+	size_w decode_char(size_w offset_bytes, size_t lenbytes, ULONG *pch32);
 
 	//
 	//	Raw editing
 	//
 
-	ULONG	insert_raw(ULONG offset_bytes, TCHAR *text, ULONG length);
-	ULONG	replace_raw(ULONG offset_bytes, TCHAR *text, ULONG length, ULONG erase_bytes);
+	size_w	insert_raw(size_w offset_bytes, TCHAR *text, ULONG length);
+	size_w	replace_raw(size_w offset_bytes, TCHAR *text, ULONG length, size_w erase_bytes);
 	void	event_change(TextChange *change);
 
 

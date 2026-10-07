@@ -59,8 +59,8 @@ ULONG TextView::EnterText(TCHAR *szText, ULONG nLength)
 		if(!fReplaceSelection)
 		{
 			USPCACHE *uspCache = GetUspCache(0, &m_cursorPos);
-			ULONG lineEnd;
-			ULONG endPos;
+			size_w lineEnd;
+			size_w endPos;
 
 			if(uspCache == 0)
 				return 0;

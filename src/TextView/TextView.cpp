@@ -150,7 +150,7 @@ TextView::~TextView()
 	CloseThemeData(m_hTheme);
 }
 
-ULONG TextView::NotifyParent(UINT nNotifyCode, NMHDR *optional)
+LRESULT TextView::NotifyParent(UINT nNotifyCode, NMHDR *optional)
 {
 	UINT  nCtrlId = GetWindowLong(m_hWnd, GWL_ID);
 	NMHDR nmhdr   = { m_hWnd, nCtrlId, nNotifyCode };
@@ -330,7 +330,7 @@ static ULONG LineColumn(TextCoord *line, TextCoord *pos, ULONG lineLen)
 		return 0;
 
 	if(pos->line_begin == line->line_begin)
-		return min(pos->line_offset_chars, lineLen);
+		return (ULONG)min(pos->line_offset_chars, (size_w)lineLen);
 
 	return lineLen;
 }
@@ -351,7 +351,7 @@ void TextView::SelectionColumns(TextCoord *line, ULONG lineLen, ULONG *start, UL
 //
 //	Return the size of the selection in document bytes
 //
-ULONG TextView::SelectionSize()
+size_w TextView::SelectionSize()
 {
 	TextCoord start, end;
 
@@ -372,9 +372,9 @@ ULONG TextView::SelectAll()
 //
 //	Public memberfunction 
 //
-LONG WINAPI TextView::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
+LRESULT WINAPI TextView::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 {
-	ULONG offset_chars;
+	size_w offset_chars;
 	bool  exact;
 
 	switch(msg)
@@ -395,7 +395,7 @@ LONG WINAPI TextView::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 		return OnSetFont((HFONT)wParam);
 
 	case WM_SIZE:
-		return OnSize(wParam, LOWORD(lParam), HIWORD(lParam));
+		return OnSize((UINT)wParam, LOWORD(lParam), HIWORD(lParam));
 
 	case WM_VSCROLL:
 		return OnVScroll(LOWORD(wParam), HIWORD(wParam));
@@ -423,19 +423,19 @@ LONG WINAPI TextView::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 		return DLGC_WANTALLKEYS;
 
 	case WM_LBUTTONDOWN:
-		return OnLButtonDown(wParam, (short)LOWORD(lParam), (short)HIWORD(lParam));
+		return OnLButtonDown((UINT)wParam, (short)LOWORD(lParam), (short)HIWORD(lParam));
 
 	case WM_LBUTTONUP:
-		return OnLButtonUp(wParam, (short)LOWORD(lParam), (short)HIWORD(lParam));
+		return OnLButtonUp((UINT)wParam, (short)LOWORD(lParam), (short)HIWORD(lParam));
 
 	case WM_LBUTTONDBLCLK:
-		return OnLButtonDblClick(wParam, (short)LOWORD(lParam), (short)HIWORD(lParam));
+		return OnLButtonDblClick((UINT)wParam, (short)LOWORD(lParam), (short)HIWORD(lParam));
 
 	case WM_MOUSEMOVE:
-		return OnMouseMove(wParam, (short)LOWORD(lParam), (short)HIWORD(lParam));
+		return OnMouseMove((UINT)wParam, (short)LOWORD(lParam), (short)HIWORD(lParam));
 
 	case WM_KEYDOWN:
-		return OnKeyDown(wParam, lParam);
+		return OnKeyDown((UINT)wParam, (UINT)lParam);
 
 	case WM_UNDO: case TXM_UNDO: case EM_UNDO:
 		return Undo();
@@ -450,7 +450,7 @@ LONG WINAPI TextView::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 		return CanRedo();
 
 	case WM_CHAR:
-		return OnChar(wParam, lParam);
+		return OnChar((UINT)wParam, (UINT)lParam);
 
 	case WM_SETCURSOR:
 		
@@ -475,7 +475,7 @@ LONG WINAPI TextView::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 		return 0;
 
 	case WM_TIMER:
-		return OnTimer(wParam);
+		return OnTimer((UINT_PTR)wParam);
 
 	//
 	case TXM_OPENFILE:
@@ -485,7 +485,7 @@ LONG WINAPI TextView::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 		return ClearFile();
 
 	case TXM_SETLINESPACING:
-		return SetLineSpacing(wParam, lParam);
+		return SetLineSpacing((int)wParam, (int)lParam);
 
 	case TXM_ADDFONT:
 		return AddFont((HFONT)wParam);
@@ -497,22 +497,22 @@ LONG WINAPI TextView::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 		return ClearFontFallbacks((int)wParam);
 
 	case TXM_SETCOLOR:
-		return SetColour(wParam, lParam);
+		return SetColour((UINT)wParam, (COLORREF)lParam);
 
 	case TXM_SETSTYLE:
-		return SetStyle(wParam, lParam);
+		return SetStyle((ULONG)wParam, (ULONG)lParam);
 
 	case TXM_SETCARETWIDTH:
-		return SetCaretWidth(wParam);
+		return SetCaretWidth((int)wParam);
 
 	case TXM_SETIMAGELIST:
 		return SetImageList((HIMAGELIST)wParam);
 
 	case TXM_SETLONGLINE:
-		return SetLongLine(lParam);
+		return SetLongLine((int)lParam);
 
 	case TXM_SETLINEIMAGE:
-		return SetLineImage(wParam, lParam);
+		return SetLineImage((ULONG)wParam, (ULONG)lParam);
 
 	case TXM_GETFORMAT:
 		return m_pTextDoc->getformat();
@@ -521,20 +521,20 @@ LONG WINAPI TextView::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 		return m_nCRLFMode;
 
 	case TXM_GETSELSIZE:
-		return SelectionSize();
+		return (LRESULT)SelectionSize();
 
 	case TXM_SETSELALL:
 		return SelectAll();
 
 	// only cheap for fixed-width encodings: -1 for the others
 	case TXM_GETCURPOS:
-		return m_pTextDoc->charoffset_from_coord(&m_cursorPos, &offset_chars) ? offset_chars : -1;
+		return m_pTextDoc->charoffset_from_coord(&m_cursorPos, &offset_chars) ? (LRESULT)offset_chars : -1;
 
 	case TXM_GETCURLINE:
-		return m_pTextDoc->lineno_from_coord(&m_cursorPos, &exact);
+		return (LRESULT)m_pTextDoc->lineno_from_coord(&m_cursorPos, &exact);
 
 	case TXM_GETCURCOL:
-		return m_cursorPos.line_offset_chars;
+		return (LRESULT)m_cursorPos.line_offset_chars;
 
 	case TXM_GETEDITMODE:
 		return m_nEditMode;
@@ -544,9 +544,11 @@ LONG WINAPI TextView::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 		return exact;
 
 	case TXM_SETEDITMODE:
-		lParam		= m_nEditMode;
-		m_nEditMode = wParam;
-		return lParam;
+	{
+		UINT oldMode = m_nEditMode;
+		m_nEditMode = (UINT)wParam;
+		return oldMode;
+	}
 
 	case TXM_SETCONTEXTMENU:
 		m_hUserMenu = (HMENU)wParam;
@@ -575,7 +577,7 @@ LRESULT WINAPI TextViewWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
 		if((ptv = new TextView(hwnd)) == 0)
 			return FALSE;
 
-		SetWindowLongPtr(hwnd, 0, (LONG)ptv);
+		SetWindowLongPtr(hwnd, 0, (LONG_PTR)ptv);
 		return TRUE;
 
 	// Last message received by any window - delete the TextView object

@@ -10,6 +10,7 @@
 #define WIN32_LEAN_AND_MEAN
 
 #include <windows.h>
+#include <limits.h>
 #include <tchar.h>
 #include "TextView.h"
 #include "TextViewInternal.h"
@@ -84,7 +85,7 @@ USPCACHE *TextView::GetUspCache(HDC hdc, TextCoord *coord)
 	// get the text for the entire line (up to the layout limit) and apply style
 	// attributes. A line never decodes to more UTF-16 units than it has bytes.
 	//
-	buflen = min(coord->line_next - coord->line_begin, (ULONG)LINE_LAYOUT_LIMIT);
+	buflen = (ULONG)min(coord->line_next - coord->line_begin, (size_w)LINE_LAYOUT_LIMIT);
 	buff   = new TCHAR[buflen + 1];
 	attr   = new ATTR[buflen + 1];
 
@@ -357,7 +358,7 @@ void TextView::UpdateMarginWidth()
 	HANDLE	hOldFont = SelectObject(hdc, m_uspFontList[0].hFont);
 
 	TCHAR	buf[32];
-	int len = wsprintf(buf, LINENO_FMT, m_nLineCount);
+	int len = wsprintf(buf, LINENO_FMT, (unsigned __int64)m_nLineCount);
 
 	m_nLinenoWidth = TextWidth(hdc, buf, len);
 
@@ -372,7 +373,7 @@ int TextView::PaintMargin(HDC hdc, TextCoord *line, int xpos, int ypos)
 {
 	RECT	rect = { xpos, ypos, xpos + LeftMarginWidth(), ypos + m_nLineHeight };
 	bool	exact = false;
-	ULONG	nLineNo = line ? m_pTextDoc->lineno_from_coord(line, &exact) : 0;
+	size_w	nLineNo = line ? m_pTextDoc->lineno_from_coord(line, &exact) : 0;
 
 	int		imgWidth;
 	int		imgHeight;
@@ -397,7 +398,7 @@ int TextView::PaintMargin(HDC hdc, TextCoord *line, int xpos, int ypos)
 	{
 		HANDLE hOldFont = SelectObject(hdc, m_uspFontList[0].hFont);
 		
-		int  len   = wsprintf(ach, LINENO_FMT, nLineNo + 1);
+		int  len   = wsprintf(ach, LINENO_FMT, (unsigned __int64)(nLineNo + 1));
 		int	 width = TextWidth(hdc, ach, len);
 
 		// only draw line number if in-range and exact
@@ -449,7 +450,7 @@ int TextView::PaintMargin(HDC hdc, TextCoord *line, int xpos, int ypos)
 	//
 	//	Retrieve information about this specific line
 	//
-	LINEINFO *linfo = exact ? GetLineInfo(nLineNo) : 0;
+	LINEINFO *linfo = exact && nLineNo <= (size_w)ULONG_MAX ? GetLineInfo((ULONG)nLineNo) : 0;
 
 	if(m_hImageList && linfo && nLineNo < m_nLineCount)
 	{
@@ -878,5 +879,5 @@ LONG TextView::OnNcPaint(HRGN hrgnUpdate)
 		ReleaseDC(m_hWnd, hdc);
 	}
 
-	return DefWindowProc(m_hWnd, WM_NCPAINT, (WPARAM)hrgnClip, 0);	
+	return (LONG)DefWindowProc(m_hWnd, WM_NCPAINT, (WPARAM)hrgnClip, 0);	
 }

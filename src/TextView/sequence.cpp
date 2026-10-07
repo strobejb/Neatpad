@@ -7,6 +7,7 @@
 	www.catch22.net
 */
 #include <windows.h>
+#include <limits.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include "sequence.h"
@@ -143,7 +144,7 @@ bool sequence::open(TCHAR *filename, bool readonly)
 		return false;
 	}
 
-	bc->id = buffer_list.size();
+	bc->id = (int)buffer_list.size();
 	buffer_list.push_back(bc);
 
 	span *sptr = alloc_span(0, bc->length, bc->id, tail, head);
@@ -192,7 +193,8 @@ void sequence::debug1 ()
 	for(sptr = head; sptr; sptr = sptr->next)
 	{
 		char *buffer = (char *)buffer_list[sptr->buffer]->getptr(0, buffer_list[sptr->buffer]->length);
-		printf("%.*s", sptr->length, buffer + sptr->offset);
+		int length = (int)min(sptr->length, (size_w)INT_MAX);
+		printf("%.*s", length, buffer + sptr->offset);
 	}
 
 	printf("\n");
@@ -206,10 +208,11 @@ void sequence::debug2 ()
 	for(sptr = head; sptr; sptr = sptr->next)
 	{
 		char *buffer = (char *)buffer_list[sptr->buffer]->getptr(0, buffer_list[sptr->buffer]->length);
+		int length = (int)min(sptr->length, (size_w)INT_MAX);
 		
-		printf("[%d] [%4d %4d] %.*s\n", sptr->id, 
-			sptr->offset, sptr->length,
-			sptr->length, buffer + sptr->offset);
+		printf("[%d] [%4I64u %4I64u] %.*s\n", sptr->id, 
+			(unsigned __int64)sptr->offset, (unsigned __int64)sptr->length,
+			length, buffer + sptr->offset);
 	}
 
 	printf("-------------------------\n");
@@ -217,10 +220,11 @@ void sequence::debug2 ()
 	for(sptr = tail; sptr; sptr = sptr->prev)
 	{
 		char *buffer = (char *)buffer_list[sptr->buffer]->getptr(0, buffer_list[sptr->buffer]->length);
+		int length = (int)min(sptr->length, (size_w)INT_MAX);
 		
-		printf("[%d] [%4d %4d] %.*s\n", sptr->id, 
-			sptr->offset, sptr->length,
-			sptr->length, buffer + sptr->offset);
+		printf("[%d] [%4I64u %4I64u] %.*s\n", sptr->id, 
+			(unsigned __int64)sptr->offset, (unsigned __int64)sptr->length,
+			length, buffer + sptr->offset);
 	}
 
 	printf("**********************\n");
@@ -228,10 +232,11 @@ void sequence::debug2 ()
 	for(sptr = head; sptr; sptr = sptr->next)
 	{
 		char *buffer = (char *)buffer_list[sptr->buffer]->getptr(0, buffer_list[sptr->buffer]->length);
-		printf("%.*s", sptr->length, buffer + sptr->offset);
+		int length = (int)min(sptr->length, (size_w)INT_MAX);
+		printf("%.*s", length, buffer + sptr->offset);
 	}
 
-	printf("\nsequence length = %d chars\n", sequence_length);
+	printf("\nsequence length = %I64u chars\n", (unsigned __int64)sequence_length);
 	printf("\n\n");
 }
 
@@ -612,6 +617,9 @@ bool sequence::insert_worker (size_w index, const seqchar *buf, size_w length, a
 	if(index > sequence_length || length == 0)
 		return false;
 
+	if(length > (size_w)(size_t)-1)
+		return false;
+
 	// find the span that the insertion starts at
 	if((sptr = spanfromindex(index, &spanindex)) == 0)
 		return false;
@@ -619,7 +627,7 @@ bool sequence::insert_worker (size_w index, const seqchar *buf, size_w length, a
 	// ensure there is room in the modify buffer...
 	// allocate a new buffer if necessary and then invalidate span cache
 	// to prevent a span using two buffers of data
-	if(!import_buffer(buf, length, &modbuf_offset))
+	if(!import_buffer(buf, (size_t)length, &modbuf_offset))
 		return false;
 
 	debug("Inserting: idx=%d len=%d %.*s\n", index, length, length, buf);
@@ -954,7 +962,7 @@ bool sequence::erase (size_w index)
 //
 bool sequence::replace(size_w index, const seqchar *buf, size_w length, size_w erase_length)
 {
-	size_t remlen = 0;
+	size_w remlen = 0;
 
 	debug("Replacing: idx=%d len=%d %.*s\n", index, length, length, buf);
 
@@ -1110,7 +1118,7 @@ size_w sequence::render(size_w index, seqchar *dest, size_w length) const
 			if(source == 0)
 				return total;
 
-			memcpy(dest, source, partlen * sizeof(seqchar));
+			memcpy(dest, source, (size_t)partlen * sizeof(seqchar));
 		
 			dest		+= partlen;
 			spanoffset	+= partlen;

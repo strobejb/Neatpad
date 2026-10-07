@@ -128,7 +128,7 @@ bool write_large_pattern_file(const char *line, size_t line_length, size_w line_
     for(size_w i = 0; i < first_length; i++)
         block[i] = line[i % line_length];
 
-    ok = WriteFile(hFile, block, first_length, &written, 0) && written == first_length;
+    ok = WriteFile(hFile, block, static_cast<DWORD>(first_length), &written, 0) && written == first_length;
 
     if(ok && tail_offset > first_length)
     {
@@ -141,7 +141,7 @@ bool write_large_pattern_file(const char *line, size_t line_length, size_w line_
         for(size_w i = 0; i < tail_length; i++)
             block[i] = line[(tail_offset + i) % line_length];
 
-        ok = WriteFile(hFile, block, tail_length, &written, 0) && written == tail_length;
+        ok = WriteFile(hFile, block, static_cast<DWORD>(tail_length), &written, 0) && written == tail_length;
     }
 
     CloseHandle(hFile);
@@ -356,7 +356,7 @@ void expect_doc_line_at(TextDocument &doc, ULONG offset, ULONG expected_line, UL
 }
 
 // Edits at document byte offsets
-ULONG doc_insert(TextDocument &doc, ULONG offset, TCHAR *text, ULONG length, TextChange *change = 0)
+size_w doc_insert(TextDocument &doc, size_w offset, TCHAR *text, ULONG length, TextChange *change = 0)
 {
     TextCoord at;
 
@@ -364,7 +364,7 @@ ULONG doc_insert(TextDocument &doc, ULONG offset, TCHAR *text, ULONG length, Tex
     return doc.insert_text(&at, text, length, change);
 }
 
-ULONG doc_erase(TextDocument &doc, ULONG from, ULONG to, TextChange *change = 0)
+size_w doc_erase(TextDocument &doc, size_w from, size_w to, TextChange *change = 0)
 {
     TextCoord start;
     TextCoord end;
@@ -374,7 +374,7 @@ ULONG doc_erase(TextDocument &doc, ULONG from, ULONG to, TextChange *change = 0)
     return doc.erase_text(&start, &end, change);
 }
 
-ULONG doc_replace(TextDocument &doc, ULONG from, ULONG to, TCHAR *text, ULONG length, TextChange *change = 0)
+size_w doc_replace(TextDocument &doc, size_w from, size_w to, TCHAR *text, ULONG length, TextChange *change = 0)
 {
     TextCoord start;
     TextCoord end;
@@ -386,11 +386,11 @@ ULONG doc_replace(TextDocument &doc, ULONG from, ULONG to, TCHAR *text, ULONG le
 
 // A sequence offset as a document byte offset. The sequence's first line
 // starts at 0, before the BOM; the document's starts after it.
-ULONG doc_offset(TextDocument &doc, size_w sequence_offset)
+size_w doc_offset(TextDocument &doc, size_w sequence_offset)
 {
-    ULONG header = TextDocumentLineIndexProbe::header(doc);
+    size_w header = TextDocumentLineIndexProbe::header(doc);
 
-    return sequence_offset <= header ? 0 : static_cast<ULONG>(sequence_offset - header);
+    return sequence_offset <= header ? 0 : sequence_offset - header;
 }
 
 // The line found by walking the document agrees with the sequence's line index
@@ -1509,7 +1509,7 @@ void textdocument_lazy_eof_line_number_maps_back_to_same_line()
     TCHAR path[MAX_PATH];
     const size_t line_count = 200000;
     TextCoord eof;
-    ULONG eof_line;
+    size_w eof_line;
     size_w line_offset = 0;
     bool exact = true;
 
@@ -1538,7 +1538,7 @@ void textdocument_lazy_eof_without_final_crlf_maps_to_final_line()
     const size_t line_count = (MEM_BLOCK_SIZE * 8) / line_length;
     const size_t file_length = line_length * (line_count - 1) + last_line_length;
     char *data = new char[file_length];
-    ULONG last_begin;
+    size_w last_begin;
     TextCoord eof;
     TextCoord coord;
     TextCoord prev;
@@ -1988,7 +1988,7 @@ void textdocument_charoffset_only_for_fixed_width()
         TextDocument doc;
         TCHAR path[MAX_PATH];
         TextCoord coord;
-        ULONG offset_chars = 0;
+        size_w offset_chars = 0;
         bool utf16 = encodings[i] == DOC_UTF16LE_BOM || encodings[i] == DOC_UTF16BE_BOM;
 
         CHECK(write_textdocument_file("abc\r\nxyz", encodings[i], path));
@@ -2368,7 +2368,7 @@ void textdocument_utf8_lf_lazy_lookup_returns_bounded_line()
     char *data = new char[file_length];
     TCHAR buf[128];
     size_w line_offset = 0;
-    ULONG line_begin;
+    size_w line_begin;
     ULONG chars;
     TextCoord coord;
     TextCoord prev;

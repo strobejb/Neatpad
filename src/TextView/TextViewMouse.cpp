@@ -88,7 +88,7 @@ LONG TextView::OnContextMenu(HWND hwndParam, int x, int y)
 	}
 	//PostMessage(m_hWnd, WM_COMMAND, MAKEWPARAM(uCmd, 0), (LPARAM)m_hWnd);
 	
-	return DefWindowProc(m_hWnd, WM_CONTEXTMENU, (WPARAM)hwndParam, MAKELONG(x,y));
+	return (LONG)DefWindowProc(m_hWnd, WM_CONTEXTMENU, (WPARAM)hwndParam, MAKELONG(x,y));
 }
 
 
@@ -386,7 +386,7 @@ LONG TextView::OnMouseMove(UINT nFlags, int mx, int my)
 //
 //	Used to create regular scrolling 
 //
-LONG TextView::OnTimer(UINT nTimerId)
+LONG TextView::OnTimer(UINT_PTR nTimerId)
 {
 	int	  dx = 0, dy = 0;	// scrolling vectors
 	RECT  rect;
@@ -569,8 +569,8 @@ LONG TextView::InvalidateLine(TextCoord *line, bool forceAnalysis)
 //
 LONG TextView::InvalidateRange(TextCoord *startCoord, TextCoord *finishCoord)
 {
-	ULONG start  = min(startCoord->byte_anchor, finishCoord->byte_anchor);
-	ULONG finish = max(startCoord->byte_anchor, finishCoord->byte_anchor);
+	size_w start  = min(startCoord->byte_anchor, finishCoord->byte_anchor);
+	size_w finish = max(startCoord->byte_anchor, finishCoord->byte_anchor);
 
 	ULONG row;
 	RECT  rect;
@@ -590,8 +590,8 @@ LONG TextView::InvalidateRange(TextCoord *startCoord, TextCoord *finishCoord)
 	// all output is double-buffered now, and this method is much simpler
 	for(row = 0; row < (ULONG)m_nWindowLines; row++)
 	{
-		ULONG lineStart = lineCoord.line_begin;
-		ULONG lineEnd = lineCoord.line_next;
+		size_w lineStart = lineCoord.line_begin;
+		size_w lineEnd = lineCoord.line_next;
 
 		if(lineEnd >= start && lineStart <= finish)
 		{
@@ -681,7 +681,7 @@ VOID TextView::UpdateCaretXY(int xpos, TextCoord *coord)
 VOID TextView::UpdateCaretCoord(TextCoord *coord, BOOL fTrailing, int *outx)
 {
 	int			xpos = 0;
-	ULONG		off_chars;
+	size_w		off_chars;
 	USPDATA	  * uspData;
 
 	if(coord)
@@ -694,12 +694,12 @@ VOID TextView::UpdateCaretCoord(TextCoord *coord, BOOL fTrailing, int *outx)
 		{	
 			// Provisional lazy offsets can disagree slightly; keep the caret
 			// position relative to the analyzed line instead of wrapping.
-			off_chars = min(off_chars, (ULONG)uspData->stringLen);
+			off_chars = min(off_chars, (size_w)uspData->stringLen);
 			
 			if(fTrailing && off_chars > 0)
-				UspOffsetToX(uspData, off_chars-1, TRUE, &xpos);
+				UspOffsetToX(uspData, (int)(off_chars - 1), TRUE, &xpos);
 			else
-				UspOffsetToX(uspData, off_chars, FALSE, &xpos);
+				UspOffsetToX(uspData, (int)off_chars, FALSE, &xpos);
 
 			// update caret position
 			UpdateCaretXY(xpos, coord);

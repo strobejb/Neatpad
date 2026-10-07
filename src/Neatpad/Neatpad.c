@@ -100,13 +100,13 @@ void UpdateStatusBarCursorInfo(void)
 {
 	if(TextView_GetCurLineKnown(g_hwndTextView))
 	{
-		SetStatusBarText(g_hwndStatusbar, STATUS_PART_CURSOR, 0, _T(" Ln %d, Col %d"),
+		SetStatusBarText(g_hwndStatusbar, STATUS_PART_CURSOR, 0, _T(" Ln %Iu, Col %Iu"),
 			TextView_GetCurLine(g_hwndTextView) + 1,
 			TextView_GetCurCol(g_hwndTextView) + 1 );
 	}
 	else
 	{
-		SetStatusBarText(g_hwndStatusbar, STATUS_PART_CURSOR, 0, _T(" Ln ???, Col %d"),
+		SetStatusBarText(g_hwndStatusbar, STATUS_PART_CURSOR, 0, _T(" Ln ???, Col %Iu"),
 			TextView_GetCurCol(g_hwndTextView) + 1 );
 	}
 }
@@ -492,9 +492,9 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		EnableMenuCommand((HMENU)wParam, IDM_EDIT_UNDO,		TextView_CanUndo(g_hwndTextView));
 		EnableMenuCommand((HMENU)wParam, IDM_EDIT_REDO,		TextView_CanRedo(g_hwndTextView));
 		EnableMenuCommand((HMENU)wParam, IDM_EDIT_PASTE,	IsClipboardFormatAvailable(CF_TEXT));
-		EnableMenuCommand((HMENU)wParam, IDM_EDIT_COPY,		TextView_GetSelSize(g_hwndTextView));
-		EnableMenuCommand((HMENU)wParam, IDM_EDIT_CUT,		TextView_GetSelSize(g_hwndTextView));
-		EnableMenuCommand((HMENU)wParam, IDM_EDIT_DELETE,	TextView_GetSelSize(g_hwndTextView));
+		EnableMenuCommand((HMENU)wParam, IDM_EDIT_COPY,		TextView_GetSelSize(g_hwndTextView) != 0);
+		EnableMenuCommand((HMENU)wParam, IDM_EDIT_CUT,		TextView_GetSelSize(g_hwndTextView) != 0);
+		EnableMenuCommand((HMENU)wParam, IDM_EDIT_DELETE,	TextView_GetSelSize(g_hwndTextView) != 0);
 		UpdateRecentMenu((HMENU)wParam);
 
 		return 0;

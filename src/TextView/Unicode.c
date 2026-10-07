@@ -11,6 +11,7 @@
 #define WIN32_LEAN_AND_MEAN
 
 #include <windows.h>
+#include <limits.h>
 #include "Unicode.h"
 
 //
@@ -365,8 +366,9 @@ size_t utf16_to_utf8(UTF16 *utf16str, size_t utf16len, UTF8 *utf8str, size_t *ut
 size_t ascii_to_utf16(UTF8 *asciistr, size_t asciilen, UTF16 *utf16str, size_t *utf16len)
 {
 	size_t len = min(*utf16len, asciilen);
+	len = min(len, (size_t)INT_MAX);
 		
-	MultiByteToWideChar(CP_ACP, 0, (CCHAR*)asciistr, len, (WCHAR *)utf16str, len);
+	MultiByteToWideChar(CP_ACP, 0, (CCHAR*)asciistr, (int)len, (WCHAR *)utf16str, (int)len);
 	*utf16len = len;
 	return len;
 }
@@ -387,8 +389,9 @@ size_t ascii_to_utf16(UTF8 *asciistr, size_t asciilen, UTF16 *utf16str, size_t *
 size_t utf16_to_ascii(UTF16 *utf16str, size_t utf16len, UTF8 *asciistr, size_t *asciilen)
 {
 	size_t len = min(utf16len, *asciilen);
+	len = min(len, (size_t)INT_MAX);
 	
-	WideCharToMultiByte(CP_ACP, 0, utf16str, len, asciistr, *asciilen, 0, 0);
+	WideCharToMultiByte(CP_ACP, 0, utf16str, (int)len, asciistr, (int)min(*asciilen, (size_t)INT_MAX), 0, 0);
 	*asciilen = len;
 	return len;
 }

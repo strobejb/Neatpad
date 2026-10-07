@@ -20,6 +20,18 @@ static int	  g_nPrinterWidth	= 0;
 
 int GetPrinterWidth(HDC hdcPrn);
 
+static BOOL SupportsPrintDlgEx()
+{
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable:4996)
+#endif
+	return (GetVersion() & 0xff) >= 5;
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
+}
+
 #if defined(_MSC_VER) && _MSC_VER < 1300
 #pragma comment(lib, "DelayImp.lib")
 #pragma comment(linker, "/DELAYLOAD:Comdlg32.dll")
@@ -27,7 +39,7 @@ int GetPrinterWidth(HDC hdcPrn);
 HDC ShowPrintDlg(HWND hwndParent)
 {
 	// if Windows 2000 and above
-	if((GetVersion() & 0xff) >= 5)
+	if(SupportsPrintDlgEx())
 	{
 		PRINTDLGEX	pdlgx	= { sizeof(pdlgx), hwndParent, g_hDevMode, g_hDevNames };
 		pdlgx.Flags			= PD_RETURNDC | PD_NOPAGENUMS | PD_NOCURRENTPAGE | PD_NOWARNING | PD_HIDEPRINTTOFILE;

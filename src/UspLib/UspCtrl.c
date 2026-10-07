@@ -196,7 +196,7 @@ int CtrlCharWidth(USPFONT *uspFont, HDC hdc, ULONG chValue)
 	int	  mode = USP_CTLCHR_HEX;//ASC;
 	
 	CtrlStr(chValue, mode, str, 16);
-	GetTextExtentPoint32(hdc, str, wcslen(str), &size);
+	GetTextExtentPoint32(hdc, str, (int)wcslen(str), &size);
 
 	return size.cx+uspFont->xborder*2 + uspFont->yborder;
 }
@@ -289,7 +289,7 @@ int PaintCtrlChar(USPFONT *uspFont, HDC hdc, int xpos, int ypos, ULONG chValue, 
 	CtrlStr(chValue, mode, str, 8);
 
 	// get the text dimension (only need width)
-	GetTextExtentPoint32(hdc, str, wcslen(str), &size);
+	GetTextExtentPoint32(hdc, str, (int)wcslen(str), &size);
 
 	// center the control-character "glyph" 
 	xpos += uspFont->yborder/2 + 1;
@@ -317,7 +317,7 @@ int PaintCtrlChar(USPFONT *uspFont, HDC hdc, int xpos, int ypos, ULONG chValue, 
 
 	// finally paint the text
 	SetTextColor(hdc, fg);
-	TextOut(hdc, xpos + uspFont->xborder, ypos, str, wcslen(str));
+	TextOut(hdc, xpos + uspFont->xborder, ypos, str, (int)wcslen(str));
 
 	return 0;
 }

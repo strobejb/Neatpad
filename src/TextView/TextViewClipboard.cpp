@@ -62,7 +62,7 @@ BOOL TextView::OnPaste()
 BOOL TextView::OnCopy()
 {
 	TextCoord	selStart, selEnd;
-	ULONG		sellen;
+	size_w		sellen;
 	BOOL		success		= FALSE;
 
 	if(!GetSelection(&selStart, &selEnd))
@@ -71,12 +71,16 @@ BOOL TextView::OnCopy()
 	// a byte never decodes to more than one UTF-16 unit, so this is always enough room
 	sellen = selEnd.byte_anchor - selStart.byte_anchor;
 
+	if(sellen > (size_w)ULONG_MAX)
+		return FALSE;
+
 	if(OpenClipboard(m_hWnd))
 	{
 		HANDLE hMem;
 		TCHAR  *ptr;
+		ULONG  len = (ULONG)sellen;
 
-		if((hMem = GlobalAlloc(GPTR, (sellen + 1) * sizeof(TCHAR))) != 0)
+		if((hMem = GlobalAlloc(GPTR, ((SIZE_T)len + 1) * sizeof(TCHAR))) != 0)
 		{
 			if((ptr = (TCHAR *)GlobalLock(hMem)) != 0)
 			{
@@ -84,7 +88,7 @@ BOOL TextView::OnCopy()
 
 				EmptyClipboard();
 
-				ptr[reader.read(ptr, sellen)] = 0;
+				ptr[reader.read(ptr, len)] = 0;
 
 				SetClipboardData(CF_TCHARTEXT, hMem);
 				success = TRUE;

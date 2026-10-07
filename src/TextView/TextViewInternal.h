@@ -6,7 +6,7 @@
 // Characters of a line that are laid out and drawn. A longer line stops being
 // drawn at this point (like VS Code's stopRenderingLineAfter).
 #define LINE_LAYOUT_LIMIT	10000
-#define LINENO_FMT  _T(" %2d ")
+#define LINENO_FMT  _T(" %I64u ")
 #define LINENO_PAD	 8
 
 #include <windows.h>
@@ -27,7 +27,7 @@ HRESULT (WINAPI * DrawThemeBackground_Proc)(HTHEME hTheme, HDC hdc, int, int, co
 typedef struct
 {
 	USPDATA *uspData;
-	ULONG	 line_begin;	// byte offset of the line's start (cache key; flushed on every edit)
+	size_w	 line_begin;	// byte offset of the line's start (cache key; flushed on every edit)
 	ULONG	 usage;			// cache-count
 
 	int		 length;		// length in chars INCLUDING CR/LF
@@ -63,7 +63,7 @@ enum SELMODE { SEL_NONE, SEL_NORMAL, SEL_MARGIN, SEL_BLOCK };
 
 typedef struct
 {
-	ULONG	line_begin;		// byte offset of the line's start
+	size_w	line_begin;		// byte offset of the line's start
 	ULONG	xpos;
 
 } CURPOS;
@@ -78,7 +78,7 @@ public:
 	TextView(HWND hwnd);
 	~TextView();
 
-	LONG WINAPI WndProc(UINT msg, WPARAM wParam, LPARAM lParam);
+	LRESULT WINAPI WndProc(UINT msg, WPARAM wParam, LPARAM lParam);
 
 private:
 
@@ -92,7 +92,7 @@ private:
 	LONG OnVScroll(UINT nSBCode, UINT nPos);
 	LONG OnHScroll(UINT nSBCode, UINT nPos);
 	LONG OnMouseWheel(int nDelta);
-	LONG OnTimer(UINT nTimer);
+	LONG OnTimer(UINT_PTR nTimer);
 
 	LONG OnMouseActivate(HWND hwndTop, UINT nHitTest, UINT nMessage);
 	LONG OnContextMenu(HWND wParam, int x, int y);
@@ -125,7 +125,7 @@ private:
 	//
 	//	Cursor/Selection
 	//
-	ULONG		SelectionSize();
+	size_w		SelectionSize();
 	ULONG		SelectAll();
 	bool		GetSelection(TextCoord *start, TextCoord *end);
 	void		SelectionColumns(TextCoord *line, ULONG lineLen, ULONG *start, ULONG *end);
@@ -254,7 +254,7 @@ private:
 	//	Miscallaneous
 	//
 	HMENU		CreateContextMenu();
-	ULONG		NotifyParent(UINT nNotifyCode, NMHDR *optional = 0);
+	LRESULT		NotifyParent(UINT nNotifyCode, NMHDR *optional = 0);
 
 
 
@@ -268,7 +268,7 @@ private:
 
 	// File-related data
 	// Display/scroll line count; may be estimated or EOF-clamped while lazy indexing is incomplete.
-	ULONG		m_nLineCount;
+	size_w		m_nLineCount;
 
 	// Font-related data	
 	USPFONT		m_uspFontList[MAX_FONTS];
@@ -319,7 +319,7 @@ private:
 	COLORREF	m_rgbColourList[TXC_MAX_COLOURS];
 
 	// Runtime data
-	UINT		m_nScrollTimer;
+	UINT_PTR	m_nScrollTimer;
 	int			m_nScrollCounter;
 	bool		m_fHideCaret;
 	//bool		m_fTransparent;

@@ -19,6 +19,18 @@
 #include <commctrl.h>
 #include <shellapi.h>
 #include "Neatpad.h"
+
+static BOOL IsWin9x()
+{
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable:4996)
+#endif
+	return (GetVersion() & 0x80000000) ? TRUE : FALSE;
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
+}
 #include "resource.h"
 
 BOOL ElevateToAdmin(HWND hwnd, BOOL fChecked1, BOOL fChecked2)//TCHAR *szParams)
@@ -75,7 +87,7 @@ void ApplyAdminSettings(HWND hwnd)
 //
 //	Dialogbox procedure for the FONT pane
 //
-BOOL CALLBACK MiscOptionsDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
+INT_PTR CALLBACK MiscOptionsDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
 	PSHNOTIFY *pshn;
 	HICON hShield;
@@ -102,7 +114,7 @@ BOOL CALLBACK MiscOptionsDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
 		CheckDlgButton(hwnd, IDC_REPLACENOTEPAD, g_fReplaceNotepad);
 
 		// disable 'replace notepad' option for Win9x
-		EnableDlgItem(hwnd, IDC_REPLACENOTEPAD, (GetVersion() & 0x80000000) ? FALSE : TRUE);
+		EnableDlgItem(hwnd, IDC_REPLACENOTEPAD, IsWin9x() ? FALSE : TRUE);
 		return TRUE;
 
 	case WM_CLOSE:

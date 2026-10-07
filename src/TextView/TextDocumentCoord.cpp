@@ -16,9 +16,9 @@
 //
 //	Return the number of lines. This is an estimate until linecount_known() is true.
 //
-ULONG TextDocument::linecount()
+size_w TextDocument::linecount()
 {
-	return byte_length() == 0 ? 0 : (ULONG)m_seq.linecount();
+	return byte_length() == 0 ? 0 : m_seq.linecount();
 }
 
 bool TextDocument::linecount_known()
@@ -29,17 +29,17 @@ bool TextDocument::linecount_known()
 //
 //	The byte bounds [*line_begin, *line_next) of the line containing offset_bytes
 //
-bool TextDocument::line_bounds_from_offset(ULONG offset_bytes, ULONG *line_begin, ULONG *line_next)
+bool TextDocument::line_bounds_from_offset(size_w offset_bytes, size_w *line_begin, size_w *line_next)
 {
-	ULONG rawLength = m_seq.size() - m_nHeaderSize;
+	size_w rawLength = m_seq.size() - m_nHeaderSize;
 	size_w sequenceLineOffset = 0;
 	size_w sequenceNextOffset = 0;
 
 	if(!m_seq.line_bounds_from_offset(offset_bytes + m_nHeaderSize, &sequenceLineOffset, &sequenceNextOffset))
 		return false;
 
-	*line_begin = sequenceLineOffset <= (size_w)m_nHeaderSize ? 0 : (ULONG)(sequenceLineOffset - m_nHeaderSize);
-	*line_next  = sequenceNextOffset <= (size_w)m_nHeaderSize ? 0 : (ULONG)(sequenceNextOffset - m_nHeaderSize);
+	*line_begin = sequenceLineOffset <= (size_w)m_nHeaderSize ? 0 : sequenceLineOffset - m_nHeaderSize;
+	*line_next  = sequenceNextOffset <= (size_w)m_nHeaderSize ? 0 : sequenceNextOffset - m_nHeaderSize;
 
 	*line_begin = min(*line_begin, rawLength);
 	*line_next  = min(max(*line_next, *line_begin), rawLength);
@@ -50,10 +50,10 @@ bool TextDocument::line_bounds_from_offset(ULONG offset_bytes, ULONG *line_begin
 //	Fill coord with the position line_offset_chars UTF-16 units into the line
 //	[line_begin, line_next), stopping at the end of the line
 //
-void TextDocument::coord_in_line(ULONG line_begin, ULONG line_next, ULONG line_offset_chars, TextCoord *coord)
+void TextDocument::coord_in_line(size_w line_begin, size_w line_next, size_w line_offset_chars, TextCoord *coord)
 {
-	ULONG linelen_bytes = line_next >= line_begin ? line_next - line_begin : 0;
-	ULONG offset_bytes;
+	size_w linelen_bytes = line_next >= line_begin ? line_next - line_begin : 0;
+	size_w offset_bytes;
 
 	// a code unit always takes at least one byte, so this just bounds the scan
 	if(line_offset_chars > linelen_bytes)
@@ -73,11 +73,11 @@ void TextDocument::coord_in_line(ULONG line_begin, ULONG line_next, ULONG line_o
 	coord->line_offset_chars = line_offset_chars;
 }
 
-bool TextDocument::coord_from_byte_anchor(ULONG byte_anchor, TextCoord *coord)
+bool TextDocument::coord_from_byte_anchor(size_w byte_anchor, TextCoord *coord)
 {
-	ULONG rawLength = m_seq.size() - m_nHeaderSize;
-	ULONG line_begin;
-	ULONG line_next;
+	size_w rawLength = m_seq.size() - m_nHeaderSize;
+	size_w line_begin;
+	size_w line_next;
 
 	if(coord == 0)
 		return false;
@@ -104,12 +104,12 @@ bool TextDocument::coord_from_byte_anchor(ULONG byte_anchor, TextCoord *coord)
 
 bool TextDocument::coord_from_document_end(TextCoord *coord)
 {
-	ULONG rawLength = m_seq.size() - m_nHeaderSize;
+	size_w rawLength = m_seq.size() - m_nHeaderSize;
 
 	return coord_from_byte_anchor(rawLength, coord);
 }
 
-bool TextDocument::coord_from_line_pos(TextCoord *line, ULONG line_offset_chars, TextCoord *coord)
+bool TextDocument::coord_from_line_pos(TextCoord *line, size_w line_offset_chars, TextCoord *coord)
 {
 	if(line == 0 || coord == 0)
 		return false;
@@ -129,8 +129,8 @@ bool TextDocument::previous_line_from_coord(TextCoord *coord, ULONG num_lines, T
 
 	while(num_lines-- > 0 && target.line_begin > 0)
 	{
-		ULONG line_begin;
-		ULONG line_next;
+		size_w line_begin;
+		size_w line_next;
 
 		// the line which ends where this one begins
 		if(!line_bounds_from_offset(target.line_begin - 1, &line_begin, &line_next))
@@ -146,7 +146,7 @@ bool TextDocument::previous_line_from_coord(TextCoord *coord, ULONG num_lines, T
 bool TextDocument::next_line_from_coord(TextCoord *coord, ULONG num_lines, TextCoord *line)
 {
 	TextCoord target;
-	ULONG rawLength = m_seq.size() - m_nHeaderSize;
+	size_w rawLength = m_seq.size() - m_nHeaderSize;
 
 	if(coord == 0 || line == 0)
 		return false;
@@ -156,7 +156,7 @@ bool TextDocument::next_line_from_coord(TextCoord *coord, ULONG num_lines, TextC
 	while(num_lines-- > 0)
 	{
 		size_w sequenceLineNext = 0;
-		ULONG line_next;
+		size_w line_next;
 
 		if(target.line_next >= rawLength)
 		{
@@ -170,7 +170,7 @@ bool TextDocument::next_line_from_coord(TextCoord *coord, ULONG num_lines, TextC
 		if(!m_seq.next_line_from_offset(target.line_next + m_nHeaderSize, &sequenceLineNext))
 			return false;
 
-		line_next = sequenceLineNext <= (size_w)m_nHeaderSize ? 0 : (ULONG)(sequenceLineNext - m_nHeaderSize);
+		line_next = sequenceLineNext <= (size_w)m_nHeaderSize ? 0 : sequenceLineNext - m_nHeaderSize;
 
 		coord_in_line(target.line_next, min(line_next, rawLength), 0, &target);
 	}
@@ -186,7 +186,7 @@ bool TextDocument::next_line_from_coord(TextCoord *coord, ULONG num_lines, TextC
 //
 bool TextDocument::coord_after_change(TextCoord *coord, const TextChange *change)
 {
-	ULONG anchor;
+	size_w anchor;
 
 	if(coord == 0 || change == 0)
 		return false;
@@ -208,7 +208,7 @@ bool TextDocument::coord_after_change(TextCoord *coord, const TextChange *change
 //	Return the line number of a coordinate. Past the exactly counted part of a
 //	lazily indexed file the number is an estimate, and *exact is false.
 //
-ULONG TextDocument::lineno_from_coord(const TextCoord *coord, bool *exact)
+size_w TextDocument::lineno_from_coord(const TextCoord *coord, bool *exact)
 {
 	size_w sequenceOffset;
 	size_w line = 0;
@@ -227,10 +227,10 @@ ULONG TextDocument::lineno_from_coord(const TextCoord *coord, bool *exact)
 	}
 
 	*exact = m_seq.lineno_known_at(sequenceOffset);
-	return (ULONG)line;
+	return line;
 }
 
-bool TextDocument::charoffset_from_coord(const TextCoord *coord, ULONG *offset_chars)
+bool TextDocument::charoffset_from_coord(const TextCoord *coord, size_w *offset_chars)
 {
 	if(coord == 0 || offset_chars == 0)
 		return false;
@@ -280,7 +280,7 @@ ULONG TextDocument::linebreak_from_coord(const TextCoord *line)
 //
 //	The code unit that ends at offset_bytes, in the file's own encoding, and its size in bytes
 //
-bool TextDocument::unit_before(ULONG offset_bytes, ULONG *ch, ULONG *size)
+bool TextDocument::unit_before(size_w offset_bytes, ULONG *ch, ULONG *size)
 {
 	BYTE raw[4];
 	ULONG unit = 1;

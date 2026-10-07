@@ -18,7 +18,7 @@
 //
 //	Dialogbox procedure for the FONT pane
 //
-BOOL CALLBACK DisplayOptionsDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
+INT_PTR CALLBACK DisplayOptionsDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
 	PSHNOTIFY *pshn;
 
@@ -52,7 +52,7 @@ BOOL CALLBACK DisplayOptionsDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
 		{
 			g_fLineNumbers	 = IsDlgButtonChecked(hwnd, IDC_LINENOS);
 			g_fSelMargin	 = IsDlgButtonChecked(hwnd, IDC_SELMARGIN);
-			g_fLongLines	 = SendDlgItemMessage(hwnd, IDC_LONGLINEMODE, CB_GETCURSEL, 0, 0);
+			g_fLongLines	 = (BOOL)SendDlgItemMessage(hwnd, IDC_LONGLINEMODE, CB_GETCURSEL, 0, 0);
 			g_nLongLineLimit = GetDlgItemInt(hwnd, IDC_LONGLINELIM, 0, FALSE);
 			g_nHLCurLine	 = IsDlgButtonChecked(hwnd, IDC_HIGHLIGHTCURLINE);
 
@@ -69,7 +69,7 @@ BOOL CALLBACK DisplayOptionsDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
 			
 			if(HIWORD(wParam) == CBN_SELCHANGE)
 			{
-				int idx = SendDlgItemMessage(hwnd, IDC_LONGLINEMODE, CB_GETCURSEL, 0, 0);
+				int idx = (int)SendDlgItemMessage(hwnd, IDC_LONGLINEMODE, CB_GETCURSEL, 0, 0);
 				EnableDlgItem(hwnd, IDC_LONGLINELIM, idx);
 			}
 
