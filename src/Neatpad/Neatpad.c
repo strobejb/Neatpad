@@ -127,10 +127,35 @@ static void FormatByteSize(TCHAR *buf, size_t cch, unsigned __int64 bytes)
 	buf[cch - 1] = 0;
 }
 
+//
+//	A count with the user's thousands separator, e.g. 1,234,567
+//
+static void FormatCount(TCHAR *buf, int cch, unsigned __int64 value)
+{
+	TCHAR	  digits[32];
+	TCHAR	  sep[8];
+	NUMBERFMT fmt = { 0 };
+
+	_sntprintf(digits, 32, _T("%I64u"), value);
+	digits[31] = 0;
+
+	if(!GetLocaleInfo(LOCALE_USER_DEFAULT, LOCALE_STHOUSAND, sep, 8))
+		lstrcpy(sep, _T(","));
+
+	fmt.Grouping		= 3;
+	fmt.lpDecimalSep	= _T(".");
+	fmt.lpThousandSep	= sep;
+
+	if(!GetNumberFormat(LOCALE_USER_DEFAULT, 0, digits, &fmt, buf, cch))
+		lstrcpyn(buf, digits, cch);
+}
+
 static void UpdateStatusBarDocStats(void)
 {
 	TEXTVIEWDOCSTATS stats;
 	TCHAR sizeText[32];
+	TCHAR countText[32];
+	TCHAR selText[32];
 
 	if(g_hwndStatusbar == 0 || g_hwndTextView == 0)
 		return;
@@ -141,13 +166,41 @@ static void UpdateStatusBarDocStats(void)
 		return;
 	}
 
+	// with a selection, show how much of the document it covers. Only fixed-width
+	// encodings can count characters cheaply, so the others show bytes.
+	if(stats.sel_byte_count != 0)
+	{
+		if(stats.char_count_known)
+		{
+			FormatCount(selText, sizeof(selText) / sizeof(selText[0]), stats.sel_char_count);
+			FormatCount(countText, sizeof(countText) / sizeof(countText[0]), stats.char_count);
+
+			SetStatusBarText(g_hwndStatusbar, STATUS_PART_DOCSTATS, 0, _T(" Selected %s of %s %s"),
+				selText,
+				countText,
+				stats.char_count == 1 ? _T("character") : _T("characters"));
+		}
+		else
+		{
+			FormatCount(selText, sizeof(selText) / sizeof(selText[0]), stats.sel_byte_count);
+
+			SetStatusBarText(g_hwndStatusbar, STATUS_PART_DOCSTATS, 0, _T(" Selected %s %s"),
+				selText,
+				stats.sel_byte_count == 1 ? _T("byte") : _T("bytes"));
+		}
+
+		return;
+	}
+
 	FormatByteSize(sizeText, sizeof(sizeText) / sizeof(sizeText[0]), stats.byte_count);
 
 	if(stats.char_count_known)
 	{
-		SetStatusBarText(g_hwndStatusbar, STATUS_PART_DOCSTATS, 0, _T(" %s (%I64u %s)"),
+		FormatCount(countText, sizeof(countText) / sizeof(countText[0]), stats.char_count);
+
+		SetStatusBarText(g_hwndStatusbar, STATUS_PART_DOCSTATS, 0, _T(" %s (%s %s)"),
 			sizeText,
-			stats.char_count,
+			countText,
 			stats.char_count == 1 ? _T("char") : _T("chars"));
 	}
 	else
@@ -307,7 +360,9 @@ UINT TextViewNotifyHandler(HWND hwnd, NMHDR *nmhdr)
 	// cursor position has changed, update the statusbar info
 	case TVN_CURSOR_CHANGE:
 
+		// the caret moving also starts, extends or clears a selection
 		UpdateStatusBarCursorInfo((TVNCURSORINFO *)nmhdr);
+		UpdateStatusBarDocStats();
 		break;
 
 	// edit/insert mode changed

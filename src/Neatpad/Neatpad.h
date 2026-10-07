@@ -122,8 +122,8 @@ void SetStatusBarText(HWND hwndSB, UINT nPart, UINT uStyle, TCHAR *fmt, ...);
 void UpdateStatusBarFileInfo(void);
 
 #define STATUS_PART_CURSOR		0
-#define STATUS_PART_MESSAGE		1
-#define STATUS_PART_DOCSTATS	2
+#define STATUS_PART_DOCSTATS	1
+#define STATUS_PART_MESSAGE		2
 #define STATUS_PART_EDITMODE	STATUS_PART_DOCSTATS
 #define STATUS_PART_LINEFMT		3
 #define STATUS_PART_ENCODING	4

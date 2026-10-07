@@ -44,6 +44,7 @@ LONG TextView::OpenFile(TCHAR *szFileName)
 		UpdateMarginWidth();
 		UpdateMetrics();
 		ResetLineCache();
+		NotifyCursorChange();
 		return TRUE;
 	}
 
@@ -73,8 +74,7 @@ LONG TextView::ClearFile()
 	m_nCaretPosX		= 0;
 
 	UpdateMetrics();
-
-	
+	NotifyCursorChange();
 
 	return TRUE;
 }

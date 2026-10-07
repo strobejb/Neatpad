@@ -25,6 +25,12 @@ DWORD dwStatusBarStyles = WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLI
 
 #define MAX_STATUS_PARTS 5
 
+// room left after the text of each pane
+#define STATUS_PANE_PADDING _T("MMM")
+
+// width of each pane, fitted to its text (the message pane takes whatever is left)
+static int g_nPaneWidth[MAX_STATUS_PARTS];
+
 //
 //	Process WM_MENUSELECT message to display menu-item hints in statusbar
 //
@@ -50,43 +56,96 @@ int StatusBarMenuSelect(HWND hwnd, HWND hwndSB, WPARAM wParam, LPARAM lParam)
 }
 
 //
-//	Create each menubar pane. Must be called whenever the statusbar changes size,
-//  so call each time the main-window gets a WM_SIZE
+//	Lay out the panes: the cursor and document-statistics panes on the left, the
+//	line-format and encoding panes against the right edge, and the message pane
+//	in between. Must be called whenever the statusbar changes size, so call each
+//	time the main-window gets a WM_SIZE
 //
 void SetStatusBarParts(HWND hwndSB)
 {
 	RECT	r;
 	HWND	hwndParent = GetParent(hwndSB);
 	int		parts[MAX_STATUS_PARTS];
-	int		parentwidth;
+	int		right;
 
 	GetClientRect(hwndParent, &r);
 
-	parentwidth = r.right < 620 ? 620 : r.right;
-	parts[STATUS_PART_CURSOR]   = 270;
-	parts[STATUS_PART_MESSAGE]  = parentwidth - 665;
-	parts[STATUS_PART_DOCSTATS] = parentwidth - 410;
-	parts[STATUS_PART_LINEFMT]  = parentwidth - 220;
-	parts[STATUS_PART_ENCODING] = parentwidth;
+	// a window too narrow for every pane clips the ones on the right
+	right = max(r.right, g_nPaneWidth[STATUS_PART_CURSOR]   + g_nPaneWidth[STATUS_PART_DOCSTATS] +
+						 g_nPaneWidth[STATUS_PART_LINEFMT]  + g_nPaneWidth[STATUS_PART_ENCODING]);
 
-	// Tell the status bar to create the window parts. 
-    SendMessage(hwndSB, SB_SETPARTS, MAX_STATUS_PARTS, (LPARAM)parts); 
+	parts[STATUS_PART_CURSOR]   = g_nPaneWidth[STATUS_PART_CURSOR];
+	parts[STATUS_PART_DOCSTATS] = parts[STATUS_PART_CURSOR] + g_nPaneWidth[STATUS_PART_DOCSTATS];
+	parts[STATUS_PART_ENCODING] = right;
+	parts[STATUS_PART_LINEFMT]  = parts[STATUS_PART_ENCODING] - g_nPaneWidth[STATUS_PART_ENCODING];
+	parts[STATUS_PART_MESSAGE]  = parts[STATUS_PART_LINEFMT]  - g_nPaneWidth[STATUS_PART_LINEFMT];
+
+	// Tell the status bar to create the window parts.
+    SendMessage(hwndSB, SB_SETPARTS, MAX_STATUS_PARTS, (LPARAM)parts);
 }
 
 //
-//	sprintf-style wrapper for setting statubar pane text
+//	The width a pane needs: its text in the status bar's own font, the pane's
+//	borders, and plenty of room after the text. An empty pane takes no room.
+//
+static int StatusPaneWidth(HWND hwndSB, UINT nPart, TCHAR *text)
+{
+	int		borders[3] = { 0 };
+	int		width;
+	SIZE	textSize;
+	SIZE	padSize;
+	HDC		hdc;
+	HANDLE	hOldFont;
+
+	if(text[0] == 0)
+		return 0;
+
+	SendMessage(hwndSB, SB_GETBORDERS, 0, (LPARAM)borders);
+
+	hdc = GetDC(hwndSB);
+	hOldFont = SelectObject(hdc, (HFONT)SendMessage(hwndSB, WM_GETFONT, 0, 0));
+	GetTextExtentPoint32(hdc, text, lstrlen(text), &textSize);
+	GetTextExtentPoint32(hdc, STATUS_PANE_PADDING, lstrlen(STATUS_PANE_PADDING), &padSize);
+	SelectObject(hdc, hOldFont);
+	ReleaseDC(hwndSB, hdc);
+
+	width = textSize.cx + padSize.cx + borders[0] * 2 + borders[2];
+
+	// the last pane also makes room for the size grip
+	if(nPart == MAX_STATUS_PARTS - 1 && (GetWindowLong(hwndSB, GWL_STYLE) & SBARS_SIZEGRIP))
+		width += GetSystemMetrics(SM_CXVSCROLL);
+
+	return width;
+}
+
+//
+//	sprintf-style wrapper for setting statubar pane text. Every pane but the
+//	message pane is resized to fit its new text.
 //
 void SetStatusBarText(HWND hwndSB, UINT nPart, UINT uStyle, TCHAR *fmt, ...)
 {
 	TCHAR tmpbuf[100];
 	va_list argp;
-	
+	int width;
+
 	va_start(argp, fmt);
 	_vsntprintf(tmpbuf, 100, fmt, argp);
 	va_end(argp);
+	tmpbuf[99] = 0;
 
 	//cannot use PostMessage, as the panel type is not set correctly
 	SendMessage(hwndSB, SB_SETTEXT, (WPARAM)(nPart | uStyle), (LPARAM)tmpbuf);
+
+	if(nPart == STATUS_PART_MESSAGE || nPart >= MAX_STATUS_PARTS)
+		return;
+
+	width = StatusPaneWidth(hwndSB, nPart, tmpbuf);
+
+	if(width != g_nPaneWidth[nPart])
+	{
+		g_nPaneWidth[nPart] = width;
+		SetStatusBarParts(hwndSB);
+	}
 }
 
 //

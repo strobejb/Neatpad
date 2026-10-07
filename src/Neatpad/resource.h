@@ -1,5 +1,5 @@
 //{{NO_DEPENDENCIES}}
-// Microsoft Developer Studio generated include file.
+// Microsoft Visual C++ generated include file.
 // Used by resource.rc
 //
 #define IDC_REPLACEALL                  3
@@ -131,7 +131,9 @@
 #define IDM_RECENT_EMPTY                40035
 #define IDM_RECENT_FIRST                40040
 #define IDM_RECENT_LAST                 40049
-
+#define ID_VIEW_LINEENDINGS             40050
+#define ID_LINEENDINGS_ALWAYSSHOW       40051
+#define ID_LINEENDINGS_HIGLIGHTMALFORMED 40052
 #define IDC_STATIC                      -1
 
 // Next default values for new objects
@@ -139,7 +141,7 @@
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        131
-#define _APS_NEXT_COMMAND_VALUE         40050
+#define _APS_NEXT_COMMAND_VALUE         40053
 #define _APS_NEXT_CONTROL_VALUE         1055
 #define _APS_NEXT_SYMED_VALUE           101
 #endif

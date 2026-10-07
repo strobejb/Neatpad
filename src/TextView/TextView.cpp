@@ -582,7 +582,8 @@ LRESULT WINAPI TextView::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 	case TXM_GETDOCSTATS:
 	{
 		TEXTVIEWDOCSTATS *stats = (TEXTVIEWDOCSTATS *)lParam;
-		size_w chars;
+		TextCoord selStart, selEnd;
+		size_w chars, startChars, endChars;
 
 		if(stats == 0)
 			return FALSE;
@@ -590,11 +591,26 @@ LRESULT WINAPI TextView::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 		stats->byte_count = (unsigned __int64)m_pTextDoc->file_length();
 		stats->char_count = 0;
 		stats->char_count_known = FALSE;
+		stats->sel_byte_count = 0;
+		stats->sel_char_count = 0;
 
 		if(m_pTextDoc->charcount(&chars))
 		{
 			stats->char_count = (unsigned __int64)chars;
 			stats->char_count_known = TRUE;
+		}
+
+		// the selection, counted the same way
+		if(GetSelection(&selStart, &selEnd))
+		{
+			stats->sel_byte_count = (unsigned __int64)(selEnd.byte_anchor - selStart.byte_anchor);
+
+			if(stats->char_count_known &&
+				m_pTextDoc->charoffset_from_coord(&selStart, &startChars) &&
+				m_pTextDoc->charoffset_from_coord(&selEnd, &endChars))
+			{
+				stats->sel_char_count = (unsigned __int64)(endChars - startChars);
+			}
 		}
 
 		return TRUE;

@@ -93,7 +93,9 @@ typedef struct
 {
 	unsigned __int64 byte_count;
 	unsigned __int64 char_count;
-	BOOL			 char_count_known;
+	BOOL			 char_count_known;	// also covers sel_char_count
+	unsigned __int64 sel_byte_count;	// 0 when nothing is selected
+	unsigned __int64 sel_char_count;
 } TEXTVIEWDOCSTATS;
 
 //

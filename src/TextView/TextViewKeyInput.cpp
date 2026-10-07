@@ -103,7 +103,6 @@ ULONG TextView::EnterText(TCHAR *szText, ULONG nLength)
 	RefreshWindow();
 
 	UpdateViewState(TRUE);
-	NotifyCursorChange();
 
 	return nLength;
 }
@@ -169,6 +168,10 @@ BOOL TextView::BackDelete()
 	return TRUE;
 }
 
+//
+//	After an edit (or select-all): refresh the metrics, put the caret in view
+//	and tell the parent where it is now
+//
 void TextView::UpdateViewState(BOOL fAdvancing)
 {
 	m_nLineCount   = m_pTextDoc->linecount();
@@ -182,6 +185,7 @@ void TextView::UpdateViewState(BOOL fAdvancing)
 
 	ScrollToCaret();
 	RepositionCaret();
+	NotifyCursorChange();
 }
 
 BOOL TextView::Undo()

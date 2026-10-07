@@ -68,6 +68,11 @@ BEGIN
             MENUITEM "&Unicode (UTF-16)",           IDM_VIEW_UTF16
             MENUITEM "Unicode (UTF-16, &Big-Endian)", IDM_VIEW_UTF16BE
         END
+        POPUP "Line Endings"
+        BEGIN
+            MENUITEM "Always show",                 ID_LINEENDINGS_ALWAYSSHOW
+            MENUITEM "Higlight malformed",          ID_LINEENDINGS_HIGLIGHTMALFORMED
+        END
         MENUITEM "&Line Numbers",               IDM_VIEW_LINENUMBERS, CHECKED
         MENUITEM "&Highlight Long Lines",       IDM_VIEW_LONGLINES
         MENUITEM SEPARATOR
