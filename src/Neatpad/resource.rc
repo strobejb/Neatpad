@@ -280,7 +280,7 @@ FONT 8, "MS Shell Dlg", 0, 0, 0x1
 BEGIN
     DEFPUSHBUTTON   "OK",IDOK,167,91,50,14
     ICON            IDI_ICON1,IDC_HEADER2,13,20,20,20
-    LTEXT           "Copyright ï¿½ 2006-2026 Catch22 Solutions.\nWritten by J Brown.",IDC_STATIC,51,40,166,22
+    LTEXT           "Copyright © 2006-2026 Catch22 Solutions.\nWritten by J Brown.",IDC_STATIC,51,40,166,22
     LTEXT           "www.catch22.net",IDC_ABOUT_URL,51,70,166,18
     LTEXT           "Neatpad Beta 0.17.10",IDC_ABOUT_APPNAME,50,20,167,14
 END
@@ -502,7 +502,7 @@ BEGIN
             VALUE "FileDescription", "Neatpad Text Editor"
             VALUE "FileVersion", "0, 18, 19, 1"
             VALUE "InternalName", "Neatpad"
-            VALUE "LegalCopyright", "Copyright ï¿½ 2006 Catch22 Productions"
+            VALUE "LegalCopyright", "Copyright © 2006 Catch22 Productions"
             VALUE "OriginalFilename", "Neatpad.exe"
             VALUE "ProductName", "Neatpad"
             VALUE "ProductVersion", "0, 18, 19, 1"
