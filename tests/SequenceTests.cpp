@@ -8,6 +8,7 @@
 
 #include "../src/TextView/sequence.h"
 #include "../src/TextView/TextDocument.h"
+#include "../src/TextView/TextView.h"
 
 // Test access to a document's sequence, for line-number lookups (such as where
 // line N starts) that TextDocument itself doesn't offer
@@ -1948,6 +1949,36 @@ void textdocument_only_cr_lf_end_lines()
     expect_doc_lines_consistent(utf16_ps, sizeof(utf16_ps), 1);
 }
 
+void textdocument_linebreak_from_coord()
+{
+    const DocTestEncoding encodings[] = { DOC_ASCII, DOC_UTF8_BOM, DOC_UTF16LE_BOM, DOC_UTF16BE_BOM };
+
+    for(size_t i = 0; i < sizeof(encodings) / sizeof(encodings[0]); i++)
+    {
+        TextDocument doc;
+        TCHAR path[MAX_PATH];
+        TextCoord line;
+
+        CHECK(write_textdocument_file("crlf\r\nlf\ncr\rnone", encodings[i], path));
+        CHECK(doc.init(path));
+
+        CHECK(doc.coord_from_byte_anchor(0, &line));
+        CHECK(doc.linebreak_from_coord(&line) == TXL_CRLF);
+
+        CHECK(doc.next_line_from_coord(&line, 1, &line));
+        CHECK(doc.linebreak_from_coord(&line) == TXL_LF);
+
+        CHECK(doc.next_line_from_coord(&line, 1, &line));
+        CHECK(doc.linebreak_from_coord(&line) == TXL_CR);
+
+        CHECK(doc.next_line_from_coord(&line, 1, &line));
+        CHECK(doc.linebreak_from_coord(&line) == 0);
+
+        doc.clear();
+        DeleteFile(path);
+    }
+}
+
 void textdocument_charoffset_only_for_fixed_width()
 {
     const DocTestEncoding encodings[] = { DOC_ASCII, DOC_UTF8_BOM, DOC_UTF16LE_BOM, DOC_UTF16BE_BOM };
@@ -2463,6 +2494,7 @@ const test_case tests[] =
     { "textdocument_coord_uses_local_utf8_byte_anchor", textdocument_coord_uses_local_utf8_byte_anchor },
     { "textdocument_coord_resolves_document_end", textdocument_coord_resolves_document_end },
     { "textdocument_only_cr_lf_end_lines", textdocument_only_cr_lf_end_lines },
+    { "textdocument_linebreak_from_coord", textdocument_linebreak_from_coord },
     { "textdocument_charoffset_only_for_fixed_width", textdocument_charoffset_only_for_fixed_width },
     { "textdocument_coord_moves_by_local_lines", textdocument_coord_moves_by_local_lines },
     { "textdocument_coord_moves_by_local_utf8_lines", textdocument_coord_moves_by_local_utf8_lines },

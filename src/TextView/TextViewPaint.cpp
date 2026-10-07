@@ -35,10 +35,13 @@ VOID TextView::RefreshWindow()
 //
 USPCACHE *TextView::GetUspCache(HDC hdc, TextCoord *coord)
 {
-	TCHAR	 buff[TEXTBUFSIZE];
-	ATTR	 attr[TEXTBUFSIZE];
+	TCHAR	*buff;
+	ATTR	*attr;
+	ULONG	 buflen;
 	ULONG	 colno = 0;
 	int		 len;
+	int		 columns;
+	SIZE	 size;
 	HDC		 hdcTemp;
 
 	USPDATA *uspData;
@@ -78,9 +81,14 @@ USPCACHE *TextView::GetUspCache(HDC hdc, TextCoord *coord)
 	else			hdcTemp = hdc;
 
 	//
-	// get the text for the entire line and apply style attributes
+	// get the text for the entire line (up to the layout limit) and apply style
+	// attributes. A line never decodes to more UTF-16 units than it has bytes.
 	//
-	len = m_pTextDoc->getline(*coord, buff, TEXTBUFSIZE);
+	buflen = min(coord->line_next - coord->line_begin, (ULONG)LINE_LAYOUT_LIMIT);
+	buff   = new TCHAR[buflen + 1];
+	attr   = new ATTR[buflen + 1];
+
+	len = m_pTextDoc->getline(*coord, buff, buflen);
 
 	// cache the line's length information
 	m_uspCache[lru_index].length		= len;
@@ -121,8 +129,24 @@ USPCACHE *TextView::GetUspCache(HDC hdc, TextCoord *coord)
 	//
 	ApplySelection(uspData, coord, len);
 
+	//
+	//	The widest line laid out so far sets the horizontal scrolling range.
+	//	It only ever grows, with a column to spare for the caret at the end.
+	//
+	UspGetSize(uspData, &size);
+	columns = (size.cx + m_nFontWidth - 1) / m_nFontWidth + 1;
+
+	if(columns > m_nLongestLine)
+	{
+		m_nLongestLine = columns;
+		SetupScrollbars();
+	}
+
 	if(hdc == 0)
 		ReleaseDC(m_hWnd, hdcTemp);
+
+	delete[] buff;
+	delete[] attr;
 
 	return &m_uspCache[lru_index];
 }

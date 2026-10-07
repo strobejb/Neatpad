@@ -143,6 +143,9 @@ public:
 	// encodings can answer without scanning the file; the others return false.
 	bool  charoffset_from_coord(const TextCoord *coord, ULONG *offset_chars);
 
+	// The line break ending a coordinate's line: TXL_CRLF, TXL_LF or TXL_CR, or 0 for a last line without one.
+	ULONG linebreak_from_coord(const TextCoord *line);
+
 	//
 	//	Text access
 	//
@@ -158,7 +161,6 @@ public:
 	ULONG linecount();
 	bool  linecount_known();
 
-	ULONG longestline(int tabwidth);
 	ULONG byte_length();
 
 private:
@@ -166,7 +168,7 @@ private:
 	//
 	//	Line navigation
 	//
-	bool raw_offset_ends_with_linebreak(ULONG offset_bytes);
+	bool unit_before(ULONG offset_bytes, ULONG *ch, ULONG *size);
 	bool line_bounds_from_offset(ULONG offset_bytes, ULONG *line_begin, ULONG *line_next);
 	void coord_in_line(ULONG line_begin, ULONG line_next, ULONG line_offset_chars, TextCoord *coord);
 

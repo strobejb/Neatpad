@@ -80,6 +80,9 @@ LONG TextView::SetFont(HFONT hFont, int idx)
 	// calculate new line metrics
 	m_nFontWidth = m_uspFontList[0].tm.tmAveCharWidth;
 
+	// lines are measured again in the new font
+	m_nLongestLine = 0;
+
 	RecalcLineHeight();
 	UpdateMarginWidth();
 

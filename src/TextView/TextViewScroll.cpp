@@ -249,7 +249,7 @@ LONG TextView::OnSize(UINT nFlags, int width, int height)
 	int margin = LeftMarginWidth();
 
 	m_nWindowLines   = height / m_nLineHeight;
-	m_nWindowColumns = min((width - margin)		/ m_nFontWidth,  m_nLongestLine);
+	m_nWindowColumns = (width - margin) / m_nFontWidth;
 
 	if(PinToBottomCorner())
 	{

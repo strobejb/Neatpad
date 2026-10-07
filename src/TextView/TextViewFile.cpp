@@ -23,22 +23,16 @@ LONG TextView::OpenFile(TCHAR *szFileName)
 
 	if(m_pTextDoc->init(szFileName))
 	{
-		TCHAR linebuf[TEXTBUFSIZE];
 		TextCoord start;
-		ULONG linelen;
+		ULONG linebreak;
 
+		// the first line's ending sets the line format
 		m_pTextDoc->coord_from_byte_anchor(0, &start);
-		linelen = m_pTextDoc->getline(start, linebuf, TEXTBUFSIZE);
 
-		if(linelen >= 2 && linebuf[linelen - 2] == '\r' && linebuf[linelen - 1] == '\n')
-			m_nCRLFMode = TXL_CRLF;
-		else if(linelen >= 1 && linebuf[linelen - 1] == '\n')
-			m_nCRLFMode = TXL_LF;
-		else if(linelen >= 1 && linebuf[linelen - 1] == '\r')
-			m_nCRLFMode = TXL_CR;
+		if((linebreak = m_pTextDoc->linebreak_from_coord(&start)) != 0)
+			m_nCRLFMode = linebreak;
 
 		m_nLineCount   = m_pTextDoc->linecount();
-		m_nLongestLine = m_pTextDoc->longestline(m_nTabWidthChars);
 
 		m_nHScrollPos  = 0;
 
@@ -69,7 +63,7 @@ LONG TextView::ClearFile()
 	ResetLineCache();
 
 	m_nLineCount		= m_pTextDoc->linecount();
-	m_nLongestLine		= m_pTextDoc->longestline(m_nTabWidthChars);
+	m_nLongestLine		= 0;	// grows as lines are laid out
 
 	m_nHScrollPos		= 0;
 

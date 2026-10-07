@@ -11,6 +11,7 @@
 
 #include <windows.h>
 #include "TextDocument.h"
+#include "TextView.h"
 
 //
 //	Return the number of lines. This is an estimate until linecount_known() is true.
@@ -23,45 +24,6 @@ ULONG TextDocument::linecount()
 bool TextDocument::linecount_known()
 {
 	return byte_length() == 0 || m_seq.linecount_known();
-}
-
-//
-//	Return the length of longest line
-//
-ULONG TextDocument::longestline(int tabwidth)
-{
-	//ULONG i;
-	ULONG longest = 0;
-	ULONG xpos = 0;
-//	char *bufptr = (char *)(buffer + m_nHeaderSize);
-/*
-	for(i = 0; i < length_bytes; i++)
-	{
-		if(bufptr[i] == '\r')
-		{
-			if(bufptr[i+1] == '\n')
-				 i++;
-
-			longest = max(longest, xpos);
-			xpos = 0;
-		}
-		else if(bufptr[i] == '\n')
-		{
-			longest = max(longest, xpos);
-			xpos = 0;
-		}
-		else if(bufptr[i] == '\t')
-		{
-			xpos += tabwidth - (xpos % tabwidth);
-		}
-		else
-		{
-			xpos ++;
-		}
-	}
-
-	longest = max(longest, xpos);*/
-	return 100;//longest;
 }
 
 //
@@ -199,7 +161,7 @@ bool TextDocument::next_line_from_coord(TextCoord *coord, ULONG num_lines, TextC
 		if(target.line_next >= rawLength)
 		{
 			// a line break at the very end is followed by one more, empty, line
-			if(target.line_next == rawLength && target.line_begin < rawLength && raw_offset_ends_with_linebreak(rawLength))
+			if(target.line_next == rawLength && linebreak_from_coord(&target))
 				coord_in_line(rawLength, rawLength, 0, &target);
 
 			break;
@@ -290,17 +252,38 @@ bool TextDocument::charoffset_from_coord(const TextCoord *coord, ULONG *offset_c
 }
 
 //
-//	Does the text end with a line break at offset_bytes? A line break is CR or
-//	LF, the same as the sequence counts, in the file's own code units.
+//	The line break that ends a line. A line break is CR, LF or CRLF in the file's
+//	own code units: the same as the sequence counts.
 //
-bool TextDocument::raw_offset_ends_with_linebreak(ULONG offset_bytes)
+ULONG TextDocument::linebreak_from_coord(const TextCoord *line)
+{
+	ULONG ch;
+	ULONG prev;
+	ULONG size;
+
+	// the last unit must lie inside the line
+	if(line == 0 || !unit_before(line->line_next, &ch, &size) || line->line_next - size < line->line_begin)
+		return 0;
+
+	if(ch == '\r')
+		return TXL_CR;
+
+	if(ch != '\n')
+		return 0;
+
+	if(line->line_next - size - line->line_begin >= size && unit_before(line->line_next - size, &prev, &size) && prev == '\r')
+		return TXL_CRLF;
+
+	return TXL_LF;
+}
+
+//
+//	The code unit that ends at offset_bytes, in the file's own encoding, and its size in bytes
+//
+bool TextDocument::unit_before(ULONG offset_bytes, ULONG *ch, ULONG *size)
 {
 	BYTE raw[4];
 	ULONG unit = 1;
-	ULONG ch = 0;
-
-	if(offset_bytes == 0)
-		return false;
 
 	switch(m_nFileFormat)
 	{
@@ -330,27 +313,28 @@ bool TextDocument::raw_offset_ends_with_linebreak(ULONG offset_bytes)
 	switch(m_nFileFormat)
 	{
 	case NCP_UTF16:
-		ch = (ULONG)raw[0] | ((ULONG)raw[1] << 8);
+		*ch = (ULONG)raw[0] | ((ULONG)raw[1] << 8);
 		break;
 
 	case NCP_UTF16BE:
-		ch = ((ULONG)raw[0] << 8) | (ULONG)raw[1];
+		*ch = ((ULONG)raw[0] << 8) | (ULONG)raw[1];
 		break;
 
 	case NCP_UTF32:
-		ch = (ULONG)raw[0] | ((ULONG)raw[1] << 8) | ((ULONG)raw[2] << 16) | ((ULONG)raw[3] << 24);
+		*ch = (ULONG)raw[0] | ((ULONG)raw[1] << 8) | ((ULONG)raw[2] << 16) | ((ULONG)raw[3] << 24);
 		break;
 
 	case NCP_UTF32BE:
-		ch = ((ULONG)raw[0] << 24) | ((ULONG)raw[1] << 16) | ((ULONG)raw[2] << 8) | (ULONG)raw[3];
+		*ch = ((ULONG)raw[0] << 24) | ((ULONG)raw[1] << 16) | ((ULONG)raw[2] << 8) | (ULONG)raw[3];
 		break;
 
 	case NCP_ASCII:
 	case NCP_UTF8:
 	default:
-		ch = raw[0];
+		*ch = raw[0];
 		break;
 	}
 
-	return ch == '\r' || ch == '\n';
+	*size = unit;
+	return true;
 }

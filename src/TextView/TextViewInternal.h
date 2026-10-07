@@ -3,7 +3,9 @@
 #ifndef NEATPAD_TEXTVIEW_INTERNAL_INCLUDED
 #define NEATPAD_TEXTVIEW_INTERNAL_INCLUDED
 
-#define TEXTBUFSIZE  128
+// Characters of a line that are laid out and drawn. A longer line stops being
+// drawn at this point (like VS Code's stopRenderingLineAfter).
+#define LINE_LAYOUT_LIMIT	10000
 #define LINENO_FMT  _T(" %2d ")
 #define LINENO_PAD	 8
 
@@ -282,7 +284,7 @@ private:
 	int			m_nHScrollPos;
 	int			m_nHScrollMax;
 
-	int			m_nLongestLine;
+	int			m_nLongestLine;		// widest line laid out so far, in columns
 	int			m_nWindowLines;
 	int			m_nWindowColumns;
 
