@@ -27,6 +27,7 @@ extern BOOL		g_fSelMargin;
 extern BOOL		g_fSaveOnExit;
 extern int		g_nLongLineLimit;
 extern BOOL		g_nHLCurLine;
+extern BOOL		g_fShowLineEndings;
 extern BOOL		g_fAddToExplorer;
 extern BOOL		g_fReplaceNotepad;
 extern BOOL		g_fShowStatusbar;

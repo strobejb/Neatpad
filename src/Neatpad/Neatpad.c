@@ -511,6 +511,12 @@ UINT CommandHandler(HWND hwnd, UINT nCtrlId, UINT nCtrlCode, HWND hwndFrom)
 		g_fLongLines = !g_fLongLines;
 		TextView_SetStyleBool(g_hwndTextView, TXS_LONGLINES, g_fLongLines);
 		return 0;
+
+	case ID_LINEENDINGS_ALWAYSSHOW:
+	case ID_LINEENDINGS_HIGHLIGHTMALFORMED:
+		g_fShowLineEndings = (nCtrlId == ID_LINEENDINGS_ALWAYSSHOW);
+		TextView_SetStyleBool(g_hwndTextView, TXS_SHOWLINEENDINGS, g_fShowLineEndings);
+		return 0;
 		
 	/*case IDM_VIEW_STATUSBAR:
 		g_fShowStatusbar = !g_fShowStatusbar;
@@ -599,6 +605,11 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		CheckMenuCommand((HMENU)wParam, IDM_VIEW_LONGLINES,		g_fLongLines);
 		CheckMenuCommand((HMENU)wParam, IDM_VIEW_SAVEEXIT,		g_fSaveOnExit);
 		CheckMenuCommand((HMENU)wParam, IDM_VIEW_STATUSBAR,		g_fShowStatusbar);
+
+		CheckMenuRadioItem((HMENU)wParam,
+			ID_LINEENDINGS_ALWAYSSHOW, ID_LINEENDINGS_HIGHLIGHTMALFORMED,
+			g_fShowLineEndings ? ID_LINEENDINGS_ALWAYSSHOW : ID_LINEENDINGS_HIGHLIGHTMALFORMED,
+			MF_BYCOMMAND);
 		//CheckMenuCommand((HMENU)wParam, IDM_VIEW_SEARCHBAR,		g_hwndSearchBar ? TRUE : FALSE);
 
 		EnableMenuCommand((HMENU)wParam, IDM_EDIT_UNDO,		TextView_CanUndo(g_hwndTextView));

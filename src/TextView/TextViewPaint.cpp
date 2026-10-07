@@ -604,9 +604,12 @@ int TextView::ApplyTextAttributes(TextCoord *line, ULONG &nColumn, TCHAR *szText
 	//SyntaxColour(szText, nTextLen, attr);
 
 	//
-	//	Turn any CR/LF at the end of a line into a single 'space' character
+	//	Turn a CR/LF at the end of a line that matches the line format into a single
+	//	'space' character. Any other line ending is left to show as control characters,
+	//	as is every line ending when they are all being shown.
 	//
-	nTextLen = StripCRLF(szText, attr, nTextLen, false);
+	if(!CheckStyle(TXS_SHOWLINEENDINGS))
+		nTextLen = StripCRLF(szText, attr, nTextLen, false);
 
 	//
 	//	Finally identify control-characters (after CR/LF has been changed to 'space')

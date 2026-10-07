@@ -79,7 +79,7 @@ COLORREF RealizeColour(COLORREF col);
 //	The line number is an estimate past the counted part of a large file, and the
 //	document offset is only available for fixed-width encodings.
 //
-typedef struct
+typedef struct _TVNCURSORINFO
 {
 	NMHDR			 hdr;
 	unsigned __int64 nLineNo;
@@ -89,7 +89,7 @@ typedef struct
 	BOOL			 fOffsetKnown;
 } TVNCURSORINFO;
 
-typedef struct
+typedef struct _TEXTVIEWSTATS
 {
 	unsigned __int64 byte_count;
 	unsigned __int64 char_count;
@@ -107,6 +107,7 @@ typedef struct
 #define TXS_TREECTRL			4
 #define TXS_LONGLINES			8
 #define TXS_HIGHLIGHTCURLINE	16
+#define TXS_SHOWLINEENDINGS		32		// show every line ending, not just those that don't match the line format
 
 //
 //	End-of-line mode

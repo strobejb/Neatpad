@@ -133,7 +133,7 @@
 #define IDM_RECENT_LAST                 40049
 #define ID_VIEW_LINEENDINGS             40050
 #define ID_LINEENDINGS_ALWAYSSHOW       40051
-#define ID_LINEENDINGS_HIGLIGHTMALFORMED 40052
+#define ID_LINEENDINGS_HIGHLIGHTMALFORMED 40052
 #define IDC_STATIC                      -1
 
 // Next default values for new objects
