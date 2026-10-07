@@ -70,6 +70,7 @@ void LoadRegSysSettings();
 void SaveRegSysSettings();
 void AddRecentFile(TCHAR *szFileName);
 BOOL OpenRecentFile(HWND hwnd, UINT nCommandId);
+BOOL OpenPreviousFile(HWND hwnd);
 void ClearRecentFiles();
 void UpdateRecentMenu(HMENU hMenu);
 BOOL SetExplorerContextMenu(BOOL fAddToMenu);

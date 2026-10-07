@@ -38,6 +38,44 @@ public:
 	enum			action;
 	enum			line_scan_mode;
 
+	//
+	//	The kinds of line break found in some text, for spotting mixed line endings.
+	//	A range can't tell what its last CR or first LF is part of, so those are
+	//	added by join() once the neighbouring range is known.
+	//
+	struct break_kinds
+	{
+		unsigned char crlf : 1;
+		unsigned char cr   : 1;		// a lone CR
+		unsigned char lf   : 1;		// a lone LF
+
+		break_kinds() : crlf(0), cr(0), lf(0)
+		{
+		}
+
+		// Add the break where one unit meets the next: a CR then an LF is a CRLF,
+		// a CR then anything else is a lone CR, and an LF not after a CR is a lone LF.
+		void add(bool prev_cr, bool next_lf)
+		{
+			if(prev_cr && next_lf)
+				crlf = 1;
+			else if(prev_cr)
+				cr = 1;
+			else if(next_lf)
+				lf = 1;
+		}
+
+		// Add the kinds in the range that follows, and the break where the two meet.
+		void join(bool prev_cr, bool next_starts_with_lf, const break_kinds &next)
+		{
+			add(prev_cr, next_starts_with_lf);
+
+			crlf |= next.crlf;
+			cr   |= next.cr;
+			lf   |= next.lf;
+		}
+	};
+
 public:
 
 	// sequence construction
@@ -71,6 +109,9 @@ public:
 	// Exactness checks for sequence line-number facts.
 	bool		lineno_known(size_w lineno) const;
 	bool		lineno_known_at(size_w offset) const;
+
+	// The kinds of line break found so far: the whole sequence once linecount_known().
+	break_kinds	linebreak_kinds() const;
 
 	// Build lazy line metadata for a touched sequence range.
 	void		index_lines(size_w offset, size_w length);
@@ -177,6 +218,7 @@ private:
 	mutable size_w			prefix_end;
 	mutable size_w			prefix_breaks;
 	mutable bool			prefix_complete;
+	mutable break_kinds		prefix_kinds;
 
 	
 	//
@@ -289,6 +331,7 @@ private:
 
 	// Line breaks in this span's own bytes. It depends only on those bytes,
 	// so once known it stays valid until the span's range changes.
+	break_kinds kinds;				// known with line_count (it sits in padding before line_count)
 	size_w	line_count;
 	unsigned line_count_known : 1;
 	unsigned starts_with_lf : 1;
@@ -505,6 +548,7 @@ public:
 		size_w	 breaks;			// CR, LF and CRLF each count once
 		bool	 starts_with_lf;
 		bool	 ends_with_cr;
+		break_kinds kinds;
 	};
 
 	void	set_line_scan_mode(line_scan_mode mode);
@@ -530,6 +574,7 @@ public:
 		size_w	 scanned_length;	// bytes counted; the page is current when this equals its length
 		bool	 starts_with_lf;
 		bool	 ends_with_cr;
+		break_kinds kinds;			// fits in existing padding
 	};
 
 	seqchar	*buffer;

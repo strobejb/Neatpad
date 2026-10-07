@@ -161,6 +161,10 @@ public:
 	size_w linecount();
 	bool  linecount_known();
 
+	// The kinds of line break found so far (TXL_CRLF, TXL_CR, TXL_LF bits). Covers the
+	// part of the document with exact line numbers, so the whole of it once linecount_known().
+	ULONG linebreaks_seen();
+
 	size_w byte_length();
 	size_w file_length();
 

@@ -150,6 +150,18 @@ static void FormatCount(TCHAR *buf, int cch, unsigned __int64 value)
 		lstrcpyn(buf, digits, cch);
 }
 
+//
+//	The line format, flagged when the document also has line endings of another kind
+//
+static void UpdateStatusBarLineFormat(UINT linebreaks_seen)
+{
+	UINT format = TextView_GetLineFormat(g_hwndTextView);
+
+	SetStatusBarText(g_hwndStatusbar, STATUS_PART_LINEFMT, 0,
+		(linebreaks_seen & ~format) ? _T(" %s, mixed") : _T(" %s"),
+		LineFormatName(format));
+}
+
 static void UpdateStatusBarDocStats(void)
 {
 	TEXTVIEWDOCSTATS stats;
@@ -163,8 +175,12 @@ static void UpdateStatusBarDocStats(void)
 	if(!TextView_GetDocStats(g_hwndTextView, &stats))
 	{
 		SetStatusBarText(g_hwndStatusbar, STATUS_PART_DOCSTATS, 0, _T(""));
+		UpdateStatusBarLineFormat(0);
 		return;
 	}
+
+	// edits and further line counting can turn up line endings of another kind
+	UpdateStatusBarLineFormat(stats.linebreaks_seen);
 
 	// with a selection, show how much of the document it covers. Only fixed-width
 	// encodings can count characters cheaply, so the others show bytes.
@@ -201,7 +217,7 @@ static void UpdateStatusBarDocStats(void)
 		SetStatusBarText(g_hwndStatusbar, STATUS_PART_DOCSTATS, 0, _T(" %s (%s %s)"),
 			sizeText,
 			countText,
-			stats.char_count == 1 ? _T("char") : _T("chars"));
+			stats.char_count == 1 ? _T("character") : _T("characters"));
 	}
 	else
 	{
@@ -217,9 +233,7 @@ void UpdateStatusBarFileInfo(void)
 	SetStatusBarText(g_hwndStatusbar, STATUS_PART_ENCODING, 0, _T(" %s"),
 		EncodingName((UINT)TextView_GetFormat(g_hwndTextView)));
 
-	SetStatusBarText(g_hwndStatusbar, STATUS_PART_LINEFMT, 0, _T(" %s"),
-		LineFormatName((UINT)TextView_GetLineFormat(g_hwndTextView)));
-
+	// also sets the line format pane
 	UpdateStatusBarDocStats();
 }
 
@@ -425,6 +439,10 @@ UINT CommandHandler(HWND hwnd, UINT nCtrlId, UINT nCtrlCode, HWND hwndFrom)
 			DoOpenFile(hwnd, g_szFileName, g_szFileTitle);
 		}
 		
+		return 0;
+
+	case IDM_RECENT_PREVIOUS:
+		OpenPreviousFile(hwnd);
 		return 0;
 
 	case IDM_FILE_SAVE:

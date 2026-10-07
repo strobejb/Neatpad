@@ -331,6 +331,28 @@ BOOL OpenRecentFile(HWND hwnd, UINT nCommandId)
 }
 
 //
+//	Open the most recent file other than the one being edited, so that
+//	repeating it switches between the two latest files
+//
+BOOL OpenPreviousFile(HWND hwnd)
+{
+	TCHAR szCurrent[MAX_PATH] = _T("");
+	int i;
+
+	// File > New clears the title but leaves the old file name behind
+	if(g_szFileTitle[0] && GetFullPathName(g_szFileName, MAX_PATH, szCurrent, 0) == 0)
+		lstrcpyn(szCurrent, g_szFileName, MAX_PATH);
+
+	for(i = 0; i < RecentFileCount(); i++)
+	{
+		if(lstrcmpi(g_szRecentFiles[i], szCurrent) != 0)
+			return OpenRecentFile(hwnd, IDM_RECENT_FIRST + i);
+	}
+
+	return FALSE;
+}
+
+//
 //	Add or remove Neatpad from the Explorer context-menu
 //
 BOOL SetExplorerContextMenu(BOOL fAddToMenu)

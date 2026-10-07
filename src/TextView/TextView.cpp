@@ -593,6 +593,7 @@ LRESULT WINAPI TextView::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 		stats->char_count_known = FALSE;
 		stats->sel_byte_count = 0;
 		stats->sel_char_count = 0;
+		stats->linebreaks_seen = m_pTextDoc->linebreaks_seen();
 
 		if(m_pTextDoc->charcount(&chars))
 		{

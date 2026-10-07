@@ -265,6 +265,7 @@ void sequence::update_span_line_data(span *sptr)
 	sptr->line_count_known = 0;
 	sptr->starts_with_lf = 0;
 	sptr->ends_with_cr = 0;
+	sptr->kinds = break_kinds();
 	lines_changed();
 
 	if(sptr->length < unit_size)

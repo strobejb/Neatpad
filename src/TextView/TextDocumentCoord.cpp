@@ -27,6 +27,18 @@ bool TextDocument::linecount_known()
 }
 
 //
+//	The kinds of line break found in the exactly-counted part of the document
+//
+ULONG TextDocument::linebreaks_seen()
+{
+	sequence::break_kinds kinds = m_seq.linebreak_kinds();
+
+	return (kinds.crlf ? TXL_CRLF : 0) |
+		   (kinds.cr   ? TXL_CR   : 0) |
+		   (kinds.lf   ? TXL_LF   : 0);
+}
+
+//
 //	The byte bounds [*line_begin, *line_next) of the line containing offset_bytes
 //
 bool TextDocument::line_bounds_from_offset(size_w offset_bytes, size_w *line_begin, size_w *line_next)

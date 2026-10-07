@@ -42,15 +42,15 @@ int StatusBarMenuSelect(HWND hwnd, HWND hwndSB, WPARAM wParam, LPARAM lParam)
 
 	if((flags == 0xffff && lParam == 0) || (flags & (MF_POPUP | MF_SEPARATOR)))
 	{
-		SetStatusBarText(hwndSB, STATUS_PART_MESSAGE, 1, _T(""));
+		SetStatusBarText(hwndSB, STATUS_PART_MESSAGE, 0, _T(""));
 		return 0;
 	}
 
 	// Display helpful text in status bar
 	if(LoadString(g_hResourceModule, id, buf, sizeof(buf) / sizeof(buf[0])))
-		SetStatusBarText(hwndSB, STATUS_PART_MESSAGE, 1, _T("%s"), buf);
+		SetStatusBarText(hwndSB, STATUS_PART_MESSAGE, 0, _T("%s"), buf);
 	else
-		SetStatusBarText(hwndSB, STATUS_PART_MESSAGE, 1, _T(""));
+		SetStatusBarText(hwndSB, STATUS_PART_MESSAGE, 0, _T(""));
 
 	return 0;
 }
@@ -175,7 +175,7 @@ HWND CreateStatusBar (HWND hwndParent)
 	SetStatusBarParts(hwndSB);
 
 	SetStatusBarText(hwndSB, STATUS_PART_CURSOR,   0,  _T(" Ln %d, Col %d"), 1, 1);
-	SetStatusBarText(hwndSB, STATUS_PART_MESSAGE,  1,  _T(""));
+	SetStatusBarText(hwndSB, STATUS_PART_MESSAGE,  0,  _T(""));
 	SetStatusBarText(hwndSB, STATUS_PART_DOCSTATS, 0,  _T(""));
 	SetStatusBarText(hwndSB, STATUS_PART_LINEFMT,  0,  _T(" CRLF"));
 	SetStatusBarText(hwndSB, STATUS_PART_ENCODING, 0, _T(" ASCII"));

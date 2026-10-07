@@ -357,6 +357,25 @@ void expect_line_bounds_from_offset(sequence &seq, size_w offset, size_w expecte
 	CHECK(actual_next_offset == expected_next_offset);
 }
 
+// The kinds of line break the sequence reports, and whether it has counted all of it
+void expect_linebreak_kinds(const sequence &seq, bool crlf, bool cr, bool lf, bool complete = true)
+{
+    sequence::break_kinds kinds = seq.linebreak_kinds();
+
+    CHECK(kinds.crlf == crlf);
+    CHECK(kinds.cr == cr);
+    CHECK(kinds.lf == lf);
+    CHECK(seq.linecount_known() == complete);
+}
+
+void expect_linebreak_kinds(const char *text, bool crlf, bool cr, bool lf)
+{
+    sequence seq;
+
+    init(seq, text);
+    expect_linebreak_kinds(seq, crlf, cr, lf);
+}
+
 // Bytes per character of the plain test text in each encoding
 ULONG unit_size(DocTestEncoding encoding)
 {
@@ -995,6 +1014,83 @@ void linecount_handles_cr_lf_adjacent_in_modify_buffer()
     expect_offset_from_lineno(seq, 2, 11);
 }
 
+void linebreak_kinds_finds_each_kind()
+{
+    //                     text            crlf   cr     lf
+    expect_linebreak_kinds("abc",          false, false, false);
+    expect_linebreak_kinds("a\r\nb\r\n",   true,  false, false);
+    expect_linebreak_kinds("a\nb\n",       false, false, true);
+    expect_linebreak_kinds("a\rb\r",       false, true,  false);
+    expect_linebreak_kinds("a\r\nb\nc\rd", true,  true,  true);
+
+    // a CR followed by another CR is a lone CR
+    expect_linebreak_kinds("a\r\r\nb",     true,  true,  false);
+
+    // nothing is before the first unit or after the last, so an LF at the very
+    // start and a CR at the very end are lone breaks
+    expect_linebreak_kinds("\nab",         false, false, true);
+    expect_linebreak_kinds("ab\r",         false, true,  false);
+    expect_linebreak_kinds("\r\n",         true,  false, false);
+}
+
+void linebreak_kinds_joins_crlf_across_spans_and_pages()
+{
+    // a CR ending one span and an LF starting the next make one CRLF
+    {
+        sequence seq;
+        init(seq, "abc\rxyz");
+        expect_linebreak_kinds(seq, false, true, false);
+
+        CHECK(insert_bytes(seq, 4, "\n"));
+        expect_content(seq, "abc\r\nxyz");
+        expect_linebreak_kinds(seq, true, false, false);
+    }
+
+    // splitting a CRLF leaves a lone CR and a lone LF; joining it again undoes that
+    {
+        sequence seq;
+        init(seq, "a\r\nb");
+
+        CHECK(insert_bytes(seq, 2, "X"));
+        expect_content(seq, "a\rX\nb");
+        expect_linebreak_kinds(seq, false, true, true);
+
+        CHECK(seq.erase(2, 1));
+        expect_content(seq, "a\r\nb");
+        expect_linebreak_kinds(seq, true, false, false);
+    }
+
+    // a CRLF straddling a line page: the page before ends with CR, the page after starts with LF
+    {
+        sequence seq;
+        std::string text(LINE_PAGE_SIZE * 2, 'A');
+
+        text[LINE_PAGE_SIZE - 1] = '\r';
+        text[LINE_PAGE_SIZE] = '\n';
+
+        CHECK(seq.init(reinterpret_cast<const seqchar *>(text.data()), text.size()));
+        expect_linebreak_kinds(seq, true, false, false);
+    }
+}
+
+void linebreak_kinds_follow_edits()
+{
+    sequence seq;
+    init(seq, "a\r\nb\nc\r\n");
+    expect_linebreak_kinds(seq, true, false, true);
+
+    // turning the only lone LF into a CRLF leaves just CRLFs
+    CHECK(insert_bytes(seq, 4, "\r"));
+    expect_content(seq, "a\r\nb\r\nc\r\n");
+    expect_linebreak_kinds(seq, true, false, false);
+
+    CHECK(seq.undo());
+    expect_linebreak_kinds(seq, true, false, true);
+
+    CHECK(seq.redo());
+    expect_linebreak_kinds(seq, true, false, false);
+}
+
 void line_bounds_from_offset_handles_crlf_boundaries()
 {
 	sequence seq;
@@ -1334,6 +1430,33 @@ void open_file_handles_crlf_across_scan_boundary()
     CHECK(seq.open(path, true));
     CHECK(seq.linecount() == 2);
     expect_offset_from_lineno(seq, 1, scan_size + 1);
+
+    seq.clear();
+    DeleteFile(path);
+    delete[] data;
+}
+
+void lazy_file_linebreak_kinds_grow_with_counting()
+{
+    sequence seq;
+    TCHAR path[MAX_PATH];
+    const size_t file_length = MEM_BLOCK_SIZE * 2;
+    char *data = new char[file_length];
+
+    // CRLF lines, except the last, which ends with a lone LF past the block counted on open
+    for(size_t i = 0; i < file_length; i += 4)
+        memcpy(data + i, "ab\r\n", 4);
+
+    data[file_length - 2] = 'x';
+
+    CHECK(write_temp_file(data, file_length, path));
+    CHECK(seq.open(path, true));
+
+    // only the first block is counted, so the lone LF hasn't been seen yet
+    expect_linebreak_kinds(seq, true, false, false, false);
+
+    seq.index_lines(0, seq.size());
+    expect_linebreak_kinds(seq, true, false, true, true);
 
     seq.clear();
     DeleteFile(path);
@@ -2112,6 +2235,24 @@ void textdocument_linebreak_from_coord()
     }
 }
 
+void textdocument_linebreaks_seen()
+{
+    const DocTestEncoding encodings[] = { DOC_ASCII, DOC_UTF8_BOM, DOC_UTF16LE_BOM, DOC_UTF16BE_BOM };
+
+    for(size_t i = 0; i < sizeof(encodings) / sizeof(encodings[0]); i++)
+    {
+        TextDocument doc;
+        TCHAR path[MAX_PATH];
+
+        CHECK(write_textdocument_file("crlf\r\nlf\nmore\r\n", encodings[i], path));
+        CHECK(doc.init(path));
+        CHECK(doc.linebreaks_seen() == (TXL_CRLF | TXL_LF));
+
+        doc.clear();
+        DeleteFile(path);
+    }
+}
+
 void textdocument_charoffset_only_for_fixed_width()
 {
     const DocTestEncoding encodings[] = { DOC_ASCII, DOC_UTF8_BOM, DOC_UTF16LE_BOM, DOC_UTF16BE_BOM };
@@ -2599,6 +2740,9 @@ const test_case tests[] =
     { "lineno_from_offset_handles_crlf_split_across_spans", lineno_from_offset_handles_crlf_split_across_spans },
     { "linecount_handles_crlf_split_by_insert", linecount_handles_crlf_split_by_insert },
     { "linecount_handles_cr_lf_adjacent_in_modify_buffer", linecount_handles_cr_lf_adjacent_in_modify_buffer },
+    { "linebreak_kinds_finds_each_kind", linebreak_kinds_finds_each_kind },
+    { "linebreak_kinds_joins_crlf_across_spans_and_pages", linebreak_kinds_joins_crlf_across_spans_and_pages },
+    { "linebreak_kinds_follow_edits", linebreak_kinds_follow_edits },
 	{ "line_bounds_from_offset_handles_crlf_boundaries", line_bounds_from_offset_handles_crlf_boundaries },
 	{ "line_bounds_from_offset_handles_long_lazy_file_line", line_bounds_from_offset_handles_long_lazy_file_line },
     { "line_scan_mode_handles_utf16le_crlf", line_scan_mode_handles_utf16le_crlf },
@@ -2614,6 +2758,7 @@ const test_case tests[] =
     { "open_file_renders_file_backed_content", open_file_renders_file_backed_content },
     { "open_file_renders_across_view_boundary", open_file_renders_across_view_boundary },
     { "open_file_handles_crlf_across_scan_boundary", open_file_handles_crlf_across_scan_boundary },
+    { "lazy_file_linebreak_kinds_grow_with_counting", lazy_file_linebreak_kinds_grow_with_counting },
     { "lazy_file_insert_crlf_updates_visible_line_offsets", lazy_file_insert_crlf_updates_visible_line_offsets },
     { "lazy_file_fully_indexed_keeps_exact_lines", lazy_file_fully_indexed_keeps_exact_lines },
     { "lazy_line_numbers_follow_edits_above", lazy_line_numbers_follow_edits_above },
@@ -2635,6 +2780,7 @@ const test_case tests[] =
     { "textdocument_coord_resolves_document_end", textdocument_coord_resolves_document_end },
     { "textdocument_only_cr_lf_end_lines", textdocument_only_cr_lf_end_lines },
     { "textdocument_linebreak_from_coord", textdocument_linebreak_from_coord },
+    { "textdocument_linebreaks_seen", textdocument_linebreaks_seen },
     { "textdocument_charoffset_only_for_fixed_width", textdocument_charoffset_only_for_fixed_width },
     { "textdocument_coord_moves_by_local_lines", textdocument_coord_moves_by_local_lines },
     { "textdocument_coord_moves_by_local_utf8_lines", textdocument_coord_moves_by_local_utf8_lines },

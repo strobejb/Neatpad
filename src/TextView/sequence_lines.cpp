@@ -19,6 +19,11 @@
 	range's break count is a pure function of its own units: CR always counts and
 	LF counts unless the unit before it in the same range is CR. Joining two
 	ranges subtracts one when the first ends with CR and the second starts with LF.
+
+	Alongside each break count, a range keeps its kinds of break (CRLF, lone CR,
+	lone LF) in a break_kinds, for spotting mixed line endings. They follow the
+	same rule wherever two units meet, inside a range or where ranges are joined,
+	so each place that counts or joins breaks makes one break_kinds call.
 */
 
 #include <windows.h>
@@ -167,6 +172,7 @@ struct break_counter
 	bool	any;
 	bool	starts_with_lf;
 	bool	prev_cr;
+	sequence::break_kinds kinds;
 
 	break_counter() : breaks(0), any(false), starts_with_lf(false), prev_cr(false)
 	{
@@ -179,6 +185,8 @@ struct break_counter
 			starts_with_lf = ch == LF;
 			any = true;
 		}
+		else
+			kinds.add(prev_cr, ch == LF);
 
 		if(ch == CR)
 		{
@@ -203,12 +211,11 @@ struct break_counter
 			if(!any && length > 0)
 				unit(raw[i++]);
 
-			// Fast path: anything above CR cannot be a line break.
+			// Fast path: anything above CR cannot be a line break, so it is only
+			// counted when it follows a CR (making that a lone CR).
 			for( ; i < length; i++)
 			{
-				if(raw[i] > CR)
-					prev_cr = false;
-				else
+				if(raw[i] <= CR || prev_cr)
 					unit(raw[i]);
 			}
 
@@ -387,6 +394,7 @@ void sequence::buffer_control::reset_line_pages()
 		line_pages[page].scanned_length = 0;
 		line_pages[page].starts_with_lf = false;
 		line_pages[page].ends_with_cr = false;
+		line_pages[page].kinds = break_kinds();
 	}
 
 	scanned_bytes = 0;
@@ -445,6 +453,7 @@ bool sequence::buffer_control::scan_range(size_w offset, size_w end, line_range 
 	range->breaks = counter.breaks;
 	range->starts_with_lf = counter.starts_with_lf;
 	range->ends_with_cr = counter.prev_cr;
+	range->kinds = counter.kinds;
 	return true;
 }
 
@@ -467,6 +476,7 @@ bool sequence::buffer_control::scan_page(size_w page)
 	lp->scanned_length = page_len;
 	lp->starts_with_lf = range.starts_with_lf;
 	lp->ends_with_cr = range.ends_with_cr;
+	lp->kinds = range.kinds;
 
 	scanned_bytes += page_len;
 	scanned_breaks += range.breaks;
@@ -511,6 +521,7 @@ bool sequence::buffer_control::count_breaks(size_w offset, size_w end, bool scan
 	range->breaks = 0;
 	range->starts_with_lf = false;
 	range->ends_with_cr = false;
+	range->kinds = break_kinds();
 
 	while(offset < end)
 	{
@@ -534,6 +545,7 @@ bool sequence::buffer_control::count_breaks(size_w offset, size_w end, bool scan
 			seg.breaks = line_pages[page].breaks;
 			seg.starts_with_lf = line_pages[page].starts_with_lf;
 			seg.ends_with_cr = line_pages[page].ends_with_cr;
+			seg.kinds = line_pages[page].kinds;
 		}
 		else if(!scan_range(offset, seg_end, &seg))
 		{
@@ -547,6 +559,12 @@ bool sequence::buffer_control::count_breaks(size_w offset, size_w end, bool scan
 
 		if(!first && prev_cr && seg.starts_with_lf)
 			range->breaks--;
+
+		// the range's first LF stays undecided, like its first segment's
+		if(first)
+			range->kinds = seg.kinds;
+		else
+			range->kinds.join(prev_cr, seg.starts_with_lf, seg.kinds);
 
 		prev_cr = seg.ends_with_cr;
 		first = false;
@@ -702,6 +720,7 @@ bool sequence::span_line_count(span *sptr) const
 		return false;
 
 	sptr->line_count = range.breaks;
+	sptr->kinds = range.kinds;
 	sptr->line_count_known = 1;
 	return true;
 }
@@ -716,6 +735,7 @@ void sequence::update_line_prefix() const
 {
 	size_w offset = 0;
 	size_w breaks = 0;
+	break_kinds kinds;
 	bool prev_cr = false;
 
 	if(prefix_generation == line_generation)
@@ -732,6 +752,7 @@ void sequence::update_line_prefix() const
 		if(span_line_count(sptr))
 		{
 			breaks += sptr->line_count;
+			kinds.join(prev_cr, sptr->starts_with_lf ? true : false, sptr->kinds);
 
 			if(prev_cr && sptr->starts_with_lf)
 				breaks--;
@@ -747,6 +768,7 @@ void sequence::update_line_prefix() const
 		if(known_end > sptr->offset && bc->count_breaks(sptr->offset, known_end, false, &range))
 		{
 			breaks += range.breaks;
+			kinds.join(prev_cr, range.starts_with_lf, range.kinds);
 
 			if(prev_cr && range.starts_with_lf)
 				breaks--;
@@ -758,8 +780,13 @@ void sequence::update_line_prefix() const
 		break;
 	}
 
+	// nothing follows the end of the sequence, so a CR there is a lone CR
+	if(prefix_complete)
+		kinds.add(prev_cr, false);
+
 	prefix_end = offset;
 	prefix_breaks = breaks;
+	prefix_kinds = kinds;
 	prefix_generation = line_generation;
 }
 
@@ -1126,6 +1153,19 @@ bool sequence::linecount_known() const
 
 	update_line_prefix();
 	return prefix_complete;
+}
+
+//
+//	sequence::linebreak_kinds
+//
+//	The kinds of line break in the exactly-counted part of the sequence. A kind
+//	that is reported is certainly present; one that is not may still turn up
+//	further on, until linecount_known().
+//
+sequence::break_kinds sequence::linebreak_kinds() const
+{
+	update_line_prefix();
+	return prefix_kinds;
 }
 
 //
