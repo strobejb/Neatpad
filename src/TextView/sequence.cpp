@@ -56,6 +56,19 @@ sequence::sequence ()
 	sequence_length = 0;
 	group_id		= 0;
 	group_refcount	= 0;
+	line_mode		= line_scan_bytes;
+
+	undoredo_index	= 0;
+	undoredo_length = 0;
+	change_offset	= 0;
+	change_erased	= 0;
+	change_inserted = 0;
+
+	line_generation	  = 1;
+	prefix_generation = 0;
+	prefix_end		  = 0;
+	prefix_breaks	  = 0;
+	prefix_complete	  = false;
 
 	head			= new span(0, 0, 0);
 	tail			= new span(0, 0, 0);
@@ -89,6 +102,9 @@ bool sequence::init ()
 	group_refcount	= 0;
 	undoredo_index	= 0;
 	undoredo_length = 0;
+	change_offset	= 0;
+	change_erased	= 0;
+	change_inserted = 0;
 
 	return true;
 }
@@ -122,6 +138,8 @@ bool sequence::open(TCHAR *filename, bool readonly)
 		return false;
 
 	buffer_control *bc = new buffer_control;
+	if(bc)
+		bc->set_line_scan_mode(line_mode);
 
 	if(bc == 0 || !bc->init_file(filename, readonly))
 	{
@@ -137,6 +155,9 @@ bool sequence::open(TCHAR *filename, bool readonly)
 	tail->prev = sptr;
 
 	sequence_length = bc->length;
+
+	// Count the first block up front so small files have exact line numbers immediately.
+	index_range(0, min(sequence_length, MEM_BLOCK_SIZE));
 	return true;
 }
 
@@ -220,7 +241,39 @@ void sequence::debug2 ()
 
 sequence::span* sequence::alloc_span(size_w offset, size_w length, int buffer, span *next, span *prev)
 {
-	return new span(offset, length, buffer, next, prev);
+	span *sptr = new span(offset, length, buffer, next, prev);
+	update_span_line_data(sptr);
+	return sptr;
+}
+
+
+
+//
+//	sequence::update_span_line_data
+//
+//  Reset a span's line metadata after its range changes. The break count is
+//	recomputed on demand; the edge flags are needed to join neighbouring spans.
+//
+void sequence::update_span_line_data(span *sptr)
+{
+	buffer_control *bc = buffer_list[sptr->buffer];
+	size_w unit_size = bc->line_scan_unit_size();
+	unsigned long ch;
+
+	sptr->line_count = 0;
+	sptr->line_count_known = 0;
+	sptr->starts_with_lf = 0;
+	sptr->ends_with_cr = 0;
+	lines_changed();
+
+	if(sptr->length < unit_size)
+	{
+		sptr->line_count_known = 1;
+		return;
+	}
+
+	sptr->starts_with_lf = bc->read_unit(sptr->offset, &ch) && ch == '\n';
+	sptr->ends_with_cr = bc->read_unit(sptr->offset + sptr->length - unit_size, &ch) && ch == '\r';
 }
 
 //
@@ -286,8 +339,10 @@ void sequence::swap_spanrange(span_range *src, span_range *dest)
 			src->last->next->prev  = dest->last;
 			dest->first->prev = src->first->prev;
 			dest->last->next = src->last->next;
-		}	
+		}
 	}
+
+	lines_changed();
 }
 
 void sequence::restore_spanrange (span_range *range, bool undo_or_redo)
@@ -346,6 +401,7 @@ void sequence::restore_spanrange (span_range *range, bool undo_or_redo)
 	// update the 'sequence length' and 'quicksave' states
 	std::swap(range->sequence_length,    sequence_length);
 	std::swap(range->quicksave,			 can_quicksave);
+	lines_changed();
 
 	undoredo_index	= range->index;
 
@@ -370,6 +426,9 @@ bool sequence::undoredo (eventstack &source, eventstack &dest)
 {
 	span_range *range = 0;
 	size_t group_id;
+	size_w old_length = sequence_length;
+	size_w prefix = MAX_SEQUENCE_LENGTH;
+	size_w suffix = MAX_SEQUENCE_LENGTH;
 
 	if(source.empty())
 		return false;
@@ -381,6 +440,8 @@ bool sequence::undoredo (eventstack &source, eventstack &dest)
 
 	do
 	{
+		size_w smaller;
+
 		// remove the next event from the source stack
 		range = source.back();
 		source.pop_back();
@@ -388,12 +449,34 @@ bool sequence::undoredo (eventstack &source, eventstack &dest)
 		// add event onto the destination stack
 		dest.push_back(range);
 
+		// Each event leaves the bytes before its index, and the same number
+		// of bytes at the end of both of its sequence lengths, untouched.
+		smaller = min(range->sequence_length, sequence_length);
+		prefix  = min(prefix, range->index);
+		suffix  = min(suffix, smaller - min(range->index, smaller));
+
 		// do the actual work
 		restore_spanrange(range, &source == &undostack ? true : false);
 	}
 	while(!source.empty() && (source.back()->group_id == group_id && group_id != 0));
 
+	if(prefix + suffix > min(old_length, sequence_length))
+		suffix = min(old_length, sequence_length) - prefix;
+
+	change_offset	= prefix;
+	change_erased	= old_length - prefix - suffix;
+	change_inserted = sequence_length - prefix - suffix;
 	return true;
+}
+
+//
+//	The bytes changed by the last undo or redo, covering every event in its group
+//
+void sequence::event_change(size_w *offset, size_w *erased, size_w *inserted) const
+{
+	*offset   = change_offset;
+	*erased   = change_erased;
+	*inserted = change_inserted;
 }
 
 // 
@@ -460,6 +543,27 @@ void sequence::ungroup()
 size_w sequence::size () const
 {
 	return sequence_length;
+}
+
+void sequence::set_line_scan_mode(line_scan_mode mode)
+{
+	if(line_mode == mode)
+		return;
+
+	line_mode = mode;
+
+	for(size_t i = 0; i < buffer_list.size(); i++)
+		buffer_list[i]->set_line_scan_mode(mode);
+
+	for(span *sptr = head->next; sptr != tail; sptr = sptr->next)
+		update_span_line_data(sptr);
+
+	index_range(0, min(sequence_length, MEM_BLOCK_SIZE));
+}
+
+sequence::line_scan_mode sequence::get_line_scan_mode() const
+{
+	return line_mode;
 }
 
 
@@ -545,6 +649,7 @@ bool sequence::insert_worker (size_w index, const seqchar *buf, size_w length, a
 		// simply extend the last span's length
 		span_range *event = undostack.back();
 		sptr->prev->length	+= length;
+		update_span_line_data(sptr->prev);
 		event->length		+= length;
 	}
 	// general-case #1: inserting at a span boundary?
@@ -649,6 +754,7 @@ void sequence::deletefromsequence(span **psptr)
 	memset(sptr, 0, sizeof(span));
 	delete sptr;
 	*psptr = 0;
+	lines_changed();
 }
 
 //
@@ -697,6 +803,7 @@ bool sequence::erase_worker (size_w index, size_w length, action act)
 			{
 				frag2->length	-= length;
 				frag2->offset	+= length;
+				update_span_line_data(frag2);
 				sequence_length -= length;
 				return true;
 			}
@@ -728,6 +835,7 @@ bool sequence::erase_worker (size_w index, size_w length, action act)
 			{
 				frag1->length	-= length;
 				frag1->offset	+= 0;
+				update_span_line_data(frag1);
 				sequence_length -= length;
 				return true;
 			}
@@ -979,6 +1087,7 @@ bool sequence::clear ()
 
 	buffer_list.clear();
 	sequence_length = 0;
+	lines_changed();
 	return true;
 }
 

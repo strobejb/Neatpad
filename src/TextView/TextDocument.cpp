@@ -46,12 +46,27 @@ static const TEXT_ENCODING_INFO * encoding_info(TEXT_ENCODING encoding)
 	return &ENCODINGINFO[0];
 }
 
-static bool is_linebreak(TCHAR ch)
+static sequence::line_scan_mode line_scan_mode_from_encoding(TEXT_ENCODING encoding)
 {
-	return ch == '\r' || ch == '\n' ||
-		ch == '\x0b' || ch == '\x0c' ||
-		ch == '\x85' || ch == 0x2028 ||
-		ch == 0x2029;
+	switch(encoding)
+	{
+	case NCP_UTF16:
+		return sequence::line_scan_utf16le;
+
+	case NCP_UTF16BE:
+		return sequence::line_scan_utf16be;
+
+	case NCP_UTF32:
+		return sequence::line_scan_utf32le;
+
+	case NCP_UTF32BE:
+		return sequence::line_scan_utf32be;
+
+	case NCP_ASCII:
+	case NCP_UTF8:
+	default:
+		return sequence::line_scan_bytes;
+	}
 }
 
 //
@@ -87,14 +102,9 @@ bool TextDocument::init(TCHAR *filename)
 
 	// try to detect if this is an ascii/unicode/utf8 file
 	m_nFileFormat = detect_file_format(&m_nHeaderSize);
+	m_seq.set_line_scan_mode(line_scan_mode_from_encoding(m_nFileFormat));
 
-	// Initialize the document's lazy line index.
-	if(!init_line_index())
-	{
-		clear();
-		return false;
-	}
-
+	update_text_length();
 	return true;
 }
 
@@ -162,7 +172,6 @@ bool TextDocument::clear()
 	m_nDocLength_chars = 0;
 	m_nFileFormat = NCP_ASCII;
 	m_nHeaderSize = 0;
-	m_lineIndex.clear();
 	return true;
 }
 
@@ -280,31 +289,9 @@ ULONG TextDocument::decode_text(ULONG offset, ULONG lenbytes, TCHAR *buf, ULONG 
 	return bytes_processed;
 }
 
-void TextDocument::copy_lineindex_info(TextLineIndexInfo *source, RawLineInfo *dest)
-{
-	ULONG rawLength = m_seq.size() - m_nHeaderSize;
-
-	dest->lineno = source->lineno;
-	dest->lineoff_chars = source->lineoff_chars;
-	dest->linelen_chars = source->linelen_chars;
-	dest->lineoff_bytes = source->lineoff_bytes;
-	dest->linelen_bytes = source->linelen_bytes;
-	dest->chars_known = source->chars_known;
-
-	if(!dest->chars_known && rawLength <= MEM_BLOCK_SIZE)
-	{
-		// Small documents can cheaply translate raw line ranges back into TextView's UTF-16 coordinates.
-		dest->lineoff_chars = byteoffset_to_charoffset(dest->lineoff_bytes);
-		dest->linelen_chars = count_code_units(dest->lineoff_bytes, dest->linelen_bytes);
-		dest->chars_known = true;
-	}
-}
-
-bool TextDocument::init_line_index()
+void TextDocument::update_text_length()
 {
 	ULONG buflen  = m_seq.size() - m_nHeaderSize;
-
-	m_lineIndex.clear();
 
 	if(m_nFileFormat == NCP_UTF8 && buflen > MEM_BLOCK_SIZE)
 	{
@@ -314,285 +301,6 @@ bool TextDocument::init_line_index()
 	{
 		m_nDocLength_chars = byteoffset_to_charoffset(buflen);
 	}
-
-	return m_lineIndex.init(this);
-}
-
-//
-//	Return the number of lines
-//
-ULONG TextDocument::linecount()
-{
-	return m_lineIndex.linecount();
-}
-
-bool TextDocument::linecount_known()
-{
-	return m_lineIndex.linecount_known();
-}
-
-bool TextDocument::lineno_known(ULONG lineno)
-{
-	return m_lineIndex.lineno_known(lineno);
-}
-
-bool TextDocument::line_number_range_known(ULONG offset_chars, ULONG length_chars)
-{
-	return m_lineIndex.line_number_range_known(offset_chars, length_chars);
-}
-
-void TextDocument::index_lines(ULONG offset_chars, ULONG length_chars)
-{
-	m_lineIndex.index_lines(offset_chars, length_chars);
-}
-
-//
-//	Return the length of longest line
-//
-ULONG TextDocument::longestline(int tabwidth)
-{
-	//ULONG i;
-	ULONG longest = 0;
-	ULONG xpos = 0;
-//	char *bufptr = (char *)(buffer + m_nHeaderSize);
-/*
-	for(i = 0; i < length_bytes; i++)
-	{
-		if(bufptr[i] == '\r')
-		{
-			if(bufptr[i+1] == '\n')
-				 i++;
-
-			longest = max(longest, xpos);
-			xpos = 0;
-		}
-		else if(bufptr[i] == '\n')
-		{
-			longest = max(longest, xpos);
-			xpos = 0;
-		}
-		else if(bufptr[i] == '\t')
-		{
-			xpos += tabwidth - (xpos % tabwidth);
-		}
-		else
-		{
-			xpos ++;
-		}
-	}
-
-	longest = max(longest, xpos);*/
-	return 100;//longest;
-}
-
-//
-//	Return information about specified line
-//
-bool TextDocument::raw_lineinfo_from_lineno(ULONG lineno, RawLineInfo *lineinfo)
-{
-	TextLineIndexInfo indexinfo;
-
-	if(lineinfo == 0)
-		return false;
-
-	if(!m_lineIndex.lineinfo_from_lineno(lineno, &indexinfo))
-		return false;
-
-	copy_lineindex_info(&indexinfo, lineinfo);
-	return true;
-}
-
-bool TextDocument::lineinfo_from_lineno(ULONG lineno, ULONG *lineoff_chars, ULONG *linelen_chars)
-{
-	RawLineInfo lineinfo;
-
-	if(!raw_lineinfo_from_lineno(lineno, &lineinfo))
-		return false;
-
-	if(lineoff_chars) *lineoff_chars = lineinfo.lineoff_chars;
-	if(linelen_chars) *linelen_chars = lineinfo.linelen_chars;
-
-	return true;
-}
-
-//
-//	Perform a reverse lookup - file-offset to line number
-//
-bool TextDocument::raw_lineinfo_from_offset(ULONG offset_chars, RawLineInfo *lineinfo)
-{
-	TextLineIndexInfo indexinfo;
-
-	if(lineinfo == 0)
-		return false;
-
-	if(!m_lineIndex.lineinfo_from_offset(offset_chars, &indexinfo))
-		return false;
-
-	copy_lineindex_info(&indexinfo, lineinfo);
-	return true;
-}
-
-bool TextDocument::lineinfo_from_offset(ULONG offset_chars, ULONG *lineno, ULONG *lineoff_chars, ULONG *linelen_chars)
-{
-	RawLineInfo lineinfo;
-
-	if(!raw_lineinfo_from_offset(offset_chars, &lineinfo))
-		return false;
-
-	if(lineno) *lineno = lineinfo.lineno;
-	if(lineoff_chars) *lineoff_chars = lineinfo.lineoff_chars;
-	if(linelen_chars) *linelen_chars = lineinfo.linelen_chars;
-
-	return true;
-}
-
-bool TextDocument::lineinfo_from_offset(ULONG offset_chars, TextLineInfo *lineinfo)
-{
-	RawLineInfo rawinfo;
-
-	if(lineinfo == 0)
-		return false;
-
-	if(!raw_lineinfo_from_offset(offset_chars, &rawinfo))
-		return false;
-
-	lineinfo->lineno = rawinfo.lineno;
-	lineinfo->lineoff_chars = rawinfo.lineoff_chars;
-	lineinfo->linelen_chars = rawinfo.linelen_chars;
-
-	return true;
-}
-
-ULONG TextDocument::line_text_end(TextLineInfo *lineinfo)
-{
-	RawLineInfo rawinfo;
-	ULONG offset_chars;
-	ULONG offset_bytes;
-	ULONG bytes_left;
-
-	if(lineinfo == 0)
-		return 0;
-
-	if(!raw_lineinfo_from_offset(lineinfo->lineoff_chars, &rawinfo))
-		return lineinfo->lineoff_chars;
-
-	offset_chars = rawinfo.lineoff_chars;
-	offset_bytes = rawinfo.lineoff_bytes;
-	bytes_left = rawinfo.linelen_bytes;
-
-	while(bytes_left)
-	{
-		TCHAR buf[0x100];
-		ULONG chars = 0x100;
-		ULONG bytes = decode_text(offset_bytes, bytes_left, buf, &chars);
-
-		for(ULONG i = 0; i < chars; i++)
-		{
-			if(is_linebreak(buf[i]))
-				return offset_chars + i;
-		}
-
-		if(bytes == 0)
-			break;
-
-		offset_chars += chars;
-		offset_bytes += bytes;
-
-		if(bytes > bytes_left)
-			break;
-
-		bytes_left -= bytes;
-	}
-
-	return offset_chars;
-}
-
-bool TextDocument::previous_lineinfo_from_offset(ULONG offset_chars, ULONG num_lines, TextLineInfo *lineinfo)
-{
-	ULONG docLength = text_length();
-	TextLineInfo target;
-
-	if(lineinfo == 0 || docLength == 0)
-		return false;
-
-	if(offset_chars > docLength)
-		offset_chars = docLength;
-
-	if(!lineinfo_from_offset(offset_chars, &target))
-		return false;
-
-	// Walk using physical line starts, so navigation does not depend on exact global line numbers.
-	while(num_lines-- > 0 && target.lineoff_chars > 0)
-	{
-		TextLineInfo prev;
-		ULONG probe = target.lineoff_chars - 1;
-
-		if(!lineinfo_from_offset(probe, &prev))
-			break;
-
-		// A line-boundary lookup can resolve back to the current line; step inside the previous line.
-		if(prev.lineoff_chars >= target.lineoff_chars && target.lineoff_chars > 1)
-		{
-			if(!lineinfo_from_offset(target.lineoff_chars - 2, &prev))
-				break;
-		}
-
-		if(prev.lineoff_chars >= target.lineoff_chars)
-			break;
-
-		target = prev;
-	}
-
-	*lineinfo = target;
-	return true;
-}
-
-bool TextDocument::next_lineinfo_from_offset(ULONG offset_chars, ULONG num_lines, TextLineInfo *lineinfo)
-{
-	ULONG docLength = text_length();
-	TextLineInfo target;
-
-	if(lineinfo == 0 || docLength == 0)
-		return false;
-
-	if(offset_chars > docLength)
-		offset_chars = docLength;
-
-	if(!lineinfo_from_offset(offset_chars, &target))
-		return false;
-
-	// Walk by line length to reach the next physical line, stopping cleanly at EOF.
-	while(num_lines-- > 0)
-	{
-		TextLineInfo next;
-		ULONG lineEnd;
-
-		if(target.lineoff_chars >= docLength || target.linelen_chars > docLength - target.lineoff_chars)
-			lineEnd = docLength;
-		else
-			lineEnd = target.lineoff_chars + target.linelen_chars;
-
-		if(lineEnd >= docLength)
-		{
-			if(target.linelen_chars == 0 || !lineinfo_from_offset(docLength, &next))
-				break;
-
-			if(next.lineoff_chars != docLength || next.lineno == target.lineno)
-				break;
-		}
-		else if(!lineinfo_from_offset(lineEnd, &next))
-		{
-			break;
-		}
-
-		if(next.lineoff_chars <= target.lineoff_chars)
-			break;
-
-		target = next;
-	}
-
-	*lineinfo = target;
-	return true;
 }
 
 TEXT_ENCODING TextDocument::getformat()
@@ -630,18 +338,58 @@ TextReader TextDocument::text_from_line(ULONG lineno, ULONG *linestart, ULONG *l
 	return TextReader(lineinfo.lineoff_bytes, lineinfo.linelen_bytes, this);
 }
 
-ULONG TextDocument::lineno_from_offset(ULONG offset)
+TextReader TextDocument::text_from_range(const TextCoord *from, const TextCoord *to)
 {
-	ULONG lineno = 0;
-	lineinfo_from_offset(offset, &lineno, 0, 0);
-	return lineno;
+	ULONG offset = min(from->byte_anchor, to->byte_anchor);
+
+	return TextReader(offset, max(from->byte_anchor, to->byte_anchor) - offset, this);
 }
 
-ULONG TextDocument::offset_from_lineno(ULONG lineno)
+TextReader::TextReader()
+	: text_doc(0), off_bytes(0), len_bytes(0)
 {
-	ULONG lineoff = 0;
-	lineinfo_from_lineno(lineno, &lineoff, 0);
-	return lineoff;
+}
+
+TextReader::TextReader(const TextReader &reader)
+	: text_doc(reader.text_doc), off_bytes(reader.off_bytes), len_bytes(reader.len_bytes)
+{
+}
+
+TextReader & TextReader::operator= (const TextReader &reader)
+{
+	text_doc  = reader.text_doc;
+	off_bytes = reader.off_bytes;
+	len_bytes = reader.len_bytes;
+	return *this;
+}
+
+ULONG TextReader::read(TCHAR *buf, ULONG buflen)
+{
+	if(text_doc)
+	{
+		// get text from the TextDocument at the specified byte-offset
+		ULONG len = text_doc->decode_text(off_bytes, len_bytes, buf, &buflen);
+
+		// adjust the reader's internal position
+		off_bytes += len;
+		len_bytes -= len;
+
+		return buflen;
+	}
+	else
+	{
+		return 0;
+	}
+}
+
+TextReader::operator bool()
+{
+	return text_doc ? true : false;
+}
+
+TextReader::TextReader(ULONG off, ULONG len, TextDocument *td)
+	: text_doc(td), off_bytes(off), len_bytes(len)
+{
 }
 
 //
@@ -660,6 +408,41 @@ ULONG TextDocument::getline(ULONG nLineNo, TCHAR *buf, ULONG buflen, ULONG *off_
 	decode_text(lineinfo.lineoff_bytes, lineinfo.linelen_bytes, buf, &buflen);
 	
 	*off_chars = lineinfo.lineoff_chars;
+	return buflen;
+}
+
+ULONG TextDocument::getline(DocLine &line, TCHAR *buf, ULONG buflen, ULONG *off_chars)
+{
+	RawLineInfo lineinfo;
+
+	if(!raw_lineinfo_from_offset(line.offset_chars, &lineinfo))
+	{
+		if(off_chars)
+			*off_chars = 0;
+
+		return 0;
+	}
+
+	decode_text(lineinfo.lineoff_bytes, lineinfo.linelen_bytes, buf, &buflen);
+
+	if(off_chars)
+		*off_chars = lineinfo.lineoff_chars;
+
+	return buflen;
+}
+
+ULONG TextDocument::getline(TextCoord &coord, TCHAR *buf, ULONG buflen, ULONG *off_chars)
+{
+	ULONG len_bytes = coord.line_next >= coord.line_begin ? coord.line_next - coord.line_begin : 0;
+
+	if(coord.line_begin + len_bytes > m_seq.size() - m_nHeaderSize)
+		len_bytes = m_seq.size() - m_nHeaderSize - coord.line_begin;
+
+	decode_text(coord.line_begin, len_bytes, buf, &buflen);
+
+	if(off_chars)
+		*off_chars = coord.line.offset_chars;
+
 	return buflen;
 }
 
@@ -772,15 +555,13 @@ ULONG TextDocument::insert_raw(ULONG offset_bytes, TCHAR *text, ULONG length)
 	return rawlen;
 }
 
-ULONG TextDocument::replace_raw(ULONG offset_bytes, TCHAR *text, ULONG length, ULONG erase_chars)
+ULONG TextDocument::replace_raw(ULONG offset_bytes, TCHAR *text, ULONG length, ULONG erase_bytes)
 {
 	BYTE  buf[0x100];
 	ULONG buflen;
 	ULONG copied;
 	ULONG rawlen = 0;
 	ULONG offset = offset_bytes + m_nHeaderSize;
-
-	ULONG erase_bytes = count_chars(offset_bytes, erase_chars);
 
 	while(length)
 	{
@@ -955,15 +736,23 @@ ULONG TextDocument::charoffset_to_byteoffset(ULONG offset_chars)
 //
 //	Insert text at specified character-offset
 //
-ULONG TextDocument::insert_text(ULONG offset_chars, TCHAR *text, ULONG length)
+ULONG TextDocument::insert_text(ULONG offset_chars, TCHAR *text, ULONG length, TextChange *change)
 {
 	ULONG offset_bytes = charoffset_to_byteoffset(offset_chars);
+	ULONG old_size = m_seq.size();
 	ULONG rawlen = insert_raw(offset_bytes, text, length);
 
 	if(rawlen)
 	{
 		m_nDocLength_chars += length;
-		init_line_index();
+		update_text_length();
+	}
+
+	if(change)
+	{
+		change->offset = offset_bytes;
+		change->erased = 0;
+		change->inserted = m_seq.size() - old_size;
 	}
 
 	return rawlen;
@@ -972,15 +761,24 @@ ULONG TextDocument::insert_text(ULONG offset_chars, TCHAR *text, ULONG length)
 //
 //	Overwrite text at specified character-offset
 //
-ULONG TextDocument::replace_text(ULONG offset_chars, TCHAR *text, ULONG length, ULONG erase_len)
+ULONG TextDocument::replace_text(ULONG offset_chars, TCHAR *text, ULONG length, ULONG erase_len, TextChange *change)
 {
 	ULONG offset_bytes = charoffset_to_byteoffset(offset_chars);
-	ULONG rawlen = replace_raw(offset_bytes, text, length, erase_len);
+	ULONG old_size = m_seq.size();
+	ULONG rawlen = replace_raw(offset_bytes, text, length, count_chars(offset_bytes, erase_len));
 
 	if(rawlen)
 	{
 		m_nDocLength_chars = m_nDocLength_chars - erase_len + length;
-		init_line_index();
+		update_text_length();
+	}
+
+	// The sequence clamps a replace that runs past the end, so measure what it erased.
+	if(change)
+	{
+		change->offset = offset_bytes;
+		change->erased = old_size + rawlen - m_seq.size();
+		change->inserted = rawlen;
 	}
 
 	return rawlen;
@@ -989,21 +787,140 @@ ULONG TextDocument::replace_text(ULONG offset_chars, TCHAR *text, ULONG length, 
 //
 //	Erase text at specified character-offset
 //
-ULONG TextDocument::erase_text(ULONG offset_chars, ULONG length)
+ULONG TextDocument::erase_text(ULONG offset_chars, ULONG length, TextChange *change)
 {
 	ULONG offset_bytes = charoffset_to_byteoffset(offset_chars);
+	ULONG old_size = m_seq.size();
 	ULONG erased = erase_raw(offset_bytes, length);
 
 	if(erased)
 	{
 		m_nDocLength_chars -= erased;
-		init_line_index();
+		update_text_length();
+	}
+
+	if(change)
+	{
+		change->offset = offset_bytes;
+		change->erased = old_size - m_seq.size();
+		change->inserted = 0;
 	}
 
 	return erased;
 }
 
-bool TextDocument::undo(ULONG *offset_start, ULONG *offset_end)
+//
+//	Insert text at a coordinate
+//
+ULONG TextDocument::insert_text(const TextCoord *at, TCHAR *text, ULONG length, TextChange *change)
+{
+	ULONG old_size = m_seq.size();
+	ULONG rawlen = insert_raw(at->byte_anchor, text, length);
+
+	if(rawlen)
+		update_text_length();
+
+	if(change)
+	{
+		change->offset = at->byte_anchor;
+		change->erased = 0;
+		change->inserted = m_seq.size() - old_size;
+	}
+
+	return rawlen;
+}
+
+//
+//	Replace the text between two coordinates
+//
+ULONG TextDocument::replace_text(const TextCoord *from, const TextCoord *to, TCHAR *text, ULONG length, TextChange *change)
+{
+	ULONG offset = min(from->byte_anchor, to->byte_anchor);
+	ULONG erase_bytes = max(from->byte_anchor, to->byte_anchor) - offset;
+	ULONG old_size = m_seq.size();
+	ULONG rawlen = replace_raw(offset, text, length, erase_bytes);
+
+	if(rawlen)
+		update_text_length();
+
+	if(change)
+	{
+		change->offset = offset;
+		change->erased = old_size + rawlen - m_seq.size();
+		change->inserted = rawlen;
+	}
+
+	return rawlen;
+}
+
+//
+//	Erase the text between two coordinates
+//
+ULONG TextDocument::erase_text(const TextCoord *from, const TextCoord *to, TextChange *change)
+{
+	ULONG offset = min(from->byte_anchor, to->byte_anchor);
+	ULONG erase_bytes = max(from->byte_anchor, to->byte_anchor) - offset;
+	ULONG erased = 0;
+
+	if(erase_bytes && m_seq.erase(offset + m_nHeaderSize, erase_bytes))
+	{
+		erased = erase_bytes;
+		update_text_length();
+	}
+
+	if(change)
+	{
+		change->offset = offset;
+		change->erased = erased;
+		change->inserted = 0;
+	}
+
+	return erased;
+}
+
+//
+//	Report the bytes changed by the last undo/redo in document coordinates
+//
+void TextDocument::event_change(TextChange *change)
+{
+	size_w offset;
+	size_w erased;
+	size_w inserted;
+
+	if(change == 0)
+		return;
+
+	m_seq.event_change(&offset, &erased, &inserted);
+
+	change->offset = offset > (size_w)m_nHeaderSize ? (ULONG)(offset - m_nHeaderSize) : 0;
+	change->erased = (ULONG)erased;
+	change->inserted = (ULONG)inserted;
+}
+
+//
+//	Undo/redo by coordinate: the change says which bytes came back
+//
+bool TextDocument::undo(TextChange *change)
+{
+	if(!m_seq.undo())
+		return false;
+
+	update_text_length();
+	event_change(change);
+	return true;
+}
+
+bool TextDocument::redo(TextChange *change)
+{
+	if(!m_seq.redo())
+		return false;
+
+	update_text_length();
+	event_change(change);
+	return true;
+}
+
+bool TextDocument::undo(ULONG *offset_start, ULONG *offset_end, TextChange *change)
 {
 	ULONG start, length;
 
@@ -1017,12 +934,13 @@ bool TextDocument::undo(ULONG *offset_start, ULONG *offset_end)
 	*offset_end   = byteoffset_to_charoffset(start+length);
 
 	m_nDocLength_chars = byteoffset_to_charoffset(m_seq.size() - m_nHeaderSize);
-	init_line_index();
-	
+	update_text_length();
+	event_change(change);
+
 	return true;
 }
 
-bool TextDocument::redo(ULONG *offset_start, ULONG *offset_end)
+bool TextDocument::redo(ULONG *offset_start, ULONG *offset_end, TextChange *change)
 {
 	ULONG start, length;
 
@@ -1034,9 +952,10 @@ bool TextDocument::redo(ULONG *offset_start, ULONG *offset_end)
 
 	*offset_start = byteoffset_to_charoffset(start);
 	*offset_end   = byteoffset_to_charoffset(start+length);
-	
+
 	m_nDocLength_chars = byteoffset_to_charoffset(m_seq.size() - m_nHeaderSize);
-	init_line_index();
+	update_text_length();
+	event_change(change);
 
 	return true;
 }

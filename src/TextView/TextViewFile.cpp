@@ -40,9 +40,13 @@ LONG TextView::OpenFile(TCHAR *szFileName)
 		m_nVScrollPos  = 0;
 		m_nHScrollPos  = 0;
 
-		m_nSelectionStart	= 0;
-		m_nSelectionEnd		= 0;
-		m_nCursorOffset		= 0;
+		TextCoord start;
+
+		if(m_pTextDoc->coord_from_byte_anchor(0, &start))
+			SetCursorCoord(&start);
+
+		m_selAnchor = m_cursorPos;
+		m_scrollVPos = m_cursorPos;
 
 		UpdateMarginWidth();
 		UpdateMetrics();
@@ -71,11 +75,10 @@ LONG TextView::ClearFile()
 	m_nVScrollPos		= 0;
 	m_nHScrollPos		= 0;
 
-	m_nSelectionStart	= 0;
-	m_nSelectionEnd		= 0;
-	m_nCursorOffset		= 0;
-
 	m_nCurrentLine		= 0;
+	m_cursorPos			= TextCoord();
+	m_scrollVPos		= TextCoord();
+	m_selAnchor			= TextCoord();
 	m_nCaretPosX		= 0;
 
 	UpdateMetrics();

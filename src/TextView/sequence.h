@@ -1,6 +1,7 @@
 #ifndef SEQUENCE_INCLUDED
 #define SEQUENCE_INCLUDED
 
+#include <windows.h>
 #include <vector>
 
 //
@@ -19,6 +20,8 @@ typedef unsigned long	  size_w;
 
 const size_w MAX_SEQUENCE_LENGTH = ((size_w)(-1) / sizeof(seqchar));
 const size_w MEM_BLOCK_SIZE = 0x40000;
+const size_w LINE_PAGE_SIZE = 0x10000;		// granularity of each buffer's cached line-break counts
+const size_w LINE_SCAN_AHEAD = 0x400000;	// how far lineoffset() may scan past the exact prefix
 
 //
 //	sequence class!
@@ -33,6 +36,7 @@ public:
 	class			iterator;
 	class			ref;
 	enum			action;
+	enum			line_scan_mode;
 
 public:
 
@@ -53,9 +57,29 @@ public:
 	bool		init(const seqchar *buffer, size_t length);
 
 	//
-	//	Sequence size
+	//	Sequence size and line index
 	//
 	size_w		size() const;
+
+	// Line offsets are raw sequence offsets. linecount() may be estimated until every lazy file page has been indexed.
+	size_w		linecount() const;
+	bool		linecount_known() const;
+
+	void		set_line_scan_mode(line_scan_mode mode);
+	line_scan_mode get_line_scan_mode() const;
+
+	// Exactness checks for sequence line-number facts.
+	bool		line_number_known(size_w line) const;
+	bool		line_numbers_known(size_w offset, size_w length) const;
+
+	// Build lazy line metadata for a touched sequence range.
+	void		index_lines(size_w offset, size_w length);
+
+	// Physical line lookup. Offsets are sequence offsets; line numbers may be estimated while lazy.
+	bool		next_lineoffset(size_w lineoff, size_w *nextoff) const;
+	bool		linebounds_from_offset(size_w offset, size_w *lineoff, size_w *nextoff);
+	bool		lineoffset(size_w line, size_w *offset) const;
+	bool		linefromoffset(size_w offset, size_w *line, size_w *lineoffset) const;
 	
 	//
 	// sequence manipulation 
@@ -82,6 +106,9 @@ public:
 	void		ungroup();
 	size_w		event_index() const  { return undoredo_index; }
 	size_w		event_length() const { return undoredo_length; }
+
+	// Bytes changed by the last undo/redo: [offset, offset + erased) became [offset, offset + inserted).
+	void		event_change(size_w *offset, size_w *erased, size_w *inserted) const;
 
 	// print out the sequence
 	void		debug1();
@@ -118,6 +145,43 @@ private:
 
 private:
 	//
+	//	Line engine internals (sequence_lines.cpp).
+	//
+	//	Navigation (line_start_at, next_line_start) scans locally around an offset
+	//	and never depends on the line index. Numbering sums per-span break counts,
+	//	and is exact only across the leading run of spans whose counts are known.
+	//
+	class			span_cursor;
+
+	bool			line_start_at(size_w offset, size_w *start) const;
+	bool			next_line_start(size_w offset, size_w *next) const;
+	bool			unit_at(size_w offset, unsigned long *ch) const;
+	bool			crlf_straddles(size_w offset) const;
+	size_w			line_scan_unit_size() const;
+
+	bool			span_line_count(span *sptr) const;
+	void			update_line_prefix() const;
+	bool			count_breaks_to(size_w limit, size_w target, size_w *stop_offset, size_w *stop_breaks) const;
+	bool			scan_to_line(size_w offset, size_w breaks, size_w line, size_w *lineoffset) const;
+	bool			exact_line_from_offset(size_w offset, size_w *line) const;
+	size_w			estimated_line_from_offset(size_w offset) const;
+	bool			estimated_offset_from_line(size_w line, size_w *offset) const;
+	void			line_density(size_w *breaks, size_w *bytes) const;
+	void			extend_line_prefix(size_w line, size_w offset) const;
+	void			index_range(size_w offset, size_w length) const;
+	void			lines_changed() const;
+
+	void			update_span_line_data(span* sptr);
+
+	// Cached exact prefix: line numbers are exact for offsets <= prefix_end.
+	mutable unsigned long	line_generation;
+	mutable unsigned long	prefix_generation;
+	mutable size_w			prefix_end;
+	mutable size_w			prefix_breaks;
+	mutable bool			prefix_complete;
+
+	
+	//
 	//	Undo and redo stacks
 	//
 	span_range *	initundo(size_w index, size_w length, action act);
@@ -133,6 +197,9 @@ private:
 	size_t			group_refcount;
 	size_w			undoredo_index;
 	size_w			undoredo_length;
+	size_w			change_offset;
+	size_w			change_erased;
+	size_w			change_inserted;
 
 	//
 	//	File and memory buffer management
@@ -156,6 +223,7 @@ private:
 	size_w			lastaction_index;
 	action			lastaction;
 	bool			can_quicksave;
+	line_scan_mode	line_mode;
 	
 };
 
@@ -175,6 +243,15 @@ enum sequence::action
 	action_replace 
 };
 
+enum sequence::line_scan_mode
+{
+	line_scan_bytes,
+	line_scan_utf16le,
+	line_scan_utf16be,
+	line_scan_utf32le,
+	line_scan_utf32be
+};
+
 //
 //	sequence::span
 //
@@ -184,30 +261,42 @@ class sequence::span
 {
 	friend class sequence;
 	friend class span_range;
-	
+	friend class span_cursor;
+
 public:
 	// constructor
-	span(size_w off, size_w len, int buf, span *nx = 0, span *pr = 0) 
+	span(size_w off, size_w len, int buf, span *nx = 0, span *pr = 0)
 			:
-			next(nx), 
+			next(nx),
 			prev(pr),
-			offset(off), 
-			length(len), 
-			buffer(buf)
+			offset(off),
+			length(len),
+			buffer(buf),
+			line_count(0),
+			line_count_known(0),
+			starts_with_lf(0),
+			ends_with_cr(0)
 	  {
 		  static int count=-2;
 		  id = count++;
 	  }
 
-	  
+
 private:
 
 	span   *next;
-	span   *prev;	// double-link-list 
-	
+	span   *prev;	// double-link-list
+
 	size_w  offset;
 	size_w  length;
 	int     buffer;
+
+	// Line breaks in this span's own bytes. It depends only on those bytes,
+	// so once known it stays valid until the span's range changes.
+	size_w	line_count;
+	unsigned line_count_known : 1;
+	unsigned starts_with_lf : 1;
+	unsigned ends_with_cr   : 1;
 
 	int		id;
 };	
@@ -410,6 +499,26 @@ public:
 	seqchar *getptr(size_w offset, size_w length);
 	void	clear();
 
+	//
+	//	Line counting (sequence_lines.cpp). Each LINE_PAGE_SIZE page caches its
+	//	break count once scanned. Buffer bytes never change, so a scanned page
+	//	stays valid; a modify buffer's last page is rescanned after it grows.
+	//
+	struct line_range
+	{
+		size_w	 breaks;			// CR, LF and CRLF each count once
+		bool	 starts_with_lf;
+		bool	 ends_with_cr;
+	};
+
+	void	set_line_scan_mode(line_scan_mode mode);
+	size_w	line_scan_unit_size() const;
+	bool	read_unit(size_w offset, unsigned long *ch);
+	bool	count_breaks(size_w offset, size_w end, bool scan_file_pages, line_range *range);
+	size_w	countable_end(size_w offset, size_w end) const;
+	bool	page_current(size_w page) const;
+	bool	scan_page(size_w page);
+
 	enum { MAX_VIEWS = 4 };
 	struct buffer_view
 	{
@@ -419,14 +528,34 @@ public:
 		bool	 initialized;
 	};
 
+	struct line_page
+	{
+		size_w	 breaks;
+		size_w	 scanned_length;	// bytes counted; the page is current when this equals its length
+		bool	 starts_with_lf;
+		bool	 ends_with_cr;
+	};
+
 	seqchar	*buffer;
 	buffer_view viewlist[MAX_VIEWS];
+	line_page *line_pages;
+	size_w	 line_page_count;
+	size_w	 scanned_bytes;			// totals over scanned pages, used to estimate unscanned text
+	size_w	 scanned_breaks;
 	size_w	 length;
 	size_w	 maxsize;
 	void	*fp;
 	bool	 own_memory;
 	bool	 readonly;
 	int		 id;
+	line_scan_mode line_mode;
+
+private:
+	bool	alloc_line_pages(size_w size);
+	void	free_line_pages();
+	void	reset_line_pages();
+	size_w	page_length(size_w page) const;
+	bool	scan_range(size_w offset, size_w end, line_range *range);
 };
 
 class sequence::iterator

@@ -31,10 +31,11 @@ LONG TextView::OnMouseActivate(HWND hwndTop, UINT nHitTest, UINT nMessage)
 HMENU TextView::CreateContextMenu()
 {
 	HMENU hMenu = CreatePopupMenu();
+	TextCoord selStart, selEnd;
 
 	// do we have a selection?
-	UINT fSelection = (m_nSelectionStart == m_nSelectionEnd) ?
-		MF_DISABLED| MF_GRAYED : MF_ENABLED;
+	UINT fSelection = GetSelection(&selStart, &selEnd) ?
+		MF_ENABLED : MF_DISABLED| MF_GRAYED;
 
 	// is there text on the clipboard?
 	UINT fClipboard = (IsClipboardFormatAvailable(CF_TEXT) || IsClipboardFormatAvailable(CF_UNICODETEXT)) ?
@@ -98,42 +99,40 @@ LONG TextView::OnContextMenu(HWND hwndParam, int x, int y)
 //
 LONG TextView::OnLButtonDown(UINT nFlags, int mx, int my)
 {
-	ULONG nLineNo;
-	ULONG nFileOff;
-	
-	// regular mouse input - mouse is within 
+	TextCoord coord;
+	TextCoord selStart, selEnd;
+	bool hadSelection = GetSelection(&selStart, &selEnd);
+
+	// regular mouse input - mouse is within
 	if(mx >= LeftMarginWidth())
 	{
-		// map the mouse-coordinates to a real file-offset-coordinate
-		MouseCoordToFilePos(mx, my, &nLineNo, &nFileOff, &m_nCaretPosX);
+		// map the mouse-coordinates to a document coordinate
+		MouseCoordToTextCoord(mx, my, &coord, &m_nCaretPosX);
 		m_nAnchorPosX = m_nCaretPosX;
 
-		UpdateCaretXY(m_nCaretPosX, nLineNo);
+		UpdateCaretXY(m_nCaretPosX, &coord);
 
 		// Any key but <shift>
 		if(IsKeyPressed(VK_SHIFT) == false)
 		{
 			// remove any existing selection
-			InvalidateRange(m_nSelectionStart, m_nSelectionEnd);
+			InvalidateRange(&selStart, &selEnd);
 
-			// reset cursor and selection offsets to the same location
-			m_nSelectionStart	= nFileOff;
-			m_nSelectionEnd		= nFileOff;
-			m_nCursorOffset		= nFileOff;
+			// reset cursor and selection to the same location
+			m_selAnchor = coord;
+
+			if(hadSelection)
+				RefreshWindow();
 		}
 		else
 		{
-			// redraw to cursor
-			InvalidateRange(m_nSelectionEnd, nFileOff);
-			
-			// extend selection to cursor
-			m_nSelectionEnd		= nFileOff;
-			m_nCursorOffset		= nFileOff;
+			// redraw to cursor; the selection extends from its anchor
+			InvalidateRange(&m_cursorPos, &coord);
 		}
 
 		if(IsKeyPressed(VK_MENU))
 		{
-			m_cpBlockStart.line = nLineNo;
+			m_cpBlockStart.line_begin = coord.line_begin;
 			m_cpBlockStart.xpos = m_nCaretPosX;
 			m_nSelectionType	= SEL_BLOCK;
 		}
@@ -145,13 +144,14 @@ LONG TextView::OnLButtonDown(UINT nFlags, int mx, int my)
 		// set capture for mouse-move selections
 		m_nSelectionMode = IsKeyPressed(VK_MENU) ? SEL_BLOCK : SEL_NORMAL;
 	}
-	// mouse clicked within margin 
+	// mouse clicked within margin: select the whole line
 	else
 	{
 		// remove any existing selection
-		InvalidateRange(m_nSelectionStart, m_nSelectionEnd);
+		InvalidateRange(&selStart, &selEnd);
 
-		nLineNo = (my / m_nLineHeight) + m_nVScrollPos;
+		if(!ViewportLineFromRow(my / m_nLineHeight, &m_selMarginLine))
+			m_selMarginLine = m_scrollVPos;
 
 		//
 		// if we click in the margin then jump back to start of line
@@ -163,27 +163,33 @@ LONG TextView::OnLButtonDown(UINT nFlags, int mx, int my)
 			RefreshWindow();
 		}
 
-		m_pTextDoc->lineinfo_from_lineno(nLineNo, &m_nSelectionStart, &m_nSelectionEnd);
-		m_nSelectionEnd    += m_nSelectionStart;
-		m_nCursorOffset	    = m_nSelectionStart;
-		
-		m_nSelMarginOffset1 = m_nSelectionStart;
-		m_nSelMarginOffset2 = m_nSelectionEnd;
+		m_pTextDoc->coord_from_byte_anchor(m_selMarginLine.line_begin, &m_selAnchor);
+		m_pTextDoc->coord_from_byte_anchor(m_selMarginLine.line_next, &coord);
 
-		InvalidateRange(m_nSelectionStart, m_nSelectionEnd);
-		
-		UpdateCaretOffset(m_nCursorOffset, FALSE, &m_nCaretPosX, &m_nCurrentLine);
-		m_nAnchorPosX = m_nCaretPosX;
+		InvalidateRange(&m_selAnchor, &coord);
+
+		if(hadSelection)
+			RefreshWindow();
 
 		// set capture for mouse-move selections
 		m_nSelectionMode = SEL_MARGIN;
 	}
 
-	UpdateLine(nLineNo);
+	UpdateLine(&coord);
+
+	if(m_nSelectionMode == SEL_MARGIN)
+	{
+		UpdateCaretCoord(&coord, FALSE, &m_nCaretPosX, &m_nCurrentLine);
+		m_nAnchorPosX = m_nCaretPosX;
+	}
+	else
+	{
+		SetCursorCoord(&coord);
+	}
 
 	SetCapture(m_hWnd);
 
-	TVNCURSORINFO ci = { { 0 }, nLineNo, 0, m_nCursorOffset };
+	TVNCURSORINFO ci = { { 0 }, coord.line.index, 0, coord.offset_chars };
 	NotifyParent(TVN_CURSOR_CHANGE, (NMHDR *)&ci);
 	return 0;
 }
@@ -195,13 +201,6 @@ LONG TextView::OnLButtonDown(UINT nFlags, int mx, int my)
 //
 LONG TextView::OnLButtonUp(UINT nFlags, int mx, int my)
 {
-	// shift cursor to end of selection
-	if(m_nSelectionMode == SEL_MARGIN)
-	{
-		m_nCursorOffset = m_nSelectionEnd;
-		UpdateCaretOffset(m_nCursorOffset, FALSE, &m_nCaretPosX, &m_nCurrentLine);
-	}
-
 	if(m_nSelectionMode)
 	{
 		// cancel the scroll-timer if it is still running
@@ -225,30 +224,34 @@ LONG TextView::OnLButtonUp(UINT nFlags, int mx, int my)
 //
 LONG TextView::OnLButtonDblClick(UINT nFlags, int mx, int my)
 {
+	TextCoord selStart, selEnd;
+
 	// remove any existing selection
-	InvalidateRange(m_nSelectionStart, m_nSelectionEnd);
+	GetSelection(&selStart, &selEnd);
+	InvalidateRange(&selStart, &selEnd);
 
 	// regular mouse input - mouse is within scrolling viewport
 	if(mx >= LeftMarginWidth())
 	{
-		ULONG lineno, fileoff;
-		int   xpos;
+		TextCoord coord;
+		int       xpos;
 
-		// map the mouse-coordinates to a real file-offset-coordinate
-		MouseCoordToFilePos(mx, my, &lineno, &fileoff, &xpos);
-		m_nAnchorPosX = m_nCaretPosX;
+		// map the mouse-coordinates to a document coordinate
+		MouseCoordToTextCoord(mx, my, &coord, &xpos);
+		SetCursorCoord(&coord);
+		m_nCaretPosX = xpos;
+		m_nAnchorPosX = xpos;
 
 		// move selection-start to start of word
 		MoveWordStart();
-		m_nSelectionStart = m_nCursorOffset;
+		m_selAnchor = m_cursorPos;
 
 		// move selection-end to end of word
 		MoveWordEnd();
-		m_nSelectionEnd = m_nCursorOffset;
 
 		// update caret position
-		InvalidateRange(m_nSelectionStart, m_nSelectionEnd);
-		UpdateCaretOffset(m_nCursorOffset, TRUE, &m_nCaretPosX, &m_nCurrentLine);
+		InvalidateRange(&m_selAnchor, &m_cursorPos);
+		UpdateCaretCoord(&m_cursorPos, TRUE, &m_nCaretPosX, &m_nCurrentLine);
 		m_nAnchorPosX = m_nCaretPosX;
 
 		NotifyParent(TVN_CURSOR_CHANGE);
@@ -266,8 +269,8 @@ LONG TextView::OnMouseMove(UINT nFlags, int mx, int my)
 {
 	if(m_nSelectionMode)
 	{
-		ULONG	nLineNo, nFileOff;
 		BOOL	fCurChanged = FALSE;
+		TextCoord coord;
 
 		RECT	rect;
 		POINT	pt = { mx, my };
@@ -313,53 +316,48 @@ LONG TextView::OnMouseMove(UINT nFlags, int mx, int my)
 			}
 		}
 
-		// get new cursor offset+coordinates
-		MouseCoordToFilePos(mx, my, &nLineNo, &nFileOff, &m_nCaretPosX);
+		// get new cursor coordinate
+		MouseCoordToTextCoord(mx, my, &coord, &m_nCaretPosX);
 		m_nAnchorPosX = m_nCaretPosX;
 
-		m_cpBlockEnd.line = nLineNo;
+		m_cpBlockEnd.line_begin = coord.line_begin;
 		m_cpBlockEnd.xpos = mx + m_nHScrollPos * m_nFontWidth - LeftMarginWidth();//m_nCaretPosX;
 
+		// a margin selection covers whole lines, anchored on the far side of the clicked line
+		if(m_nSelectionMode == SEL_MARGIN)
+		{
+			if(coord.line_begin >= m_selMarginLine.line_begin)
+			{
+				m_pTextDoc->coord_from_byte_anchor(m_selMarginLine.line_begin, &m_selAnchor);
+				m_pTextDoc->coord_from_byte_anchor(coord.line_next, &coord);
+			}
+			else
+			{
+				m_pTextDoc->coord_from_byte_anchor(m_selMarginLine.line_next, &m_selAnchor);
+			}
+		}
 
 		// redraw the old and new lines if they are different
-		UpdateLine(nLineNo);
+		UpdateLine(&coord);
 
 		// update the region of text that has changed selection state
-		fCurChanged = m_nSelectionEnd == nFileOff ? FALSE : TRUE;
-		//if(m_nSelectionEnd != nFileOff)
+		fCurChanged = coord.byte_anchor != m_cursorPos.byte_anchor;
+
+		if(fCurChanged)
 		{
-			ULONG linelen;
-			m_pTextDoc->lineinfo_from_lineno(nLineNo, 0, &linelen);
-
-			m_nCursorOffset	= nFileOff;
-
-			if(m_nSelectionMode == SEL_MARGIN)
-			{
-				if(nFileOff >= m_nSelectionStart)
-				{
-					nFileOff += linelen;
-					m_nSelectionStart = m_nSelMarginOffset1;
-				}
-				else
-				{
-					m_nSelectionStart = m_nSelMarginOffset2;
-				}
-			}
-
 			// redraw from old selection-pos to new position
-			InvalidateRange(m_nSelectionEnd, nFileOff);
-			InvalidateLine(nLineNo, true);
-
-			// adjust the cursor + selection to the new offset
-			m_nSelectionEnd = nFileOff;
+			InvalidateRange(&m_cursorPos, &coord);
+			InvalidateLine(&coord, false);
 		}
+
+		SetCursorCoord(&coord);
 
 		if(m_nSelectionMode == SEL_BLOCK)
 			RefreshWindow();
 
 		//m_nCaretPosX = mx+m_nHScrollPos*m_nFontWidth-LeftMarginWidth();
 		// always set the caret position because we might be scrolling
-		UpdateCaretXY(m_nCaretPosX, m_nCurrentLine);
+		UpdateCaretXY(m_nCaretPosX, &m_cursorPos);
 
 		if(fCurChanged)
 		{
@@ -463,26 +461,37 @@ LONG TextView::OnTimer(UINT nTimerId)
 }
 
 //
-//	Convert mouse(client) coordinates to a file-relative offset
+//	Convert mouse(client) coordinates to a document coordinate
 //
 //	Currently only uses the main font so will not support other
 //	fonts introduced by syntax highlighting
 //
-BOOL TextView::MouseCoordToFilePos(	int		 mx,			// [in]  mouse x-coord
-									int		 my,			// [in]  mouse x-coord
-									ULONG	*pnLineNo,		// [out] line number
-									ULONG	*pnFileOffset,  // [out] zero-based file-offset (in chars)
-									int		*psnappedX		// [out] adjusted x coord of caret
-									)
+BOOL TextView::MouseCoordToTextCoord(	int		 mx,			// [in]  mouse x-coord
+										int		 my,			// [in]  mouse x-coord
+										TextCoord *coord,		// [out] document coordinate
+										int		*psnappedX		// [out] adjusted x coord of caret
+										)
 {
-	ULONG nLineNo;
 	ULONG off_chars = 0;
 	RECT  rect;
 	int	  cp;
+	TextCoord lineCoord;
+
+	if(coord == 0)
+		return FALSE;
+
+	if(psnappedX)
+		*psnappedX = 0;
 
 	// get scrollable area
 	GetClientRect(m_hWnd, &rect);
 	rect.bottom -= rect.bottom % m_nLineHeight;
+
+	if(rect.bottom <= 0 || rect.right <= 0 || m_nLineCount == 0)
+	{
+		m_pTextDoc->coord_from_document_end(coord);
+		return FALSE;
+	}
 
 	// take left margin into account
 	mx -= LeftMarginWidth();
@@ -493,46 +502,53 @@ BOOL TextView::MouseCoordToFilePos(	int		 mx,			// [in]  mouse x-coord
 	if(my >= rect.bottom)	my = rect.bottom - 1;
 	if(mx >= rect.right)	mx = rect.right  - 1;
 
-	// Use the displayed row. Lazy indexing may make this line number provisional,
-	// but GetUspData returns the matching physical line offset for that row.
-	nLineNo = (my / m_nLineHeight) + m_nVScrollPos;
-	
-	// make sure we don't go outside of the document
-	if(nLineNo >= m_nLineCount)
+	if(!ViewportLineFromRow(my / m_nLineHeight, &lineCoord))
 	{
-		nLineNo   = m_nLineCount ? m_nLineCount - 1 : 0;
-		off_chars = m_pTextDoc->text_length();
+		m_pTextDoc->coord_from_document_end(coord);
+		return FALSE;
 	}
 
 	mx += m_nHScrollPos * m_nFontWidth;
 
 	// get the USPDATA object for the selected line!!
-	USPDATA *uspData = GetUspData(0, nLineNo, &off_chars);
+		USPDATA *uspData = GetUspData(0, &lineCoord, &off_chars);
+
+	if(uspData == 0)
+	{
+		*coord = lineCoord;
+
+		return FALSE;
+	}
 
 	// convert mouse-x coordinate to a character-offset relative to start of line
 	UspSnapXToOffset(uspData, mx, &mx, &cp, 0);
-	
-	// Use the offset for the line we actually displayed. Lazy line indexing can
-	// make a second line lookup resolve to a different provisional location.
-	*pnLineNo		= nLineNo;
-	*pnFileOffset	= cp + off_chars;
-	*psnappedX		= mx;// - m_nHScrollPos * m_nFontWidth;
+
+	if(!m_pTextDoc->coord_from_line_pos(&lineCoord, cp, coord))
+	{
+		*coord = lineCoord;
+		return FALSE;
+	}
+
+	if(psnappedX)
+		*psnappedX = mx;// - m_nHScrollPos * m_nFontWidth;
 	//*psnappedX		+= LeftMarginWidth();
 
-	return 0;
+	return TRUE;
 }
 
-LONG TextView::InvalidateLine(ULONG nLineNo, bool forceAnalysis)
+LONG TextView::InvalidateLine(TextCoord *line, bool forceAnalysis)
 {
-	if(nLineNo >= m_nVScrollPos && nLineNo <= m_nVScrollPos + m_nWindowLines)
+	ULONG row;
+
+	if(ViewportRowFromLine(line, &row))
 	{
 		RECT rect;
-		
+
 		GetClientRect(m_hWnd, &rect);
-		
-		rect.top    = (nLineNo - m_nVScrollPos) * m_nLineHeight;
+
+		rect.top    = row * m_nLineHeight;
 		rect.bottom = rect.top + m_nLineHeight;
-	
+
 		InvalidateRect(m_hWnd, &rect, FALSE);
 	}
 
@@ -540,7 +556,7 @@ LONG TextView::InvalidateLine(ULONG nLineNo, bool forceAnalysis)
 	{
 		for(int i = 0; i < USP_CACHE_SIZE; i++)
 		{
-			if(nLineNo == m_uspCache[i].lineno)
+			if(m_uspCache[i].usage > 0 && m_uspCache[i].line_begin == line->line_begin)
 			{
 				m_uspCache[i].usage = 0;
 				break;
@@ -553,63 +569,56 @@ LONG TextView::InvalidateLine(ULONG nLineNo, bool forceAnalysis)
 //
 //	Redraw any line which spans the specified range of text
 //
-LONG TextView::InvalidateRange(ULONG nStart, ULONG nFinish)
+LONG TextView::InvalidateRange(TextCoord *startCoord, TextCoord *finishCoord)
 {
-	ULONG start  = min(nStart, nFinish);
-	ULONG finish = max(nStart, nFinish);
-	
-	int   ypos;
+	ULONG start  = min(startCoord->byte_anchor, finishCoord->byte_anchor);
+	ULONG finish = max(startCoord->byte_anchor, finishCoord->byte_anchor);
+
+	ULONG row;
 	RECT  rect;
 	RECT  client;
-	TextReader reader;
-
-	// information about current line:
-	ULONG lineno;
-	ULONG lastline;
-	ULONG off_chars;
-	ULONG len_chars;
+	TextCoord lineCoord;
 
 	// nothing to do?
 	if(start == finish)
 		return 0;
 
-	//
-	//	Find the start-of-line information from specified file-offset
-	//
-	lineno = m_pTextDoc->lineno_from_offset(start);
-
-	// clip to top of window
-	if(lineno < m_nVScrollPos)
-	{
-		lineno = m_nVScrollPos;
-		reader = m_pTextDoc->text_from_line(lineno, &off_chars, &len_chars);
-		start  = off_chars;
-	}
-	else
-	{
-		reader = m_pTextDoc->text_from_line(lineno, &off_chars, &len_chars);
-	}
-
-	if(!reader || start >= finish)
+	if(!ViewportLineFromRow(0, &lineCoord))
 		return 0;
 
-	ypos = (lineno - m_nVScrollPos) * m_nLineHeight;
 	GetClientRect(m_hWnd, &client);
-	lastline = m_nVScrollPos + m_nWindowLines;
 
 	// invalidate *whole* lines. don't care about flickering anymore because
 	// all output is double-buffered now, and this method is much simpler
-	while(reader && off_chars < finish && lineno <= lastline)
+	for(row = 0; row < (ULONG)m_nWindowLines; row++)
 	{
-		SetRect(&rect, 0, ypos, client.right, ypos + m_nLineHeight);
-		rect.left -= m_nHScrollPos * m_nFontWidth;
-		rect.left += LeftMarginWidth();
-			
-		InvalidateRect(m_hWnd, &rect, FALSE);
+		ULONG lineStart = lineCoord.line_begin;
+		ULONG lineEnd = lineCoord.line_next;
 
-		// jump down to next line
-		reader = m_pTextDoc->text_from_line(++lineno, &off_chars, &len_chars);
-		ypos += m_nLineHeight;
+		if(lineEnd >= start && lineStart <= finish)
+		{
+			SetRect(&rect, 0, row * m_nLineHeight, client.right, (row + 1) * m_nLineHeight);
+			rect.left -= m_nHScrollPos * m_nFontWidth;
+			rect.left += LeftMarginWidth();
+
+			InvalidateRect(m_hWnd, &rect, FALSE);
+		}
+
+		if(lineEnd > finish)
+			break;
+
+		if(row + 1 < (ULONG)m_nWindowLines)
+		{
+			TextCoord nextCoord;
+
+			if(!m_pTextDoc->next_line_from_coord(&lineCoord, 1, &nextCoord))
+				break;
+
+			if(nextCoord.line_begin == lineCoord.line_begin)
+				break;
+
+			lineCoord = nextCoord;
+		}
 	}
 
 	return 0;
@@ -638,22 +647,20 @@ VOID TextView::MoveCaret(int x, int y)
 
 //
 //	x		- x-coord relative to start of line
-//	lineno	- line-number
+//	coord	- position whose line the caret is on
 //
-VOID TextView::UpdateCaretXY(int xpos, ULONG lineno)
+VOID TextView::UpdateCaretXY(int xpos, TextCoord *coord)
 {
 	bool visible = false;
+	ULONG row = 0;
 
 	// convert x-coord to window-relative
 	xpos -= m_nHScrollPos * m_nFontWidth;
 	xpos += LeftMarginWidth();
 
 	// only show caret if it is visible within viewport
-	if(lineno >= m_nVScrollPos && lineno <= m_nVScrollPos + m_nWindowLines)
-	{
-		if(xpos >= LeftMarginWidth())
-			visible = true;
-	}
+	if(coord && xpos >= LeftMarginWidth())
+		visible = ViewportRowFromLine(coord, &row);
 
 	// hide caret if it was previously visible
 	if(visible == false && m_fHideCaret == false)
@@ -670,34 +677,29 @@ VOID TextView::UpdateCaretXY(int xpos, ULONG lineno)
 
 	// set caret position if within window viewport
 	if(m_fHideCaret == false)
-	{
-		SetCaretPos(xpos, (lineno - m_nVScrollPos) * m_nLineHeight);
-	}
+		SetCaretPos(xpos, row * m_nLineHeight);
 }
 
-//
-//	Reposition the caret based on cursor-offset
-//	return the resulting x-coord and line#
-//
-VOID TextView::UpdateCaretOffset(ULONG offset, BOOL fTrailing, int *outx, ULONG *outlineno)
+VOID TextView::UpdateCaretCoord(TextCoord *coord, BOOL fTrailing, int *outx, ULONG *outlineno)
 {
 	ULONG		lineno = 0;
 	int			xpos = 0;
 	ULONG		off_chars;
 	USPDATA	  * uspData;
 
-	// get line information from cursor-offset
-	if(m_pTextDoc->lineinfo_from_offset(offset, &lineno, &off_chars, 0))
+	if(coord)
 	{
+		lineno = coord->line.index;
+		off_chars = coord->line_offset_chars;
+		m_cursorPos = *coord;
+		m_nCurrentLine = lineno;
+
 		// locate the USPDATA for this line
-		if((uspData = GetUspData(NULL, lineno)) != 0)
+		if((uspData = GetUspData(NULL, coord)) != 0)
 		{	
 			// Provisional lazy offsets can disagree slightly; keep the caret
 			// position relative to the analyzed line instead of wrapping.
-			if(m_nCursorOffset <= off_chars)
-				off_chars = 0;
-			else
-				off_chars = min(m_nCursorOffset - off_chars, (ULONG)uspData->stringLen);
+			off_chars = min(off_chars, (ULONG)uspData->stringLen);
 			
 			if(fTrailing && off_chars > 0)
 				UspOffsetToX(uspData, off_chars-1, TRUE, &xpos);
@@ -705,7 +707,7 @@ VOID TextView::UpdateCaretOffset(ULONG offset, BOOL fTrailing, int *outx, ULONG 
 				UspOffsetToX(uspData, off_chars, FALSE, &xpos);
 
 			// update caret position
-			UpdateCaretXY(xpos, lineno);
+			UpdateCaretXY(xpos, coord);
 		}
 	}
 	
@@ -713,23 +715,31 @@ VOID TextView::UpdateCaretOffset(ULONG offset, BOOL fTrailing, int *outx, ULONG 
 	if(outlineno) *outlineno = lineno;
 }
 
-VOID TextView::RepositionCaret()
+bool TextView::SetCursorCoord(TextCoord *coord)
 {
-	UpdateCaretXY(m_nCaretPosX, m_nCurrentLine);
+	if(coord == 0)
+		return false;
+
+	m_cursorPos = *coord;
+	m_nCurrentLine = coord->line.index;
+
+	return true;
 }
 
-void TextView::UpdateLine(ULONG nLineNo)
+VOID TextView::RepositionCaret()
 {
-	// redraw the old and new lines if they are different
-	if(m_nCurrentLine != nLineNo)
+	UpdateCaretXY(m_nCaretPosX, &m_cursorPos);
+}
+
+//
+//	The caret is moving to 'line': redraw the old and new current lines if they differ
+//
+void TextView::UpdateLine(TextCoord *line)
+{
+	if(line->line_begin != m_cursorPos.line_begin && CheckStyle(TXS_HIGHLIGHTCURLINE))
 	{
-		if(CheckStyle(TXS_HIGHLIGHTCURLINE))
-			InvalidateLine(m_nCurrentLine, true);
-
-		m_nCurrentLine = nLineNo;
-
-		if(CheckStyle(TXS_HIGHLIGHTCURLINE))
-			InvalidateLine(m_nCurrentLine, true);
+		InvalidateLine(&m_cursorPos, false);
+		InvalidateLine(line, false);
 	}
 }
 

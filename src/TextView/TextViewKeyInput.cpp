@@ -22,11 +22,10 @@
 //
 ULONG TextView::EnterText(TCHAR *szText, ULONG nLength)
 {
-	ULONG selstart = min(m_nSelectionStart, m_nSelectionEnd);
-	ULONG selend   = max(m_nSelectionStart, m_nSelectionEnd);
-
-	BOOL  fReplaceSelection = (selstart == selend) ? FALSE : TRUE;
-	ULONG erase_len = nLength;
+	TextCoord	selStart;
+	TextCoord	selEnd;
+	BOOL		fReplaceSelection = GetSelection(&selStart, &selEnd);
+	TextChange	change;
 
 	switch(m_nEditMode)
 	{
@@ -40,66 +39,69 @@ ULONG TextView::EnterText(TCHAR *szText, ULONG nLength)
 		{
 			// group this erase with the insert/replace operation
 			m_pTextDoc->undo_group_begin();
-			m_pTextDoc->erase_text(selstart, selend-selstart);
-			m_nCursorOffset = selstart;
+			m_pTextDoc->erase_text(&selStart, &selEnd, &change);
+			AdjustCoordsForChange(&change);
 		}
 
-		if(!m_pTextDoc->insert_text(m_nCursorOffset, szText, nLength))
+		if(!m_pTextDoc->insert_text(&selStart, szText, nLength, &change))
 			return 0;
+
+		AdjustCoordsForChange(&change);
 
 		if(fReplaceSelection)
 			m_pTextDoc->undo_group_end();
-	
+
 		break;
 
 	case MODE_OVERWRITE:
 
-		if(fReplaceSelection)
+		// without a selection, overwrite the text after the caret but never the CR/LF
+		if(!fReplaceSelection)
 		{
-			erase_len = selend - selstart;
-			m_nCursorOffset = selstart;
-		}
-		else
-		{
-			ULONG lineoff;
-			USPCACHE *uspCache = GetUspCache(0, m_nCurrentLine, &lineoff);
+			USPCACHE *uspCache = GetUspCache(0, &m_cursorPos);
+			ULONG lineEnd;
+			ULONG endPos;
+
+			if(uspCache == 0)
+				return 0;
+
+			lineEnd = uspCache->length_CRLF;
 
 			// single-character overwrite - must behave like 'forward delete'
 			// and remove a whole character-cluster (i.e. maybe more than 1 char)
 			if(nLength == 1)
 			{
-				ULONG oldpos = m_nCursorOffset;
 				MoveCharNext();
-				erase_len = m_nCursorOffset - oldpos;
-				m_nCursorOffset = oldpos;
+				endPos = m_cursorPos.line_begin == selStart.line_begin ? m_cursorPos.line_offset_chars : lineEnd;
+				m_cursorPos = selStart;
+			}
+			else
+			{
+				endPos = selStart.line_offset_chars + nLength;
 			}
 
-			// if we are at the end of a line (just before the CRLF) then we must
-			// not erase any text - instead we act like a regular insertion
-			if(m_nCursorOffset == lineoff + uspCache->length_CRLF)
-				erase_len = 0;
-
-			
+			if(!m_pTextDoc->coord_from_line_pos(&selStart, min(endPos, lineEnd), &selEnd))
+				return 0;
 		}
 
-		if(!m_pTextDoc->replace_text(m_nCursorOffset, szText, nLength, erase_len))
+		if(!m_pTextDoc->replace_text(&selStart, &selEnd, szText, nLength, &change))
 			return 0;
-		
+
+		AdjustCoordsForChange(&change);
 		break;
 
 	default:
 		return 0;
 	}
 
-	// update cursor+selection positions
-	m_nCursorOffset  += nLength;
-	m_nSelectionStart = m_nCursorOffset;
-	m_nSelectionEnd   = m_nCursorOffset;
+	// the caret follows the inserted text
+	m_pTextDoc->coord_from_byte_anchor(change.offset + change.inserted, &m_cursorPos);
+	m_selAnchor = m_cursorPos;
 
 	// we altered the document, recalculate line+scrollbar information
 	ResetLineCache();
 	RefreshWindow();
-	
+
 	UpdateViewState(TRUE);
 	NotifyParent(TVN_CURSOR_CHANGE);
 
@@ -108,27 +110,26 @@ ULONG TextView::EnterText(TCHAR *szText, ULONG nLength)
 
 BOOL TextView::ForwardDelete()
 {
-	ULONG selstart = min(m_nSelectionStart, m_nSelectionEnd);
-	ULONG selend   = max(m_nSelectionStart, m_nSelectionEnd);
+	TextCoord	selStart;
+	TextCoord	selEnd;
+	TextChange	change;
 
-	if(selstart != selend)
+	if(GetSelection(&selStart, &selEnd))
 	{
-		m_pTextDoc->erase_text(selstart, selend-selstart);
-		m_nCursorOffset = selstart;
-
+		m_pTextDoc->erase_text(&selStart, &selEnd, &change);
 		m_pTextDoc->undo_group_break();
 	}
 	else
 	{
-		ULONG oldpos = m_nCursorOffset;
+		// erase the whole character-cluster after the caret
 		MoveCharNext();
-
-		m_pTextDoc->erase_text(oldpos, m_nCursorOffset - oldpos);
-		m_nCursorOffset = oldpos;
+		m_pTextDoc->erase_text(&selStart, &m_cursorPos, &change);
 	}
 
-	m_nSelectionStart = m_nCursorOffset;
-	m_nSelectionEnd   = m_nCursorOffset;
+	AdjustCoordsForChange(&change);
+
+	m_pTextDoc->coord_from_byte_anchor(change.offset, &m_cursorPos);
+	m_selAnchor = m_cursorPos;
 
 	ResetLineCache();
 	RefreshWindow();
@@ -139,28 +140,27 @@ BOOL TextView::ForwardDelete()
 
 BOOL TextView::BackDelete()
 {
-	ULONG selstart = min(m_nSelectionStart, m_nSelectionEnd);
-	ULONG selend   = max(m_nSelectionStart, m_nSelectionEnd);
+	TextCoord	selStart;
+	TextCoord	selEnd;
+	TextChange	change = { m_cursorPos.byte_anchor, 0, 0 };
 
 	// if there's a selection then delete it
-	if(selstart != selend)
+	if(GetSelection(&selStart, &selEnd))
 	{
-		m_pTextDoc->erase_text(selstart, selend-selstart);
-		m_nCursorOffset = selstart;
+		m_pTextDoc->erase_text(&selStart, &selEnd, &change);
 		m_pTextDoc->undo_group_break();
 	}
-	// otherwise do a back-delete
-	else if(m_nCursorOffset > 0)
+	// otherwise erase the character-cluster before the caret
+	else if(m_cursorPos.byte_anchor > 0)
 	{
-		//m_nCursorOffset--;
-		ULONG oldpos = m_nCursorOffset;
 		MoveCharPrev();
-		//m_pTextDoc->erase_text(m_nCursorOffset, 1);
-		m_pTextDoc->erase_text(m_nCursorOffset, oldpos - m_nCursorOffset);
+		m_pTextDoc->erase_text(&m_cursorPos, &selEnd, &change);
 	}
 
-	m_nSelectionStart = m_nCursorOffset;
-	m_nSelectionEnd   = m_nCursorOffset;
+	AdjustCoordsForChange(&change);
+
+	m_pTextDoc->coord_from_byte_anchor(change.offset, &m_cursorPos);
+	m_selAnchor = m_cursorPos;
 
 	ResetLineCache();
 	RefreshWindow();
@@ -171,50 +171,71 @@ BOOL TextView::BackDelete()
 
 void TextView::UpdateViewState(BOOL fAdvancing)
 {
+	TextCoord eofCoord;
+	bool atDocumentEnd;
+
 	m_nLineCount   = m_pTextDoc->linecount();
 
 	UpdateMetrics();
 	UpdateMarginWidth();
 	SetupScrollbars();
 
-	UpdateCaretOffset(m_nCursorOffset, fAdvancing, &m_nCaretPosX, &m_nCurrentLine);
-	
+	atDocumentEnd = m_pTextDoc->coord_from_document_end(&eofCoord) && m_cursorPos.byte_anchor >= eofCoord.byte_anchor;
+
+	UpdateCaretCoord(atDocumentEnd ? &eofCoord : &m_cursorPos, fAdvancing, &m_nCaretPosX, &m_nCurrentLine);
 	m_nAnchorPosX = m_nCaretPosX;
-	ScrollToPosition(m_nCaretPosX, m_nCurrentLine);
+
+	if(atDocumentEnd)
+		ScrollToDocumentEnd(&m_cursorPos);
+	else
+		ScrollToCaret();
+
 	RepositionCaret();
 }
 
 BOOL TextView::Undo()
 {
+	TextChange change;
+
 	if(m_nEditMode == MODE_READONLY)
 		return FALSE;
 
-	if(!m_pTextDoc->undo(&m_nSelectionStart, &m_nSelectionEnd))
+	if(!m_pTextDoc->undo(&change))
 		return FALSE;
 
-	m_nCursorOffset = m_nSelectionEnd;
+	AdjustCoordsForChange(&change);
+
+	// select the text that came back
+	m_pTextDoc->coord_from_byte_anchor(change.offset, &m_selAnchor);
+	m_pTextDoc->coord_from_byte_anchor(change.offset + change.inserted, &m_cursorPos);
 
 	ResetLineCache();
 	RefreshWindow();
 
-	UpdateViewState(m_nSelectionStart != m_nSelectionEnd);
+	UpdateViewState(change.inserted != 0);
 
 	return TRUE;
 }
 
 BOOL TextView::Redo()
 {
+	TextChange change;
+
 	if(m_nEditMode == MODE_READONLY)
 		return FALSE;
 
-	if(!m_pTextDoc->redo(&m_nSelectionStart, &m_nSelectionEnd))
+	if(!m_pTextDoc->redo(&change))
 		return FALSE;
 
-	m_nCursorOffset = m_nSelectionEnd;
-				
+	AdjustCoordsForChange(&change);
+
+	// select the text that came back
+	m_pTextDoc->coord_from_byte_anchor(change.offset, &m_selAnchor);
+	m_pTextDoc->coord_from_byte_anchor(change.offset + change.inserted, &m_cursorPos);
+
 	ResetLineCache();
 	RefreshWindow();
-	UpdateViewState(m_nSelectionStart != m_nSelectionEnd);
+	UpdateViewState(change.inserted != 0);
 
 	return TRUE;
 }

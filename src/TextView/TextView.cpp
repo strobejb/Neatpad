@@ -73,8 +73,7 @@ TextView::TextView(HWND hwnd)
 	for(int i = 0; i < USP_CACHE_SIZE; i++)
 	{
 		m_uspCache[i].usage   = 0;
-		m_uspCache[i].lineno  = 0;
-		m_uspCache[i].lineno_known = false;
+		m_uspCache[i].line_begin = 0;
 		m_uspCache[i].uspData = UspAllocate();
 	}
 
@@ -108,10 +107,7 @@ TextView::TextView(HWND hwnd)
 	m_hUserMenu			= 0;
 	m_hImageList		= 0;
 	
-	m_nSelectionStart	= 0;
-	m_nSelectionEnd		= 0;
 	m_nSelectionType	= SEL_NONE;
-	m_nCursorOffset		= 0;
 	m_nCurrentLine		= 0;
 
 	m_nLinenoWidth		= 0;
@@ -315,18 +311,61 @@ LINEINFO* TextView::GetLineInfo(ULONG nLineNo)
 							);
 }
 
+//
+//	Return the selection's ends in document order; true if anything is selected
+//
+bool TextView::GetSelection(TextCoord *start, TextCoord *end)
+{
+	bool forward = m_selAnchor.byte_anchor <= m_cursorPos.byte_anchor;
+
+	*start = forward ? m_selAnchor : m_cursorPos;
+	*end   = forward ? m_cursorPos : m_selAnchor;
+
+	return start->byte_anchor != end->byte_anchor;
+}
+
+//
+//	The UTF-16 column of pos within a line, clamped to the line
+//
+static ULONG LineColumn(TextCoord *line, TextCoord *pos, ULONG lineLen)
+{
+	if(pos->byte_anchor <= line->line_begin)
+		return 0;
+
+	if(pos->line_begin == line->line_begin)
+		return min(pos->line_offset_chars, lineLen);
+
+	return lineLen;
+}
+
+//
+//	Return the selected UTF-16 columns [start, end) of a line lineLen columns long
+//
+void TextView::SelectionColumns(TextCoord *line, ULONG lineLen, ULONG *start, ULONG *end)
+{
+	TextCoord selStart, selEnd;
+
+	GetSelection(&selStart, &selEnd);
+
+	*start = LineColumn(line, &selStart, lineLen);
+	*end   = LineColumn(line, &selEnd, lineLen);
+}
+
+//
+//	Return the size of the selection in document bytes
+//
 ULONG TextView::SelectionSize()
 {
-	ULONG s1 = min(m_nSelectionStart, m_nSelectionEnd); 
-	ULONG s2 = max(m_nSelectionStart, m_nSelectionEnd); 
-	return s2 - s1;
+	TextCoord start, end;
+
+	GetSelection(&start, &end);
+	return end.byte_anchor - start.byte_anchor;
 }
 
 ULONG TextView::SelectAll()
 {
-	m_nSelectionStart = 0;
-	m_nSelectionEnd   = m_pTextDoc->text_length();
-	m_nCursorOffset   = m_nSelectionEnd;
+	m_pTextDoc->coord_from_byte_anchor(0, &m_selAnchor);
+	m_pTextDoc->coord_from_document_end(&m_cursorPos);
 
 	UpdateViewState(TRUE);
 	RefreshWindow();
@@ -488,15 +527,13 @@ LONG WINAPI TextView::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 		return SelectAll();
 
 	case TXM_GETCURPOS:
-		return m_nCursorOffset;
+		return m_cursorPos.offset_chars;
 
 	case TXM_GETCURLINE:
 		return m_nCurrentLine;
 
 	case TXM_GETCURCOL:
-		ULONG nOffset;
-		GetUspData(0, m_nCurrentLine, &nOffset);
-		return m_nCursorOffset > nOffset ? m_nCursorOffset - nOffset : 0;
+		return m_cursorPos.line_offset_chars;
 
 	case TXM_GETEDITMODE:
 		return m_nEditMode;

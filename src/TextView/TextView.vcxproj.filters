@@ -18,10 +18,16 @@
     <ClCompile Include="sequence_buf.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="sequence_lines.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="TextDocument.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="TextLineIndex.cpp">
+    <ClCompile Include="TextDocumentCoord.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="TextLineMapper.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="TextView.cpp">
@@ -68,7 +74,7 @@
     <ClInclude Include="TextDocument.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="TextLineIndex.h">
+    <ClInclude Include="TextLineMapper.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="TextView.h">

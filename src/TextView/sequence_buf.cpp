@@ -20,12 +20,17 @@ sequence::buffer_control::buffer_control()
 	int i;
 
 	buffer = 0;
+	line_pages = 0;
+	line_page_count = 0;
+	scanned_bytes = 0;
+	scanned_breaks = 0;
 	length = 0;
 	maxsize = 0;
 	fp = 0;
 	own_memory = true;
 	readonly = false;
 	id = 0;
+	line_mode = line_scan_bytes;
 
 	for(i = 0; i < MAX_VIEWS; i++)
 	{
@@ -56,7 +61,7 @@ bool sequence::buffer_control::init(size_t max)
 	length = 0;
 	maxsize = max;
 	own_memory = true;
-	return true;
+	return alloc_line_pages(max);
 }
 
 bool sequence::buffer_control::init(const seqchar *source, size_w len)
@@ -76,7 +81,7 @@ bool sequence::buffer_control::init(const seqchar *source, size_w len)
 	length = len;
 	maxsize = len;
 	own_memory = true;
-	return true;
+	return alloc_line_pages(len);
 }
 
 static size_w calc_index_base(size_w index)
@@ -147,6 +152,13 @@ bool sequence::buffer_control::init_file(TCHAR *filename, bool read_only)
 	maxsize = length;
 	own_memory = true;
 	fp = file;
+
+	if(!alloc_line_pages(length))
+	{
+		fclose(file);
+		fp = 0;
+		return false;
+	}
 
 	return true;
 }
@@ -231,6 +243,8 @@ void sequence::buffer_control::clear()
 {
 	int i;
 
+	free_line_pages();
+
 	if(fp)
 	{
 		fclose((FILE *)fp);
@@ -256,6 +270,37 @@ void sequence::buffer_control::clear()
 }
 
 //
+//	Allocate one line page per LINE_PAGE_SIZE of buffer capacity
+//
+bool sequence::buffer_control::alloc_line_pages(size_w size)
+{
+	free_line_pages();
+
+	line_page_count = size / LINE_PAGE_SIZE + (size % LINE_PAGE_SIZE ? 1 : 0);
+
+	if(line_page_count == 0)
+		return true;
+
+	if((line_pages = new line_page[line_page_count]) == 0)
+	{
+		line_page_count = 0;
+		return false;
+	}
+
+	reset_line_pages();
+	return true;
+}
+
+void sequence::buffer_control::free_line_pages()
+{
+	delete[] line_pages;
+	line_pages = 0;
+	line_page_count = 0;
+	scanned_bytes = 0;
+	scanned_breaks = 0;
+}
+
+//
 //	Allocate a buffer and add it to our 'buffer control' list
 //
 sequence::buffer_control* sequence::alloc_buffer(size_t maxsize)
@@ -271,6 +316,7 @@ sequence::buffer_control* sequence::alloc_buffer(size_t maxsize)
 		return 0;
 	}
 
+	bc->set_line_scan_mode(line_mode);
 	bc->id = buffer_list.size();		// assign the id
 	buffer_list.push_back(bc);
 

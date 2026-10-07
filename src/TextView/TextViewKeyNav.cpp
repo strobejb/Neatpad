@@ -30,31 +30,59 @@ bool IsKeyPressed(UINT nVirtKey)
 	return GetKeyState(nVirtKey) < 0 ? true : false;
 }
 
-static int OffsetToLineCharPos(ULONG offset, ULONG lineOffset, int lineLength)
-{
-	if(offset <= lineOffset)
-		return 0;
-
-	offset -= lineOffset;
-
-	if(offset > (ULONG)lineLength)
-		return lineLength;
-
-	return (int)offset;
-}
-
 //
-//	Get the UspCache and logical attributes for specified line
+//	Get the Uniscribe layout and logical attributes for the line containing coord
 //
-bool TextView::GetLogAttr(ULONG nLineNo, USPCACHE **puspCache, CSCRIPT_LOGATTR **plogAttr, ULONG *pnOffset)
+bool TextView::GetLineLayout(TextCoord *line, USPCACHE **uspCache, CSCRIPT_LOGATTR **logAttr)
 {
-	if((*puspCache = GetUspCache(0, nLineNo, pnOffset)) == 0)
+	if((*uspCache = GetUspCache(0, line)) == 0)
 		return false;
 
-	if(plogAttr && (*plogAttr = UspGetLogAttr((*puspCache)->uspData)) == 0)
+	if(logAttr && (*logAttr = UspGetLogAttr((*uspCache)->uspData)) == 0)
 		return false;
 
 	return true;
+}
+
+//
+//	The position at the end of the previous line's text (before its CR/LF)
+//
+bool TextView::CoordAtPreviousLineEnd(TextCoord *coord, TextCoord *result)
+{
+	USPCACHE *uspCache;
+	TextCoord target;
+
+	if(coord->line_begin == 0 || !m_pTextDoc->previous_line_from_coord(coord, 1, &target))
+		return false;
+
+	if(!GetLineLayout(&target, &uspCache, 0))
+		return false;
+
+	return m_pTextDoc->coord_from_line_pos(&target, uspCache->length_CRLF, result);
+}
+
+//
+//	The position at the start of the next line
+//
+bool TextView::CoordAtNextLineStart(TextCoord *coord, TextCoord *result)
+{
+	TextCoord target;
+
+	if(!m_pTextDoc->next_line_from_coord(coord, 1, &target) || target.line_begin == coord->line_begin)
+		return false;
+
+	return m_pTextDoc->coord_from_line_pos(&target, 0, result);
+}
+
+//
+//	Move the caret to a UTF-16 position within its current line
+//
+VOID TextView::SetCursorLinePos(int charPos)
+{
+	TextCoord coord;
+
+	if(m_pTextDoc->coord_from_line_pos(&m_cursorPos, charPos, &coord))
+		SetCursorCoord(&coord);
 }
 
 //
@@ -63,31 +91,27 @@ bool TextView::GetLogAttr(ULONG nLineNo, USPCACHE **puspCache, CSCRIPT_LOGATTR *
 VOID TextView::MoveLineUp(int numLines)
 {
 	USPDATA			* uspData;
-	ULONG			  lineOffset;
-	ULONG			  docLength = m_pTextDoc->text_length();
-	TextLineInfo	  target;
-	
+	TextCoord		  target;
+	TextCoord		  coord;
+
 	int				  charPos;
 	BOOL			  trailing;
 
-	if(numLines <= 0 || docLength == 0)
+	if(numLines <= 0 || m_pTextDoc->text_length() == 0)
 		return;
 
-	if(!m_pTextDoc->previous_lineinfo_from_offset(m_nCursorOffset, numLines, &target))
+	if(!m_pTextDoc->previous_line_from_coord(&m_cursorPos, numLines, &target))
 		return;
 
 	// get Uniscribe data for target line
-	if((uspData = GetUspData(0, target.lineno, &lineOffset)) == 0)
+	if((uspData = GetUspData(0, &target)) == 0)
 		return;
 
 	// move up to character nearest the caret-anchor positions
 	UspXToOffset(uspData, m_nAnchorPosX, &charPos, &trailing, 0);
 
-	m_nCurrentLine = target.lineno;
-	m_nCursorOffset = target.lineoff_chars + charPos + trailing;
-
-	if(m_nCursorOffset > docLength)
-		m_nCursorOffset = docLength;
+	if(m_pTextDoc->coord_from_line_pos(&target, charPos + trailing, &coord))
+		SetCursorCoord(&coord);
 }
 
 //
@@ -96,34 +120,27 @@ VOID TextView::MoveLineUp(int numLines)
 VOID TextView::MoveLineDown(int numLines)
 {
 	USPDATA			* uspData;
-	ULONG			  lineOffset;
-	ULONG			  newOffset;
-	ULONG			  docLength = m_pTextDoc->text_length();
-	TextLineInfo	  target;
-	
+	TextCoord		  target;
+	TextCoord		  coord;
+
 	int				  charPos;
 	BOOL			  trailing;
 
-	if(numLines <= 0 || docLength == 0)
+	if(numLines <= 0 || m_pTextDoc->text_length() == 0)
 		return;
 
-	if(!m_pTextDoc->next_lineinfo_from_offset(m_nCursorOffset, numLines, &target))
+	if(!m_pTextDoc->next_line_from_coord(&m_cursorPos, numLines, &target))
 		return;
 
 	// get Uniscribe data for target line
-	if((uspData = GetUspData(0, target.lineno, &lineOffset)) == 0)
+	if((uspData = GetUspData(0, &target)) == 0)
 		return;
 
 	// move down to character nearest the caret-anchor position
 	UspXToOffset(uspData, m_nAnchorPosX, &charPos, &trailing, 0);
 
-	newOffset = target.lineoff_chars + charPos + trailing;
-
-	if(newOffset > docLength)
-		newOffset = docLength;
-
-	m_nCurrentLine = target.lineno;
-	m_nCursorOffset = newOffset;
+	if(m_pTextDoc->coord_from_line_pos(&target, charPos + trailing, &coord))
+		SetCursorCoord(&coord);
 }
 
 //
@@ -133,26 +150,22 @@ VOID TextView::MoveWordPrev()
 {
 	USPCACHE		* uspCache;
 	CSCRIPT_LOGATTR * logAttr;
-	ULONG			  lineOffset;
+	TextCoord		  coord;
 	int				  charPos;
 
-	// get Uniscribe data for current line
-	if(!GetLogAttr(m_nCurrentLine, &uspCache, &logAttr, &lineOffset))
+	if(!GetLineLayout(&m_cursorPos, &uspCache, &logAttr))
 		return;
 
 	// move 1 character to left
-	charPos = OffsetToLineCharPos(m_nCursorOffset, lineOffset, uspCache->length_CRLF) - 1; 
+	charPos = (int)min(m_cursorPos.line_offset_chars, (ULONG)uspCache->length_CRLF) - 1;
 
 	// skip to end of *previous* line if necessary
 	if(charPos < 0)
 	{
-		charPos = 0;
-		
-		if(m_nCurrentLine > 0)
-		{
-			MoveLineEnd(m_nCurrentLine-1);		
-			return;
-		}
+		if(CoordAtPreviousLineEnd(&m_cursorPos, &coord))
+			SetCursorCoord(&coord);
+
+		return;
 	}
 
 	// skip preceding whitespace
@@ -166,7 +179,7 @@ VOID TextView::MoveWordPrev()
 			break;
 	}
 
-	m_nCursorOffset = lineOffset + charPos;
+	SetCursorLinePos(charPos);
 }
 
 //
@@ -176,20 +189,19 @@ VOID TextView::MoveWordNext()
 {
 	USPCACHE		* uspCache;
 	CSCRIPT_LOGATTR * logAttr;
-	ULONG			  lineOffset;
+	TextCoord		  coord;
 	int				  charPos;
 
-	// get Uniscribe data for current line
-	if(!GetLogAttr(m_nCurrentLine, &uspCache, &logAttr, &lineOffset))
+	if(!GetLineLayout(&m_cursorPos, &uspCache, &logAttr))
 		return;
 
-	charPos = OffsetToLineCharPos(m_nCursorOffset, lineOffset, uspCache->length_CRLF);
+	charPos = (int)min(m_cursorPos.line_offset_chars, (ULONG)uspCache->length_CRLF);
 
 	// if already at end-of-line, skip to next line
 	if(charPos == uspCache->length_CRLF)
 	{
-		if(m_nCurrentLine + 1 < m_nLineCount)
-			MoveLineStart(m_nCurrentLine+1);
+		if(CoordAtNextLineStart(&m_cursorPos, &coord))
+			SetCursorCoord(&coord);
 
 		return;
 	}
@@ -209,7 +221,7 @@ VOID TextView::MoveWordNext()
 	while(charPos < uspCache->length_CRLF && logAttr[charPos].fWhiteSpace)
 		charPos++;
 
-	m_nCursorOffset = lineOffset + charPos;
+	SetCursorLinePos(charPos);
 }
 
 //
@@ -219,19 +231,17 @@ VOID TextView::MoveWordStart()
 {
 	USPCACHE		* uspCache;
 	CSCRIPT_LOGATTR * logAttr;
-	ULONG			  lineOffset;
 	int				  charPos;
 
-	// get Uniscribe data for current line
-	if(!GetLogAttr(m_nCurrentLine, &uspCache, &logAttr, &lineOffset))
+	if(!GetLineLayout(&m_cursorPos, &uspCache, &logAttr))
 		return;
 
-	charPos  = OffsetToLineCharPos(m_nCursorOffset, lineOffset, uspCache->length_CRLF);
+	charPos = (int)min(m_cursorPos.line_offset_chars, (ULONG)uspCache->length_CRLF);
 
 	while(charPos > 0 && !logAttr[charPos-1].fWhiteSpace)
 		charPos--;
 
-	m_nCursorOffset = lineOffset + charPos;
+	SetCursorLinePos(charPos);
 }
 
 //
@@ -241,19 +251,17 @@ VOID TextView::MoveWordEnd()
 {
 	USPCACHE		* uspCache;
 	CSCRIPT_LOGATTR * logAttr;
-	ULONG			  lineOffset;
 	int				  charPos;
 
-	// get Uniscribe data for current line
-	if(!GetLogAttr(m_nCurrentLine, &uspCache, &logAttr, &lineOffset))
+	if(!GetLineLayout(&m_cursorPos, &uspCache, &logAttr))
 		return;
 
-	charPos  = OffsetToLineCharPos(m_nCursorOffset, lineOffset, uspCache->length_CRLF);
+	charPos = (int)min(m_cursorPos.line_offset_chars, (ULONG)uspCache->length_CRLF);
 
 	while(charPos < uspCache->length_CRLF && !logAttr[charPos].fWhiteSpace)
 		charPos++;
 
-	m_nCursorOffset = lineOffset + charPos;
+	SetCursorLinePos(charPos);
 }
 
 //
@@ -263,14 +271,13 @@ VOID TextView::MoveCharPrev()
 {
 	USPCACHE		* uspCache;
 	CSCRIPT_LOGATTR * logAttr;
-	ULONG			  lineOffset;
+	TextCoord		  coord;
 	int				  charPos;
 
-	// get Uniscribe data for current line
-	if(!GetLogAttr(m_nCurrentLine, &uspCache, &logAttr, &lineOffset))
+	if(!GetLineLayout(&m_cursorPos, &uspCache, &logAttr))
 		return;
 
-	charPos = OffsetToLineCharPos(m_nCursorOffset, lineOffset, uspCache->length_CRLF);
+	charPos = (int)min(m_cursorPos.line_offset_chars, (ULONG)uspCache->length_CRLF);
 
 	// find the previous valid character-position
 	for( --charPos; charPos >= 0; charPos--)
@@ -282,17 +289,13 @@ VOID TextView::MoveCharPrev()
 	// move up to end-of-last line if necessary
 	if(charPos < 0)
 	{
-		charPos  = 0;
+		if(CoordAtPreviousLineEnd(&m_cursorPos, &coord))
+			SetCursorCoord(&coord);
 
-		if(m_nCurrentLine > 0)
-		{
-			MoveLineEnd(m_nCurrentLine-1);
-			return;
-		}
+		return;
 	}
 
-	// update cursor position
-	m_nCursorOffset = lineOffset + charPos;
+	SetCursorLinePos(charPos);
 }
 
 //
@@ -302,14 +305,13 @@ VOID TextView::MoveCharNext()
 {
 	USPCACHE		* uspCache;
 	CSCRIPT_LOGATTR * logAttr;
-	ULONG			  lineOffset;
+	TextCoord		  coord;
 	int				  charPos;
 
-	// get Uniscribe data for specified line
-	if(!GetLogAttr(m_nCurrentLine, &uspCache, &logAttr, &lineOffset))
+	if(!GetLineLayout(&m_cursorPos, &uspCache, &logAttr))
 		return;
 
-	charPos = OffsetToLineCharPos(m_nCursorOffset, lineOffset, uspCache->length_CRLF);
+	charPos = (int)min(m_cursorPos.line_offset_chars, (ULONG)uspCache->length_CRLF);
 
 	// find the next valid character-position
 	for( ++charPos; charPos <= uspCache->length_CRLF; charPos++)
@@ -321,60 +323,26 @@ VOID TextView::MoveCharNext()
 	// skip to beginning of next line if we hit the CR/LF
 	if(charPos > uspCache->length_CRLF)
 	{
-		if(m_nCurrentLine + 1 < m_nLineCount)
-			MoveLineStart(m_nCurrentLine+1);
-	}
-	// otherwise advance the character-position
-	else
-	{
-		m_nCursorOffset = lineOffset + charPos;
-	}
-}
+		if(CoordAtNextLineStart(&m_cursorPos, &coord))
+			SetCursorCoord(&coord);
 
-//
-//	Move to start of specified line
-//
-VOID TextView::MoveLineStart(ULONG lineNo)
-{
-	ULONG			  lineOffset;
-	USPCACHE		* uspCache;
-	CSCRIPT_LOGATTR * logAttr;
-	int				  charPos;
-	
-	// get Uniscribe data for current line
-	if(!GetLogAttr(lineNo, &uspCache, &logAttr, &lineOffset))
 		return;
+	}
 
-	charPos  = OffsetToLineCharPos(m_nCursorOffset, lineOffset, uspCache->length_CRLF);
-	
-	// if already at start of line, skip *forwards* past any whitespace
-	if(m_nCursorOffset == lineOffset)
-	{
-		// skip whitespace
-		while(charPos < uspCache->length_CRLF && logAttr[charPos].fWhiteSpace)
-		{
-			m_nCursorOffset++;
-			charPos++;
-		}
-	}
-	// if not at start, goto start
-	else
-	{
-		m_nCursorOffset = lineOffset;
-	}
+	SetCursorLinePos(charPos);
 }
 
-//
-//	Move to end of specified line
-//
-VOID TextView::MoveLineEnd(ULONG lineNo)
+VOID TextView::MoveCurrentLineStart()
+{
+	SetCursorLinePos(0);
+}
+
+VOID TextView::MoveCurrentLineEnd()
 {
 	USPCACHE *uspCache;
-	
-	if((uspCache = GetUspCache(0, lineNo)) == 0)
-		return;
 
-	m_nCursorOffset = uspCache->offset + uspCache->length_CRLF;
+	if(GetLineLayout(&m_cursorPos, &uspCache, 0))
+		SetCursorLinePos(uspCache->length_CRLF);
 }
 
 //
@@ -382,7 +350,10 @@ VOID TextView::MoveLineEnd(ULONG lineNo)
 //
 VOID TextView::MoveFileStart()
 {
-	m_nCursorOffset = 0;
+	TextCoord coord;
+
+	if(m_pTextDoc->coord_from_byte_anchor(0, &coord))
+		SetCursorCoord(&coord);
 }
 
 //
@@ -390,8 +361,18 @@ VOID TextView::MoveFileStart()
 //
 VOID TextView::MoveFileEnd()
 {
-	m_nCursorOffset = m_pTextDoc->text_length();
-	ScrollToDocumentEnd();
+	TextCoord coord;
+
+	if(m_pTextDoc->coord_from_document_end(&coord))
+	{
+		SetCursorCoord(&coord);
+		ScrollToDocumentEnd(&coord);
+	}
+	else
+	{
+		ScrollToDocumentEnd();
+	}
+
 	RefreshWindow();
 }
 
@@ -404,6 +385,7 @@ LONG TextView::OnKeyDown(UINT nKeyCode, UINT nFlags)
 	bool fCtrlDown	= IsKeyPressed(VK_CONTROL);
 	bool fShiftDown	= IsKeyPressed(VK_SHIFT);
 	BOOL fAdvancing = FALSE;
+	TextCoord oldCursor = m_cursorPos;
 
 	//
 	//	Process the key-press. Cursor movement is different depending
@@ -516,48 +498,39 @@ LONG TextView::OnKeyDown(UINT nKeyCode, UINT nFlags)
 
 	case VK_HOME:
 		if(fCtrlDown)	MoveFileStart();
-		else
-		{
-			TextLineInfo lineinfo;
-
-			if(m_pTextDoc->lineinfo_from_offset(m_nCursorOffset, &lineinfo))
-				m_nCursorOffset = lineinfo.lineoff_chars;
-		}
+		else			MoveCurrentLineStart();
 		break;
 
 	case VK_END:
 		if(fCtrlDown)	MoveFileEnd();
-		else
-		{
-			TextLineInfo lineinfo;
-
-			if(m_pTextDoc->lineinfo_from_offset(m_nCursorOffset, &lineinfo))
-				m_nCursorOffset = m_pTextDoc->line_text_end(&lineinfo);
-		}
+		else			MoveCurrentLineEnd();
 		break;
 
 	default:
 		return 0;
 	}
 
-	// Extend selection if <shift> is down
+	// Extend selection if <shift> is down: the anchor stays where it is
 	if(fShiftDown)
 	{		
-		InvalidateRange(m_nSelectionEnd, m_nCursorOffset);
-		m_nSelectionEnd	= m_nCursorOffset;
+		InvalidateRange(&oldCursor, &m_cursorPos);
 	}
 	// Otherwise clear the selection
 	else
 	{
-		if(m_nSelectionStart != m_nSelectionEnd)
-			InvalidateRange(m_nSelectionStart, m_nSelectionEnd);
+		bool hadSelection = m_selAnchor.byte_anchor != oldCursor.byte_anchor;
 
-		m_nSelectionEnd		= m_nCursorOffset;
-		m_nSelectionStart	= m_nCursorOffset;
+		if(hadSelection)
+			InvalidateRange(&m_selAnchor, &oldCursor);
+
+		m_selAnchor = m_cursorPos;
+
+		if(hadSelection)
+			RefreshWindow();
 	}
 
-	// update caret-location (xpos, line#) from the offset
-	UpdateCaretOffset(m_nCursorOffset, fAdvancing, &m_nCaretPosX, &m_nCurrentLine);
+	// update caret-location (xpos, line#)
+	UpdateCaretCoord(&m_cursorPos, fAdvancing, &m_nCaretPosX, &m_nCurrentLine);
 	
 	// maintain the caret 'anchor' position *except* for up/down actions
 	if(nKeyCode != VK_UP && nKeyCode != VK_DOWN)
@@ -565,13 +538,13 @@ LONG TextView::OnKeyDown(UINT nKeyCode, UINT nFlags)
 		m_nAnchorPosX = m_nCaretPosX;
 
 		// scroll as necessary to keep caret within viewport
-		ScrollToPosition(m_nCaretPosX, m_nCurrentLine);
+		ScrollToCaret();
 	}
 	else
 	{
 		// scroll as necessary to keep caret within viewport
 		if(!fCtrlDown)
-			ScrollToPosition(m_nCaretPosX, m_nCurrentLine);
+			ScrollToCaret();
 	}
 
 	NotifyParent(TVN_CURSOR_CHANGE);

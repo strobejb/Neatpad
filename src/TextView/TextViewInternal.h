@@ -1,10 +1,13 @@
-#ifndef TEXTVIEW_INTERNAL_INCLUDED
-#define TEXTVIEW_INTERNAL_INCLUDED
+#pragma once
+
+#ifndef NEATPAD_TEXTVIEW_INTERNAL_INCLUDED
+#define NEATPAD_TEXTVIEW_INTERNAL_INCLUDED
 
 #define TEXTBUFSIZE  128
 #define LINENO_FMT  _T(" %2d ")
 #define LINENO_PAD	 8
 
+#include <windows.h>
 #include <commctrl.h>
 #include <uxtheme.h>
 
@@ -15,16 +18,16 @@ HRESULT (WINAPI * DrawThemeBackground_Proc)(HTHEME hTheme, HDC hdc, int, int, co
 
 
 #include "TextDocument.h"
+#include "TextView.h"
 
 #include "..\UspLib\usplib.h"
 
 typedef struct
 {
 	USPDATA *uspData;
-	ULONG	 lineno;		// line#
+	ULONG	 line_begin;	// byte offset of the line's start (cache key; flushed on every edit)
 	ULONG	 offset;		// offset (in WCHAR's) of this line
 	ULONG	 usage;			// cache-count
-	bool     lineno_known;	// true if this cache entry was keyed by an exact line number
 
 	int		 length;		// length in chars INCLUDING CR/LF
 	int		 length_CRLF;	// length in chars EXCLUDING CR/LF
@@ -59,7 +62,7 @@ enum SELMODE { SEL_NONE, SEL_NORMAL, SEL_MARGIN, SEL_BLOCK };
 
 typedef struct
 {
-	ULONG	line;
+	ULONG	line_begin;		// byte offset of the line's start
 	ULONG	xpos;
 
 } CURPOS;
@@ -117,13 +120,14 @@ private:
 	LONG		OpenFile(TCHAR *szFileName);
 	LONG		ClearFile();
 	void		ResetLineCache();
-	ULONG		GetText(TCHAR *szDest, ULONG nStartOffset, ULONG nLength);
-	
+
 	//
 	//	Cursor/Selection
 	//
 	ULONG		SelectionSize();
 	ULONG		SelectAll();
+	bool		GetSelection(TextCoord *start, TextCoord *end);
+	void		SelectionColumns(TextCoord *line, ULONG lineLen, ULONG *start, ULONG *end);
 
 	//void		Toggle
 
@@ -132,17 +136,17 @@ private:
 	//	Painting support
 	//
 	void		RefreshWindow();
-	void		PaintLine(HDC hdc, ULONG line, int x, int y, HRGN hrgnUpdate);
-	void		PaintText(HDC hdc, ULONG nLineNo, int x, int y, RECT *bounds);
-	int			PaintMargin(HDC hdc, ULONG line, int x, int y);
+	void		PaintLine(HDC hdc, TextCoord *coord, ULONG row, int x, int y, HRGN hrgnUpdate);
+	void		PaintText(HDC hdc, TextCoord *coord, int x, int y, RECT *bounds);
+	int			PaintMargin(HDC hdc, TextCoord *line, int x, int y);
 
-	LONG		InvalidateRange(ULONG nStart, ULONG nFinish);
-	LONG		InvalidateLine(ULONG nLineNo, bool forceAnalysis);
-	VOID		UpdateLine(ULONG nLineNo);
+	LONG		InvalidateRange(TextCoord *start, TextCoord *finish);
+	LONG		InvalidateLine(TextCoord *line, bool forceAnalysis);
+	VOID		UpdateLine(TextCoord *line);
 
-	
-	int			ApplyTextAttributes(ULONG nLineNo, ULONG offset, ULONG &nColumn, TCHAR *szText, int nTextLen, ATTR *attr);
-	int			ApplySelection(USPDATA *uspData, ULONG nLineNo, ULONG nOffset, ULONG nTextLen);
+
+	int			ApplyTextAttributes(TextCoord *line, ULONG offset, ULONG &nColumn, TCHAR *szText, int nTextLen, ATTR *attr);
+	int			ApplySelection(USPDATA *uspData, TextCoord *line, ULONG nOffset, ULONG nTextLen);
 	int			SyntaxColour(TCHAR *szText, ULONG nTextLen, ATTR *attr);
 	int			StripCRLF(TCHAR *szText, ATTR *attrList, int nLength, bool fAllow);
 	void		MarkCRLF(USPDATA *uspData, TCHAR *szText, int nLength, ATTR *attr);
@@ -174,12 +178,13 @@ private:
 	//
 	//	Caret/Cursor positioning
 	//
-	BOOL		MouseCoordToFilePos(int x, int y, ULONG *pnLineNo, ULONG *pnFileOffset, int *px);//, ULONG *pnLineLen=0);
+	BOOL		MouseCoordToTextCoord(int x, int y, TextCoord *coord, int *px);
 	VOID		RepositionCaret();
 	//VOID		MoveCaret(int x, int y);
-	VOID		UpdateCaretXY(int x, ULONG lineno);
-	VOID		UpdateCaretOffset(ULONG offset, BOOL fTrailing, int *outx=0, ULONG *outlineno=0);
+	VOID		UpdateCaretXY(int x, TextCoord *coord);
+	VOID		UpdateCaretCoord(TextCoord *coord, BOOL fTrailing, int *outx=0, ULONG *outlineno=0);
 	VOID		UpdateViewState(BOOL fAdvancing);
+	bool		SetCursorCoord(TextCoord *coord);
 
 	VOID		MoveWordPrev();
 	VOID		MoveWordNext();
@@ -187,14 +192,19 @@ private:
 	VOID		MoveWordEnd();
 	VOID		MoveCharPrev();
 	VOID		MoveCharNext();
+	VOID		MoveCurrentLineStart();
+	VOID		MoveCurrentLineEnd();
 	VOID		MoveLineUp(int numLines);
 	VOID		MoveLineDown(int numLines);
 	VOID		MovePageUp();
 	VOID		MovePageDown();
-	VOID		MoveLineStart(ULONG lineNo);
-	VOID		MoveLineEnd(ULONG lineNo);
 	VOID		MoveFileStart();
 	VOID		MoveFileEnd();
+
+	bool		GetLineLayout(TextCoord *line, USPCACHE **uspCache, CSCRIPT_LOGATTR **logAttr);
+	bool		CoordAtPreviousLineEnd(TextCoord *coord, TextCoord *result);
+	bool		CoordAtNextLineStart(TextCoord *coord, TextCoord *result);
+	VOID		SetCursorLinePos(int charPos);
 
 	//
 	//	Editing
@@ -212,9 +222,17 @@ private:
 	//
 	HRGN		ScrollRgn(int dx, int dy, bool fReturnUpdateRgn);
 	void		Scroll(int dx, int dy);
+	bool		SetScrollCoord(TextCoord *coord);
+	bool		SetScrollLineIndex(ULONG lineno);
+	VOID		AdjustCoordsForChange(TextChange *change);
+	bool		ViewportLineFromRow(ULONG row, TextCoord *coord);
+	bool		ViewportRowFromLine(TextCoord *line, ULONG *row);
+	int			ScrollVByLines(int dy);
 	void		ScrollToCaret();
+	void		ScrollToCoord(int xpos, TextCoord *coord);
 	void		ScrollToPosition(int xpos, ULONG lineno);
 	void		ScrollToDocumentEnd();
+	void		ScrollToDocumentEnd(TextCoord *eofCoord);
 	VOID		SetupScrollbars();
 	VOID		UpdateMetrics();
 	VOID		RecalcLineHeight();
@@ -231,8 +249,8 @@ private:
 
 	COLORREF	SetColour(UINT idx, COLORREF rgbColour);
 	COLORREF	GetColour(UINT idx);
-	COLORREF	LineColour(ULONG nLineNo);
-	COLORREF	LongColour(ULONG nLineNo);
+	COLORREF	LineColour(TextCoord *line);
+	COLORREF	LongColour(TextCoord *line);
 
 	//
 	//	Miscallaneous
@@ -265,6 +283,7 @@ private:
 
 	// Scrollbar-related data
 	ULONG		m_nVScrollPos;
+	TextCoord	m_scrollVPos;
 	ULONG		m_nVScrollMax;
 	int			m_nHScrollPos;
 	int			m_nHScrollMax;
@@ -273,13 +292,12 @@ private:
 	int			m_nWindowLines;
 	int			m_nWindowColumns;
 
-	// Cursor/Caret position 
+	// Cursor/Caret position. The caret is the moving end of the selection;
+	// m_selAnchor is the fixed end, equal to the caret when nothing is selected.
+	TextCoord	m_cursorPos;
+	TextCoord	m_selAnchor;
+	TextCoord	m_selMarginLine;	// line clicked in the margin during a margin selection
 	ULONG		m_nCurrentLine;
-	ULONG		m_nSelectionStart;
-	ULONG		m_nSelectionEnd;
-	ULONG		m_nCursorOffset;
-	ULONG		m_nSelMarginOffset1;
-	ULONG		m_nSelMarginOffset2;
 	int			m_nCaretPosX;
 	int			m_nAnchorPosX;
 	
@@ -315,9 +333,8 @@ private:
 
 	// Cache for USPDATA objects
 	USPCACHE    *m_uspCache;
-	USPDATA		*GetUspData(HDC hdc, ULONG nLineNo, ULONG *nOffset=0);
-	USPCACHE    *GetUspCache(HDC hdc, ULONG nLineNo, ULONG *nOffset=0);
-	bool		 GetLogAttr(ULONG nLineNo, USPCACHE **puspCache, CSCRIPT_LOGATTR **plogAttr=0, ULONG *pnOffset=0);
+	USPDATA		*GetUspData(HDC hdc, TextCoord *coord, ULONG *nOffset=0);
+	USPCACHE    *GetUspCache(HDC hdc, TextCoord *coord, ULONG *nOffset=0);
 
 	TextDocument *m_pTextDoc;
 };

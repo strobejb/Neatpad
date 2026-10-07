@@ -29,7 +29,11 @@ VOID TextView::RefreshWindow()
 	InvalidateRect(m_hWnd, NULL, FALSE);
 }
 
-USPCACHE *TextView::GetUspCache(HDC hdc, ULONG nLineNo, ULONG *nOffset/*=0*/)
+//
+//	Return the analyzed Uniscribe data for the line containing coord. Entries are
+//	keyed by the line's starting byte; ResetLineCache flushes them on every edit.
+//
+USPCACHE *TextView::GetUspCache(HDC hdc, TextCoord *coord, ULONG *nOffset/*=0*/)
 {
 	TCHAR	 buff[TEXTBUFSIZE];
 	ATTR	 attr[TEXTBUFSIZE];
@@ -37,11 +41,13 @@ USPCACHE *TextView::GetUspCache(HDC hdc, ULONG nLineNo, ULONG *nOffset/*=0*/)
 	ULONG	 off_chars = 0;
 	int		 len;
 	HDC		 hdcTemp;
-	
+
 	USPDATA *uspData;
 	ULONG    lru_usage = -1;
 	int		 lru_index = 0;
-	bool     lineno_known = m_pTextDoc->lineno_known(nLineNo);
+
+	if(coord == 0)
+		return 0;
 
 	//
 	//	Search the cache to see if we've already analyzed the requested line
@@ -55,9 +61,7 @@ USPCACHE *TextView::GetUspCache(HDC hdc, ULONG nLineNo, ULONG *nOffset/*=0*/)
 			lru_usage = m_uspCache[i].usage;
 		}
 
-		// Approximate lazy line numbers can later resolve to a different
-		// offset, so only reuse cache entries keyed by exact line numbers.
-		if(lineno_known && m_uspCache[i].usage > 0 && m_uspCache[i].lineno_known && m_uspCache[i].lineno == nLineNo)
+		if(m_uspCache[i].usage > 0 && m_uspCache[i].line_begin == coord->line_begin)
 		{
 			if(nOffset)
 				*nOffset = m_uspCache[i].offset;
@@ -70,26 +74,25 @@ USPCACHE *TextView::GetUspCache(HDC hdc, ULONG nLineNo, ULONG *nOffset/*=0*/)
 	//
 	// not found? overwrite the "least-recently-used" entry
 	//
-	m_uspCache[lru_index].lineno	= nLineNo;
-	m_uspCache[lru_index].lineno_known = lineno_known;
+	m_uspCache[lru_index].line_begin = coord->line_begin;
 	m_uspCache[lru_index].usage		= 1;
 	uspData = m_uspCache[lru_index].uspData;
 
 	if(hdc == 0)	hdcTemp = GetDC(m_hWnd);
 	else			hdcTemp = hdc;
-	
+
 	//
 	// get the text for the entire line and apply style attributes
 	//
-	len = m_pTextDoc->getline(nLineNo, buff, TEXTBUFSIZE, &off_chars);
-	
+	len = m_pTextDoc->getline(*coord, buff, TEXTBUFSIZE, &off_chars);
+
 	// cache the line's offset and length information
 	m_uspCache[lru_index].offset		= off_chars;
 	m_uspCache[lru_index].length		= len;
 	m_uspCache[lru_index].length_CRLF	= len - CRLF_size(buff, len);
 
-	len = ApplyTextAttributes(nLineNo, off_chars, colno, buff, len, attr);
-	
+	len = ApplyTextAttributes(coord, off_chars, colno, buff, len, attr);
+
 	//
 	// setup the tabs + itemization states
 	//
@@ -106,45 +109,44 @@ USPCACHE *TextView::GetUspCache(HDC hdc, ULONG nLineNo, ULONG *nOffset/*=0*/)
 	// go!
 	//
 	UspAnalyze(
-		uspData, 
-		hdcTemp, 
-		buff, 
-		len, 
-		attr, 
-		0, 
+		uspData,
+		hdcTemp,
+		buff,
+		len,
+		attr,
+		0,
 		m_uspFontList,
-		&scriptControl, 
-		&scriptState, 
+		&scriptControl,
+		&scriptState,
 		&tabdef
 	);
 
 	//
 	//	Modify CR/LF so cursor cannot traverse into them
 	//
-	//MarkCRLF(uspData, buff, len, attr);	
+	//MarkCRLF(uspData, buff, len, attr);
 
 
 	//
 	//	Apply the selection
 	//
-	ApplySelection(uspData, nLineNo, off_chars, len);
+	ApplySelection(uspData, coord, off_chars, len);
 
 	if(hdc == 0)
 		ReleaseDC(m_hWnd, hdcTemp);
 
-	if(nOffset) 
+	if(nOffset)
 		*nOffset = off_chars;
 
 	return &m_uspCache[lru_index];
 }
 
-
 //
 //	Return a fully-analyzed USPDATA object for the specified line
 //
-USPDATA *TextView::GetUspData(HDC hdc, ULONG nLineNo, ULONG *nOffset/*=0*/)
+USPDATA *TextView::GetUspData(HDC hdc, TextCoord *coord, ULONG *nOffset/*=0*/)
 {
-	USPCACHE *uspCache = GetUspCache(hdc, nLineNo, nOffset);
+	USPCACHE *uspCache = GetUspCache(hdc, coord, nOffset);
 
 	if(uspCache)
 		return uspCache->uspData;
@@ -160,7 +162,6 @@ void TextView::ResetLineCache()
 	for(int i = 0; i < USP_CACHE_SIZE; i++)
 	{
 		m_uspCache[i].usage	= 0;
-		m_uspCache[i].lineno_known = false;
 	}
 }
 
@@ -170,9 +171,11 @@ void TextView::ResetLineCache()
 LONG TextView::OnPaint()
 {
 	PAINTSTRUCT ps;
-	ULONG		i;
+	ULONG		row;
 	ULONG		first;
 	ULONG		last;
+	TextCoord	lineCoord;
+	bool		haveLine;
 	
 	HRGN		hrgnUpdate;
 	HDC			hdcMem;
@@ -199,31 +202,40 @@ LONG TextView::OnPaint()
 	//
 	// figure out which lines to redraw
 	//
-	first = m_nVScrollPos + ps.rcPaint.top    / m_nLineHeight;
-	last  = m_nVScrollPos + ps.rcPaint.bottom / m_nLineHeight;
+	first = ps.rcPaint.top    / m_nLineHeight;
+	last  = ps.rcPaint.bottom / m_nLineHeight;
 
-	// make sure we never wrap around the 4gb boundary
-	if(last < first) 
-		last = -1;
+	// rows past the end of the document have no line
+	haveLine = ViewportLineFromRow(first, &lineCoord);
 
 	//
 	// draw the display line-by-line
 	//
-	for(i = first; i <= last; i++)
+	for(row = first; row <= last; row++)
 	{
 		int sx		= 0;
-		int sy		= (i - m_nVScrollPos) * m_nLineHeight;
+		int sy		= row * m_nLineHeight;
 		int width	= rect.right-rect.left;
+		TextCoord *line = haveLine ? &lineCoord : 0;
 
 		// prep the background
-		PaintRect(hdcMem, 0, 0, width, m_nLineHeight, LineColour(i));
+		PaintRect(hdcMem, 0, 0, width, m_nLineHeight, LineColour(line));
 		//PaintRect(hdcMem, m_cpBlockStart.xpos+LeftMarginWidth(), 0, m_cpBlockEnd.xpos-m_cpBlockStart.xpos, m_nLineHeight,GetColour(TXC_HIGHLIGHT));
 
 		// draw each line into the offscreen buffer
-		PaintLine(hdcMem, i, -m_nHScrollPos * m_nFontWidth, 0, hrgnUpdate);
+		PaintLine(hdcMem, line, row, -m_nHScrollPos * m_nFontWidth, 0, hrgnUpdate);
 
 		// transfer to screen 
 		BitBlt(	ps.hdc, sx, sy, width, m_nLineHeight, hdcMem, 0, 0, SRCCOPY);
+
+		// step down to the next line, if there is one
+		if(haveLine)
+		{
+			TextCoord nextCoord;
+
+			haveLine = m_pTextDoc->next_line_from_coord(&lineCoord, 1, &nextCoord) && nextCoord.line_begin != lineCoord.line_begin;
+			lineCoord = nextCoord;
+		}
 	}
 
 	//
@@ -239,12 +251,13 @@ LONG TextView::OnPaint()
 }
 
 //
-//	Draw the specified line (including margins etc) to the specified location
+//	Draw the specified line (including margins etc) to the specified location.
+//	coord is 0 for rows past the end of the document.
 //
-void TextView::PaintLine(HDC hdc, ULONG nLineNo, int xpos, int ypos, HRGN hrgnUpdate)
+void TextView::PaintLine(HDC hdc, TextCoord *coord, ULONG row, int xpos, int ypos, HRGN hrgnUpdate)
 {
 	RECT	bounds;
-	HRGN	hrgnBounds;
+	HRGN	hrgnBounds = NULL;
 
 	GetClientRect(m_hWnd, &bounds);
 	SelectClipRgn(hdc, NULL);
@@ -254,7 +267,7 @@ void TextView::PaintLine(HDC hdc, ULONG nLineNo, int xpos, int ypos, HRGN hrgnUp
 	{
 		// work out where the line would have been on-screen
 		bounds.left     = (long)(-m_nHScrollPos * m_nFontWidth + LeftMarginWidth());
-		bounds.top		= (long)((nLineNo - m_nVScrollPos) * m_nLineHeight);
+		bounds.top		= (long)(row * m_nLineHeight);
 		bounds.right	= (long)(bounds.right);
 		bounds.bottom	= (long)(bounds.top + m_nLineHeight);
 		
@@ -268,9 +281,10 @@ void TextView::PaintLine(HDC hdc, ULONG nLineNo, int xpos, int ypos, HRGN hrgnUp
 		bounds.bottom	= m_nLineHeight;
 	}
 
-	PaintText(hdc, nLineNo, xpos + LeftMarginWidth(), ypos, &bounds);
+	PaintText(hdc, coord, xpos + LeftMarginWidth(), ypos, &bounds);
 
-	DeleteObject(hrgnBounds);
+	if(hrgnBounds)
+		DeleteObject(hrgnBounds);
 	SelectClipRgn(hdc, NULL);
 
 	//
@@ -278,7 +292,7 @@ void TextView::PaintLine(HDC hdc, ULONG nLineNo, int xpos, int ypos, HRGN hrgnUp
 	//
 	if(LeftMarginWidth() > 0)
 	{
-		PaintMargin(hdc, nLineNo, 0, 0);
+		PaintMargin(hdc, coord, 0, 0);
 	}
 }
 
@@ -344,9 +358,11 @@ void TextView::UpdateMarginWidth()
 //
 //	Draw the specified line's margin into the area described by *margin*
 //
-int TextView::PaintMargin(HDC hdc, ULONG nLineNo, int xpos, int ypos)
+int TextView::PaintMargin(HDC hdc, TextCoord *line, int xpos, int ypos)
 {
 	RECT	rect = { xpos, ypos, xpos + LeftMarginWidth(), ypos + m_nLineHeight };
+	bool	exact = false;
+	ULONG	nLineNo = line ? m_pTextDoc->lineno_from_coord(line, &exact) : 0;
 
 	int		imgWidth;
 	int		imgHeight;
@@ -374,8 +390,8 @@ int TextView::PaintMargin(HDC hdc, ULONG nLineNo, int xpos, int ypos)
 		int  len   = wsprintf(ach, LINENO_FMT, nLineNo + 1);
 		int	 width = TextWidth(hdc, ach, len);
 
-		// only draw line number if in-range
-		if(nLineNo >= m_nLineCount || !m_pTextDoc->lineno_known(nLineNo))
+		// only draw line number if in-range and exact
+		if(!exact || nLineNo >= m_nLineCount)
 			len = 0;
 
 		rect.right  = rect.left + m_nLinenoWidth;
@@ -423,8 +439,8 @@ int TextView::PaintMargin(HDC hdc, ULONG nLineNo, int xpos, int ypos)
 	//
 	//	Retrieve information about this specific line
 	//
-	LINEINFO *linfo = GetLineInfo(nLineNo);
-	
+	LINEINFO *linfo = exact ? GetLineInfo(nLineNo) : 0;
+
 	if(m_hImageList && linfo && nLineNo < m_nLineCount)
 	{
 		ImageList_DrawEx(
@@ -447,13 +463,16 @@ int TextView::PaintMargin(HDC hdc, ULONG nLineNo, int xpos, int ypos)
 //
 //	Draw a line of text into the specified device-context
 //
-void TextView::PaintText(HDC hdc, ULONG nLineNo, int xpos, int ypos, RECT *bounds)
+void TextView::PaintText(HDC hdc, TextCoord *coord, int xpos, int ypos, RECT *bounds)
 {
 	USPDATA * uspData;
 	ULONG	  lineOffset;
 
 	// grab the USPDATA for this line
-	uspData = GetUspData(hdc, nLineNo, &lineOffset);
+	uspData = GetUspData(hdc, coord, &lineOffset);
+
+	if(uspData == 0)
+		return;
 
 	// set highlight-colours depending on window-focus
 	if(GetFocus() == m_hWnd)
@@ -462,21 +481,18 @@ void TextView::PaintText(HDC hdc, ULONG nLineNo, int xpos, int ypos, RECT *bound
 		UspSetSelColor(uspData, GetColour(TXC_HIGHLIGHTTEXT2), GetColour(TXC_HIGHLIGHT2));
 
 	// update selection-attribute information for the line
-	ULONG selStart = m_nSelectionStart > lineOffset ? m_nSelectionStart - lineOffset : 0;
-	ULONG selEnd   = m_nSelectionEnd   > lineOffset ? m_nSelectionEnd   - lineOffset : 0;
+	ULONG selStart, selEnd;
 
-	selStart = min(selStart, (ULONG)uspData->stringLen);
-	selEnd   = min(selEnd,   (ULONG)uspData->stringLen);
-
+	SelectionColumns(coord, uspData->stringLen, &selStart, &selEnd);
 	UspApplySelection(uspData, selStart, selEnd);
 
-	ApplySelection(uspData, nLineNo, lineOffset, uspData->stringLen);
+	ApplySelection(uspData, coord, lineOffset, uspData->stringLen);
 
 	// draw the text!
 	UspTextOut(uspData, hdc, xpos, ypos, m_nLineHeight, m_nHeightAbove, bounds);
 }
 
-int	TextView::ApplySelection(USPDATA *uspData, ULONG nLine, ULONG nOffset, ULONG nTextLen)
+int	TextView::ApplySelection(USPDATA *uspData, TextCoord *line, ULONG nOffset, ULONG nTextLen)
 {
 	int selstart = 0;
 	int selend   = 0;
@@ -484,7 +500,7 @@ int	TextView::ApplySelection(USPDATA *uspData, ULONG nLine, ULONG nOffset, ULONG
 	if(m_nSelectionType != SEL_BLOCK)
 		return 0;
 
-	if(nLine >= m_cpBlockStart.line && nLine <= m_cpBlockEnd.line)
+	if(line->line_begin >= m_cpBlockStart.line_begin && line->line_begin <= m_cpBlockEnd.line_begin)
 	{
 		int trailing;
 		
@@ -507,17 +523,19 @@ int	TextView::ApplySelection(USPDATA *uspData, ULONG nLine, ULONG nOffset, ULONG
 //	Apply visual-styles to the text by returning colour and font
 //	information into the supplied TEXT_ATTR structure
 //
-//	nLineNo	- line number
+//	line	- the line being analyzed
 //	nOffset	- actual offset of line within file
 //
 //	Returns new length of buffer if text has been modified
 //
-int TextView::ApplyTextAttributes(ULONG nLineNo, ULONG nOffset, ULONG &nColumn, TCHAR *szText, int nTextLen, ATTR *attr)
+int TextView::ApplyTextAttributes(TextCoord *line, ULONG nOffset, ULONG &nColumn, TCHAR *szText, int nTextLen, ATTR *attr)
 {
 	int i;
 
-	ULONG selstart = min(m_nSelectionStart, m_nSelectionEnd);
-	ULONG selend   = max(m_nSelectionStart, m_nSelectionEnd);
+	ULONG selstart;
+	ULONG selend;
+
+	SelectionColumns(line, nTextLen, &selstart, &selend);
 
 	//
 	//	STEP 1. Apply the "base coat"
@@ -533,12 +551,12 @@ int TextView::ApplyTextAttributes(ULONG nLineNo, ULONG nOffset, ULONG &nColumn, 
 		if(nColumn >= (ULONG)m_nLongLineLimit && CheckStyle(TXS_LONGLINES))
 		{
 			attr[i].fg = GetColour(TXC_FOREGROUND);
-			attr[i].bg = LongColour(nLineNo);
+			attr[i].bg = LongColour(line);
 		}
 		else
 		{
 			attr[i].fg = GetColour(TXC_FOREGROUND);
-			attr[i].bg = LineColour(nLineNo);//GetColour(TXC_BACKGROUND);
+			attr[i].bg = LineColour(line);//GetColour(TXC_BACKGROUND);
 		}
 
 		// keep track of how many columns we have processed
@@ -564,7 +582,7 @@ int TextView::ApplyTextAttributes(ULONG nLineNo, ULONG nOffset, ULONG &nColumn, 
 		for(i = 0; i < nTextLen; i++)
 		{
 			// highlight uses a separate attribute-flag
-			if(nOffset + i >= selstart && nOffset + i < selend)
+			if((ULONG)i >= selstart && (ULONG)i < selend)
 				attr[i].sel = 1;
 			else
 				attr[i].sel = 0;
@@ -728,17 +746,17 @@ int TextView::StripCRLF(TCHAR *szText, ATTR *attr, int nLength, bool fAllow)
 //
 //
 //
-COLORREF TextView::LineColour(ULONG nLineNo)
+COLORREF TextView::LineColour(TextCoord *line)
 {
-	if(m_nCurrentLine == nLineNo && CheckStyle(TXS_HIGHLIGHTCURLINE))
+	if(line && line->line_begin == m_cursorPos.line_begin && CheckStyle(TXS_HIGHLIGHTCURLINE))
 		return GetColour(TXC_CURRENTLINE);
 	else
 		return GetColour(TXC_BACKGROUND);
 }
 
-COLORREF TextView::LongColour(ULONG nLineNo)
+COLORREF TextView::LongColour(TextCoord *line)
 {
-	if(m_nCurrentLine == nLineNo && CheckStyle(TXS_HIGHLIGHTCURLINE))
+	if(line->line_begin == m_cursorPos.line_begin && CheckStyle(TXS_HIGHLIGHTCURLINE))
 		return GetColour(TXC_CURRENTLINE);
 	else
 		return GetColour(TXC_LONGLINE);

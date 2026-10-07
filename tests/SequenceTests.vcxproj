@@ -72,16 +72,18 @@
   <ItemGroup>
     <ClCompile Include="SequenceTests.cpp" />
     <ClCompile Include="..\src\TextView\TextDocument.cpp" />
-    <ClCompile Include="..\src\TextView\TextLineIndex.cpp" />
+    <ClCompile Include="..\src\TextView\TextDocumentCoord.cpp" />
+    <ClCompile Include="..\src\TextView\TextLineMapper.cpp" />
     <ClCompile Include="..\src\TextView\sequence.cpp" />
     <ClCompile Include="..\src\TextView\sequence_buf.cpp" />
+    <ClCompile Include="..\src\TextView\sequence_lines.cpp" />
     <ClCompile Include="..\src\TextView\Unicode.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\src\TextView\codepages.h" />
     <ClInclude Include="..\src\TextView\sequence.h" />
     <ClInclude Include="..\src\TextView\TextDocument.h" />
-    <ClInclude Include="..\src\TextView\TextLineIndex.h" />
+    <ClInclude Include="..\src\TextView\TextLineMapper.h" />
     <ClInclude Include="..\src\TextView\TextView.h" />
     <ClInclude Include="..\src\TextView\Unicode.h" />
   </ItemGroup>

@@ -57,50 +57,34 @@ BOOL TextView::OnPaste()
 }
 
 //
-//	Retrieve the specified range of text and copy it to supplied buffer
-//	szDest must be big enough to hold nLength characters
-//	nLength includes the terminating NULL
-//
-ULONG TextView::GetText(TCHAR *szDest, ULONG nStartOffset, ULONG nLength)
-{
-	ULONG copied = 0;
-
-	if(nLength > 1)
-	{
-		TextReader reader = m_pTextDoc->text_from_offset(nStartOffset);
-		copied = reader.read(szDest, nLength - 1);
-
-		// null-terminate
-		szDest[copied] = 0;
-	}
-	
-	return copied;
-}
-
-//
 //	Copy the currently selected text to the clipboard as CF_TEXT/CF_UNICODE
 //
 BOOL TextView::OnCopy()
 {
-	ULONG	selstart	= min(m_nSelectionStart, m_nSelectionEnd);
-	ULONG	sellen		= SelectionSize();
-	BOOL	success		= FALSE;
+	TextCoord	selStart, selEnd;
+	ULONG		sellen;
+	BOOL		success		= FALSE;
 
-	if(sellen  == 0)
+	if(!GetSelection(&selStart, &selEnd))
 		return FALSE;
+
+	// a byte never decodes to more than one UTF-16 unit, so this is always enough room
+	sellen = selEnd.byte_anchor - selStart.byte_anchor;
 
 	if(OpenClipboard(m_hWnd))
 	{
 		HANDLE hMem;
 		TCHAR  *ptr;
-		
+
 		if((hMem = GlobalAlloc(GPTR, (sellen + 1) * sizeof(TCHAR))) != 0)
 		{
 			if((ptr = (TCHAR *)GlobalLock(hMem)) != 0)
 			{
+				TextReader reader = m_pTextDoc->text_from_range(&selStart, &selEnd);
+
 				EmptyClipboard();
 
-				GetText(ptr, selstart, sellen + 1);
+				ptr[reader.read(ptr, sellen)] = 0;
 
 				SetClipboardData(CF_TCHARTEXT, hMem);
 				success = TRUE;
