@@ -148,7 +148,6 @@ private:
 	int			ApplySelection(USPDATA *uspData, TextCoord *line, ULONG nTextLen);
 	int			SyntaxColour(TCHAR *szText, ULONG nTextLen, ATTR *attr);
 	int			StripCRLF(TCHAR *szText, ATTR *attrList, int nLength, bool fAllow);
-	void		MarkCRLF(USPDATA *uspData, TCHAR *szText, int nLength, ATTR *attr);
 	int			CRLF_size(TCHAR *szText, int nLength);
 
 	//

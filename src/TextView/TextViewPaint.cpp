@@ -117,12 +117,6 @@ USPCACHE *TextView::GetUspCache(HDC hdc, TextCoord *coord)
 	);
 
 	//
-	//	Modify CR/LF so cursor cannot traverse into them
-	//
-	//MarkCRLF(uspData, buff, len, attr);
-
-
-	//
 	//	Apply the selection
 	//
 	ApplySelection(uspData, coord, len);
@@ -631,42 +625,11 @@ int TextView::CRLF_size(TCHAR *szText, int nLength)
 
 	if(nLength >= 1)
 	{
-		if(szText[nLength-1] == '\r' || szText[nLength-1] == '\n' || 
-			szText[nLength-1] == '\x0b' || szText[nLength-1] == '\x0c' ||
-			szText[nLength-1] == '\x85' || szText[nLength-1] == 0x2028 || 
-			szText[nLength-1] == 0x2029)
+		if(szText[nLength-1] == '\r' || szText[nLength-1] == '\n')
 			return 1;
 	}	
 
 	return 0;
-}
-
-void TextView::MarkCRLF(USPDATA *uspData, TCHAR *szText, int nLength, ATTR *attr)
-{
-	SCRIPT_LOGATTR *logAttr = UspGetLogAttr(uspData);
-
-	if(nLength >= 2)
-	{
-		if(szText[nLength-2] == '\r' && szText[nLength-1] == '\n') 
-		{
-			logAttr[nLength-1].fCharStop = 0;
-			logAttr[nLength-2].fCharStop = 0;
-		}
-	}
-	
-	if(nLength >= 1)
-	{
-		if( szText[nLength-1] == '\n'	||
-			szText[nLength-1] == '\r'	||
-			szText[nLength-1] == '\x0b' ||
-			szText[nLength-1] == '\x0c' ||
-			szText[nLength-1] == 0x0085 || 
-			szText[nLength-1] == 0x2029 || 
-			szText[nLength-1] == 0x2028)
-		{
-			logAttr[nLength-1].fCharStop = 0;
-		}
-	}
 }
 
 //
@@ -696,17 +659,6 @@ int TextView::StripCRLF(TCHAR *szText, ATTR *attr, int nLength, bool fAllow)
 	
 	if(nLength >= 1)
 	{
-		if( szText[nLength-1] == '\x0b' ||
-			szText[nLength-1] == '\x0c' ||
-			szText[nLength-1] == 0x0085 || 
-			szText[nLength-1] == 0x2029 || 
-			szText[nLength-1] == 0x2028)
-		{
-			attr[nLength-1].eol = TRUE;
-			//szText[nLength-1] = ' ';
-			return nLength - 0;//(int)fAllow;
-		}
-
 		if(szText[nLength-1] == '\r')
 		{
 			attr[nLength-1].eol = TRUE;

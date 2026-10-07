@@ -1886,6 +1886,68 @@ void textdocument_coord_resolves_document_end()
     DeleteFile(path);
 }
 
+// Walking down the document finds the lines it counts, and stops where Ctrl+End does
+void expect_doc_lines_consistent(const void *data, size_t length, ULONG expected_lines)
+{
+    TextDocument doc;
+    TCHAR path[MAX_PATH];
+    TextCoord line;
+    TextCoord eof;
+    ULONG walked = 1;
+
+    CHECK(write_temp_file(static_cast<const char *>(data), length, path));
+    CHECK(doc.init(path));
+    CHECK(doc.coord_from_byte_anchor(0, &line));
+
+    for(;;)
+    {
+        TextCoord next;
+
+        CHECK(doc.next_line_from_coord(&line, 1, &next));
+
+        if(next.line_begin == line.line_begin)
+            break;
+
+        line = next;
+        walked++;
+    }
+
+    CHECK(doc.coord_from_document_end(&eof));
+    CHECK(doc.linecount() == expected_lines);
+    CHECK(walked == expected_lines);
+    CHECK(eof.line_begin == line.line_begin);
+
+    doc.clear();
+    DeleteFile(path);
+}
+
+void textdocument_only_cr_lf_end_lines()
+{
+    const char crlf[] = "abc\r\n";
+    const char ff[] = "abc\x0c";
+    const char vt[] = "abc\x0b";
+    const char ansi_ellipsis[] = "abc\x85";
+    const unsigned char utf8_nel[] = { 0xef, 0xbb, 0xbf, 'a', 'b', 'c', 0xc2, 0x85 };
+    const unsigned char utf8_ls[] = { 0xef, 0xbb, 0xbf, 'a', 'b', 'c', 0xe2, 0x80, 0xa8 };
+    const unsigned char utf16_nel[] = { 0xff, 0xfe, 'a', 0, 'b', 0, 'c', 0, 0x85, 0x00 };
+    const unsigned char utf16_ls[] = { 0xff, 0xfe, 'a', 0, 'b', 0, 'c', 0, 0x28, 0x20 };
+    const unsigned char utf16_ps[] = { 0xff, 0xfe, 'a', 0, 'b', 0, 'c', 0, 0x29, 0x20 };
+
+    // a final CRLF is followed by one more, empty, line
+    expect_doc_lines_consistent(crlf, sizeof(crlf) - 1, 2);
+
+    // VT, FF, NEL, LS and PS are ordinary characters in every encoding
+    // (and byte 0x85 in an ANSI file is an ellipsis)
+    expect_doc_lines_consistent(ff, sizeof(ff) - 1, 1);
+    expect_doc_lines_consistent(vt, sizeof(vt) - 1, 1);
+    expect_doc_lines_consistent(ansi_ellipsis, sizeof(ansi_ellipsis) - 1, 1);
+    expect_doc_lines_consistent(utf8_nel, sizeof(utf8_nel), 1);
+    expect_doc_lines_consistent(utf8_ls, sizeof(utf8_ls), 1);
+    expect_doc_lines_consistent(utf16_nel, sizeof(utf16_nel), 1);
+    expect_doc_lines_consistent(utf16_ls, sizeof(utf16_ls), 1);
+    expect_doc_lines_consistent(utf16_ps, sizeof(utf16_ps), 1);
+}
+
 void textdocument_charoffset_only_for_fixed_width()
 {
     const DocTestEncoding encodings[] = { DOC_ASCII, DOC_UTF8_BOM, DOC_UTF16LE_BOM, DOC_UTF16BE_BOM };
@@ -2400,6 +2462,7 @@ const test_case tests[] =
     { "textdocument_coord_uses_byte_anchor_for_ascii", textdocument_coord_uses_byte_anchor_for_ascii },
     { "textdocument_coord_uses_local_utf8_byte_anchor", textdocument_coord_uses_local_utf8_byte_anchor },
     { "textdocument_coord_resolves_document_end", textdocument_coord_resolves_document_end },
+    { "textdocument_only_cr_lf_end_lines", textdocument_only_cr_lf_end_lines },
     { "textdocument_charoffset_only_for_fixed_width", textdocument_charoffset_only_for_fixed_width },
     { "textdocument_coord_moves_by_local_lines", textdocument_coord_moves_by_local_lines },
     { "textdocument_coord_moves_by_local_utf8_lines", textdocument_coord_moves_by_local_utf8_lines },

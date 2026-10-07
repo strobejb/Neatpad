@@ -12,14 +12,6 @@
 #include <windows.h>
 #include "TextDocument.h"
 
-static bool is_linebreak(TCHAR ch)
-{
-	return ch == '\r' || ch == '\n' ||
-		ch == '\x0b' || ch == '\x0c' ||
-		ch == '\x85' || ch == 0x2028 ||
-		ch == 0x2029;
-}
-
 //
 //	Return the number of lines. This is an estimate until linecount_known() is true.
 //
@@ -297,6 +289,10 @@ bool TextDocument::charoffset_from_coord(const TextCoord *coord, ULONG *offset_c
 	}
 }
 
+//
+//	Does the text end with a line break at offset_bytes? A line break is CR or
+//	LF, the same as the sequence counts, in the file's own code units.
+//
 bool TextDocument::raw_offset_ends_with_linebreak(ULONG offset_bytes)
 {
 	BYTE raw[4];
@@ -356,5 +352,5 @@ bool TextDocument::raw_offset_ends_with_linebreak(ULONG offset_bytes)
 		break;
 	}
 
-	return is_linebreak((TCHAR)ch);
+	return ch == '\r' || ch == '\n';
 }
