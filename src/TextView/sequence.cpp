@@ -58,8 +58,6 @@ sequence::sequence ()
 	group_refcount	= 0;
 	line_mode		= line_scan_bytes;
 
-	undoredo_index	= 0;
-	undoredo_length = 0;
 	change_offset	= 0;
 	change_erased	= 0;
 	change_inserted = 0;
@@ -100,8 +98,6 @@ bool sequence::init ()
 	record_action(action_invalid, 0);
 	group_id		= 0;
 	group_refcount	= 0;
-	undoredo_index	= 0;
-	undoredo_length = 0;
 	change_offset	= 0;
 	change_erased	= 0;
 	change_inserted = 0;
@@ -345,7 +341,7 @@ void sequence::swap_spanrange(span_range *src, span_range *dest)
 	lines_changed();
 }
 
-void sequence::restore_spanrange (span_range *range, bool undo_or_redo)
+void sequence::restore_spanrange (span_range *range)
 {
 	if(range->boundary)
 	{
@@ -402,18 +398,6 @@ void sequence::restore_spanrange (span_range *range, bool undo_or_redo)
 	std::swap(range->sequence_length,    sequence_length);
 	std::swap(range->quicksave,			 can_quicksave);
 	lines_changed();
-
-	undoredo_index	= range->index;
-
-	if(range->act == action_erase && undo_or_redo == true || 
-		range->act != action_erase && undo_or_redo == false)
-	{
-		undoredo_length = range->length;
-	}
-	else
-	{
-		undoredo_length = 0;
-	}
 }
 
 //
@@ -456,7 +440,7 @@ bool sequence::undoredo (eventstack &source, eventstack &dest)
 		suffix  = min(suffix, smaller - min(range->index, smaller));
 
 		// do the actual work
-		restore_spanrange(range, &source == &undostack ? true : false);
+		restore_spanrange(range);
 	}
 	while(!source.empty() && (source.back()->group_id == group_id && group_id != 0));
 
@@ -1007,7 +991,7 @@ bool sequence::replace(size_w index, const seqchar *buf, size_w length, size_w e
 
 		span_range *range = undostack.back();
 		undostack.pop_back();
-		restore_spanrange(range, true);
+		restore_spanrange(range);
 		delete range;
 
 		return false;

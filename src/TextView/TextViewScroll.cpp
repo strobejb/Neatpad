@@ -22,15 +22,13 @@ bool IsKeyPressed(UINT nVirtKey);
 VOID TextView::SetupScrollbars()
 {
 	SCROLLINFO si = { sizeof(si) };
-	ULONG windowLines = m_nWindowLines > 0 ? (ULONG)m_nWindowLines : 0;
 	ULONG windowColumns = m_nWindowColumns > 0 ? (ULONG)m_nWindowColumns : 0;
 	ULONG longestLine = m_nLongestLine > 0 ? (ULONG)m_nLongestLine : 0;
+	ULONG docBytes = m_pTextDoc->byte_length();
+	TextCoord belowWindow;
+	ULONG pageEnd;
 
-	m_nVScrollMax = m_nLineCount > windowLines ? m_nLineCount - windowLines : 0;
 	m_nHScrollMax = longestLine > windowColumns ? (int)(longestLine - windowColumns) : 0;
-
-	if(m_nVScrollPos > m_nVScrollMax)
-		m_nVScrollPos = m_nVScrollMax;
 
 	if(m_nHScrollPos > m_nHScrollMax)
 		m_nHScrollPos = m_nHScrollMax;
@@ -38,13 +36,16 @@ VOID TextView::SetupScrollbars()
 	si.fMask = SIF_PAGE | SIF_POS | SIF_RANGE | SIF_DISABLENOSCROLL;
 
 	//
-	//	Vertical scrollbar
+	//	Vertical scrollbar, in bytes: the thumb is the top line's offset and the
+	//	page is the text shown in the window, so a document that fits needs no scrolling
 	//
-	si.nPos  = m_nVScrollPos;		// scrollbar thumb position
-	si.nPage = m_nWindowLines;		// number of lines in a page
-	si.nMin  = 0;					
-	si.nMax  = m_nLineCount ? m_nLineCount - 1 : 0;	// total number of lines in file
-	
+	pageEnd = ViewportLineFromRow(m_nWindowLines, &belowWindow) ? belowWindow.line_begin : docBytes;
+
+	si.nPos  = m_scrollVPos.line_begin;
+	si.nPage = max(pageEnd - m_scrollVPos.line_begin, 1);
+	si.nMin  = 0;
+	si.nMax  = docBytes ? docBytes - 1 : 0;
+
 	SetScrollInfo(m_hWnd, SB_VERT, &si, TRUE);
 
 	//
@@ -56,9 +57,6 @@ VOID TextView::SetupScrollbars()
 	si.nMax  = longestLine ? longestLine - 1 : 0;	// total number of lines in file
 
 	SetScrollInfo(m_hWnd, SB_HORZ, &si, TRUE);
-
-	// m_nVScrollMax/m_nHScrollMax are our clamped internal ranges; the
-	// scrollbars use nMax/nPage above.
 }
 
 //
@@ -67,7 +65,7 @@ VOID TextView::SetupScrollbars()
 bool TextView::PinToBottomCorner()
 {
 	bool repos = false;
-	ULONG windowLines = m_nWindowLines > 0 ? (ULONG)m_nWindowLines : 0;
+	ULONG topLine = m_scrollVPos.line_begin;
 	ULONG windowColumns = m_nWindowColumns > 0 ? (ULONG)m_nWindowColumns : 0;
 	ULONG longestLine = m_nLongestLine > 0 ? (ULONG)m_nLongestLine : 0;
 
@@ -85,26 +83,23 @@ bool TextView::PinToBottomCorner()
 		repos = true;
 	}
 
-	if(m_nLineCount <= windowLines)
-	{
-		if(m_nVScrollPos != 0)
-		{
-			m_nVScrollPos = 0;
-			repos = true;
-		}
-	}
-	else if(m_nVScrollPos + windowLines > m_nLineCount)
-	{
-		m_nVScrollPos = m_nLineCount - windowLines;
+	// re-apply the end-of-document limit for the new window size
+	SetScrollCoord(&m_scrollVPos);
+
+	if(m_scrollVPos.line_begin != topLine)
 		repos = true;
-	}
 
 	return repos;
 }
 
+//
+//	Make the line containing coord the top line of the view. The view never
+//	scrolls further than the end of the document sitting on the last row.
+//
 bool TextView::SetScrollCoord(TextCoord *coord)
 {
 	TextCoord lineStart;
+	TextCoord last;
 
 	if(coord == 0)
 		return false;
@@ -112,28 +107,25 @@ bool TextView::SetScrollCoord(TextCoord *coord)
 	if(!m_pTextDoc->coord_from_line_pos(coord, 0, &lineStart))
 		lineStart = *coord;
 
+	if(LastScrollCoord(&last) && lineStart.line_begin > last.line_begin)
+		lineStart = last;
+
 	m_scrollVPos = lineStart;
-
-	if(lineStart.line.index_known)
-		m_nVScrollPos = lineStart.line.index;
-	else if(m_nVScrollPos > m_nVScrollMax)
-		m_nVScrollPos = m_nVScrollMax;
-
 	return true;
 }
 
-bool TextView::SetScrollLineIndex(ULONG lineno)
+//
+//	The furthest the view can scroll: the top line that puts the end of the
+//	document on the last whole row
+//
+bool TextView::LastScrollCoord(TextCoord *top)
 {
-	DocLine line;
-	TextCoord coord;
+	TextCoord eofCoord;
 
-	if(!m_pTextDoc->line_from_index(lineno, &line))
+	if(!m_pTextDoc->coord_from_document_end(&eofCoord))
 		return false;
 
-	if(!m_pTextDoc->coord_from_line_offset(&line, line.offset_chars, &coord))
-		return false;
-
-	return SetScrollCoord(&coord);
+	return m_pTextDoc->previous_line_from_coord(&eofCoord, m_nWindowLines > 1 ? m_nWindowLines - 1 : 0, top);
 }
 
 //
@@ -206,14 +198,18 @@ bool TextView::ViewportRowFromLine(TextCoord *line, ULONG *row)
 	return false;
 }
 
+//
+//	Scroll the view up or down by whole lines, stopping at either end of the
+//	document. Returns the number of lines actually scrolled.
+//
 int TextView::ScrollVByLines(int dy)
 {
 	TextCoord target = m_scrollVPos;
-	ULONG oldScrollPos = m_nVScrollPos;
+	TextCoord last;
 	int step = dy < 0 ? -1 : 1;
 	int moved = 0;
 
-	if(dy == 0)
+	if(dy == 0 || (dy > 0 && !LastScrollCoord(&last)))
 		return 0;
 
 	while(dy != 0)
@@ -227,7 +223,7 @@ int TextView::ScrollVByLines(int dy)
 		}
 		else
 		{
-			if(!m_pTextDoc->next_line_from_coord(&target, 1, &nextCoord))
+			if(target.line_begin >= last.line_begin || !m_pTextDoc->next_line_from_coord(&target, 1, &nextCoord))
 				break;
 		}
 
@@ -239,18 +235,8 @@ int TextView::ScrollVByLines(int dy)
 		dy -= step;
 	}
 
-	if(moved == 0)
-		return 0;
-
-	SetScrollCoord(&target);
-
-	if(!target.line.index_known)
-	{
-		if(moved < 0)
-			m_nVScrollPos = oldScrollPos > (ULONG)-moved ? oldScrollPos - (ULONG)-moved : 0;
-		else
-			m_nVScrollPos = min(oldScrollPos + (ULONG)moved, m_nVScrollMax);
-	}
+	if(moved != 0)
+		SetScrollCoord(&target);
 
 	return moved;
 }
@@ -262,12 +248,11 @@ LONG TextView::OnSize(UINT nFlags, int width, int height)
 {
 	int margin = LeftMarginWidth();
 
-	m_nWindowLines   = min((unsigned)height		/ m_nLineHeight, m_nLineCount);
+	m_nWindowLines   = height / m_nLineHeight;
 	m_nWindowColumns = min((width - margin)		/ m_nFontWidth,  m_nLongestLine);
 
 	if(PinToBottomCorner())
 	{
-		SetScrollLineIndex(m_nVScrollPos);
 		RefreshWindow();
 		RepositionCaret();
 	}
@@ -296,22 +281,16 @@ HRGN TextView::ScrollRgn(int dx, int dy, bool fReturnUpdateRgn)
 	// make sure that dx,dy don't scroll us past the edge of the document!
 	//
 
+	dy = ScrollVByLines(dy);
+
 	// scroll up
 	if(dy < 0)
 	{
-		dy = -(int)min((ULONG)-dy, m_nVScrollPos);
-		dy = ScrollVByLines(dy);
 		clip.top = -dy * m_nLineHeight;
 	}
 	// scroll down
 	else if(dy > 0)
 	{
-		if(m_nVScrollPos >= m_nVScrollMax)
-			dy = 0;
-		else
-			dy = min((ULONG)dy, m_nVScrollMax - m_nVScrollPos);
-
-		dy = ScrollVByLines(dy);
 		clip.bottom = (m_nWindowLines -dy) * m_nLineHeight;
 	}
 
@@ -488,15 +467,6 @@ VOID TextView::ScrollToCoord(int xpos, TextCoord *coord)
 	}
 }
 
-VOID TextView::ScrollToPosition(int xpos, ULONG lineno)
-{
-	DocLine line;
-	TextCoord coord;
-
-	if(m_pTextDoc->line_from_index(lineno, &line) && m_pTextDoc->coord_from_line_offset(&line, line.offset_chars, &coord))
-		ScrollToCoord(xpos, &coord);
-}
-
 VOID TextView::ScrollToCaret()
 {
 	ScrollToCoord(m_nCaretPosX, &m_cursorPos);
@@ -504,69 +474,10 @@ VOID TextView::ScrollToCaret()
 
 VOID TextView::ScrollToDocumentEnd()
 {
-	ULONG docLength = m_pTextDoc->text_length();
 	TextCoord eofCoord;
 
-	if(docLength == 0)
-	{
-		m_nVScrollPos = 0;
-		m_pTextDoc->coord_from_byte_anchor(0, &m_scrollVPos);
-		return;
-	}
-
-	if(!m_pTextDoc->coord_from_document_end(&eofCoord))
-	{
-		m_nLineCount = m_pTextDoc->linecount();
-		SetupScrollbars();
-		m_nVScrollPos = m_nVScrollMax;
-		SetScrollLineIndex(m_nVScrollPos);
-		return;
-	}
-
-	ScrollToDocumentEnd(&eofCoord);
-}
-
-VOID TextView::ScrollToDocumentEnd(TextCoord *eofCoord)
-{
-	TextCoord topCoord;
-	ULONG windowLines = m_nWindowLines > 0 ? (ULONG)m_nWindowLines : 0;
-	ULONG estimatedLines;
-	ULONG visibleBottom;
-
-	if(eofCoord == 0)
-		return;
-
-	estimatedLines = m_pTextDoc->linecount();
-	m_nLineCount = max(m_nLineCount, estimatedLines);
-	m_nLineCount = max(m_nLineCount, eofCoord->line.index + 1);
-
-	if(windowLines > 1)
-	{
-		if(m_pTextDoc->previous_line_from_coord(eofCoord, windowLines - 1, &topCoord))
-			SetScrollCoord(&topCoord);
-		else
-			SetScrollCoord(eofCoord);
-	}
-	else
-	{
-		SetScrollCoord(eofCoord);
-	}
-
-	visibleBottom = m_scrollVPos.line.index + windowLines;
-	m_nLineCount = max(m_nLineCount, visibleBottom);
-	m_nLineCount = max(m_nLineCount, eofCoord->line.index + 1);
-
-	if(m_nLineCount <= windowLines)
-	{
-		m_nVScrollPos = 0;
-
-		if(!m_pTextDoc->coord_from_byte_anchor(0, &m_scrollVPos))
-			m_scrollVPos = *eofCoord;
-	}
-	else if(m_nVScrollPos + windowLines > m_nLineCount)
-	{
-		m_nVScrollPos = m_nLineCount - windowLines;
-	}
+	if(m_pTextDoc->coord_from_document_end(&eofCoord))
+		SetScrollCoord(&eofCoord);
 
 	SetupScrollbars();
 }
@@ -583,13 +494,15 @@ LONG GetTrackPos32(HWND hwnd, int nBar)
 //
 LONG TextView::OnVScroll(UINT nSBCode, UINT nPos)
 {
-	ULONG oldpos = m_nVScrollPos;
+	ULONG oldpos = m_scrollVPos.line_begin;
+	TextCoord coord;
 
 	switch(nSBCode)
 	{
 	case SB_TOP:
-		m_nVScrollPos = 0;
-		SetScrollLineIndex(0);
+		if(m_pTextDoc->coord_from_byte_anchor(0, &coord))
+			SetScrollCoord(&coord);
+
 		RefreshWindow();
 		break;
 
@@ -617,18 +530,15 @@ LONG TextView::OnVScroll(UINT nSBCode, UINT nPos)
 	case SB_THUMBPOSITION:
 	case SB_THUMBTRACK:
 
-		m_nVScrollPos = GetTrackPos32(m_hWnd, SB_VERT);
-		if(m_nVScrollPos >= m_nVScrollMax)
-			ScrollToDocumentEnd();
-		else
-			SetScrollLineIndex(m_nVScrollPos);
+		// the thumb is a byte offset: show the line containing it
+		if(m_pTextDoc->coord_from_byte_anchor(GetTrackPos32(m_hWnd, SB_VERT), &coord))
+			SetScrollCoord(&coord);
 
 		RefreshWindow();
-
 		break;
 	}
 
-	if(oldpos != m_nVScrollPos)
+	if(oldpos != m_scrollVPos.line_begin)
 	{
 		SetupScrollbars();
 		RepositionCaret();

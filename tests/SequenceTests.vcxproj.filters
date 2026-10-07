@@ -27,9 +27,6 @@
     <ClCompile Include="..\src\TextView\TextDocumentCoord.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\src\TextView\TextLineMapper.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="..\src\TextView\Unicode.c">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -42,9 +39,6 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\src\TextView\TextDocument.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\src\TextView\TextLineMapper.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\src\TextView\TextView.h">

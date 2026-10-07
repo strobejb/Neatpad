@@ -33,12 +33,11 @@ VOID TextView::RefreshWindow()
 //	Return the analyzed Uniscribe data for the line containing coord. Entries are
 //	keyed by the line's starting byte; ResetLineCache flushes them on every edit.
 //
-USPCACHE *TextView::GetUspCache(HDC hdc, TextCoord *coord, ULONG *nOffset/*=0*/)
+USPCACHE *TextView::GetUspCache(HDC hdc, TextCoord *coord)
 {
 	TCHAR	 buff[TEXTBUFSIZE];
 	ATTR	 attr[TEXTBUFSIZE];
 	ULONG	 colno = 0;
-	ULONG	 off_chars = 0;
 	int		 len;
 	HDC		 hdcTemp;
 
@@ -63,9 +62,6 @@ USPCACHE *TextView::GetUspCache(HDC hdc, TextCoord *coord, ULONG *nOffset/*=0*/)
 
 		if(m_uspCache[i].usage > 0 && m_uspCache[i].line_begin == coord->line_begin)
 		{
-			if(nOffset)
-				*nOffset = m_uspCache[i].offset;
-
 			m_uspCache[i].usage++;
 			return &m_uspCache[i];
 		}
@@ -84,14 +80,13 @@ USPCACHE *TextView::GetUspCache(HDC hdc, TextCoord *coord, ULONG *nOffset/*=0*/)
 	//
 	// get the text for the entire line and apply style attributes
 	//
-	len = m_pTextDoc->getline(*coord, buff, TEXTBUFSIZE, &off_chars);
+	len = m_pTextDoc->getline(*coord, buff, TEXTBUFSIZE);
 
-	// cache the line's offset and length information
-	m_uspCache[lru_index].offset		= off_chars;
+	// cache the line's length information
 	m_uspCache[lru_index].length		= len;
 	m_uspCache[lru_index].length_CRLF	= len - CRLF_size(buff, len);
 
-	len = ApplyTextAttributes(coord, off_chars, colno, buff, len, attr);
+	len = ApplyTextAttributes(coord, colno, buff, len, attr);
 
 	//
 	// setup the tabs + itemization states
@@ -130,13 +125,10 @@ USPCACHE *TextView::GetUspCache(HDC hdc, TextCoord *coord, ULONG *nOffset/*=0*/)
 	//
 	//	Apply the selection
 	//
-	ApplySelection(uspData, coord, off_chars, len);
+	ApplySelection(uspData, coord, len);
 
 	if(hdc == 0)
 		ReleaseDC(m_hWnd, hdcTemp);
-
-	if(nOffset)
-		*nOffset = off_chars;
 
 	return &m_uspCache[lru_index];
 }
@@ -144,9 +136,9 @@ USPCACHE *TextView::GetUspCache(HDC hdc, TextCoord *coord, ULONG *nOffset/*=0*/)
 //
 //	Return a fully-analyzed USPDATA object for the specified line
 //
-USPDATA *TextView::GetUspData(HDC hdc, TextCoord *coord, ULONG *nOffset/*=0*/)
+USPDATA *TextView::GetUspData(HDC hdc, TextCoord *coord)
 {
-	USPCACHE *uspCache = GetUspCache(hdc, coord, nOffset);
+	USPCACHE *uspCache = GetUspCache(hdc, coord);
 
 	if(uspCache)
 		return uspCache->uspData;
@@ -466,10 +458,9 @@ int TextView::PaintMargin(HDC hdc, TextCoord *line, int xpos, int ypos)
 void TextView::PaintText(HDC hdc, TextCoord *coord, int xpos, int ypos, RECT *bounds)
 {
 	USPDATA * uspData;
-	ULONG	  lineOffset;
 
 	// grab the USPDATA for this line
-	uspData = GetUspData(hdc, coord, &lineOffset);
+	uspData = GetUspData(hdc, coord);
 
 	if(uspData == 0)
 		return;
@@ -486,13 +477,13 @@ void TextView::PaintText(HDC hdc, TextCoord *coord, int xpos, int ypos, RECT *bo
 	SelectionColumns(coord, uspData->stringLen, &selStart, &selEnd);
 	UspApplySelection(uspData, selStart, selEnd);
 
-	ApplySelection(uspData, coord, lineOffset, uspData->stringLen);
+	ApplySelection(uspData, coord, uspData->stringLen);
 
 	// draw the text!
 	UspTextOut(uspData, hdc, xpos, ypos, m_nLineHeight, m_nHeightAbove, bounds);
 }
 
-int	TextView::ApplySelection(USPDATA *uspData, TextCoord *line, ULONG nOffset, ULONG nTextLen)
+int	TextView::ApplySelection(USPDATA *uspData, TextCoord *line, ULONG nTextLen)
 {
 	int selstart = 0;
 	int selend   = 0;
@@ -524,11 +515,10 @@ int	TextView::ApplySelection(USPDATA *uspData, TextCoord *line, ULONG nOffset, U
 //	information into the supplied TEXT_ATTR structure
 //
 //	line	- the line being analyzed
-//	nOffset	- actual offset of line within file
 //
 //	Returns new length of buffer if text has been modified
 //
-int TextView::ApplyTextAttributes(TextCoord *line, ULONG nOffset, ULONG &nColumn, TCHAR *szText, int nTextLen, ATTR *attr)
+int TextView::ApplyTextAttributes(TextCoord *line, ULONG &nColumn, TCHAR *szText, int nTextLen, ATTR *attr)
 {
 	int i;
 

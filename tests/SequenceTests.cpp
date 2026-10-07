@@ -9,58 +9,19 @@
 #include "../src/TextView/sequence.h"
 #include "../src/TextView/TextDocument.h"
 
+// Test access to a document's sequence, for line-number lookups (such as where
+// line N starts) that TextDocument itself doesn't offer
 class TextDocumentLineIndexProbe
 {
 public:
-    static bool lineinfo_from_sequence_lineno(TextDocument &doc, ULONG lineno, TextLineInfo *lineinfo)
+    static sequence &seq(TextDocument &doc)
     {
-        size_w raw_offset = 0;
-        size_w next_raw_offset = 0;
-
-        if(lineinfo == 0 || !doc.m_seq.lineoffset(lineno, &raw_offset))
-            return false;
-
-        if(!doc.m_seq.next_lineoffset(raw_offset, &next_raw_offset))
-            next_raw_offset = doc.m_seq.size();
-
-        fill_lineinfo(doc, lineno, raw_offset, next_raw_offset, lineinfo);
-        return true;
+        return doc.m_seq;
     }
 
-    static bool lineinfo_from_sequence_offset(TextDocument &doc, ULONG offset_chars, TextLineInfo *lineinfo)
+    static ULONG header(TextDocument &doc)
     {
-        size_w raw_offset = doc.charoffset_to_byteoffset(offset_chars) + doc.m_nHeaderSize;
-        size_w lineno = 0;
-        size_w raw_line_offset = 0;
-        size_w next_raw_offset = 0;
-
-        if(lineinfo == 0 || !doc.m_seq.linefromoffset(raw_offset, &lineno, &raw_line_offset))
-            return false;
-
-        if(!doc.m_seq.next_lineoffset(raw_line_offset, &next_raw_offset))
-            next_raw_offset = doc.m_seq.size();
-
-        fill_lineinfo(doc, static_cast<ULONG>(lineno), raw_line_offset, next_raw_offset, lineinfo);
-        return true;
-    }
-
-private:
-    static ULONG logical_offset_from_raw(TextDocument &doc, size_w raw_offset)
-    {
-        if(raw_offset <= static_cast<size_w>(doc.m_nHeaderSize))
-            return 0;
-
-        return doc.byteoffset_to_charoffset(static_cast<ULONG>(raw_offset - doc.m_nHeaderSize));
-    }
-
-    static void fill_lineinfo(TextDocument &doc, ULONG lineno, size_w raw_offset, size_w next_raw_offset, TextLineInfo *lineinfo)
-    {
-        ULONG lineoff_chars = logical_offset_from_raw(doc, raw_offset);
-        ULONG nextoff_chars = logical_offset_from_raw(doc, next_raw_offset);
-
-        lineinfo->lineno = lineno;
-        lineinfo->lineoff_chars = lineoff_chars;
-        lineinfo->linelen_chars = nextoff_chars >= lineoff_chars ? nextoff_chars - lineoff_chars : 0;
+        return static_cast<ULONG>(doc.m_nHeaderSize);
     }
 };
 
@@ -324,19 +285,19 @@ void expect_content(const sequence &seq, const char *expected)
     CHECK(render_content(seq) == expected);
 }
 
-void expect_line_offset(const sequence &seq, size_w line, size_w expected)
+void expect_offset_from_lineno(const sequence &seq, size_w line, size_w expected)
 {
     size_w actual = static_cast<size_w>(-1);
-    CHECK(seq.lineoffset(line, &actual));
+    CHECK(seq.offset_from_lineno(line, &actual));
     CHECK(actual == expected);
 }
 
-void expect_line_from_offset(const sequence &seq, size_w offset, size_w expected_line, size_w expected_line_offset)
+void expect_lineno_from_offset(const sequence &seq, size_w offset, size_w expected_line, size_w expected_line_offset)
 {
     size_w actual_line = static_cast<size_w>(-1);
     size_w actual_line_offset = static_cast<size_w>(-1);
 
-    CHECK(seq.linefromoffset(offset, &actual_line, &actual_line_offset));
+    CHECK(seq.lineno_from_offset(offset, &actual_line, &actual_line_offset));
     CHECK(actual_line == expected_line);
     CHECK(actual_line_offset == expected_line_offset);
 }
@@ -346,69 +307,122 @@ void expect_line_bounds_from_offset(sequence &seq, size_w offset, size_w expecte
 	size_w actual_line_offset = static_cast<size_w>(-1);
 	size_w actual_next_offset = static_cast<size_w>(-1);
 
-	CHECK(seq.linebounds_from_offset(offset, &actual_line_offset, &actual_next_offset));
+	CHECK(seq.line_bounds_from_offset(offset, &actual_line_offset, &actual_next_offset));
 	CHECK(actual_line_offset == expected_line_offset);
 	CHECK(actual_next_offset == expected_next_offset);
 }
 
-void expect_doc_line_offset(TextDocument &doc, ULONG line, ULONG expected)
+// Bytes per character of the plain test text in each encoding
+ULONG unit_size(DocTestEncoding encoding)
 {
-    ULONG actual = static_cast<ULONG>(-1);
-    CHECK(doc.lineinfo_from_lineno(line, &actual, 0));
-    CHECK(actual == expected);
+    return encoding == DOC_UTF16LE_BOM || encoding == DOC_UTF16BE_BOM ? 2 : 1;
 }
 
+// The start of line 'line', reached by walking down from the top of the document
+TextCoord doc_line(TextDocument &doc, ULONG line)
+{
+    TextCoord top;
+    TextCoord coord;
+
+    CHECK(doc.coord_from_byte_anchor(0, &top));
+    CHECK(doc.next_line_from_coord(&top, line, &coord));
+    return coord;
+}
+
+void expect_doc_line_begin(TextDocument &doc, ULONG line, ULONG expected)
+{
+    TextCoord coord = doc_line(doc, line);
+    bool exact = false;
+
+    CHECK(coord.line_begin == expected);
+    CHECK(doc.lineno_from_coord(&coord, &exact) == line);
+}
+
+// Walking down past the last line stays on it
 void expect_doc_no_line(TextDocument &doc, ULONG line)
 {
-    CHECK(!doc.lineinfo_from_lineno(line, 0, 0));
+    CHECK(doc_line(doc, line).line_begin == doc_line(doc, line - 1).line_begin);
 }
 
-void expect_doc_line_from_offset(TextDocument &doc, ULONG offset, ULONG expected_line, ULONG expected_line_offset)
+void expect_doc_line_at(TextDocument &doc, ULONG offset, ULONG expected_line, ULONG expected_line_begin)
 {
-    ULONG actual_line = static_cast<ULONG>(-1);
-    ULONG actual_line_offset = static_cast<ULONG>(-1);
+    TextCoord coord;
+    bool exact = false;
 
-    CHECK(doc.lineinfo_from_offset(offset, &actual_line, &actual_line_offset, 0));
-    CHECK(actual_line == expected_line);
-    CHECK(actual_line_offset == expected_line_offset);
+    CHECK(doc.coord_from_byte_anchor(offset, &coord));
+    CHECK(coord.line_begin == expected_line_begin);
+    CHECK(doc.lineno_from_coord(&coord, &exact) == expected_line);
 }
 
+// Edits at document byte offsets
+ULONG doc_insert(TextDocument &doc, ULONG offset, TCHAR *text, ULONG length, TextChange *change = 0)
+{
+    TextCoord at;
+
+    CHECK(doc.coord_from_byte_anchor(offset, &at));
+    return doc.insert_text(&at, text, length, change);
+}
+
+ULONG doc_erase(TextDocument &doc, ULONG from, ULONG to, TextChange *change = 0)
+{
+    TextCoord start;
+    TextCoord end;
+
+    CHECK(doc.coord_from_byte_anchor(from, &start));
+    CHECK(doc.coord_from_byte_anchor(to, &end));
+    return doc.erase_text(&start, &end, change);
+}
+
+ULONG doc_replace(TextDocument &doc, ULONG from, ULONG to, TCHAR *text, ULONG length, TextChange *change = 0)
+{
+    TextCoord start;
+    TextCoord end;
+
+    CHECK(doc.coord_from_byte_anchor(from, &start));
+    CHECK(doc.coord_from_byte_anchor(to, &end));
+    return doc.replace_text(&start, &end, text, length, change);
+}
+
+// A sequence offset as a document byte offset. The sequence's first line
+// starts at 0, before the BOM; the document's starts after it.
+ULONG doc_offset(TextDocument &doc, size_w sequence_offset)
+{
+    ULONG header = TextDocumentLineIndexProbe::header(doc);
+
+    return sequence_offset <= header ? 0 : static_cast<ULONG>(sequence_offset - header);
+}
+
+// The line found by walking the document agrees with the sequence's line index
 void expect_sequence_line_matches_textdocument(TextDocument &doc, ULONG line)
 {
-    ULONG line_offset = 0;
-    ULONG line_length = 0;
-    TextLineInfo sequence_info;
+    sequence &seq = TextDocumentLineIndexProbe::seq(doc);
+    TextCoord coord = doc_line(doc, line);
+    size_w line_offset = 0;
+    size_w next_offset = 0;
 
-    CHECK(doc.lineinfo_from_lineno(line, &line_offset, &line_length));
-    CHECK(TextDocumentLineIndexProbe::lineinfo_from_sequence_lineno(doc, line, &sequence_info));
-    CHECK(sequence_info.lineno == line);
-    CHECK(sequence_info.lineoff_chars == line_offset);
-    CHECK(sequence_info.linelen_chars == line_length);
+    CHECK(seq.offset_from_lineno(line, &line_offset));
+
+    if(!seq.next_line_from_offset(line_offset, &next_offset))
+        next_offset = seq.size();
+
+    CHECK(coord.line_begin == doc_offset(doc, line_offset));
+    CHECK(coord.line_next == doc_offset(doc, next_offset));
 }
 
-void expect_sequence_offset_matches_textdocument(TextDocument &doc, ULONG offset_chars)
+// The line found around an offset agrees with the sequence's line index
+void expect_sequence_offset_matches_textdocument(TextDocument &doc, ULONG offset)
 {
-    ULONG lineno = 0;
-    ULONG line_offset = 0;
-    ULONG line_length = 0;
-    TextLineInfo sequence_info;
+    sequence &seq = TextDocumentLineIndexProbe::seq(doc);
+    ULONG header = TextDocumentLineIndexProbe::header(doc);
+    TextCoord coord;
+    size_w line = 0;
+    size_w line_offset = 0;
+    bool exact = false;
 
-    CHECK(doc.lineinfo_from_offset(offset_chars, &lineno, &line_offset, &line_length));
-    CHECK(TextDocumentLineIndexProbe::lineinfo_from_sequence_offset(doc, offset_chars, &sequence_info));
-    if(sequence_info.lineno != lineno || sequence_info.lineoff_chars != line_offset || sequence_info.linelen_chars != line_length)
-    {
-        printf("offset %lu: TextDocument line=%lu off=%lu len=%lu, sequence line=%lu off=%lu len=%lu\n",
-               offset_chars,
-               lineno,
-               line_offset,
-               line_length,
-               sequence_info.lineno,
-               sequence_info.lineoff_chars,
-               sequence_info.linelen_chars);
-    }
-    CHECK(sequence_info.lineno == lineno);
-    CHECK(sequence_info.lineoff_chars == line_offset);
-    CHECK(sequence_info.linelen_chars == line_length);
+    CHECK(doc.coord_from_byte_anchor(offset, &coord));
+    CHECK(seq.lineno_from_offset(offset + header, &line, &line_offset));
+    CHECK(doc.lineno_from_coord(&coord, &exact) == line);
+    CHECK(coord.line_begin == doc_offset(doc, line_offset));
 }
 
 void insert_at_beginning()
@@ -805,9 +819,9 @@ void linecount_handles_basic_newlines()
     init(seq, "abc\n");
 
     CHECK(seq.linecount() == 2);
-    expect_line_offset(seq, 0, 0);
-    expect_line_offset(seq, 1, 4);
-    CHECK(!seq.lineoffset(2, 0));
+    expect_offset_from_lineno(seq, 0, 0);
+    expect_offset_from_lineno(seq, 1, 4);
+    CHECK(!seq.offset_from_lineno(2, 0));
 }
 
 void linecount_handles_crlf()
@@ -816,9 +830,9 @@ void linecount_handles_crlf()
     init(seq, "abc\r\nxyz\nlast");
 
     CHECK(seq.linecount() == 3);
-    expect_line_offset(seq, 0, 0);
-    expect_line_offset(seq, 1, 5);
-    expect_line_offset(seq, 2, 9);
+    expect_offset_from_lineno(seq, 0, 0);
+    expect_offset_from_lineno(seq, 1, 5);
+    expect_offset_from_lineno(seq, 2, 9);
 }
 
 void linecount_handles_crlf_split_across_spans()
@@ -829,7 +843,7 @@ void linecount_handles_crlf_split_across_spans()
     CHECK(insert_bytes(seq, 4, "\n"));
     expect_content(seq, "abc\r\nxyz");
     CHECK(seq.linecount() == 2);
-    expect_line_offset(seq, 1, 5);
+    expect_offset_from_lineno(seq, 1, 5);
 }
 
 void linecount_updates_after_insert_delete_replace()
@@ -841,7 +855,7 @@ void linecount_updates_after_insert_delete_replace()
     CHECK(insert_bytes(seq, 1, "\nX"));
     expect_content(seq, "a\nXbc");
     CHECK(seq.linecount() == 2);
-    expect_line_offset(seq, 1, 2);
+    expect_offset_from_lineno(seq, 1, 2);
 
     CHECK(seq.erase(1, 2));
     expect_content(seq, "abc");
@@ -850,8 +864,8 @@ void linecount_updates_after_insert_delete_replace()
     CHECK(replace_bytes(seq, 1, "\r\nZ\n", 1));
     expect_content(seq, "a\r\nZ\nc");
     CHECK(seq.linecount() == 3);
-    expect_line_offset(seq, 1, 3);
-    expect_line_offset(seq, 2, 5);
+    expect_offset_from_lineno(seq, 1, 3);
+    expect_offset_from_lineno(seq, 2, 5);
 }
 
 void linecount_restores_on_undo_redo()
@@ -867,40 +881,40 @@ void linecount_restores_on_undo_redo()
 
     CHECK(seq.redo());
     CHECK(seq.linecount() == 2);
-    expect_line_offset(seq, 1, 4);
+    expect_offset_from_lineno(seq, 1, 4);
 }
 
-void linefromoffset_handles_basic_newlines()
+void lineno_from_offset_handles_basic_newlines()
 {
     sequence seq;
     init(seq, "abc\nxyz");
 
-    expect_line_from_offset(seq, 0, 0, 0);
-    expect_line_from_offset(seq, 3, 0, 0);
-    expect_line_from_offset(seq, 4, 1, 4);
-    expect_line_from_offset(seq, 7, 1, 4);
+    expect_lineno_from_offset(seq, 0, 0, 0);
+    expect_lineno_from_offset(seq, 3, 0, 0);
+    expect_lineno_from_offset(seq, 4, 1, 4);
+    expect_lineno_from_offset(seq, 7, 1, 4);
 }
 
-void linefromoffset_handles_crlf()
+void lineno_from_offset_handles_crlf()
 {
     sequence seq;
     init(seq, "abc\r\nxyz");
 
-    expect_line_from_offset(seq, 4, 0, 0);
-    expect_line_from_offset(seq, 5, 1, 5);
-    expect_line_from_offset(seq, 8, 1, 5);
+    expect_lineno_from_offset(seq, 4, 0, 0);
+    expect_lineno_from_offset(seq, 5, 1, 5);
+    expect_lineno_from_offset(seq, 8, 1, 5);
 }
 
-void linefromoffset_handles_crlf_split_across_spans()
+void lineno_from_offset_handles_crlf_split_across_spans()
 {
     sequence seq;
     init(seq, "abc\rxyz");
 
     CHECK(insert_bytes(seq, 4, "\n"));
     expect_content(seq, "abc\r\nxyz");
-    expect_line_from_offset(seq, 4, 0, 0);
-    expect_line_from_offset(seq, 5, 1, 5);
-    expect_line_from_offset(seq, 8, 1, 5);
+    expect_lineno_from_offset(seq, 4, 0, 0);
+    expect_lineno_from_offset(seq, 5, 1, 5);
+    expect_lineno_from_offset(seq, 8, 1, 5);
 }
 
 void linecount_handles_crlf_split_by_insert()
@@ -911,14 +925,14 @@ void linecount_handles_crlf_split_by_insert()
     CHECK(insert_bytes(seq, 2, "X"));
     expect_content(seq, "a\rX\nb");
     CHECK(seq.linecount() == 3);
-    expect_line_offset(seq, 1, 2);
-    expect_line_offset(seq, 2, 4);
-    expect_line_from_offset(seq, 3, 1, 2);
+    expect_offset_from_lineno(seq, 1, 2);
+    expect_offset_from_lineno(seq, 2, 4);
+    expect_lineno_from_offset(seq, 3, 1, 2);
 
     CHECK(seq.erase(2, 1));
     expect_content(seq, "a\r\nb");
     CHECK(seq.linecount() == 2);
-    expect_line_offset(seq, 1, 3);
+    expect_offset_from_lineno(seq, 1, 3);
 }
 
 void linecount_handles_cr_lf_adjacent_in_modify_buffer()
@@ -932,11 +946,11 @@ void linecount_handles_cr_lf_adjacent_in_modify_buffer()
     CHECK(insert_bytes(seq, 1, "Q"));
     expect_content(seq, "fQoo\rhello\nbar");
     CHECK(seq.linecount() == 3);
-    expect_line_offset(seq, 1, 5);
-    expect_line_offset(seq, 2, 11);
+    expect_offset_from_lineno(seq, 1, 5);
+    expect_offset_from_lineno(seq, 2, 11);
 }
 
-void linebounds_from_offset_handles_crlf_boundaries()
+void line_bounds_from_offset_handles_crlf_boundaries()
 {
 	sequence seq;
 	init(seq, "abc\r\nxyz\nlast");
@@ -950,7 +964,7 @@ void linebounds_from_offset_handles_crlf_boundaries()
 	expect_line_bounds_from_offset(seq, 13, 9, 13);
 }
 
-void linebounds_from_offset_handles_long_lazy_file_line()
+void line_bounds_from_offset_handles_long_lazy_file_line()
 {
 	sequence seq;
 	TCHAR path[MAX_PATH];
@@ -985,10 +999,10 @@ void line_scan_mode_handles_utf16le_crlf()
     seq.set_line_scan_mode(sequence::line_scan_utf16le);
 
     CHECK(seq.linecount() == 2);
-    expect_line_offset(seq, 0, 0);
-    expect_line_offset(seq, 1, 6);
-    expect_line_from_offset(seq, 4, 0, 0);
-    expect_line_from_offset(seq, 6, 1, 6);
+    expect_offset_from_lineno(seq, 0, 0);
+    expect_offset_from_lineno(seq, 1, 6);
+    expect_lineno_from_offset(seq, 4, 0, 0);
+    expect_lineno_from_offset(seq, 6, 1, 6);
 }
 
 void line_scan_mode_handles_utf16be_crlf()
@@ -1000,9 +1014,9 @@ void line_scan_mode_handles_utf16be_crlf()
     seq.set_line_scan_mode(sequence::line_scan_utf16be);
 
     CHECK(seq.linecount() == 2);
-    expect_line_offset(seq, 1, 6);
-    expect_line_from_offset(seq, 4, 0, 0);
-    expect_line_from_offset(seq, 6, 1, 6);
+    expect_offset_from_lineno(seq, 1, 6);
+    expect_lineno_from_offset(seq, 4, 0, 0);
+    expect_lineno_from_offset(seq, 6, 1, 6);
 }
 
 void line_scan_mode_handles_utf32le_crlf()
@@ -1020,9 +1034,9 @@ void line_scan_mode_handles_utf32le_crlf()
     seq.set_line_scan_mode(sequence::line_scan_utf32le);
 
     CHECK(seq.linecount() == 2);
-    expect_line_offset(seq, 1, 12);
-    expect_line_from_offset(seq, 8, 0, 0);
-    expect_line_from_offset(seq, 12, 1, 12);
+    expect_offset_from_lineno(seq, 1, 12);
+    expect_lineno_from_offset(seq, 8, 0, 0);
+    expect_lineno_from_offset(seq, 12, 1, 12);
 }
 
 void line_scan_mode_handles_utf32be_crlf()
@@ -1040,9 +1054,9 @@ void line_scan_mode_handles_utf32be_crlf()
     seq.set_line_scan_mode(sequence::line_scan_utf32be);
 
     CHECK(seq.linecount() == 2);
-    expect_line_offset(seq, 1, 12);
-    expect_line_from_offset(seq, 8, 0, 0);
-    expect_line_from_offset(seq, 12, 1, 12);
+    expect_offset_from_lineno(seq, 1, 12);
+    expect_lineno_from_offset(seq, 8, 0, 0);
+    expect_lineno_from_offset(seq, 12, 1, 12);
 }
 
 void line_scan_mode_handles_utf16le_crlf_split_across_spans()
@@ -1056,9 +1070,9 @@ void line_scan_mode_handles_utf16le_crlf_split_across_spans()
     CHECK(seq.insert(4, lf, sizeof(lf)));
 
     CHECK(seq.linecount() == 2);
-    expect_line_offset(seq, 1, 6);
-    expect_line_from_offset(seq, 4, 0, 0);
-    expect_line_from_offset(seq, 6, 1, 6);
+    expect_offset_from_lineno(seq, 1, 6);
+    expect_lineno_from_offset(seq, 4, 0, 0);
+    expect_lineno_from_offset(seq, 6, 1, 6);
 }
 
 void textdocument_linecount_handles_basic_newlines()
@@ -1069,13 +1083,14 @@ void textdocument_linecount_handles_basic_newlines()
     {
         TextDocument doc;
         TCHAR path[MAX_PATH];
+        ULONG unit = unit_size(encodings[i]);
 
         CHECK(write_textdocument_file("abc\n", encodings[i], path));
         CHECK(doc.init(path));
 
         CHECK(doc.linecount() == 2);
-        expect_doc_line_offset(doc, 0, 0);
-        expect_doc_line_offset(doc, 1, 4);
+        expect_doc_line_begin(doc, 0, 0);
+        expect_doc_line_begin(doc, 1, 4 * unit);
         expect_doc_no_line(doc, 2);
 
         doc.clear();
@@ -1091,19 +1106,20 @@ void textdocument_linecount_handles_crlf()
     {
         TextDocument doc;
         TCHAR path[MAX_PATH];
+        ULONG unit = unit_size(encodings[i]);
 
         CHECK(write_textdocument_file("abc\r\nxyz\nlast", encodings[i], path));
         CHECK(doc.init(path));
 
         CHECK(doc.linecount() == 3);
-        expect_doc_line_offset(doc, 0, 0);
-        expect_doc_line_offset(doc, 1, 5);
-        expect_doc_line_offset(doc, 2, 9);
+        expect_doc_line_begin(doc, 0, 0);
+        expect_doc_line_begin(doc, 1, 5 * unit);
+        expect_doc_line_begin(doc, 2, 9 * unit);
 
-        expect_doc_line_from_offset(doc, 4, 0, 0);
-        expect_doc_line_from_offset(doc, 5, 1, 5);
-        expect_doc_line_from_offset(doc, 8, 1, 5);
-        expect_doc_line_from_offset(doc, 9, 2, 9);
+        expect_doc_line_at(doc, 4 * unit, 0, 0);
+        expect_doc_line_at(doc, 5 * unit, 1, 5 * unit);
+        expect_doc_line_at(doc, 8 * unit, 1, 5 * unit);
+        expect_doc_line_at(doc, 9 * unit, 2, 9 * unit);
 
         doc.clear();
         DeleteFile(path);
@@ -1121,7 +1137,8 @@ void textdocument_linecount_handles_crlf_split_across_lazy_page()
         ULONG cr_offset = encodings[i] == DOC_UTF16LE_BOM || encodings[i] == DOC_UTF16BE_BOM
                             ? MEM_BLOCK_SIZE / 2 - 1
                             : MEM_BLOCK_SIZE - 1;
-        ULONG next_line = cr_offset + 2;
+        ULONG unit = unit_size(encodings[i]);
+        ULONG next_line = (cr_offset + 2) * unit;
         char *text = new char[cr_offset + 4];
 
         memset(text, 'a', cr_offset);
@@ -1134,11 +1151,11 @@ void textdocument_linecount_handles_crlf_split_across_lazy_page()
         CHECK(doc.init(path));
 
         printf("split %u line_offset\n", static_cast<unsigned>(i)); fflush(stdout);
-        expect_doc_line_offset(doc, 1, next_line);
+        expect_doc_line_begin(doc, 1, next_line);
         printf("split %u before_next\n", static_cast<unsigned>(i)); fflush(stdout);
-        expect_doc_line_from_offset(doc, next_line - 1, 0, 0);
+        expect_doc_line_at(doc, next_line - unit, 0, 0);
         printf("split %u at_next\n", static_cast<unsigned>(i)); fflush(stdout);
-        expect_doc_line_from_offset(doc, next_line, 1, next_line);
+        expect_doc_line_at(doc, next_line, 1, next_line);
         printf("split %u done\n", static_cast<unsigned>(i)); fflush(stdout);
 
         doc.clear();
@@ -1157,22 +1174,23 @@ void textdocument_linecount_updates_after_insert_delete_replace()
     {
         TextDocument doc;
         TCHAR path[MAX_PATH];
+        ULONG unit = unit_size(encodings[i]);
 
         CHECK(write_textdocument_file("abc", encodings[i], path));
         CHECK(doc.init(path));
 
         CHECK(doc.linecount() == 1);
-        CHECK(doc.insert_text(1, insert_text, 2) != 0);
+        CHECK(doc_insert(doc, 1 * unit, insert_text, 2) != 0);
         CHECK(doc.linecount() == 2);
-        expect_doc_line_offset(doc, 1, 2);
+        expect_doc_line_begin(doc, 1, 2 * unit);
 
-        CHECK(doc.erase_text(1, 2) == 2);
+        CHECK(doc_erase(doc, 1 * unit, 3 * unit) == 2 * unit);
         CHECK(doc.linecount() == 1);
 
-        CHECK(doc.replace_text(1, replace_text, 4, 1) != 0);
+        CHECK(doc_replace(doc, 1 * unit, 2 * unit, replace_text, 4) != 0);
         CHECK(doc.linecount() == 3);
-        expect_doc_line_offset(doc, 1, 3);
-        expect_doc_line_offset(doc, 2, 5);
+        expect_doc_line_begin(doc, 1, 3 * unit);
+        expect_doc_line_begin(doc, 2, 5 * unit);
 
         doc.clear();
         DeleteFile(path);
@@ -1188,21 +1206,23 @@ void textdocument_linecount_restores_on_undo_redo()
     {
         TextDocument doc;
         TCHAR path[MAX_PATH];
-        ULONG start = 0;
-        ULONG end = 0;
+        ULONG unit = unit_size(encodings[i]);
+        TextCoord end;
+        TextChange change;
 
         CHECK(write_textdocument_file("abc", encodings[i], path));
         CHECK(doc.init(path));
 
-        CHECK(doc.insert_text(doc.text_length(), insert_text, 4) != 0);
+        CHECK(doc.coord_from_document_end(&end));
+        CHECK(doc.insert_text(&end, insert_text, 4, 0) != 0);
         CHECK(doc.linecount() == 2);
 
-        CHECK(doc.undo(&start, &end));
+        CHECK(doc.undo(&change));
         CHECK(doc.linecount() == 1);
 
-        CHECK(doc.redo(&start, &end));
+        CHECK(doc.redo(&change));
         CHECK(doc.linecount() == 2);
-        expect_doc_line_offset(doc, 1, 4);
+        expect_doc_line_begin(doc, 1, 4 * unit);
 
         doc.clear();
         DeleteFile(path);
@@ -1219,8 +1239,8 @@ void open_file_renders_file_backed_content()
     CHECK(seq.open(path, true));
     expect_content(seq, text);
     CHECK(seq.linecount() == 3);
-    expect_line_offset(seq, 1, 7);
-    expect_line_offset(seq, 2, 14);
+    expect_offset_from_lineno(seq, 1, 7);
+    expect_offset_from_lineno(seq, 2, 14);
 
 	seq.clear();
     DeleteFile(path);
@@ -1268,7 +1288,7 @@ void open_file_handles_crlf_across_scan_boundary()
     CHECK(write_temp_file(data, file_length, path));
     CHECK(seq.open(path, true));
     CHECK(seq.linecount() == 2);
-    expect_line_offset(seq, 1, scan_size + 1);
+    expect_offset_from_lineno(seq, 1, scan_size + 1);
 
     seq.clear();
     DeleteFile(path);
@@ -1294,9 +1314,9 @@ void lazy_file_insert_crlf_updates_visible_line_offsets()
     CHECK(seq.open(path, true));
 
     CHECK(seq.insert(insert_offset, reinterpret_cast<const seqchar *>("\r\n"), 2));
-    CHECK(seq.lineoffset(10, &line_offset));
+    CHECK(seq.offset_from_lineno(10, &line_offset));
     CHECK(line_offset == insert_offset + 2);
-    CHECK(seq.lineoffset(11, &line_offset));
+    CHECK(seq.offset_from_lineno(11, &line_offset));
     CHECK(line_offset == line_length * 10 + 2);
 
     seq.clear();
@@ -1329,7 +1349,7 @@ void lazy_file_fully_indexed_keeps_exact_lines()
 
     CHECK(seq.insert(line_length * 5000 + 3, reinterpret_cast<const seqchar *>("\r\n"), 2));
     CHECK(seq.linecount() == line_count + 2);
-    CHECK(seq.linefromoffset(line_length * 6000 + 2, &line_no, &line_offset));
+    CHECK(seq.lineno_from_offset(line_length * 6000 + 2, &line_no, &line_offset));
     CHECK(line_no == 6001);
     CHECK(line_offset == line_length * 6000 + 2);
 
@@ -1359,11 +1379,11 @@ void lazy_line_numbers_follow_edits_above()
     CHECK(seq.insert(0, reinterpret_cast<const seqchar *>("\r\n\r\n\r\n"), 6));
 
     seq.index_lines(0, probe + line_length);
-    CHECK(seq.line_number_known(8003));
-    CHECK(seq.linefromoffset(probe, &line_no, &line_offset));
+    CHECK(seq.lineno_known(8003));
+    CHECK(seq.lineno_from_offset(probe, &line_no, &line_offset));
     CHECK(line_no == 8003);
     CHECK(line_offset == probe);
-    CHECK(seq.lineoffset(8003, &line_offset));
+    CHECK(seq.offset_from_lineno(8003, &line_offset));
     CHECK(line_offset == probe);
 
     seq.clear();
@@ -1371,7 +1391,7 @@ void lazy_line_numbers_follow_edits_above()
     delete[] data;
 }
 
-void textdocument_lineinfo_handles_lazy_end_after_insert()
+void textdocument_coord_handles_lazy_end_after_insert()
 {
     TextDocument doc;
     TCHAR path[MAX_PATH];
@@ -1380,9 +1400,7 @@ void textdocument_lineinfo_handles_lazy_end_after_insert()
     const size_t line_count = MEM_BLOCK_SIZE / line_length + 32;
     const size_t file_length = line_length * line_count;
     char *data = new char[file_length];
-    ULONG line_no = 0;
-    ULONG line_offset = 0;
-    ULONG line_length_chars = 0;
+    TextCoord eof;
     TCHAR crlf[] = TEXT("\r\n");
 
     for(size_t i = 0; i < line_count; i++)
@@ -1391,10 +1409,10 @@ void textdocument_lineinfo_handles_lazy_end_after_insert()
     CHECK(write_temp_file(data, file_length, path));
     CHECK(doc.init(path));
 
-    CHECK(doc.insert_text(static_cast<ULONG>(line_length * 9 + 37), crlf, 2) == 2);
-    CHECK(doc.lineinfo_from_offset(doc.text_length(), &line_no, &line_offset, &line_length_chars));
-    CHECK(line_offset == doc.text_length());
-    CHECK(line_length_chars == 0);
+    CHECK(doc_insert(doc, static_cast<ULONG>(line_length * 9 + 37), crlf, 2) == 2);
+    CHECK(doc.coord_from_document_end(&eof));
+    CHECK(eof.line_begin == doc.byte_length());
+    CHECK(eof.line_next == doc.byte_length());
 
     doc.clear();
     DeleteFile(path);
@@ -1409,11 +1427,9 @@ void textdocument_final_sparse_line_ignores_estimated_linecount()
     const size_t prefix_length = prefix_lines * 3;
     const size_t file_length = MEM_BLOCK_SIZE * 4;
     const ULONG insert_offset = 9 * 3 + 1;
-    const ULONG final_line = static_cast<ULONG>(prefix_lines + 1);
     const ULONG final_line_offset = static_cast<ULONG>(prefix_length + 2);
     char *data = new char[file_length];
-    ULONG line_offset = 0;
-    ULONG line_length_chars = 0;
+    TextCoord coord;
     TCHAR crlf[] = TEXT("\r\n");
 
     memset(data, 'A', file_length);
@@ -1428,10 +1444,10 @@ void textdocument_final_sparse_line_ignores_estimated_linecount()
     CHECK(write_temp_file(data, file_length, path));
     CHECK(doc.init(path));
 
-    CHECK(doc.insert_text(insert_offset, crlf, 2) == 2);
-    CHECK(doc.lineinfo_from_offset(final_line_offset, 0, &line_offset, &line_length_chars));
-    CHECK(line_offset == final_line_offset);
-    CHECK(line_length_chars == doc.text_length() - final_line_offset);
+    CHECK(doc_insert(doc, insert_offset, crlf, 2) == 2);
+    CHECK(doc.coord_from_byte_anchor(final_line_offset, &coord));
+    CHECK(coord.line_begin == final_line_offset);
+    CHECK(coord.line_next == doc.byte_length());
 
     doc.clear();
     DeleteFile(path);
@@ -1441,6 +1457,7 @@ void textdocument_final_sparse_line_ignores_estimated_linecount()
 void textdocument_ctrl_end_uses_final_page_when_lines_are_lazy()
 {
     TextDocument doc;
+    sequence &seq = TextDocumentLineIndexProbe::seq(doc);
     TCHAR path[MAX_PATH];
     const char *line = "line abcdefghijklmnopqrstuvwxyz 0123456789\r\n";
     const size_t line_length = strlen(line);
@@ -1448,10 +1465,11 @@ void textdocument_ctrl_end_uses_final_page_when_lines_are_lazy()
     const size_t file_length = line_length * line_count;
     char *data = new char[file_length];
     ULONG target_line = static_cast<ULONG>(MEM_BLOCK_SIZE / line_length + 20);
-    ULONG line_no = 0;
-    ULONG line_offset = 0;
-    ULONG line_length_chars = 0;
-    TextLineInfo lineinfo;
+    size_w line_offset = 0;
+    TextCoord eof;
+    TextCoord prev;
+    TextCoord next;
+    bool exact = true;
 
     for(size_t i = 0; i < line_count; i++)
         memcpy(data + i * line_length, line, line_length);
@@ -1459,20 +1477,24 @@ void textdocument_ctrl_end_uses_final_page_when_lines_are_lazy()
     CHECK(write_temp_file(data, file_length, path));
     CHECK(doc.init(path));
 
-    CHECK(!doc.lineno_known(target_line));
-    CHECK(doc.lineinfo_from_lineno(target_line, &line_offset, &line_length_chars));
-    CHECK(doc.lineno_known(target_line));
-    CHECK(doc.lineinfo_from_offset(doc.text_length(), &line_no, &line_offset, &line_length_chars));
-    CHECK(line_offset == doc.text_length());
-    CHECK(line_length_chars == 0);
+    // looking up a line just past the indexed region scans ahead and makes it exact
+    CHECK(!seq.lineno_known(target_line));
+    CHECK(seq.offset_from_lineno(target_line, &line_offset));
+    CHECK(seq.lineno_known(target_line));
+
+    // Ctrl+End reaches the end without counting the lines before it
+    CHECK(doc.coord_from_document_end(&eof));
+    CHECK(eof.line_begin == doc.byte_length());
+    CHECK(eof.line_next == doc.byte_length());
     CHECK(!doc.linecount_known());
-    CHECK(!doc.lineno_known(line_no));
-    CHECK(doc.previous_lineinfo_from_offset(doc.text_length(), 1, &lineinfo));
-    CHECK(lineinfo.lineoff_chars == doc.text_length() - line_length);
-    CHECK(doc.line_text_end(&lineinfo) == doc.text_length() - 2);
-    CHECK(doc.next_lineinfo_from_offset(lineinfo.lineoff_chars, 1, &lineinfo));
-    CHECK(lineinfo.lineoff_chars == doc.text_length());
-    CHECK(doc.line_text_end(&lineinfo) == doc.text_length());
+    doc.lineno_from_coord(&eof, &exact);
+    CHECK(!exact);
+
+    CHECK(doc.previous_line_from_coord(&eof, 1, &prev));
+    CHECK(prev.line_begin == doc.byte_length() - line_length);
+    CHECK(prev.line_next == doc.byte_length());
+    CHECK(doc.next_line_from_coord(&prev, 1, &next));
+    CHECK(next.line_begin == doc.byte_length());
 
     doc.clear();
     DeleteFile(path);
@@ -1482,22 +1504,23 @@ void textdocument_ctrl_end_uses_final_page_when_lines_are_lazy()
 void textdocument_lazy_eof_line_number_maps_back_to_same_line()
 {
     TextDocument doc;
+    sequence &seq = TextDocumentLineIndexProbe::seq(doc);
     TCHAR path[MAX_PATH];
     const size_t line_count = 200000;
-    ULONG eof_line = 0;
-    ULONG eof_line_offset = 0;
-    ULONG eof_line_length = 0;
-    ULONG line_offset = 0;
-    ULONG line_length = 0;
+    TextCoord eof;
+    ULONG eof_line;
+    size_w line_offset = 0;
+    bool exact = true;
 
     CHECK(write_numbered_lines_file(line_count, path));
     CHECK(doc.init(path));
 
-    CHECK(doc.lineinfo_from_offset(doc.text_length(), &eof_line, &eof_line_offset, &eof_line_length));
-    CHECK(doc.lineinfo_from_lineno(eof_line, &line_offset, &line_length));
-    CHECK(line_offset == eof_line_offset);
-    CHECK(line_length == eof_line_length);
-    CHECK(!doc.lineinfo_from_lineno(eof_line + 1, &line_offset, &line_length));
+    // the estimated number of the last line leads back to that same line
+    CHECK(doc.coord_from_document_end(&eof));
+    eof_line = doc.lineno_from_coord(&eof, &exact);
+    CHECK(seq.offset_from_lineno(eof_line, &line_offset));
+    CHECK(doc_offset(doc, line_offset) == eof.line_begin);
+    CHECK(!seq.offset_from_lineno(eof_line + 1, &line_offset));
 
     doc.clear();
     DeleteFile(path);
@@ -1514,13 +1537,11 @@ void textdocument_lazy_eof_without_final_crlf_maps_to_final_line()
     const size_t line_count = (MEM_BLOCK_SIZE * 8) / line_length;
     const size_t file_length = line_length * (line_count - 1) + last_line_length;
     char *data = new char[file_length];
-    ULONG line_no = 0;
-    ULONG prev_line_no = 0;
-    ULONG line_offset = 0;
-    ULONG prev_line_offset = 0;
-    ULONG crlf_line_offset = 0;
-    ULONG line_length_chars = 0;
-    TextLineInfo lineinfo;
+    ULONG last_begin;
+    TextCoord eof;
+    TextCoord coord;
+    TextCoord prev;
+    TextCoord next;
 
     for(size_t i = 0; i < line_count - 1; i++)
         memcpy(data + i * line_length, line, line_length);
@@ -1530,21 +1551,23 @@ void textdocument_lazy_eof_without_final_crlf_maps_to_final_line()
     CHECK(write_temp_file(data, file_length, path));
     CHECK(doc.init(path));
 
-    CHECK(doc.lineinfo_from_offset(doc.text_length(), &line_no, &line_offset, &line_length_chars));
-    CHECK(line_offset == file_length - last_line_length);
-    CHECK(line_length_chars == last_line_length);
+    CHECK(doc.coord_from_document_end(&eof));
+    last_begin = eof.line_begin;
+    CHECK(last_begin == file_length - last_line_length);
+    CHECK(eof.line_next - eof.line_begin == last_line_length);
 
-    CHECK(doc.lineinfo_from_offset(line_offset - 1, 0, &crlf_line_offset, 0));
-    CHECK(crlf_line_offset == line_offset - line_length);
+    // the CR and LF before the last line belong to the line above it
+    CHECK(doc.coord_from_byte_anchor(last_begin - 1, &coord));
+    CHECK(coord.line_begin == last_begin - line_length);
+    CHECK(doc.coord_from_byte_anchor(last_begin - 2, &coord));
+    CHECK(coord.line_begin == last_begin - line_length);
 
-    CHECK(doc.lineinfo_from_offset(line_offset - 2, &prev_line_no, &prev_line_offset, 0));
-    CHECK(prev_line_offset == line_offset - line_length);
-    CHECK(doc.previous_lineinfo_from_offset(doc.text_length(), 1, &lineinfo));
-    CHECK(lineinfo.lineoff_chars == prev_line_offset);
-    CHECK(doc.line_text_end(&lineinfo) == line_offset - 2);
-    CHECK(doc.next_lineinfo_from_offset(lineinfo.lineoff_chars, 1, &lineinfo));
-    CHECK(lineinfo.lineoff_chars == line_offset);
-    CHECK(doc.line_text_end(&lineinfo) == doc.text_length());
+    CHECK(doc.previous_line_from_coord(&eof, 1, &prev));
+    CHECK(prev.line_begin == last_begin - line_length);
+    CHECK(prev.line_next == last_begin);
+    CHECK(doc.next_line_from_coord(&prev, 1, &next));
+    CHECK(next.line_begin == last_begin);
+    CHECK(next.line_next == doc.byte_length());
 
     doc.clear();
     DeleteFile(path);
@@ -1553,74 +1576,72 @@ void textdocument_lazy_eof_without_final_crlf_maps_to_final_line()
 
 void textdocument_lazy_offset_lookup_uses_sequence_line_bounds()
 {
-	TextDocument doc;
-	TCHAR path[MAX_PATH];
-	const size_t file_length = MEM_BLOCK_SIZE * 3;
-	const ULONG first_break = MEM_BLOCK_SIZE + 17;
-	const ULONG second_break = MEM_BLOCK_SIZE * 2 + 91;
-	const ULONG target_offset = first_break + 100;
-	char *data = new char[file_length];
-	ULONG line_no = 0;
-	ULONG line_offset = 0;
-	ULONG line_length_chars = 0;
-	DocLine line;
+    TextDocument doc;
+    TCHAR path[MAX_PATH];
+    const size_t file_length = MEM_BLOCK_SIZE * 3;
+    const ULONG first_break = MEM_BLOCK_SIZE + 17;
+    const ULONG second_break = MEM_BLOCK_SIZE * 2 + 91;
+    const ULONG target_offset = first_break + 100;
+    char *data = new char[file_length];
+    TextCoord coord;
+    TextCoord prev;
+    TextCoord next;
+    bool exact = false;
 
-	memset(data, 'A', file_length);
-	data[first_break] = '\n';
-	data[second_break] = '\n';
+    memset(data, 'A', file_length);
+    data[first_break] = '\n';
+    data[second_break] = '\n';
 
-	CHECK(write_temp_file(data, file_length, path));
-	CHECK(doc.init(path));
-	CHECK(!doc.linecount_known());
+    CHECK(write_temp_file(data, file_length, path));
+    CHECK(doc.init(path));
+    CHECK(!doc.linecount_known());
 
-	CHECK(doc.lineinfo_from_offset(target_offset, &line_no, &line_offset, &line_length_chars));
-	CHECK(line_offset == first_break + 1);
-	CHECK(line_length_chars == second_break - first_break);
+    CHECK(doc.coord_from_byte_anchor(target_offset, &coord));
+    CHECK(coord.line_begin == first_break + 1);
+    CHECK(coord.line_next == second_break + 1);
 
-	CHECK(doc.line_from_offset(target_offset, &line));
-	CHECK(line.index == line_no);
-	CHECK(line.index_known == doc.lineno_known(line.index));
-	CHECK(line.offset_chars == first_break + 1);
-	CHECK(line.length_chars == second_break - first_break);
+    CHECK(doc.previous_line_from_coord(&coord, 1, &prev));
+    CHECK(prev.line_begin == 0);
+    CHECK(prev.line_next == first_break + 1);
+    CHECK(doc.lineno_from_coord(&prev, &exact) == 0);
+    CHECK(exact);
 
-	CHECK(doc.previous_line_from_offset(target_offset, 1, &line));
-	CHECK(line.offset_chars == 0);
-	CHECK(line.length_chars == first_break + 1);
+    CHECK(doc.next_line_from_coord(&coord, 1, &next));
+    CHECK(next.line_begin == second_break + 1);
+    CHECK(next.line_next == file_length);
 
-	CHECK(doc.next_line_from_offset(target_offset, 1, &line));
-	CHECK(line.offset_chars == second_break + 1);
-	CHECK(line.length_chars == file_length - second_break - 1);
-
-	doc.clear();
-	DeleteFile(path);
-	delete[] data;
+    doc.clear();
+    DeleteFile(path);
+    delete[] data;
 }
 
 void textdocument_lazy_line_numbers_continue_after_first_page()
 {
     TextDocument doc;
+    sequence &seq = TextDocumentLineIndexProbe::seq(doc);
     TCHAR path[MAX_PATH];
     ULONG first_unknown = 0;
-    ULONG actual_line = 0;
-    ULONG line_offset = 0;
-    ULONG line_length_chars = 0;
 
     CHECK(write_numbered_lines_file(20000, path));
     CHECK(doc.init(path));
 
-    while(doc.lineno_known(first_unknown))
+    while(seq.lineno_known(first_unknown))
         first_unknown++;
 
     CHECK(first_unknown > 1000);
-    CHECK(!doc.lineno_known(first_unknown));
 
     for(ULONG line = first_unknown; line < first_unknown + 100; line++)
     {
-        CHECK(doc.lineinfo_from_lineno(line, &line_offset, &line_length_chars));
-        CHECK(doc.lineno_known(line));
+        size_w line_offset = 0;
+        TextCoord coord;
+        bool exact = false;
 
-        CHECK(doc.lineinfo_from_offset(line_offset, &actual_line, 0, 0));
-        CHECK(actual_line == line);
+        CHECK(seq.offset_from_lineno(line, &line_offset));
+        CHECK(seq.lineno_known(line));
+
+        CHECK(doc.coord_from_byte_anchor(doc_offset(doc, line_offset), &coord));
+        CHECK(doc.lineno_from_coord(&coord, &exact) == line);
+        CHECK(exact);
     }
 
     doc.clear();
@@ -1630,66 +1651,66 @@ void textdocument_lazy_line_numbers_continue_after_first_page()
 void textdocument_large_lazy_file_line_estimate_does_not_overflow()
 {
     TextDocument doc;
+    sequence &seq = TextDocumentLineIndexProbe::seq(doc);
     TCHAR path[MAX_PATH];
     const char *line = "line 0000000 abcdefghijklmnopqrstuvwxyz 0123456789\r\n";
     const size_t line_length = strlen(line);
     const size_w line_count = 5000000;
-    ULONG line_no = 0;
-    ULONG line_offset = 0;
-    ULONG line_length_chars = 0;
+    size_w line_offset = 0;
+    size_w next_offset = 0;
+    TextCoord coord;
+    bool exact = false;
 
     CHECK(write_large_pattern_file(line, line_length, line_count, path));
     CHECK(doc.init(path));
 
     CHECK(doc.linecount() > 4000000);
-    CHECK(doc.lineno_known(0));
-    CHECK(doc.lineno_known(10));
-    CHECK(doc.lineinfo_from_offset(doc.text_length(), &line_no, &line_offset, &line_length_chars));
-    CHECK(line_no > 4000000);
-    CHECK(!doc.lineno_known(line_no));
-    CHECK(line_offset == doc.text_length());
-    CHECK(line_length_chars == 0);
-    CHECK(doc.lineinfo_from_lineno(doc.linecount() - 2, &line_offset, &line_length_chars));
-    CHECK(line_offset >= doc.text_length() - MEM_BLOCK_SIZE);
-    CHECK(line_length_chars <= line_length);
+
+    CHECK(doc.coord_from_byte_anchor(0, &coord));
+    CHECK(doc.lineno_from_coord(&coord, &exact) == 0);
+    CHECK(exact);
+    CHECK(doc.coord_from_byte_anchor(static_cast<ULONG>(line_length * 10), &coord));
+    CHECK(doc.lineno_from_coord(&coord, &exact) == 10);
+    CHECK(exact);
+
+    CHECK(doc.coord_from_document_end(&coord));
+    CHECK(doc.lineno_from_coord(&coord, &exact) > 4000000);
+    CHECK(!exact);
+    CHECK(coord.line_begin == doc.byte_length());
+    CHECK(coord.line_next == doc.byte_length());
+
+    CHECK(seq.offset_from_lineno(doc.linecount() - 2, &line_offset));
+    CHECK(line_offset >= doc.byte_length() - MEM_BLOCK_SIZE);
+    CHECK(seq.next_line_from_offset(line_offset, &next_offset));
+    CHECK(next_offset - line_offset <= line_length);
 
     doc.clear();
     DeleteFile(path);
 }
 
-void textdocument_utf16_line_index_uses_utf16_offsets()
+void textdocument_utf16_coord_reads_line()
 {
     TextDocument doc;
     TCHAR path[MAX_PATH];
     const WCHAR text[] = { 0xfeff, 'a', '\r', '\n', 'b', 0xd83d, 0xde00, '\r', '\n', 'c' };
-    ULONG line_no = 0;
-    ULONG line_offset = 0;
-    ULONG line_length_chars = 0;
-    TextLineInfo lineinfo;
+    TextCoord coord;
     TCHAR buf[16];
-    ULONG line_start = 0;
-    ULONG read_len = 16;
+    bool exact = false;
 
     CHECK(write_temp_file(reinterpret_cast<const char *>(text), sizeof(text), path));
     CHECK(doc.init(path));
 
     CHECK(doc.getformat() == NCP_UTF16);
-    CHECK(doc.text_length() == 9);
+    CHECK(doc.byte_length() == 18);
 
-    CHECK(doc.lineinfo_from_lineno(1, &line_offset, &line_length_chars));
-    CHECK(line_offset == 3);
-    CHECK(line_length_chars == 5);
+    // the CR on the second line, after 'b' and a surrogate pair
+    CHECK(doc.coord_from_byte_anchor(12, &coord));
+    CHECK(coord.line_begin == 6);
+    CHECK(coord.line_next == 16);
+    CHECK(coord.line_offset_chars == 3);
+    CHECK(doc.lineno_from_coord(&coord, &exact) == 1);
 
-    CHECK(doc.lineinfo_from_offset(5, &line_no, &line_offset, &line_length_chars));
-    CHECK(line_no == 1);
-    CHECK(line_offset == 3);
-    CHECK(line_length_chars == 5);
-
-    CHECK(doc.lineinfo_from_offset(5, &lineinfo));
-    CHECK(doc.line_text_end(&lineinfo) == 6);
-
-    CHECK(doc.getline(1, buf, read_len, &line_start) == 5);
-    CHECK(line_start == 3);
+    CHECK(doc.getline(coord, buf, 16) == 5);
     CHECK(buf[0] == 'b');
     CHECK(buf[1] == 0xd83d);
     CHECK(buf[2] == 0xde00);
@@ -1700,7 +1721,7 @@ void textdocument_utf16_line_index_uses_utf16_offsets()
     DeleteFile(path);
 }
 
-void textdocument_utf16be_line_index_uses_utf16_offsets()
+void textdocument_utf16be_coord_reads_line()
 {
     TextDocument doc;
     TCHAR path[MAX_PATH];
@@ -1717,34 +1738,24 @@ void textdocument_utf16be_line_index_uses_utf16_offsets()
         0x00, '\n',
         0x00, 'c'
     };
-    ULONG line_no = 0;
-    ULONG line_offset = 0;
-    ULONG line_length_chars = 0;
-    TextLineInfo lineinfo;
+    TextCoord coord;
     TCHAR buf[16];
-    ULONG line_start = 0;
-    ULONG read_len = 16;
+    bool exact = false;
 
     CHECK(write_temp_file(reinterpret_cast<const char *>(text), sizeof(text), path));
     CHECK(doc.init(path));
 
     CHECK(doc.getformat() == NCP_UTF16BE);
-    CHECK(doc.text_length() == 9);
+    CHECK(doc.byte_length() == 18);
 
-    CHECK(doc.lineinfo_from_lineno(1, &line_offset, &line_length_chars));
-    CHECK(line_offset == 3);
-    CHECK(line_length_chars == 5);
+    // the CR on the second line, after 'b' and a surrogate pair
+    CHECK(doc.coord_from_byte_anchor(12, &coord));
+    CHECK(coord.line_begin == 6);
+    CHECK(coord.line_next == 16);
+    CHECK(coord.line_offset_chars == 3);
+    CHECK(doc.lineno_from_coord(&coord, &exact) == 1);
 
-    CHECK(doc.lineinfo_from_offset(5, &line_no, &line_offset, &line_length_chars));
-    CHECK(line_no == 1);
-    CHECK(line_offset == 3);
-    CHECK(line_length_chars == 5);
-
-    CHECK(doc.lineinfo_from_offset(5, &lineinfo));
-    CHECK(doc.line_text_end(&lineinfo) == 6);
-
-    CHECK(doc.getline(1, buf, read_len, &line_start) == 5);
-    CHECK(line_start == 3);
+    CHECK(doc.getline(coord, buf, 16) == 5);
     CHECK(buf[0] == 'b');
     CHECK(buf[1] == 0xd83d);
     CHECK(buf[2] == 0xde00);
@@ -1755,7 +1766,7 @@ void textdocument_utf16be_line_index_uses_utf16_offsets()
     DeleteFile(path);
 }
 
-void textdocument_utf8_line_index_uses_utf16_offsets()
+void textdocument_utf8_coord_reads_line()
 {
     TextDocument doc;
     TCHAR path[MAX_PATH];
@@ -1768,34 +1779,24 @@ void textdocument_utf8_line_index_uses_utf16_offsets()
         '\r', '\n',
         'c'
     };
-    ULONG line_no = 0;
-    ULONG line_offset = 0;
-    ULONG line_length_chars = 0;
-    TextLineInfo lineinfo;
+    TextCoord coord;
     TCHAR buf[16];
-    ULONG line_start = 0;
-    ULONG read_len = 16;
+    bool exact = false;
 
     CHECK(write_temp_file(reinterpret_cast<const char *>(text), sizeof(text), path));
     CHECK(doc.init(path));
 
     CHECK(doc.getformat() == NCP_UTF8);
-    CHECK(doc.text_length() == 9);
+    CHECK(doc.byte_length() == 11);
 
-    CHECK(doc.lineinfo_from_lineno(1, &line_offset, &line_length_chars));
-    CHECK(line_offset == 3);
-    CHECK(line_length_chars == 5);
+    // the CR on the second line, after 'b' and a surrogate pair
+    CHECK(doc.coord_from_byte_anchor(8, &coord));
+    CHECK(coord.line_begin == 3);
+    CHECK(coord.line_next == 10);
+    CHECK(coord.line_offset_chars == 3);
+    CHECK(doc.lineno_from_coord(&coord, &exact) == 1);
 
-    CHECK(doc.lineinfo_from_offset(5, &line_no, &line_offset, &line_length_chars));
-    CHECK(line_no == 1);
-    CHECK(line_offset == 3);
-    CHECK(line_length_chars == 5);
-
-    CHECK(doc.lineinfo_from_offset(5, &lineinfo));
-    CHECK(doc.line_text_end(&lineinfo) == 6);
-
-    CHECK(doc.getline(1, buf, read_len, &line_start) == 5);
-    CHECK(line_start == 3);
+    CHECK(doc.getline(coord, buf, 16) == 5);
     CHECK(buf[0] == 'b');
     CHECK(buf[1] == 0xd83d);
     CHECK(buf[2] == 0xde00);
@@ -1811,26 +1812,15 @@ void textdocument_coord_uses_byte_anchor_for_ascii()
     TextDocument doc;
     TCHAR path[MAX_PATH];
     TextCoord coord;
-    TextCoord from_byte;
 
     CHECK(write_textdocument_file("abc\r\nxyz", DOC_ASCII, path));
     CHECK(doc.init(path));
 
-    CHECK(doc.coord_from_offset(6, &coord));
+    CHECK(doc.coord_from_byte_anchor(6, &coord));
     CHECK(coord.byte_anchor == 6);
     CHECK(coord.line_begin == 5);
     CHECK(coord.line_next == 8);
     CHECK(coord.line_offset_chars == 1);
-    CHECK(coord.offset_chars == 6);
-    CHECK(coord.line.offset_chars == 5);
-    CHECK(coord.line.length_chars == 3);
-
-    CHECK(doc.coord_from_byte_anchor(6, &from_byte));
-    CHECK(from_byte.byte_anchor == coord.byte_anchor);
-    CHECK(from_byte.line_begin == coord.line_begin);
-    CHECK(from_byte.line_next == coord.line_next);
-    CHECK(from_byte.line_offset_chars == coord.line_offset_chars);
-    CHECK(from_byte.offset_chars == coord.offset_chars);
 
     doc.clear();
     DeleteFile(path);
@@ -1850,26 +1840,19 @@ void textdocument_coord_uses_local_utf8_byte_anchor()
         'c'
     };
     TextCoord coord;
-    TextCoord from_byte;
 
     CHECK(write_temp_file(reinterpret_cast<const char *>(text), sizeof(text), path));
     CHECK(doc.init(path));
 
-    CHECK(doc.coord_from_offset(4, &coord));
+    CHECK(doc.coord_from_byte_anchor(4, &coord));
     CHECK(coord.byte_anchor == 4);
     CHECK(coord.line_begin == 3);
     CHECK(coord.line_next == 10);
     CHECK(coord.line_offset_chars == 1);
-    CHECK(coord.offset_chars == 4);
-    CHECK(coord.line.offset_chars == 3);
-    CHECK(coord.line.length_chars == 5);
 
-    CHECK(doc.coord_from_byte_anchor(4, &from_byte));
-    CHECK(from_byte.byte_anchor == coord.byte_anchor);
-    CHECK(from_byte.line_begin == coord.line_begin);
-    CHECK(from_byte.line_next == coord.line_next);
-    CHECK(from_byte.line_offset_chars == coord.line_offset_chars);
-    CHECK(from_byte.offset_chars == coord.offset_chars);
+    // after the emoji: its four bytes are two UTF-16 units
+    CHECK(doc.coord_from_byte_anchor(8, &coord));
+    CHECK(coord.line_offset_chars == 3);
 
     doc.clear();
     DeleteFile(path);
@@ -1898,10 +1881,42 @@ void textdocument_coord_resolves_document_end()
     CHECK(coord.line_begin == 10);
     CHECK(coord.line_next == 11);
     CHECK(coord.line_offset_chars == 1);
-    CHECK(coord.offset_chars == 9);
 
     doc.clear();
     DeleteFile(path);
+}
+
+void textdocument_charoffset_only_for_fixed_width()
+{
+    const DocTestEncoding encodings[] = { DOC_ASCII, DOC_UTF8_BOM, DOC_UTF16LE_BOM, DOC_UTF16BE_BOM };
+
+    for(size_t i = 0; i < sizeof(encodings) / sizeof(encodings[0]); i++)
+    {
+        TextDocument doc;
+        TCHAR path[MAX_PATH];
+        TextCoord coord;
+        ULONG offset_chars = 0;
+        bool utf16 = encodings[i] == DOC_UTF16LE_BOM || encodings[i] == DOC_UTF16BE_BOM;
+
+        CHECK(write_textdocument_file("abc\r\nxyz", encodings[i], path));
+        CHECK(doc.init(path));
+
+        // the 'y', six characters in
+        CHECK(doc.coord_from_byte_anchor(utf16 ? 12 : 6, &coord));
+
+        if(encodings[i] == DOC_UTF8_BOM)
+        {
+            CHECK(!doc.charoffset_from_coord(&coord, &offset_chars));
+        }
+        else
+        {
+            CHECK(doc.charoffset_from_coord(&coord, &offset_chars));
+            CHECK(offset_chars == 6);
+        }
+
+        doc.clear();
+        DeleteFile(path);
+    }
 }
 
 void textdocument_coord_moves_by_local_lines()
@@ -1915,7 +1930,7 @@ void textdocument_coord_moves_by_local_lines()
     CHECK(write_textdocument_file("abc\r\nxyz\nlast", DOC_ASCII, path));
     CHECK(doc.init(path));
 
-    CHECK(doc.coord_from_offset(6, &coord));
+    CHECK(doc.coord_from_byte_anchor(6, &coord));
 
     CHECK(doc.previous_line_from_coord(&coord, 1, &line));
     CHECK(line.byte_anchor == 0);
@@ -1931,7 +1946,6 @@ void textdocument_coord_moves_by_local_lines()
 
     CHECK(doc.coord_from_line_pos(&line, 2, &at_pos));
     CHECK(at_pos.byte_anchor == 11);
-    CHECK(at_pos.offset_chars == 11);
     CHECK(at_pos.line_offset_chars == 2);
 
     doc.clear();
@@ -1958,7 +1972,7 @@ void textdocument_coord_moves_by_local_utf8_lines()
     CHECK(write_temp_file(reinterpret_cast<const char *>(text), sizeof(text), path));
     CHECK(doc.init(path));
 
-    CHECK(doc.coord_from_offset(4, &coord));
+    CHECK(doc.coord_from_byte_anchor(4, &coord));
 
     CHECK(doc.previous_line_from_coord(&coord, 1, &line));
     CHECK(line.byte_anchor == 0);
@@ -1975,7 +1989,6 @@ void textdocument_coord_moves_by_local_utf8_lines()
     CHECK(doc.coord_from_byte_anchor(3, &line));
     CHECK(doc.coord_from_line_pos(&line, 3, &at_pos));
     CHECK(at_pos.byte_anchor == 8);
-    CHECK(at_pos.offset_chars == 6);
     CHECK(at_pos.line_offset_chars == 3);
 
     doc.clear();
@@ -1993,20 +2006,21 @@ void textdocument_coord_tracks_lazy_eof_after_newline_edits()
     TextCoord after;
     TextCoord top;
     TCHAR newlines[] = TEXT("\r\n\r\n\r\n");
+    bool exact;
 
     CHECK(write_large_pattern_file(line, line_length, line_count, path));
     CHECK(doc.init(path));
     CHECK(!doc.linecount_known());
 
     CHECK(doc.coord_from_document_end(&before));
-    CHECK(doc.insert_text(doc.text_length(), newlines, 6) == 6);
+    CHECK(doc.insert_text(&before, newlines, 6, 0) == 6);
     CHECK(doc.coord_from_document_end(&after));
 
     CHECK(after.byte_anchor == before.byte_anchor + 6);
     CHECK(after.line_begin == before.line_begin + 6);
     CHECK(doc.previous_line_from_coord(&after, 3, &top));
     CHECK(top.line_begin == before.line_begin);
-    CHECK(after.line.index >= top.line.index);
+    CHECK(doc.lineno_from_coord(&after, &exact) >= doc.lineno_from_coord(&top, &exact));
 
     doc.clear();
     DeleteFile(path);
@@ -2021,8 +2035,6 @@ void textdocument_coord_moves_across_changes()
     TextCoord top;
     TextCoord second;
     TextCoord next;
-    ULONG start = 0;
-    ULONG end = 0;
 
     CHECK(write_textdocument_file("hello\r\nworld\r\nthird\r\n", DOC_ASCII, path));
     CHECK(doc.init(path));
@@ -2031,7 +2043,7 @@ void textdocument_coord_moves_across_changes()
     CHECK(doc.coord_from_byte_anchor(9, &second));
 
     // Typing on the top line: its start stays put but its end moves.
-    CHECK(doc.insert_text(2, xyz, 3, &change) == 3);
+    CHECK(doc_insert(doc, 2, xyz, 3, &change) == 3);
     CHECK(change.offset == 2 && change.erased == 0 && change.inserted == 3);
     CHECK(doc.coord_after_change(&top, &change));
     CHECK(top.byte_anchor == 0);
@@ -2045,20 +2057,20 @@ void textdocument_coord_moves_across_changes()
     CHECK(second.line_begin == 10);
 
     // A coordinate exactly at an insertion stays before the inserted text.
-    CHECK(doc.insert_text(10, xyz, 3, &change) == 3);
+    CHECK(doc_insert(doc, 10, xyz, 3, &change) == 3);
     CHECK(doc.coord_after_change(&next, &change));
     CHECK(next.byte_anchor == 10);
     CHECK(next.line_next == 20);
 
     // A coordinate inside erased text moves to the start of the erase.
     CHECK(doc.coord_from_byte_anchor(12, &second));
-    CHECK(doc.erase_text(11, 4, &change) == 4);
+    CHECK(doc_erase(doc, 11, 15, &change) == 4);
     CHECK(change.offset == 11 && change.erased == 4 && change.inserted == 0);
     CHECK(doc.coord_after_change(&second, &change));
     CHECK(second.byte_anchor == 11);
     CHECK(second.line_begin == 10);
 
-    CHECK(doc.undo(&start, &end, &change));
+    CHECK(doc.undo(&change));
     CHECK(change.offset == 11 && change.erased == 0 && change.inserted == 4);
 
     doc.clear();
@@ -2130,16 +2142,14 @@ void textdocument_change_excludes_header()
     TCHAR path[MAX_PATH];
     TCHAR x[] = TEXT("X");
     TextChange change;
-    ULONG start = 0;
-    ULONG end = 0;
 
     CHECK(write_textdocument_file("ab\r\ncd", DOC_UTF16LE_BOM, path));
     CHECK(doc.init(path));
 
-    CHECK(doc.insert_text(1, x, 1, &change) == 2);
+    CHECK(doc_insert(doc, 2, x, 1, &change) == 2);
     CHECK(change.offset == 2 && change.erased == 0 && change.inserted == 2);
 
-    CHECK(doc.undo(&start, &end, &change));
+    CHECK(doc.undo(&change));
     CHECK(change.offset == 2 && change.erased == 2 && change.inserted == 0);
 
     doc.clear();
@@ -2155,7 +2165,7 @@ void textdocument_sequence_index_matches_ascii_after_edits()
     CHECK(write_textdocument_file("abc\r\nxyz", DOC_ASCII, path));
     CHECK(doc.init(path));
 
-    CHECK(doc.insert_text(1, crlf, 2) == 2);
+    CHECK(doc_insert(doc, 1, crlf, 2) == 2);
 
     expect_sequence_line_matches_textdocument(doc, 0);
     expect_sequence_line_matches_textdocument(doc, 1);
@@ -2182,8 +2192,8 @@ void textdocument_sequence_index_matches_utf16le()
     expect_sequence_line_matches_textdocument(doc, 1);
     expect_sequence_line_matches_textdocument(doc, 2);
     expect_sequence_offset_matches_textdocument(doc, 0);
-    expect_sequence_offset_matches_textdocument(doc, 5);
-    expect_sequence_offset_matches_textdocument(doc, 8);
+    expect_sequence_offset_matches_textdocument(doc, 10);
+    expect_sequence_offset_matches_textdocument(doc, 16);
 
     doc.clear();
     DeleteFile(path);
@@ -2215,8 +2225,8 @@ void textdocument_sequence_index_matches_utf16be()
     expect_sequence_line_matches_textdocument(doc, 1);
     expect_sequence_line_matches_textdocument(doc, 2);
     expect_sequence_offset_matches_textdocument(doc, 0);
-    expect_sequence_offset_matches_textdocument(doc, 5);
-    expect_sequence_offset_matches_textdocument(doc, 8);
+    expect_sequence_offset_matches_textdocument(doc, 10);
+    expect_sequence_offset_matches_textdocument(doc, 16);
 
     doc.clear();
     DeleteFile(path);
@@ -2244,8 +2254,8 @@ void textdocument_sequence_index_matches_utf8_bom()
     expect_sequence_line_matches_textdocument(doc, 1);
     expect_sequence_line_matches_textdocument(doc, 2);
     expect_sequence_offset_matches_textdocument(doc, 0);
-    expect_sequence_offset_matches_textdocument(doc, 5);
     expect_sequence_offset_matches_textdocument(doc, 8);
+    expect_sequence_offset_matches_textdocument(doc, 10);
 
     doc.clear();
     DeleteFile(path);
@@ -2254,6 +2264,7 @@ void textdocument_sequence_index_matches_utf8_bom()
 void textdocument_utf8_lf_lazy_lookup_returns_bounded_line()
 {
     TextDocument doc;
+    sequence &seq = TextDocumentLineIndexProbe::seq(doc);
     TCHAR path[MAX_PATH];
     const unsigned char bom[] = { 0xef, 0xbb, 0xbf };
     const char *line = "line UTF-8 LF cafe\xcc\x81 omega \xce\xa9 emoji \xf0\x9f\x98\x80 0123456789\n";
@@ -2263,13 +2274,13 @@ void textdocument_utf8_lf_lazy_lookup_returns_bounded_line()
     const ULONG target_line = static_cast<ULONG>(line_count / 2);
     char *data = new char[file_length];
     TCHAR buf[128];
-    ULONG line_start = 0;
-    ULONG line_no = 0;
-    ULONG roundtrip_start = 0;
-    ULONG roundtrip_len = 0;
+    size_w line_offset = 0;
+    ULONG line_begin;
     ULONG chars;
-    TextLineInfo prevline;
-    TextLineInfo nextline;
+    TextCoord coord;
+    TextCoord prev;
+    TextCoord next;
+    bool exact = false;
 
     memcpy(data, bom, sizeof(bom));
 
@@ -2279,26 +2290,27 @@ void textdocument_utf8_lf_lazy_lookup_returns_bounded_line()
     CHECK(write_temp_file(data, file_length, path));
     CHECK(doc.init(path));
     CHECK(doc.getformat() == NCP_UTF8);
-    CHECK(!doc.lineno_known(target_line));
+    CHECK(!seq.lineno_known(target_line));
 
-    CHECK(doc.lineinfo_from_lineno(target_line, &line_start, &chars));
-    CHECK(line_start == target_line * line_length);
+    CHECK(seq.offset_from_lineno(target_line, &line_offset));
+    line_begin = doc_offset(doc, line_offset);
+    CHECK(line_begin == target_line * line_length);
 
-    CHECK(doc.lineinfo_from_offset(line_start + 20, &line_no, &roundtrip_start, &roundtrip_len));
-    CHECK(line_no == target_line);
-    CHECK(roundtrip_start == line_start);
+    CHECK(doc.coord_from_byte_anchor(line_begin + 20, &coord));
+    CHECK(coord.line_begin == line_begin);
+    CHECK(doc.lineno_from_coord(&coord, &exact) == target_line);
 
-    CHECK(doc.lineinfo_from_offset(line_start + 21, &line_no, &roundtrip_start, &roundtrip_len));
-    CHECK(line_no == target_line);
-    CHECK(roundtrip_start == line_start);
+    CHECK(doc.coord_from_byte_anchor(line_begin + 21, &coord));
+    CHECK(coord.line_begin == line_begin);
+    CHECK(doc.lineno_from_coord(&coord, &exact) == target_line);
 
-    CHECK(doc.previous_lineinfo_from_offset(line_start + 20, 1, &prevline));
-    CHECK(prevline.lineno == target_line - 1);
+    CHECK(doc.previous_line_from_coord(&coord, 1, &prev));
+    CHECK(doc.lineno_from_coord(&prev, &exact) == target_line - 1);
 
-    CHECK(doc.next_lineinfo_from_offset(line_start + 20, 1, &nextline));
-    CHECK(nextline.lineno == target_line + 1);
+    CHECK(doc.next_line_from_coord(&coord, 1, &next));
+    CHECK(doc.lineno_from_coord(&next, &exact) == target_line + 1);
 
-    chars = doc.getline(target_line, buf, 128, &line_start);
+    chars = doc.getline(coord, buf, 128);
     CHECK(chars > 0);
     CHECK(chars < 128);
     CHECK(buf[chars - 1] == '\n');
@@ -2351,13 +2363,13 @@ const test_case tests[] =
     { "linecount_handles_crlf_split_across_spans", linecount_handles_crlf_split_across_spans },
     { "linecount_updates_after_insert_delete_replace", linecount_updates_after_insert_delete_replace },
     { "linecount_restores_on_undo_redo", linecount_restores_on_undo_redo },
-    { "linefromoffset_handles_basic_newlines", linefromoffset_handles_basic_newlines },
-    { "linefromoffset_handles_crlf", linefromoffset_handles_crlf },
-    { "linefromoffset_handles_crlf_split_across_spans", linefromoffset_handles_crlf_split_across_spans },
+    { "lineno_from_offset_handles_basic_newlines", lineno_from_offset_handles_basic_newlines },
+    { "lineno_from_offset_handles_crlf", lineno_from_offset_handles_crlf },
+    { "lineno_from_offset_handles_crlf_split_across_spans", lineno_from_offset_handles_crlf_split_across_spans },
     { "linecount_handles_crlf_split_by_insert", linecount_handles_crlf_split_by_insert },
     { "linecount_handles_cr_lf_adjacent_in_modify_buffer", linecount_handles_cr_lf_adjacent_in_modify_buffer },
-	{ "linebounds_from_offset_handles_crlf_boundaries", linebounds_from_offset_handles_crlf_boundaries },
-	{ "linebounds_from_offset_handles_long_lazy_file_line", linebounds_from_offset_handles_long_lazy_file_line },
+	{ "line_bounds_from_offset_handles_crlf_boundaries", line_bounds_from_offset_handles_crlf_boundaries },
+	{ "line_bounds_from_offset_handles_long_lazy_file_line", line_bounds_from_offset_handles_long_lazy_file_line },
     { "line_scan_mode_handles_utf16le_crlf", line_scan_mode_handles_utf16le_crlf },
     { "line_scan_mode_handles_utf16be_crlf", line_scan_mode_handles_utf16be_crlf },
     { "line_scan_mode_handles_utf32le_crlf", line_scan_mode_handles_utf32le_crlf },
@@ -2374,7 +2386,7 @@ const test_case tests[] =
     { "lazy_file_insert_crlf_updates_visible_line_offsets", lazy_file_insert_crlf_updates_visible_line_offsets },
     { "lazy_file_fully_indexed_keeps_exact_lines", lazy_file_fully_indexed_keeps_exact_lines },
     { "lazy_line_numbers_follow_edits_above", lazy_line_numbers_follow_edits_above },
-    { "textdocument_lineinfo_handles_lazy_end_after_insert", textdocument_lineinfo_handles_lazy_end_after_insert },
+    { "textdocument_coord_handles_lazy_end_after_insert", textdocument_coord_handles_lazy_end_after_insert },
     { "textdocument_final_sparse_line_ignores_estimated_linecount", textdocument_final_sparse_line_ignores_estimated_linecount },
     { "textdocument_ctrl_end_uses_final_page_when_lines_are_lazy", textdocument_ctrl_end_uses_final_page_when_lines_are_lazy },
     { "textdocument_lazy_eof_line_number_maps_back_to_same_line", textdocument_lazy_eof_line_number_maps_back_to_same_line },
@@ -2382,12 +2394,13 @@ const test_case tests[] =
 	{ "textdocument_lazy_offset_lookup_uses_sequence_line_bounds", textdocument_lazy_offset_lookup_uses_sequence_line_bounds },
     { "textdocument_lazy_line_numbers_continue_after_first_page", textdocument_lazy_line_numbers_continue_after_first_page },
     { "textdocument_large_lazy_file_line_estimate_does_not_overflow", textdocument_large_lazy_file_line_estimate_does_not_overflow },
-    { "textdocument_utf16_line_index_uses_utf16_offsets", textdocument_utf16_line_index_uses_utf16_offsets },
-    { "textdocument_utf16be_line_index_uses_utf16_offsets", textdocument_utf16be_line_index_uses_utf16_offsets },
-    { "textdocument_utf8_line_index_uses_utf16_offsets", textdocument_utf8_line_index_uses_utf16_offsets },
+    { "textdocument_utf16_coord_reads_line", textdocument_utf16_coord_reads_line },
+    { "textdocument_utf16be_coord_reads_line", textdocument_utf16be_coord_reads_line },
+    { "textdocument_utf8_coord_reads_line", textdocument_utf8_coord_reads_line },
     { "textdocument_coord_uses_byte_anchor_for_ascii", textdocument_coord_uses_byte_anchor_for_ascii },
     { "textdocument_coord_uses_local_utf8_byte_anchor", textdocument_coord_uses_local_utf8_byte_anchor },
     { "textdocument_coord_resolves_document_end", textdocument_coord_resolves_document_end },
+    { "textdocument_charoffset_only_for_fixed_width", textdocument_charoffset_only_for_fixed_width },
     { "textdocument_coord_moves_by_local_lines", textdocument_coord_moves_by_local_lines },
     { "textdocument_coord_moves_by_local_utf8_lines", textdocument_coord_moves_by_local_utf8_lines },
     { "textdocument_coord_tracks_lazy_eof_after_newline_edits", textdocument_coord_tracks_lazy_eof_after_newline_edits },

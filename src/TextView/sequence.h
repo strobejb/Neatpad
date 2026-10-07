@@ -21,7 +21,7 @@ typedef unsigned long	  size_w;
 const size_w MAX_SEQUENCE_LENGTH = ((size_w)(-1) / sizeof(seqchar));
 const size_w MEM_BLOCK_SIZE = 0x40000;
 const size_w LINE_PAGE_SIZE = 0x10000;		// granularity of each buffer's cached line-break counts
-const size_w LINE_SCAN_AHEAD = 0x400000;	// how far lineoffset() may scan past the exact prefix
+const size_w LINE_SCAN_AHEAD = 0x400000;	// how far offset_from_lineno() may scan past the exact prefix
 
 //
 //	sequence class!
@@ -69,17 +69,17 @@ public:
 	line_scan_mode get_line_scan_mode() const;
 
 	// Exactness checks for sequence line-number facts.
-	bool		line_number_known(size_w line) const;
-	bool		line_numbers_known(size_w offset, size_w length) const;
+	bool		lineno_known(size_w lineno) const;
+	bool		lineno_known_at(size_w offset) const;
 
 	// Build lazy line metadata for a touched sequence range.
 	void		index_lines(size_w offset, size_w length);
 
 	// Physical line lookup. Offsets are sequence offsets; line numbers may be estimated while lazy.
-	bool		next_lineoffset(size_w lineoff, size_w *nextoff) const;
-	bool		linebounds_from_offset(size_w offset, size_w *lineoff, size_w *nextoff);
-	bool		lineoffset(size_w line, size_w *offset) const;
-	bool		linefromoffset(size_w offset, size_w *line, size_w *lineoffset) const;
+	bool		next_line_from_offset(size_w offset, size_w *line_begin) const;
+	bool		line_bounds_from_offset(size_w offset, size_w *line_begin, size_w *line_next);
+	bool		offset_from_lineno(size_w lineno, size_w *line_begin) const;
+	bool		lineno_from_offset(size_w offset, size_w *lineno, size_w *line_begin) const;
 	
 	//
 	// sequence manipulation 
@@ -104,8 +104,6 @@ public:
 	bool		canredo() const;
 	void		group();
 	void		ungroup();
-	size_w		event_index() const  { return undoredo_index; }
-	size_w		event_length() const { return undoredo_length; }
 
 	// Bytes changed by the last undo/redo: [offset, offset + erased) became [offset, offset + inserted).
 	void		event_change(size_w *offset, size_w *erased, size_w *inserted) const;
@@ -185,7 +183,7 @@ private:
 	//	Undo and redo stacks
 	//
 	span_range *	initundo(size_w index, size_w length, action act);
-	void			restore_spanrange(span_range *range, bool undo_or_redo);
+	void			restore_spanrange(span_range *range);
 	void			swap_spanrange(span_range *src, span_range *dest);
 	bool			undoredo(eventstack &source, eventstack &dest);
 	void			clearstack(eventstack &source);
@@ -195,8 +193,6 @@ private:
 	eventstack		redostack;
 	size_t			group_id;
 	size_t			group_refcount;
-	size_w			undoredo_index;
-	size_w			undoredo_length;
 	size_w			change_offset;
 	size_w			change_erased;
 	size_w			change_inserted;

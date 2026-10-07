@@ -179,7 +179,7 @@ LONG TextView::OnLButtonDown(UINT nFlags, int mx, int my)
 
 	if(m_nSelectionMode == SEL_MARGIN)
 	{
-		UpdateCaretCoord(&coord, FALSE, &m_nCaretPosX, &m_nCurrentLine);
+		UpdateCaretCoord(&coord, FALSE, &m_nCaretPosX);
 		m_nAnchorPosX = m_nCaretPosX;
 	}
 	else
@@ -189,8 +189,7 @@ LONG TextView::OnLButtonDown(UINT nFlags, int mx, int my)
 
 	SetCapture(m_hWnd);
 
-	TVNCURSORINFO ci = { { 0 }, coord.line.index, 0, coord.offset_chars };
-	NotifyParent(TVN_CURSOR_CHANGE, (NMHDR *)&ci);
+	NotifyParent(TVN_CURSOR_CHANGE);
 	return 0;
 }
 
@@ -251,7 +250,7 @@ LONG TextView::OnLButtonDblClick(UINT nFlags, int mx, int my)
 
 		// update caret position
 		InvalidateRange(&m_selAnchor, &m_cursorPos);
-		UpdateCaretCoord(&m_cursorPos, TRUE, &m_nCaretPosX, &m_nCurrentLine);
+		UpdateCaretCoord(&m_cursorPos, TRUE, &m_nCaretPosX);
 		m_nAnchorPosX = m_nCaretPosX;
 
 		NotifyParent(TVN_CURSOR_CHANGE);
@@ -472,7 +471,6 @@ BOOL TextView::MouseCoordToTextCoord(	int		 mx,			// [in]  mouse x-coord
 										int		*psnappedX		// [out] adjusted x coord of caret
 										)
 {
-	ULONG off_chars = 0;
 	RECT  rect;
 	int	  cp;
 	TextCoord lineCoord;
@@ -511,7 +509,7 @@ BOOL TextView::MouseCoordToTextCoord(	int		 mx,			// [in]  mouse x-coord
 	mx += m_nHScrollPos * m_nFontWidth;
 
 	// get the USPDATA object for the selected line!!
-		USPDATA *uspData = GetUspData(0, &lineCoord, &off_chars);
+		USPDATA *uspData = GetUspData(0, &lineCoord);
 
 	if(uspData == 0)
 	{
@@ -680,19 +678,16 @@ VOID TextView::UpdateCaretXY(int xpos, TextCoord *coord)
 		SetCaretPos(xpos, row * m_nLineHeight);
 }
 
-VOID TextView::UpdateCaretCoord(TextCoord *coord, BOOL fTrailing, int *outx, ULONG *outlineno)
+VOID TextView::UpdateCaretCoord(TextCoord *coord, BOOL fTrailing, int *outx)
 {
-	ULONG		lineno = 0;
 	int			xpos = 0;
 	ULONG		off_chars;
 	USPDATA	  * uspData;
 
 	if(coord)
 	{
-		lineno = coord->line.index;
 		off_chars = coord->line_offset_chars;
 		m_cursorPos = *coord;
-		m_nCurrentLine = lineno;
 
 		// locate the USPDATA for this line
 		if((uspData = GetUspData(NULL, coord)) != 0)
@@ -712,7 +707,6 @@ VOID TextView::UpdateCaretCoord(TextCoord *coord, BOOL fTrailing, int *outx, ULO
 	}
 	
 	if(outx)	  *outx = xpos;
-	if(outlineno) *outlineno = lineno;
 }
 
 bool TextView::SetCursorCoord(TextCoord *coord)
@@ -721,8 +715,6 @@ bool TextView::SetCursorCoord(TextCoord *coord)
 		return false;
 
 	m_cursorPos = *coord;
-	m_nCurrentLine = coord->line.index;
-
 	return true;
 }
 

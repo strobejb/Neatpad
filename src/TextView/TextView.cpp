@@ -54,9 +54,7 @@ TextView::TextView(HWND hwnd)
 	
 
 	// Scrollbar related data
-	m_nVScrollPos = 0;
 	m_nHScrollPos = 0;
-	m_nVScrollMax = 0;
 	m_nHScrollMax = 0;
 
 	// Display-related data
@@ -108,7 +106,6 @@ TextView::TextView(HWND hwnd)
 	m_hImageList		= 0;
 	
 	m_nSelectionType	= SEL_NONE;
-	m_nCurrentLine		= 0;
 
 	m_nLinenoWidth		= 0;
 	m_nCaretPosX		= 0;
@@ -377,6 +374,9 @@ ULONG TextView::SelectAll()
 //
 LONG WINAPI TextView::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 {
+	ULONG offset_chars;
+	bool  exact;
+
 	switch(msg)
 	{
 	// Draw contents of TextView whenever window needs updating
@@ -526,11 +526,12 @@ LONG WINAPI TextView::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 	case TXM_SETSELALL:
 		return SelectAll();
 
+	// only cheap for fixed-width encodings: -1 for the others
 	case TXM_GETCURPOS:
-		return m_cursorPos.offset_chars;
+		return m_pTextDoc->charoffset_from_coord(&m_cursorPos, &offset_chars) ? offset_chars : -1;
 
 	case TXM_GETCURLINE:
-		return m_nCurrentLine;
+		return m_pTextDoc->lineno_from_coord(&m_cursorPos, &exact);
 
 	case TXM_GETCURCOL:
 		return m_cursorPos.line_offset_chars;
@@ -539,7 +540,8 @@ LONG WINAPI TextView::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 		return m_nEditMode;
 
 	case TXM_GETCURLINEKNOWN:
-		return m_pTextDoc->lineno_known(m_nCurrentLine);
+		m_pTextDoc->lineno_from_coord(&m_cursorPos, &exact);
+		return exact;
 
 	case TXM_SETEDITMODE:
 		lParam		= m_nEditMode;

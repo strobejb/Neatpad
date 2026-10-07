@@ -24,8 +24,11 @@ LONG TextView::OpenFile(TCHAR *szFileName)
 	if(m_pTextDoc->init(szFileName))
 	{
 		TCHAR linebuf[TEXTBUFSIZE];
-		ULONG lineoff = 0;
-		ULONG linelen = m_pTextDoc->getline(0, linebuf, TEXTBUFSIZE, &lineoff);
+		TextCoord start;
+		ULONG linelen;
+
+		m_pTextDoc->coord_from_byte_anchor(0, &start);
+		linelen = m_pTextDoc->getline(start, linebuf, TEXTBUFSIZE);
 
 		if(linelen >= 2 && linebuf[linelen - 2] == '\r' && linebuf[linelen - 1] == '\n')
 			m_nCRLFMode = TXL_CRLF;
@@ -37,13 +40,9 @@ LONG TextView::OpenFile(TCHAR *szFileName)
 		m_nLineCount   = m_pTextDoc->linecount();
 		m_nLongestLine = m_pTextDoc->longestline(m_nTabWidthChars);
 
-		m_nVScrollPos  = 0;
 		m_nHScrollPos  = 0;
 
-		TextCoord start;
-
-		if(m_pTextDoc->coord_from_byte_anchor(0, &start))
-			SetCursorCoord(&start);
+		SetCursorCoord(&start);
 
 		m_selAnchor = m_cursorPos;
 		m_scrollVPos = m_cursorPos;
@@ -72,10 +71,8 @@ LONG TextView::ClearFile()
 	m_nLineCount		= m_pTextDoc->linecount();
 	m_nLongestLine		= m_pTextDoc->longestline(m_nTabWidthChars);
 
-	m_nVScrollPos		= 0;
 	m_nHScrollPos		= 0;
 
-	m_nCurrentLine		= 0;
 	m_cursorPos			= TextCoord();
 	m_scrollVPos		= TextCoord();
 	m_selAnchor			= TextCoord();

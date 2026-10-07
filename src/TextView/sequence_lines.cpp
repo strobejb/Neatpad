@@ -12,7 +12,7 @@
 	depends only on the span's own bytes), stays valid until the line scan mode
 	changes. A line number is exact when every span before it has a known count.
 	Memory-backed text can always be counted; file pages are only read when asked
-	to by index_lines(), by the first block counted on open, or by lineoffset()
+	to by index_lines(), by the first block counted on open, or by offset_from_lineno()
 	scanning a little way past the exact prefix.
 
 	Line breaks are CR, LF and CRLF in the code units of the line scan mode. A
@@ -1129,34 +1129,31 @@ bool sequence::linecount_known() const
 }
 
 //
-//	sequence::line_number_known
+//	sequence::lineno_known
 //
 //	Return true if this line number is exact.
 //
-bool sequence::line_number_known(size_w line) const
+bool sequence::lineno_known(size_w lineno) const
 {
 	if(sequence_length == 0)
 		return false;
 
 	update_line_prefix();
-	return line <= prefix_breaks;
+	return lineno <= prefix_breaks;
 }
 
 //
-//	sequence::line_numbers_known
+//	sequence::lineno_known_at
 //
-//	Return true if the line numbers of every offset in this range are exact.
+//	Return true if the line number at this offset is exact.
 //
-bool sequence::line_numbers_known(size_w offset, size_w length) const
+bool sequence::lineno_known_at(size_w offset) const
 {
-	if(length == 0)
-		return true;
-
-	if(offset > sequence_length || length > sequence_length - offset)
+	if(offset > sequence_length)
 		return false;
 
 	update_line_prefix();
-	return prefix_complete || offset + length <= prefix_end;
+	return prefix_complete || offset <= prefix_end;
 }
 
 //
@@ -1173,47 +1170,47 @@ void sequence::index_lines(size_w offset, size_w length)
 }
 
 //
-//	sequence::next_lineoffset
+//	sequence::next_line_from_offset
 //
-//  Find the next physical line start after lineoff, scanning forward only as far as needed.
+//  Find the start of the line after the one containing offset, scanning forward only as far as needed.
 //
-bool sequence::next_lineoffset(size_w lineoff, size_w *nextoff) const
+bool sequence::next_line_from_offset(size_w offset, size_w *line_begin) const
 {
-	return next_line_start(lineoff, nextoff);
+	return next_line_start(offset, line_begin);
 }
 
 //
-//	sequence::linebounds_from_offset
+//	sequence::line_bounds_from_offset
 //
 //	Return the exact physical line bounds around an offset without requiring
 //	an exact global line number.
 //
-bool sequence::linebounds_from_offset(size_w offset, size_w *lineoff, size_w *nextoff)
+bool sequence::line_bounds_from_offset(size_w offset, size_w *line_begin, size_w *line_next)
 {
-	if(lineoff == 0 || nextoff == 0 || sequence_length == 0 || offset > sequence_length)
+	if(line_begin == 0 || line_next == 0 || sequence_length == 0 || offset > sequence_length)
 		return false;
 
-	return line_start_at(offset, lineoff) && next_line_start(offset, nextoff);
+	return line_start_at(offset, line_begin) && next_line_start(offset, line_next);
 }
 
 //
-//	sequence::lineoffset
+//	sequence::offset_from_lineno
 //
 //	Return the offset at the start of the requested line. Exact within the
 //	exact prefix; past it the line is located by estimate.
 //
-bool sequence::lineoffset(size_w line, size_w *offset) const
+bool sequence::offset_from_lineno(size_w lineno, size_w *line_begin) const
 {
 	size_w stop;
 	size_w breaks;
 	size_w numlines;
 
-	if(offset == 0 || sequence_length == 0)
+	if(line_begin == 0 || sequence_length == 0)
 		return false;
 
-	if(line == 0)
+	if(lineno == 0)
 	{
-		*offset = 0;
+		*line_begin = 0;
 		return true;
 	}
 
@@ -1221,43 +1218,43 @@ bool sequence::lineoffset(size_w line, size_w *offset) const
 
 	// A line estimated to be near the exact prefix (or in a small remainder) is
 	// cheap to make exact. With no breaks seen yet there is nothing to estimate from.
-	if(!prefix_complete && line > prefix_breaks)
+	if(!prefix_complete && lineno > prefix_breaks)
 	{
 		size_w density_breaks;
 		size_w density_bytes;
 		size_w distance;
 
 		line_density(&density_breaks, &density_bytes);
-		distance = density_breaks ? estimate_muldiv(line - prefix_breaks, density_bytes, density_breaks) : MAX_SEQUENCE_LENGTH;
+		distance = density_breaks ? estimate_muldiv(lineno - prefix_breaks, density_bytes, density_breaks) : MAX_SEQUENCE_LENGTH;
 
 		if(distance <= LINE_SCAN_AHEAD || sequence_length - prefix_end <= LINE_SCAN_AHEAD)
-			extend_line_prefix(line, 0);
+			extend_line_prefix(lineno, 0);
 	}
 
-	if(line <= prefix_breaks)
-		return count_breaks_to(sequence_length, line, &stop, &breaks) && scan_to_line(stop, breaks, line, offset);
+	if(lineno <= prefix_breaks)
+		return count_breaks_to(sequence_length, lineno, &stop, &breaks) && scan_to_line(stop, breaks, lineno, line_begin);
 
 	if(prefix_complete)
 		return false;
 
 	numlines = estimated_line_from_offset(sequence_length) + 1;
 
-	if(line >= numlines)
+	if(lineno >= numlines)
 		return false;
 
-	if(line + 1 == numlines)
-		return line_start_at(sequence_length, offset);
+	if(lineno + 1 == numlines)
+		return line_start_at(sequence_length, line_begin);
 
-	return estimated_offset_from_line(line, offset);
+	return estimated_offset_from_line(lineno, line_begin);
 }
 
 //
-//	sequence::linefromoffset
+//	sequence::lineno_from_offset
 //
 //	Return the line number and line start for an offset. The line start is
-//	always exact; the number is exact when line_number_known() says so.
+//	always exact; the number is exact when lineno_known_at() says so.
 //
-bool sequence::linefromoffset(size_w offset, size_w *line, size_w *lineoffset) const
+bool sequence::lineno_from_offset(size_w offset, size_w *lineno, size_w *line_begin) const
 {
 	if(sequence_length == 0 || offset > sequence_length)
 		return false;
@@ -1266,23 +1263,23 @@ bool sequence::linefromoffset(size_w offset, size_w *line, size_w *lineoffset) c
 
 	// Stepping just past the exact prefix (moving down a line) extends it a page;
 	// anything further away, such as the end of a huge file, stays an estimate.
-	if(line && !prefix_complete && offset > prefix_end && offset - prefix_end <= LINE_PAGE_SIZE)
+	if(lineno && !prefix_complete && offset > prefix_end && offset - prefix_end <= LINE_PAGE_SIZE)
 		extend_line_prefix(0, offset);
 
-	if(line)
+	if(lineno)
 	{
 		if(prefix_complete || offset <= prefix_end)
 		{
-			if(!exact_line_from_offset(offset, line))
+			if(!exact_line_from_offset(offset, lineno))
 				return false;
 		}
 		else
 		{
-			*line = estimated_line_from_offset(offset);
+			*lineno = estimated_line_from_offset(offset);
 		}
 	}
 
-	if(lineoffset && !line_start_at(offset, lineoffset))
+	if(line_begin && !line_start_at(offset, line_begin))
 		return false;
 
 	return true;

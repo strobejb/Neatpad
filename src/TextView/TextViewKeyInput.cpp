@@ -171,25 +171,16 @@ BOOL TextView::BackDelete()
 
 void TextView::UpdateViewState(BOOL fAdvancing)
 {
-	TextCoord eofCoord;
-	bool atDocumentEnd;
-
 	m_nLineCount   = m_pTextDoc->linecount();
 
 	UpdateMetrics();
 	UpdateMarginWidth();
 	SetupScrollbars();
 
-	atDocumentEnd = m_pTextDoc->coord_from_document_end(&eofCoord) && m_cursorPos.byte_anchor >= eofCoord.byte_anchor;
-
-	UpdateCaretCoord(atDocumentEnd ? &eofCoord : &m_cursorPos, fAdvancing, &m_nCaretPosX, &m_nCurrentLine);
+	UpdateCaretCoord(&m_cursorPos, fAdvancing, &m_nCaretPosX);
 	m_nAnchorPosX = m_nCaretPosX;
 
-	if(atDocumentEnd)
-		ScrollToDocumentEnd(&m_cursorPos);
-	else
-		ScrollToCaret();
-
+	ScrollToCaret();
 	RepositionCaret();
 }
 

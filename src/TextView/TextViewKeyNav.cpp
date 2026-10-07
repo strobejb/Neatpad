@@ -97,7 +97,7 @@ VOID TextView::MoveLineUp(int numLines)
 	int				  charPos;
 	BOOL			  trailing;
 
-	if(numLines <= 0 || m_pTextDoc->text_length() == 0)
+	if(numLines <= 0 || m_pTextDoc->byte_length() == 0)
 		return;
 
 	if(!m_pTextDoc->previous_line_from_coord(&m_cursorPos, numLines, &target))
@@ -126,7 +126,7 @@ VOID TextView::MoveLineDown(int numLines)
 	int				  charPos;
 	BOOL			  trailing;
 
-	if(numLines <= 0 || m_pTextDoc->text_length() == 0)
+	if(numLines <= 0 || m_pTextDoc->byte_length() == 0)
 		return;
 
 	if(!m_pTextDoc->next_line_from_coord(&m_cursorPos, numLines, &target))
@@ -364,15 +364,9 @@ VOID TextView::MoveFileEnd()
 	TextCoord coord;
 
 	if(m_pTextDoc->coord_from_document_end(&coord))
-	{
 		SetCursorCoord(&coord);
-		ScrollToDocumentEnd(&coord);
-	}
-	else
-	{
-		ScrollToDocumentEnd();
-	}
 
+	ScrollToDocumentEnd();
 	RefreshWindow();
 }
 
@@ -488,12 +482,21 @@ LONG TextView::OnKeyDown(UINT nKeyCode, UINT nFlags)
 		else			MoveLineDown(1);
 		break;
 
+	// page up/down scroll the view and the caret together, so the caret keeps its row
 	case VK_PRIOR:
-		if(!fCtrlDown)	MoveLineUp(m_nWindowLines);
+		if(!fCtrlDown)
+		{
+			Scroll(0, -m_nWindowLines);
+			MoveLineUp(m_nWindowLines);
+		}
 		break;
 
 	case VK_NEXT:
-		if(!fCtrlDown)	MoveLineDown(m_nWindowLines);
+		if(!fCtrlDown)
+		{
+			Scroll(0, m_nWindowLines);
+			MoveLineDown(m_nWindowLines);
+		}
 		break;
 
 	case VK_HOME:
@@ -530,7 +533,7 @@ LONG TextView::OnKeyDown(UINT nKeyCode, UINT nFlags)
 	}
 
 	// update caret-location (xpos, line#)
-	UpdateCaretCoord(&m_cursorPos, fAdvancing, &m_nCaretPosX, &m_nCurrentLine);
+	UpdateCaretCoord(&m_cursorPos, fAdvancing, &m_nCaretPosX);
 	
 	// maintain the caret 'anchor' position *except* for up/down actions
 	if(nKeyCode != VK_UP && nKeyCode != VK_DOWN)

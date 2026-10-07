@@ -26,7 +26,6 @@ typedef struct
 {
 	USPDATA *uspData;
 	ULONG	 line_begin;	// byte offset of the line's start (cache key; flushed on every edit)
-	ULONG	 offset;		// offset (in WCHAR's) of this line
 	ULONG	 usage;			// cache-count
 
 	int		 length;		// length in chars INCLUDING CR/LF
@@ -145,8 +144,8 @@ private:
 	VOID		UpdateLine(TextCoord *line);
 
 
-	int			ApplyTextAttributes(TextCoord *line, ULONG offset, ULONG &nColumn, TCHAR *szText, int nTextLen, ATTR *attr);
-	int			ApplySelection(USPDATA *uspData, TextCoord *line, ULONG nOffset, ULONG nTextLen);
+	int			ApplyTextAttributes(TextCoord *line, ULONG &nColumn, TCHAR *szText, int nTextLen, ATTR *attr);
+	int			ApplySelection(USPDATA *uspData, TextCoord *line, ULONG nTextLen);
 	int			SyntaxColour(TCHAR *szText, ULONG nTextLen, ATTR *attr);
 	int			StripCRLF(TCHAR *szText, ATTR *attrList, int nLength, bool fAllow);
 	void		MarkCRLF(USPDATA *uspData, TCHAR *szText, int nLength, ATTR *attr);
@@ -182,7 +181,7 @@ private:
 	VOID		RepositionCaret();
 	//VOID		MoveCaret(int x, int y);
 	VOID		UpdateCaretXY(int x, TextCoord *coord);
-	VOID		UpdateCaretCoord(TextCoord *coord, BOOL fTrailing, int *outx=0, ULONG *outlineno=0);
+	VOID		UpdateCaretCoord(TextCoord *coord, BOOL fTrailing, int *outx=0);
 	VOID		UpdateViewState(BOOL fAdvancing);
 	bool		SetCursorCoord(TextCoord *coord);
 
@@ -223,16 +222,14 @@ private:
 	HRGN		ScrollRgn(int dx, int dy, bool fReturnUpdateRgn);
 	void		Scroll(int dx, int dy);
 	bool		SetScrollCoord(TextCoord *coord);
-	bool		SetScrollLineIndex(ULONG lineno);
+	bool		LastScrollCoord(TextCoord *top);
 	VOID		AdjustCoordsForChange(TextChange *change);
 	bool		ViewportLineFromRow(ULONG row, TextCoord *coord);
 	bool		ViewportRowFromLine(TextCoord *line, ULONG *row);
 	int			ScrollVByLines(int dy);
 	void		ScrollToCaret();
 	void		ScrollToCoord(int xpos, TextCoord *coord);
-	void		ScrollToPosition(int xpos, ULONG lineno);
 	void		ScrollToDocumentEnd();
-	void		ScrollToDocumentEnd(TextCoord *eofCoord);
 	VOID		SetupScrollbars();
 	VOID		UpdateMetrics();
 	VOID		RecalcLineHeight();
@@ -282,9 +279,7 @@ private:
 	int			m_nHeightBelow;
 
 	// Scrollbar-related data
-	ULONG		m_nVScrollPos;
-	TextCoord	m_scrollVPos;
-	ULONG		m_nVScrollMax;
+	TextCoord	m_scrollVPos;		// top line of the view
 	int			m_nHScrollPos;
 	int			m_nHScrollMax;
 
@@ -297,7 +292,6 @@ private:
 	TextCoord	m_cursorPos;
 	TextCoord	m_selAnchor;
 	TextCoord	m_selMarginLine;	// line clicked in the margin during a margin selection
-	ULONG		m_nCurrentLine;
 	int			m_nCaretPosX;
 	int			m_nAnchorPosX;
 	
@@ -333,8 +327,8 @@ private:
 
 	// Cache for USPDATA objects
 	USPCACHE    *m_uspCache;
-	USPDATA		*GetUspData(HDC hdc, TextCoord *coord, ULONG *nOffset=0);
-	USPCACHE    *GetUspCache(HDC hdc, TextCoord *coord, ULONG *nOffset=0);
+	USPDATA		*GetUspData(HDC hdc, TextCoord *coord);
+	USPCACHE    *GetUspCache(HDC hdc, TextCoord *coord);
 
 	TextDocument *m_pTextDoc;
 };
