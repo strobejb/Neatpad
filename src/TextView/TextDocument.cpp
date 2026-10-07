@@ -297,6 +297,11 @@ size_w TextDocument::byte_length()
 	return m_seq.size() - m_nHeaderSize;
 }
 
+size_w TextDocument::file_length()
+{
+	return m_seq.size();
+}
+
 TextReader TextDocument::text_from_range(const TextCoord *from, const TextCoord *to)
 {
 	size_w offset = min(from->byte_anchor, to->byte_anchor);

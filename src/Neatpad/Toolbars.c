@@ -65,7 +65,7 @@ void SetStatusBarParts(HWND hwndSB)
 	parentwidth = r.right < 620 ? 620 : r.right;
 	parts[STATUS_PART_CURSOR]   = 270;
 	parts[STATUS_PART_MESSAGE]  = parentwidth - 665;
-	parts[STATUS_PART_EDITMODE] = parentwidth - 410;
+	parts[STATUS_PART_DOCSTATS] = parentwidth - 410;
 	parts[STATUS_PART_LINEFMT]  = parentwidth - 220;
 	parts[STATUS_PART_ENCODING] = parentwidth;
 
@@ -117,7 +117,7 @@ HWND CreateStatusBar (HWND hwndParent)
 
 	SetStatusBarText(hwndSB, STATUS_PART_CURSOR,   0,  _T(" Ln %d, Col %d"), 1, 1);
 	SetStatusBarText(hwndSB, STATUS_PART_MESSAGE,  1,  _T(""));
-	//SetStatusBarText(hwndSB, STATUS_PART_EDITMODE, 0,  _T(" INS"));
+	SetStatusBarText(hwndSB, STATUS_PART_DOCSTATS, 0,  _T(""));
 	SetStatusBarText(hwndSB, STATUS_PART_LINEFMT,  0,  _T(" CRLF"));
 	SetStatusBarText(hwndSB, STATUS_PART_ENCODING, 0, _T(" ASCII"));
 

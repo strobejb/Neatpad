@@ -1,5 +1,6 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <winioctl.h>
 
 #include <stdio.h>
 #include <string.h>
@@ -202,6 +203,49 @@ bool write_numbered_lines_file(size_t line_count, TCHAR path[MAX_PATH])
         DeleteFile(path);
         path[0] = 0;
     }
+
+    return ok;
+}
+
+// A file just over 4GB: text at the start and the end, and zeros between them
+const unsigned long long LARGE_FILE_SIZE = 0x100000000ULL + 0x100000;
+const char LARGE_FILE_HEAD[] = "first line\r\n";
+const char LARGE_FILE_TAIL[] = "\r\nsecond to last\r\nlast line";
+
+// Write such a file sparsely, so only the text takes disk space. Returns false
+// where the volume can't make sparse files; the tests that need one then skip.
+bool write_sparse_file(const char *head, const char *tail, unsigned long long size, TCHAR path[MAX_PATH])
+{
+    TCHAR temp_path[MAX_PATH];
+    LARGE_INTEGER pos;
+    HANDLE hFile;
+    DWORD bytes;
+    bool ok;
+
+    path[0] = 0;
+
+    if(GetTempPath(MAX_PATH, temp_path) == 0 || GetTempFileName(temp_path, TEXT("seq"), 0, path) == 0)
+        return false;
+
+    hFile = CreateFile(path, GENERIC_READ | GENERIC_WRITE, 0, 0, CREATE_ALWAYS, 0, 0);
+
+    if(hFile == INVALID_HANDLE_VALUE)
+    {
+        DeleteFile(path);
+        return false;
+    }
+
+    pos.QuadPart = static_cast<LONGLONG>(size - strlen(tail));
+
+    ok = DeviceIoControl(hFile, FSCTL_SET_SPARSE, 0, 0, 0, 0, &bytes, 0) &&
+         WriteFile(hFile, head, static_cast<DWORD>(strlen(head)), &bytes, 0) &&
+         SetFilePointerEx(hFile, pos, 0, FILE_BEGIN) &&
+         WriteFile(hFile, tail, static_cast<DWORD>(strlen(tail)), &bytes, 0);
+
+    CloseHandle(hFile);
+
+    if(!ok)
+        DeleteFile(path);
 
     return ok;
 }
@@ -1689,6 +1733,95 @@ void textdocument_large_lazy_file_line_estimate_does_not_overflow()
     DeleteFile(path);
 }
 
+void open_file_larger_than_4gb()
+{
+    sequence seq;
+    TCHAR path[MAX_PATH];
+    const size_w size = LARGE_FILE_SIZE;
+    const size_w tail_length = strlen(LARGE_FILE_TAIL);
+    const size_w last_line = size - strlen("last line");
+    char buf[64];
+    size_w line_begin = 0;
+    size_w line_next = 0;
+    size_w lineno = 0;
+
+    if(!write_sparse_file(LARGE_FILE_HEAD, LARGE_FILE_TAIL, LARGE_FILE_SIZE, path))
+    {
+        printf("open_file_larger_than_4gb: skipped, no sparse file support\n");
+        return;
+    }
+
+    CHECK(size == LARGE_FILE_SIZE);
+    CHECK(seq.open(path, true));
+    CHECK(seq.size() == LARGE_FILE_SIZE);
+
+    // reading beyond 4GB
+    CHECK(seq.render(size - tail_length, reinterpret_cast<seqchar *>(buf), tail_length) == tail_length);
+    CHECK(memcmp(buf, LARGE_FILE_TAIL, static_cast<size_t>(tail_length)) == 0);
+
+    // lines beyond 4GB are found locally, and numbered by estimate
+    CHECK(seq.line_bounds_from_offset(size - 3, &line_begin, &line_next));
+    CHECK(line_begin == last_line);
+    CHECK(line_next == size);
+    CHECK(seq.lineno_from_offset(size, &lineno, &line_begin));
+    CHECK(line_begin == last_line);
+    CHECK(!seq.lineno_known_at(size));
+
+    seq.clear();
+    DeleteFile(path);
+}
+
+void textdocument_edits_beyond_4gb()
+{
+    TextDocument doc;
+    TCHAR path[MAX_PATH];
+    TCHAR bang[] = TEXT("!");
+    const size_w size = LARGE_FILE_SIZE;
+    const size_w last_line = size - strlen("last line");
+    TextCoord eof;
+    TextCoord prev;
+    TextChange change;
+    TCHAR buf[32];
+    bool exact = true;
+
+    if(!write_sparse_file(LARGE_FILE_HEAD, LARGE_FILE_TAIL, LARGE_FILE_SIZE, path))
+    {
+        printf("textdocument_edits_beyond_4gb: skipped, no sparse file support\n");
+        return;
+    }
+
+    CHECK(size == LARGE_FILE_SIZE);
+    CHECK(doc.init(path));
+    CHECK(doc.byte_length() == LARGE_FILE_SIZE);
+
+    CHECK(doc.coord_from_document_end(&eof));
+    CHECK(eof.byte_anchor == size);
+    CHECK(eof.line_begin == last_line);
+    CHECK(eof.line_offset_chars == 9);
+    doc.lineno_from_coord(&eof, &exact);
+    CHECK(!exact);
+
+    CHECK(doc.previous_line_from_coord(&eof, 1, &prev));
+    CHECK(prev.line_next == last_line);
+    CHECK(doc.getline(prev, buf, 32) == 16);
+    CHECK(memcmp(buf, TEXT("second to last\r\n"), 16 * sizeof(TCHAR)) == 0);
+
+    // an edit beyond 4GB, and a coordinate moved across it
+    CHECK(doc.insert_text(&eof, bang, 1, &change) == 1);
+    CHECK(change.offset == size && change.erased == 0 && change.inserted == 1);
+    CHECK(doc.byte_length() == size + 1);
+    CHECK(doc.coord_after_change(&eof, &change));
+    CHECK(eof.byte_anchor == size);
+    CHECK(eof.line_next == size + 1);
+
+    CHECK(doc.undo(&change));
+    CHECK(change.offset == size && change.erased == 1 && change.inserted == 0);
+    CHECK(doc.byte_length() == size);
+
+    doc.clear();
+    DeleteFile(path);
+}
+
 void textdocument_utf16_coord_reads_line()
 {
     TextDocument doc;
@@ -2000,11 +2133,16 @@ void textdocument_charoffset_only_for_fixed_width()
         if(encodings[i] == DOC_UTF8_BOM)
         {
             CHECK(!doc.charoffset_from_coord(&coord, &offset_chars));
+            CHECK(!doc.charcount(&offset_chars));
         }
         else
         {
             CHECK(doc.charoffset_from_coord(&coord, &offset_chars));
             CHECK(offset_chars == 6);
+
+            // the whole document, without the BOM
+            CHECK(doc.charcount(&offset_chars));
+            CHECK(offset_chars == 8);
         }
 
         doc.clear();
@@ -2487,6 +2625,8 @@ const test_case tests[] =
 	{ "textdocument_lazy_offset_lookup_uses_sequence_line_bounds", textdocument_lazy_offset_lookup_uses_sequence_line_bounds },
     { "textdocument_lazy_line_numbers_continue_after_first_page", textdocument_lazy_line_numbers_continue_after_first_page },
     { "textdocument_large_lazy_file_line_estimate_does_not_overflow", textdocument_large_lazy_file_line_estimate_does_not_overflow },
+    { "open_file_larger_than_4gb", open_file_larger_than_4gb },
+    { "textdocument_edits_beyond_4gb", textdocument_edits_beyond_4gb },
     { "textdocument_utf16_coord_reads_line", textdocument_utf16_coord_reads_line },
     { "textdocument_utf16be_coord_reads_line", textdocument_utf16be_coord_reads_line },
     { "textdocument_utf8_coord_reads_line", textdocument_utf8_coord_reads_line },

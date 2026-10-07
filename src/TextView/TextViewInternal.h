@@ -255,6 +255,8 @@ private:
 	//
 	HMENU		CreateContextMenu();
 	LRESULT		NotifyParent(UINT nNotifyCode, NMHDR *optional = 0);
+	VOID		NotifyCursorChange();
+	VOID		FillCursorInfo(TVNCURSORINFO *info);
 
 
 

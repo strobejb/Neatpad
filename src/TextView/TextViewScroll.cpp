@@ -10,46 +10,74 @@
 #define WIN32_LEAN_AND_MEAN
 
 #include <windows.h>
-#include <limits.h>
 #include <tchar.h>
 #include "TextView.h"
 #include "TextViewInternal.h"
 
 bool IsKeyPressed(UINT nVirtKey);
 
-static int ScrollIntFromSize(size_w value)
+//
+//	64-bit scrollbars (www.catch22.net/tuts/win32/64bit-scrollbars): a range that
+//	fits a 32-bit scrollbar is used as it is, and a larger one is scaled down to
+//	0..WIN16_SCROLLBAR_MAX by a whole-number divisor
+//
+#define WIN16_SCROLLBAR_MAX 0x7fff
+#define WIN32_SCROLLBAR_MAX 0x7fffffff
+
+//
+//	Wrapper around SetScrollInfo, performs scaling to allow massive 64bit scroll
+//	ranges. The page is in the same units as the range (bytes), so it is scaled too.
+//
+static BOOL SetScrollInfo64(HWND hwnd, int nBar, UINT fMask, size_w nMax64, size_w nPos64, size_w nPage64, BOOL fRedraw)
 {
-	return value > (size_w)INT_MAX ? INT_MAX : (int)value;
+	SCROLLINFO si = { sizeof(si), fMask };
+
+	// normal scroll range requires no adjustment
+	if(nMax64 <= WIN32_SCROLLBAR_MAX)
+	{
+		si.nMin  = 0;
+		si.nMax  = (int)nMax64;
+		si.nPage = (UINT)nPage64;
+		si.nPos  = (int)nPos64;
+	}
+	// scale the scroll range down into allowed bounds
+	else
+	{
+		size_w unit = nMax64 / WIN16_SCROLLBAR_MAX;
+
+		si.nMin  = 0;
+		si.nMax  = WIN16_SCROLLBAR_MAX;
+		si.nPage = (UINT)max(nPage64 / unit, (size_w)1);
+		si.nPos  = (int)min(nPos64 / unit, (size_w)WIN16_SCROLLBAR_MAX);
+	}
+
+	return SetScrollInfo(hwnd, nBar, &si, fRedraw);
 }
 
-static UINT ScrollPageFromSize(size_w value)
+//
+//	Wrapper around GetScrollInfo, returns 64bit scrollbar position.
+//	fMask must be either SIF_POS or SIF_TRACKPOS
+//
+static size_w GetScrollPos64(HWND hwnd, int nBar, UINT fMask, size_w nMax64)
 {
-	return value > (size_w)UINT_MAX ? UINT_MAX : (UINT)value;
-}
+	SCROLLINFO si = { sizeof(si), fMask | SIF_PAGE };
+	size_w nPos32;
 
-static int ScrollPosFromOffset(size_w offset, size_w docBytes)
-{
-	if(docBytes <= (size_w)INT_MAX)
-		return ScrollIntFromSize(offset);
+	if(!GetScrollInfo(hwnd, nBar, &si))
+		return 0;
 
-	return (int)((long double)offset * INT_MAX / (docBytes - 1));
-}
+	nPos32 = (fMask & SIF_TRACKPOS) ? si.nTrackPos : si.nPos;
 
-static UINT ScrollPageFromBytes(size_w pageBytes, size_w docBytes)
-{
-	if(docBytes <= (size_w)INT_MAX)
-		return ScrollPageFromSize(pageBytes);
+	// normal scroll range requires no adjustment
+	if(nMax64 <= WIN32_SCROLLBAR_MAX)
+		return nPos32;
 
-	size_w page = (size_w)((long double)pageBytes * INT_MAX / docBytes);
-	return ScrollPageFromSize(max(page, (size_w)1));
-}
+	// special-case: the thumb at the very end shows the end of the document
+	if(nPos32 >= WIN16_SCROLLBAR_MAX - si.nPage + 1)
+		return nMax64;
 
-static size_w ScrollOffsetFromPos(int pos, size_w docBytes)
-{
-	if(docBytes <= (size_w)INT_MAX)
-		return (size_w)max(pos, 0);
-
-	return (size_w)((long double)max(pos, 0) * (docBytes - 1) / INT_MAX);
+	// adjust the scroll position to be relative to maximum value
+	return nPos32 * (nMax64 / WIN16_SCROLLBAR_MAX);
 }
 
 //
@@ -77,20 +105,16 @@ VOID TextView::SetupScrollbars()
 	//
 	pageEnd = ViewportLineFromRow(m_nWindowLines, &belowWindow) ? belowWindow.line_begin : docBytes;
 
-	si.nPos  = ScrollPosFromOffset(m_scrollVPos.line_begin, docBytes);
-	si.nPage = ScrollPageFromBytes(max(pageEnd - m_scrollVPos.line_begin, (size_w)1), docBytes);
-	si.nMin  = 0;
-	si.nMax  = docBytes > (size_w)INT_MAX ? INT_MAX : (docBytes ? ScrollIntFromSize(docBytes - 1) : 0);
-
-	SetScrollInfo(m_hWnd, SB_VERT, &si, TRUE);
+	SetScrollInfo64(m_hWnd, SB_VERT, si.fMask, docBytes ? docBytes - 1 : 0, m_scrollVPos.line_begin,
+		max(pageEnd - m_scrollVPos.line_begin, (size_w)1), TRUE);
 
 	//
 	//	Horizontal scrollbar
 	//
 	si.nPos  = m_nHScrollPos;		// scrollbar thumb position
-	si.nPage = ScrollPageFromSize(windowColumns);	// number of lines in a page
+	si.nPage = windowColumns;		// number of columns in a page
 	si.nMin  = 0;
-	si.nMax  = longestLine ? ScrollIntFromSize(longestLine - 1) : 0;	// total number of lines in file
+	si.nMax  = longestLine ? (int)longestLine - 1 : 0;	// widest line laid out so far
 
 	SetScrollInfo(m_hWnd, SB_HORZ, &si, TRUE);
 }
@@ -531,6 +555,7 @@ LONG GetTrackPos32(HWND hwnd, int nBar)
 LONG TextView::OnVScroll(UINT nSBCode, UINT nPos)
 {
 	size_w oldpos = m_scrollVPos.line_begin;
+	size_w docBytes = m_pTextDoc->byte_length();
 	TextCoord coord;
 
 	switch(nSBCode)
@@ -567,7 +592,7 @@ LONG TextView::OnVScroll(UINT nSBCode, UINT nPos)
 	case SB_THUMBTRACK:
 
 		// the thumb is a byte offset: show the line containing it
-		if(m_pTextDoc->coord_from_byte_anchor(ScrollOffsetFromPos(GetTrackPos32(m_hWnd, SB_VERT), m_pTextDoc->byte_length()), &coord))
+		if(m_pTextDoc->coord_from_byte_anchor(GetScrollPos64(m_hWnd, SB_VERT, SIF_TRACKPOS, docBytes ? docBytes - 1 : 0), &coord))
 			SetScrollCoord(&coord);
 
 		RefreshWindow();

@@ -162,6 +162,10 @@ public:
 	bool  linecount_known();
 
 	size_w byte_length();
+	size_w file_length();
+
+	// Length of the document in UTF-16 units, where that is cheap (as charoffset_from_coord).
+	bool  charcount(size_w *chars);
 
 private:
 
@@ -177,6 +181,7 @@ private:
 	//
 	size_w count_chars(size_w offset_bytes, size_w length_chars);
 	size_w count_code_units(size_w offset_bytes, size_w length_bytes);
+	bool   charoffset_from_bytes(size_w offset_bytes, size_w *offset_chars);
 
 	size_t utf16_to_rawdata(TCHAR *utf16str, size_t utf16len, BYTE *rawdata, size_t *rawlen);
 	size_t rawdata_to_utf16(BYTE *rawdata, size_t rawlen, TCHAR *utf16str, size_t *utf16len);

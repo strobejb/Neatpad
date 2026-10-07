@@ -71,7 +71,9 @@ BOOL TextView::OnCopy()
 	// a byte never decodes to more than one UTF-16 unit, so this is always enough room
 	sellen = selEnd.byte_anchor - selStart.byte_anchor;
 
-	if(sellen > (size_w)ULONG_MAX)
+	// reader.read takes a ULONG, and (sellen + 1) TCHARs must not overflow the
+	// allocation size (a 32-bit SIZE_T on Win32 wraps at 2GB of text)
+	if(sellen > (size_w)ULONG_MAX || sellen >= (size_w)((SIZE_T)-1 / sizeof(TCHAR)))
 		return FALSE;
 
 	if(OpenClipboard(m_hWnd))

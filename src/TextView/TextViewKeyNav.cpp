@@ -550,7 +550,7 @@ LONG TextView::OnKeyDown(UINT nKeyCode, UINT nFlags)
 			ScrollToCaret();
 	}
 
-	NotifyParent(TVN_CURSOR_CHANGE);
+	NotifyCursorChange();
 
 	return 0;
 }

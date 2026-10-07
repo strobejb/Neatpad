@@ -232,18 +232,35 @@ size_w TextDocument::lineno_from_coord(const TextCoord *coord, bool *exact)
 
 bool TextDocument::charoffset_from_coord(const TextCoord *coord, size_w *offset_chars)
 {
-	if(coord == 0 || offset_chars == 0)
+	if(coord == 0)
+		return false;
+
+	return charoffset_from_bytes(coord->byte_anchor, offset_chars);
+}
+
+bool TextDocument::charcount(size_w *chars)
+{
+	return charoffset_from_bytes(byte_length(), chars);
+}
+
+//
+//	UTF-16 units before a byte offset. Only the fixed-width encodings can say
+//	without scanning the text in front of it.
+//
+bool TextDocument::charoffset_from_bytes(size_w offset_bytes, size_w *offset_chars)
+{
+	if(offset_chars == 0)
 		return false;
 
 	switch(m_nFileFormat)
 	{
 	case NCP_ASCII:
-		*offset_chars = coord->byte_anchor;
+		*offset_chars = offset_bytes;
 		return true;
 
 	case NCP_UTF16:
 	case NCP_UTF16BE:
-		*offset_chars = coord->byte_anchor / sizeof(WCHAR);
+		*offset_chars = offset_bytes / sizeof(WCHAR);
 		return true;
 
 	default:

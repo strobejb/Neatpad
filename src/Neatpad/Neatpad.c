@@ -35,8 +35,6 @@ TCHAR		g_szFileName[MAX_PATH];
 TCHAR		g_szFileTitle[MAX_PATH];
 BOOL		g_fFileChanged = FALSE;
 
-TCHAR		*g_szEditMode[] = { _T("READ"), _T("INS"), _T("OVR") };
-
 // support 'satellite' resource modules
 HINSTANCE	g_hResourceModule;
 
@@ -84,6 +82,80 @@ static TCHAR * LineFormatName(UINT format)
 	}
 }
 
+static void FormatByteSize(TCHAR *buf, size_t cch, unsigned __int64 bytes)
+{
+	const unsigned __int64 KB = 1024;
+	const unsigned __int64 MB = 1024 * 1024;
+	const unsigned __int64 GB = 1024 * 1024 * 1024;
+	unsigned __int64 unit = 1;
+	TCHAR *suffix = _T("bytes");
+
+	if(bytes >= GB)
+	{
+		unit = GB;
+		suffix = _T("GB");
+	}
+	else if(bytes >= MB)
+	{
+		unit = MB;
+		suffix = _T("MB");
+	}
+	else if(bytes >= KB)
+	{
+		unit = KB;
+		suffix = _T("KB");
+	}
+
+	if(unit == 1)
+	{
+		_sntprintf(buf, cch, _T("%I64u %s"), bytes, suffix);
+	}
+	else
+	{
+		unsigned __int64 whole = bytes / unit;
+		unsigned __int64 frac = ((bytes % unit) * 10 + unit / 2) / unit;
+
+		if(frac == 10)
+		{
+			whole++;
+			frac = 0;
+		}
+
+		_sntprintf(buf, cch, _T("%I64u.%I64u %s"), whole, frac, suffix);
+	}
+
+	buf[cch - 1] = 0;
+}
+
+static void UpdateStatusBarDocStats(void)
+{
+	TEXTVIEWDOCSTATS stats;
+	TCHAR sizeText[32];
+
+	if(g_hwndStatusbar == 0 || g_hwndTextView == 0)
+		return;
+
+	if(!TextView_GetDocStats(g_hwndTextView, &stats))
+	{
+		SetStatusBarText(g_hwndStatusbar, STATUS_PART_DOCSTATS, 0, _T(""));
+		return;
+	}
+
+	FormatByteSize(sizeText, sizeof(sizeText) / sizeof(sizeText[0]), stats.byte_count);
+
+	if(stats.char_count_known)
+	{
+		SetStatusBarText(g_hwndStatusbar, STATUS_PART_DOCSTATS, 0, _T(" %s (%I64u %s)"),
+			sizeText,
+			stats.char_count,
+			stats.char_count == 1 ? _T("char") : _T("chars"));
+	}
+	else
+	{
+		SetStatusBarText(g_hwndStatusbar, STATUS_PART_DOCSTATS, 0, _T(" %s"), sizeText);
+	}
+}
+
 void UpdateStatusBarFileInfo(void)
 {
 	if(g_hwndStatusbar == 0 || g_hwndTextView == 0)
@@ -94,20 +166,22 @@ void UpdateStatusBarFileInfo(void)
 
 	SetStatusBarText(g_hwndStatusbar, STATUS_PART_LINEFMT, 0, _T(" %s"),
 		LineFormatName((UINT)TextView_GetLineFormat(g_hwndTextView)));
+
+	UpdateStatusBarDocStats();
 }
 
-void UpdateStatusBarCursorInfo(void)
+void UpdateStatusBarCursorInfo(TVNCURSORINFO *ci)
 {
-	if(TextView_GetCurLineKnown(g_hwndTextView))
+	if(ci->fLineNoKnown)
 	{
-		SetStatusBarText(g_hwndStatusbar, STATUS_PART_CURSOR, 0, _T(" Ln %Iu, Col %Iu"),
-			TextView_GetCurLine(g_hwndTextView) + 1,
-			TextView_GetCurCol(g_hwndTextView) + 1 );
+		SetStatusBarText(g_hwndStatusbar, STATUS_PART_CURSOR, 0, _T(" Ln %I64u, Col %I64u"),
+			ci->nLineNo + 1,
+			ci->nColumnNo + 1 );
 	}
 	else
 	{
-		SetStatusBarText(g_hwndStatusbar, STATUS_PART_CURSOR, 0, _T(" Ln ???, Col %Iu"),
-			TextView_GetCurCol(g_hwndTextView) + 1 );
+		SetStatusBarText(g_hwndStatusbar, STATUS_PART_CURSOR, 0, _T(" Ln ---, Col %I64u"),
+			ci->nColumnNo + 1 );
 	}
 }
 
@@ -226,18 +300,18 @@ UINT TextViewNotifyHandler(HWND hwnd, NMHDR *nmhdr)
 				g_fFileChanged = fModified;
 			}
 		}
+
+		UpdateStatusBarDocStats();
 		break;
 
 	// cursor position has changed, update the statusbar info
 	case TVN_CURSOR_CHANGE:
 
-		UpdateStatusBarCursorInfo();
+		UpdateStatusBarCursorInfo((TVNCURSORINFO *)nmhdr);
 		break;
 
-	// edit/insert mode changed, update statusbar info
+	// edit/insert mode changed
 	case TVN_EDITMODE_CHANGE:
-		//SetStatusBarText(g_hwndStatusbar, STATUS_PART_EDITMODE, 0,
-		//	g_szEditMode[TextView_GetEditMode(g_hwndTextView)] );
 		break;
 
 	default:
@@ -252,27 +326,9 @@ UINT TextViewNotifyHandler(HWND hwnd, NMHDR *nmhdr)
 //
 UINT NotifyHandler(HWND hwnd, NMHDR *nmhdr)
 {
-	NMMOUSE *nmmouse;
-	UINT	 nMode;
-
 	switch(nmhdr->code)
 	{
 	case NM_DBLCLK:
-
-		// statusbar is the only window at present which sends double-clicks
-		nmmouse = (NMMOUSE *)nmhdr;
-
-		// toggle the Readonly/Insert/Overwrite mode
-		if(nmmouse->dwItemSpec == STATUS_PART_EDITMODE)
-		{
-			nMode   = TextView_GetEditMode(g_hwndTextView);
-			nMode	= (nMode + 1) % 3;
-	
-			TextView_SetEditMode(g_hwndTextView, nMode);
-		
-			SetStatusBarText(g_hwndStatusbar, STATUS_PART_EDITMODE, 0, g_szEditMode[nMode]);
-		}
-
 		break;
 
 	default:
@@ -300,6 +356,7 @@ UINT CommandHandler(HWND hwnd, UINT nCtrlId, UINT nCtrlCode, HWND hwndFrom)
 		// reset to an empty file
 		SetWindowFileName(hwnd, _T("Untitled"), FALSE);
 		TextView_Clear(g_hwndTextView);
+		UpdateStatusBarFileInfo();
 
 		g_szFileTitle[0] = '\0';
 		g_fFileChanged   = FALSE;

@@ -13,7 +13,7 @@
 typedef unsigned char	  seqchar;
 
 #if defined(SEQUENCE64) || defined(SEQUENCE_64)
-typedef unsigned __int64  size_w;
+typedef unsigned long long size_w;
 #else
 typedef unsigned long	  size_w;
 #endif

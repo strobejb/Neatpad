@@ -165,6 +165,42 @@ LRESULT TextView::NotifyParent(UINT nNotifyCode, NMHDR *optional)
 	return SendMessage(GetParent(m_hWnd), WM_NOTIFY, (WPARAM)nCtrlId, (LPARAM)nmptr);
 }
 
+//
+//	Describe the caret: its line (an estimate past the counted part of a large
+//	file), its column, and its offset in the document where that is cheap
+//
+VOID TextView::FillCursorInfo(TVNCURSORINFO *info)
+{
+	bool   exact = false;
+	size_w offset_chars = 0;
+
+	info->nLineNo		= m_pTextDoc->lineno_from_coord(&m_cursorPos, &exact);
+	info->fLineNoKnown	= exact;
+	info->nColumnNo		= m_cursorPos.line_offset_chars;
+	info->fOffsetKnown	= m_pTextDoc->charoffset_from_coord(&m_cursorPos, &offset_chars);
+	info->nOffset		= offset_chars;
+}
+
+//
+//	Tell the parent the caret has moved, and where to
+//
+VOID TextView::NotifyCursorChange()
+{
+	TVNCURSORINFO ci;
+
+	FillCursorInfo(&ci);
+	NotifyParent(TVN_CURSOR_CHANGE, (NMHDR *)&ci);
+}
+
+//
+//	A 64-bit value as a message result: exact wherever it fits (always on x64),
+//	otherwise the largest positive result, so it never reads as 0 or -1
+//
+static LRESULT ResultFromSize(size_w value)
+{
+	return value > (size_w)MAXLONG_PTR ? MAXLONG_PTR : (LRESULT)value;
+}
+
 VOID TextView::UpdateMetrics()
 {
 	RECT rect;
@@ -521,20 +557,20 @@ LRESULT WINAPI TextView::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 		return m_nCRLFMode;
 
 	case TXM_GETSELSIZE:
-		return (LRESULT)SelectionSize();
+		return ResultFromSize(SelectionSize());
 
 	case TXM_SETSELALL:
 		return SelectAll();
 
 	// only cheap for fixed-width encodings: -1 for the others
 	case TXM_GETCURPOS:
-		return m_pTextDoc->charoffset_from_coord(&m_cursorPos, &offset_chars) ? (LRESULT)offset_chars : -1;
+		return m_pTextDoc->charoffset_from_coord(&m_cursorPos, &offset_chars) ? ResultFromSize(offset_chars) : -1;
 
 	case TXM_GETCURLINE:
-		return (LRESULT)m_pTextDoc->lineno_from_coord(&m_cursorPos, &exact);
+		return ResultFromSize(m_pTextDoc->lineno_from_coord(&m_cursorPos, &exact));
 
 	case TXM_GETCURCOL:
-		return (LRESULT)m_cursorPos.line_offset_chars;
+		return ResultFromSize(m_cursorPos.line_offset_chars);
 
 	case TXM_GETEDITMODE:
 		return m_nEditMode;
@@ -542,6 +578,34 @@ LRESULT WINAPI TextView::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 	case TXM_GETCURLINEKNOWN:
 		m_pTextDoc->lineno_from_coord(&m_cursorPos, &exact);
 		return exact;
+
+	case TXM_GETDOCSTATS:
+	{
+		TEXTVIEWDOCSTATS *stats = (TEXTVIEWDOCSTATS *)lParam;
+		size_w chars;
+
+		if(stats == 0)
+			return FALSE;
+
+		stats->byte_count = (unsigned __int64)m_pTextDoc->file_length();
+		stats->char_count = 0;
+		stats->char_count_known = FALSE;
+
+		if(m_pTextDoc->charcount(&chars))
+		{
+			stats->char_count = (unsigned __int64)chars;
+			stats->char_count_known = TRUE;
+		}
+
+		return TRUE;
+	}
+
+	case TXM_GETCURSORINFO:
+		if(lParam == 0)
+			return FALSE;
+
+		FillCursorInfo((TVNCURSORINFO *)lParam);
+		return TRUE;
 
 	case TXM_SETEDITMODE:
 	{

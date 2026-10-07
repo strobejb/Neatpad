@@ -61,6 +61,8 @@ COLORREF RealizeColour(COLORREF col);
 #define TXM_GETLINEFORMAT		(TXM_BASE + 26)
 #define TXM_ADDFONTFALLBACK		(TXM_BASE + 27)
 #define TXM_CLEARFONTFALLBACKS	(TXM_BASE + 28)
+#define TXM_GETDOCSTATS			(TXM_BASE + 29)
+#define TXM_GETCURSORINFO		(TXM_BASE + 30)
 
 //
 //	TextView Notification Messages defined here - 
@@ -72,13 +74,27 @@ COLORREF RealizeColour(COLORREF col);
 #define TVN_EDITMODE_CHANGE		(TVN_BASE + 2)
 #define TVN_CHANGED				(TVN_BASE + 3)
 
+//
+//	The caret position: sent with TVN_CURSOR_CHANGE, and filled by TXM_GETCURSORINFO.
+//	The line number is an estimate past the counted part of a large file, and the
+//	document offset is only available for fixed-width encodings.
+//
 typedef struct
 {
-	NMHDR	hdr;
-	ULONG	nLineNo;
-	ULONG	nColumnNo;
-	ULONG	nOffset;
+	NMHDR			 hdr;
+	unsigned __int64 nLineNo;
+	unsigned __int64 nColumnNo;			// UTF-16 units from the start of the line
+	unsigned __int64 nOffset;			// UTF-16 units from the start of the document
+	BOOL			 fLineNoKnown;
+	BOOL			 fOffsetKnown;
 } TVNCURSORINFO;
+
+typedef struct
+{
+	unsigned __int64 byte_count;
+	unsigned __int64 char_count;
+	BOOL			 char_count_known;
+} TEXTVIEWDOCSTATS;
 
 //
 //	TextView Window Styles defined here
@@ -213,6 +229,12 @@ typedef struct
 
 #define TextView_GetEditMode(hwndTV) \
 	((UINT)SendMessage((hwndTV), TXM_GETEDITMODE, 0, 0))
+
+#define TextView_GetDocStats(hwndTV, stats) \
+	((BOOL)SendMessage((hwndTV), TXM_GETDOCSTATS, 0, (LPARAM)(TEXTVIEWDOCSTATS *)(stats)))
+
+#define TextView_GetCursorInfo(hwndTV, info) \
+	((BOOL)SendMessage((hwndTV), TXM_GETCURSORINFO, 0, (LPARAM)(TVNCURSORINFO *)(info)))
 
 #define TextView_SetContextMenu(hwndTV, hPopupMenu) \
 	SendMessage((hwndTV), TXM_SETCONTEXTMENU, (WPARAM)(hPopupMenu), 0)

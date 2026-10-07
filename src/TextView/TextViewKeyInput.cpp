@@ -103,7 +103,7 @@ ULONG TextView::EnterText(TCHAR *szText, ULONG nLength)
 	RefreshWindow();
 
 	UpdateViewState(TRUE);
-	NotifyParent(TVN_CURSOR_CHANGE);
+	NotifyCursorChange();
 
 	return nLength;
 }

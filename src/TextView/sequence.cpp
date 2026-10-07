@@ -210,8 +210,8 @@ void sequence::debug2 ()
 		char *buffer = (char *)buffer_list[sptr->buffer]->getptr(0, buffer_list[sptr->buffer]->length);
 		int length = (int)min(sptr->length, (size_w)INT_MAX);
 		
-		printf("[%d] [%4I64u %4I64u] %.*s\n", sptr->id, 
-			(unsigned __int64)sptr->offset, (unsigned __int64)sptr->length,
+		printf("[%d] [%4llu %4llu] %.*s\n", sptr->id, 
+			(unsigned long long)sptr->offset, (unsigned long long)sptr->length,
 			length, buffer + sptr->offset);
 	}
 
@@ -222,8 +222,8 @@ void sequence::debug2 ()
 		char *buffer = (char *)buffer_list[sptr->buffer]->getptr(0, buffer_list[sptr->buffer]->length);
 		int length = (int)min(sptr->length, (size_w)INT_MAX);
 		
-		printf("[%d] [%4I64u %4I64u] %.*s\n", sptr->id, 
-			(unsigned __int64)sptr->offset, (unsigned __int64)sptr->length,
+		printf("[%d] [%4llu %4llu] %.*s\n", sptr->id, 
+			(unsigned long long)sptr->offset, (unsigned long long)sptr->length,
 			length, buffer + sptr->offset);
 	}
 
@@ -236,7 +236,7 @@ void sequence::debug2 ()
 		printf("%.*s", length, buffer + sptr->offset);
 	}
 
-	printf("\nsequence length = %I64u chars\n", (unsigned __int64)sequence_length);
+	printf("\nsequence length = %llu chars\n", (unsigned long long)sequence_length);
 	printf("\n\n");
 }
 
@@ -630,7 +630,7 @@ bool sequence::insert_worker (size_w index, const seqchar *buf, size_w length, a
 	if(!import_buffer(buf, (size_t)length, &modbuf_offset))
 		return false;
 
-	debug("Inserting: idx=%d len=%d %.*s\n", index, length, length, buf);
+	debug("Inserting: idx=%llu len=%llu %.*s\n", (unsigned long long)index, (unsigned long long)length, (int)length, buf);
 
 	clearstack(redostack);
 	insoffset = index - spanindex;
@@ -763,7 +763,7 @@ bool sequence::erase_worker (size_w index, size_w length, action act)
 	size_w		 removelen;
 	bool		 append_spanrange;	
 
-	debug("Erasing: idx=%d len=%d\n", index, length);
+	debug("Erasing: idx=%llu len=%llu\n", (unsigned long long)index, (unsigned long long)length);
 
 	// make sure we stay within the range of the sequence
 	if(length == 0 || length > sequence_length || index > sequence_length - length)
@@ -964,7 +964,7 @@ bool sequence::replace(size_w index, const seqchar *buf, size_w length, size_w e
 {
 	size_w remlen = 0;
 
-	debug("Replacing: idx=%d len=%d %.*s\n", index, length, length, buf);
+	debug("Replacing: idx=%llu len=%llu %.*s\n", (unsigned long long)index, (unsigned long long)length, (int)length, buf);
 
 	// make sure operation is within allowed range
 	if(index > sequence_length || MAX_SEQUENCE_LENGTH - index < length)

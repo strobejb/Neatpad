@@ -189,7 +189,7 @@ LONG TextView::OnLButtonDown(UINT nFlags, int mx, int my)
 
 	SetCapture(m_hWnd);
 
-	NotifyParent(TVN_CURSOR_CHANGE);
+	NotifyCursorChange();
 	return 0;
 }
 
@@ -253,7 +253,7 @@ LONG TextView::OnLButtonDblClick(UINT nFlags, int mx, int my)
 		UpdateCaretCoord(&m_cursorPos, TRUE, &m_nCaretPosX);
 		m_nAnchorPosX = m_nCaretPosX;
 
-		NotifyParent(TVN_CURSOR_CHANGE);
+		NotifyCursorChange();
 	}
 
 	return 0;
@@ -360,7 +360,7 @@ LONG TextView::OnMouseMove(UINT nFlags, int mx, int my)
 
 		if(fCurChanged)
 		{
-			NotifyParent(TVN_CURSOR_CHANGE);
+			NotifyCursorChange();
 		}
 	}
 	// mouse isn't being used for a selection, so set the cursor instead
