@@ -405,6 +405,48 @@ ULONG TextView::SelectAll()
 	return 0;
 }
 
+UINT TextView::FindText(TEXTVIEWFIND *find)
+{
+	TextCoord selStart;
+	TextCoord selEnd;
+	size_w start;
+	size_w end;
+	size_w match;
+	size_w matchLength;
+	UINT result = TVFR_FOUND;
+
+	if(find == 0 || find->text == 0 || find->length == 0)
+		return TVFR_NOTFOUND;
+
+	end = m_pTextDoc->byte_length();
+
+	if(GetSelection(&selStart, &selEnd))
+		start = find->backwards ? selStart.byte_anchor : selEnd.byte_anchor;
+	else
+		start = m_cursorPos.byte_anchor;
+
+	if(!m_pTextDoc->find_text(find->text, find->length, find->backwards ? 0 : start, find->backwards ? start : end, find->backwards != FALSE, find->matchcase != FALSE, &match, &matchLength))
+	{
+		if(!find->wrap || end == 0)
+			return TVFR_NOTFOUND;
+
+		if(!m_pTextDoc->find_text(find->text, find->length, find->backwards ? start : 0, find->backwards ? end : start, find->backwards != FALSE, find->matchcase != FALSE, &match, &matchLength))
+			return TVFR_NOTFOUND;
+
+		result = TVFR_FOUNDWRAPPED;
+	}
+
+	if(!m_pTextDoc->coord_from_byte_anchor(match, &m_selAnchor))
+		return TVFR_NOTFOUND;
+	if(!m_pTextDoc->coord_from_byte_anchor(match + matchLength, &m_cursorPos))
+		return TVFR_NOTFOUND;
+
+	m_nSelectionType = SEL_NORMAL;
+	UpdateViewState(TRUE);
+	RefreshWindow();
+	return result;
+}
+
 //
 //	Public memberfunction 
 //
@@ -623,6 +665,9 @@ LRESULT WINAPI TextView::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 
 		FillCursorInfo((TVNCURSORINFO *)lParam);
 		return TRUE;
+
+	case TXM_FINDTEXT:
+		return FindText((TEXTVIEWFIND *)lParam);
 
 	case TXM_SETEDITMODE:
 	{

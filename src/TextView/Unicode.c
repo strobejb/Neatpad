@@ -197,6 +197,156 @@ size_t utf16be_to_utf32_char(UTF8 *utf16str, size_t utf16len, UTF32 *pch32)
 }
 
 //
+//	utf32_to_utf32_char
+//
+//	Converts a single codepoint in the specified UTF-32LE stream of text
+//	into a UTF-32 value. Values beyond the Unicode range are converted
+//	to the unicode replacement character.
+//
+//	Returns number of bytes processed from utf32str.
+//
+size_t utf32_to_utf32_char(UTF8 *utf32str, size_t utf32len, UTF32 *pch32)
+{
+	UTF32 ch;
+
+	if(utf32str == 0 || utf32len < 4 || pch32 == 0)
+		return 0;
+
+	ch = (UTF32)utf32str[0]         | ((UTF32)utf32str[1] << 8) |
+		 ((UTF32)utf32str[2] << 16) | ((UTF32)utf32str[3] << 24);
+
+	*pch32 = ch > UNI_MAX_LEGAL_UTF32 ? UNI_REPLACEMENT_CHAR : ch;
+	return 4;
+}
+
+//
+//	utf32be_to_utf32_char
+//
+//	Converts a single codepoint in the specified UTF-32BE stream of text
+//	into a UTF-32 value. Values beyond the Unicode range are converted
+//	to the unicode replacement character.
+//
+//	Returns number of bytes processed from utf32str.
+//
+size_t utf32be_to_utf32_char(UTF8 *utf32str, size_t utf32len, UTF32 *pch32)
+{
+	UTF32 ch;
+
+	if(utf32str == 0 || utf32len < 4 || pch32 == 0)
+		return 0;
+
+	ch = ((UTF32)utf32str[0] << 24) | ((UTF32)utf32str[1] << 16) |
+		 ((UTF32)utf32str[2] << 8)  | (UTF32)utf32str[3];
+
+	*pch32 = ch > UNI_MAX_LEGAL_UTF32 ? UNI_REPLACEMENT_CHAR : ch;
+	return 4;
+}
+
+//
+//	utf8_to_utf32_prev
+//
+//	Converts the single codepoint that ends the specified UTF-8 stream
+//	of text into a UTF-32 value, by stepping back over the trailing bytes
+//	to the lead byte.
+//
+//	Illegal sequences are converted to the unicode replacement character,
+//	one byte at a time
+//
+//	utf8str		- [in]   buffer containing UTF-8 text
+//	utf8len		- [in]   number of code-units (bytes) available in buffer
+//	pch32		- [out]  single UTF-32 value
+//
+//	Returns number of bytes processed, counting back from the end of utf8str
+//
+size_t utf8_to_utf32_prev(UTF8 *utf8str, size_t utf8len, UTF32 *pch32)
+{
+	size_t start;
+
+	if(utf8str == 0 || utf8len == 0 || pch32 == 0)
+		return 0;
+
+	// a sequence is at most 4 bytes: a lead byte and up to 3 trailing bytes
+	start = utf8len - 1;
+	while(start > 0 && utf8len - start < 4 && (utf8str[start] & 0xC0) == 0x80)
+		start--;
+
+	// the lead byte must decode forwards to exactly the end of the buffer
+	if(utf8_to_utf32(utf8str + start, utf8len - start, pch32) != utf8len - start)
+	{
+		*pch32 = UNI_REPLACEMENT_CHAR;
+		return 1;
+	}
+
+	return utf8len - start;
+}
+
+//
+//	utf16_to_utf32_prev
+//
+//	Converts the single codepoint that ends the specified UTF-16LE stream
+//	of text into a UTF-32 value.
+//
+//	Returns number of bytes processed, counting back from the end of utf16str.
+//
+size_t utf16_to_utf32_prev(UTF8 *utf16str, size_t utf16len, UTF32 *pch32)
+{
+	UTF32 ch;
+
+	if(utf16str == 0 || utf16len < 2 || pch32 == 0)
+		return 0;
+
+	ch = (UTF32)utf16str[utf16len - 2] | ((UTF32)utf16str[utf16len - 1] << 8);
+
+	if(ch >= UNI_SUR_LOW_START && ch <= UNI_SUR_LOW_END && utf16len >= 4)
+	{
+		UTF32 ch1 = (UTF32)utf16str[utf16len - 4] | ((UTF32)utf16str[utf16len - 3] << 8);
+
+		if(ch1 >= UNI_SUR_HIGH_START && ch1 <= UNI_SUR_HIGH_END)
+		{
+			*pch32 = ((ch1 - UNI_SUR_HIGH_START) << 10) +
+					 ((ch - UNI_SUR_LOW_START) + 0x00010000);
+			return 4;
+		}
+	}
+
+	*pch32 = ch;
+	return 2;
+}
+
+//
+//	utf16be_to_utf32_prev
+//
+//	Converts the single codepoint that ends the specified UTF-16BE stream
+//	of text into a UTF-32 value.
+//
+//	Returns number of bytes processed, counting back from the end of utf16str.
+//
+size_t utf16be_to_utf32_prev(UTF8 *utf16str, size_t utf16len, UTF32 *pch32)
+{
+	UTF32 ch;
+
+	if(utf16str == 0 || utf16len < 2 || pch32 == 0)
+		return 0;
+
+	ch = ((UTF32)utf16str[utf16len - 2] << 8) | (UTF32)utf16str[utf16len - 1];
+
+	if(ch >= UNI_SUR_LOW_START && ch <= UNI_SUR_LOW_END && utf16len >= 4)
+	{
+		UTF32 ch1 = ((UTF32)utf16str[utf16len - 4] << 8) | (UTF32)utf16str[utf16len - 3];
+
+		if(ch1 >= UNI_SUR_HIGH_START && ch1 <= UNI_SUR_HIGH_END)
+		{
+			*pch32 = ((ch1 - UNI_SUR_HIGH_START) << 10) +
+					 ((ch - UNI_SUR_LOW_START) + 0x00010000);
+			return 4;
+		}
+	}
+
+	*pch32 = ch;
+	return 2;
+}
+
+//
 //	utf32_to_utf8
 //
 //	Converts the specified UTF-32 value to UTF-8

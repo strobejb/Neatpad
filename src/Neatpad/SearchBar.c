@@ -10,6 +10,7 @@
 #include <windows.h>
 #include <tchar.h>
 #include <commctrl.h>
+#include "..\TextView\TextView.h"
 #include "Neatpad.h"
 #include "resource.h"
 
@@ -17,20 +18,25 @@ extern HWND g_hwndSearchBar;
 
 #define SEARCHBAR_PADX 8
 #define SEARCHBAR_PADY 8
-#define SEARCHBAR_EDIT_MAXWIDTH 320
 #define SEARCHBAR_EDIT_MINWIDTH 120
 #define SEARCHBAR_GAP 4
 #define SEARCHBAR_ICON_SIZE 32
 #define SEARCHBAR_EDIT_PADX 8
+#define IDM_SEARCH_MATCHCASE 50000
+#define IDM_SEARCH_WRAP 50001
 
 static WNDPROC g_OldSearchEditProc;
 static int g_nSearchBarHeight;
 static int g_nSearchButtonWidth;
 static int g_nSearchControlHeight;
+static int g_nSearchEditWidth;
 static HWND g_hwndOptionsTB;
 static HWND g_hwndFindTB;
 static HWND g_hwndCloseTB;
 static HIMAGELIST g_hSearchImageList;
+
+static UINT SearchBarFind(BOOL backwards);
+static void ShowSearchOptionsMenu(HWND hwnd);
 
 enum
 {
@@ -86,6 +92,12 @@ static void SearchBarInitMetrics(HWND hwnd)
 		GetWindowRect(GetDlgItem(hwnd, IDC_EDIT1), &rect);
 		g_nSearchControlHeight = rect.bottom - rect.top;
 	}
+
+	if(g_nSearchEditWidth == 0)
+	{
+		GetWindowRect(GetDlgItem(hwnd, IDC_EDIT1), &rect);
+		g_nSearchEditWidth = rect.right - rect.left;
+	}
 }
 
 static void SetSearchEditPadding(HWND hwndEdit)
@@ -118,6 +130,26 @@ static void SetSearchEditPadding(HWND hwndEdit)
 	InvalidateRect(hwndEdit, 0, TRUE);
 }
 
+static void PaintSearchEditHint(HWND hwndEdit)
+{
+	RECT rect;
+	HDC hdc;
+	HFONT hOldFont;
+
+	if(GetWindowTextLength(hwndEdit) != 0)
+		return;
+
+	SendMessage(hwndEdit, EM_GETRECT, 0, (LPARAM)&rect);
+
+	hdc = GetDC(hwndEdit);
+	hOldFont = SelectObject(hdc, (HFONT)SendMessage(hwndEdit, WM_GETFONT, 0, 0));
+	SetBkMode(hdc, TRANSPARENT);
+	SetTextColor(hdc, GetSysColor(COLOR_GRAYTEXT));
+	DrawText(hdc, _T("Search"), -1, &rect, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+	SelectObject(hdc, hOldFont);
+	ReleaseDC(hwndEdit, hdc);
+}
+
 static void SearchBarLayout(HWND hwnd)
 {
 	RECT rc;
@@ -144,7 +176,7 @@ static void SearchBarLayout(HWND hwnd)
 	if(maxEditWidth < 40)
 		maxEditWidth = 40;
 
-	editWidth = SEARCHBAR_EDIT_MAXWIDTH;
+	editWidth = g_nSearchEditWidth;
 	if(editWidth > maxEditWidth)
 		editWidth = maxEditWidth;
 	if(editWidth < SEARCHBAR_EDIT_MINWIDTH && maxEditWidth >= SEARCHBAR_EDIT_MINWIDTH)
@@ -180,6 +212,7 @@ static void PaintSearchBar(HWND hwnd)
 
 static LRESULT CALLBACK SearchEditProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
+	LRESULT retval;
 	LPTSTR text;
 	LPTSTR clean;
 	SIZE_T len;
@@ -189,10 +222,20 @@ static LRESULT CALLBACK SearchEditProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 
 	switch(msg)
 	{
+	case WM_PAINT:
+		retval = CallWindowProc(g_OldSearchEditProc, hwnd, msg, wParam, lParam);
+		PaintSearchEditHint(hwnd);
+		return retval;
+
 	case WM_KEYDOWN:
 		if(wParam == VK_ESCAPE)
 		{
 			HideSearchBar();
+			return 0;
+		}
+		if(wParam == VK_RETURN)
+		{
+			SearchBarFind(FALSE);
 			return 0;
 		}
 		break;
@@ -201,6 +244,12 @@ static LRESULT CALLBACK SearchEditProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 		if(wParam == VK_RETURN || wParam == _T('\n'))
 			return 0;
 		break;
+
+	case WM_SETFOCUS:
+	case WM_KILLFOCUS:
+		retval = CallWindowProc(g_OldSearchEditProc, hwnd, msg, wParam, lParam);
+		InvalidateRect(hwnd, 0, TRUE);
+		return retval;
 
 	case WM_PASTE:
 		if(!OpenClipboard(hwnd))
@@ -297,6 +346,18 @@ static INT_PTR CALLBACK SearchBarProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
 	case WM_COMMAND:
 		switch(LOWORD(wParam))
 		{
+		case IDC_SEARCH_OPTIONS:
+			ShowSearchOptionsMenu(hwnd);
+			return TRUE;
+
+		case IDC_SEARCH_PREVIOUS:
+			SearchBarFind(TRUE);
+			return TRUE;
+
+		case IDC_SEARCH_NEXT:
+			SearchBarFind(FALSE);
+			return TRUE;
+
 		case IDCANCEL:
 			HideSearchBar();
 			return TRUE;
@@ -411,4 +472,82 @@ int SearchBarHeight(void)
 BOOL SearchBarIsVisible(void)
 {
 	return g_hwndSearchBar && IsWindowVisible(g_hwndSearchBar);
+}
+
+static void ShowSearchOptionsMenu(HWND hwnd)
+{
+	HMENU hmenu;
+	RECT rect;
+	UINT cmd;
+
+	hmenu = CreatePopupMenu();
+	if(hmenu == 0)
+		return;
+
+	AppendMenu(hmenu, MF_STRING | (g_fSearchMatchCase ? MF_CHECKED : MF_UNCHECKED), IDM_SEARCH_MATCHCASE, _T("Match case"));
+	AppendMenu(hmenu, MF_STRING | (g_fSearchWrap ? MF_CHECKED : MF_UNCHECKED), IDM_SEARCH_WRAP, _T("Wrap around"));
+
+	GetWindowRect(g_hwndOptionsTB, &rect);
+	cmd = TrackPopupMenu(hmenu, TPM_RETURNCMD | TPM_LEFTALIGN | TPM_TOPALIGN, rect.left, rect.bottom, 0, hwnd, 0);
+	DestroyMenu(hmenu);
+
+	switch(cmd)
+	{
+	case IDM_SEARCH_MATCHCASE:
+		g_fSearchMatchCase = !g_fSearchMatchCase;
+		SaveRegSettings();
+		break;
+
+	case IDM_SEARCH_WRAP:
+		g_fSearchWrap = !g_fSearchWrap;
+		SaveRegSettings();
+		break;
+	}
+}
+
+static UINT SearchBarFind(BOOL backwards)
+{
+	HWND hwndEdit;
+	TCHAR text[1024];
+	TEXTVIEWFIND find;
+	UINT result;
+
+	if(g_hwndSearchBar == 0)
+		return TVFR_NOTFOUND;
+
+	hwndEdit = GetDlgItem(g_hwndSearchBar, IDC_EDIT1);
+	GetWindowText(hwndEdit, text, ARRAYSIZE(text));
+
+	if(text[0] == 0)
+		return TVFR_NOTFOUND;
+
+	find.text = text;
+	find.length = lstrlen(text);
+	find.backwards = backwards;
+	find.wrap = g_fSearchWrap;
+	find.matchcase = g_fSearchMatchCase;
+
+	result = TextView_FindText(g_hwndTextView, &find);
+	if(result == TVFR_NOTFOUND)
+		MessageBeep(MB_ICONASTERISK);
+
+	SetFocus(hwndEdit);
+	SendMessage(hwndEdit, EM_SETSEL, 0, -1);
+	return result;
+}
+
+UINT SearchBarFindNext(HWND hwndParent)
+{
+	if(!SearchBarIsVisible())
+		ShowSearchBar(hwndParent);
+
+	return SearchBarFind(FALSE);
+}
+
+UINT SearchBarFindPrevious(HWND hwndParent)
+{
+	if(!SearchBarIsVisible())
+		ShowSearchBar(hwndParent);
+
+	return SearchBarFind(TRUE);
 }

@@ -471,6 +471,22 @@ int TextView::PaintMargin(HDC hdc, TextCoord *line, int xpos, int ypos)
 	return rect.right-rect.left;
 }
 
+static bool HasAppFocus(HWND hwnd)
+{
+	if(!IsWindowEnabled(hwnd) || !IsWindowEnabled(GetAncestor(hwnd, GA_ROOT)))
+		return false;
+
+	HWND hwndFocus = GetFocus();
+
+	if(hwndFocus == hwnd || IsChild(hwnd, hwndFocus))
+		return true;
+
+	HWND hwndRoot = GetAncestor(hwnd, GA_ROOT);
+	HWND hwndForeground = GetForegroundWindow();
+
+	return hwndForeground == hwndRoot || GetAncestor(hwndForeground, GA_ROOT) == hwndRoot;
+}
+
 //
 //	Draw a line of text into the specified device-context
 //
@@ -485,7 +501,7 @@ void TextView::PaintText(HDC hdc, TextCoord *coord, int xpos, int ypos, RECT *bo
 		return;
 
 	// set highlight-colours depending on window-focus
-	if(GetFocus() == m_hWnd)
+	if(HasAppFocus(m_hWnd))
 		UspSetSelColor(uspData, GetColour(TXC_HIGHLIGHTTEXT), GetColour(TXC_HIGHLIGHT));
 	else
 		UspSetSelColor(uspData, GetColour(TXC_HIGHLIGHTTEXT2), GetColour(TXC_HIGHLIGHT2));

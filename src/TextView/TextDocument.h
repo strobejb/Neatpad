@@ -151,6 +151,7 @@ public:
 	//
 	TextReader text_from_range(const TextCoord *from, const TextCoord *to);
 	ULONG getline(TextCoord &coord, TCHAR *buf, ULONG buflen);
+	bool  find_text(TCHAR *text, ULONG length, size_w from, size_w to, bool backwards, bool matchcase, size_w *match, size_w *match_length);
 
 	//
 	//	Document facts
@@ -179,6 +180,7 @@ private:
 	bool unit_before(size_w offset_bytes, ULONG *ch, ULONG *size);
 	bool line_bounds_from_offset(size_w offset_bytes, size_w *line_begin, size_w *line_next);
 	void coord_in_line(size_w line_begin, size_w line_next, size_w line_offset_chars, TextCoord *coord);
+	bool find_text_nocase(TCHAR *text, ULONG length, size_w from, size_w to, bool backwards, size_w *match, size_w *match_length);
 
 	//
 	//	UTF-16 / backing-byte conversion
@@ -197,6 +199,7 @@ private:
 	TEXT_ENCODING detect_file_format(int *headersize);
 	size_w decode_text(size_w offset_bytes, size_w lenbytes, TCHAR *buf, ULONG *len);
 	size_w decode_char(size_w offset_bytes, size_t lenbytes, ULONG *pch32);
+	size_w decode_prev_char(size_w offset_bytes, size_w lower_bound, ULONG *pch32);
 
 	//
 	//	Raw editing

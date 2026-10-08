@@ -173,6 +173,7 @@ IDR_ACCELERATOR1 ACCELERATORS
 BEGIN
     "C",            IDM_EDIT_COPY,          VIRTKEY, CONTROL, NOINVERT
     "F",            IDM_EDIT_FIND,          VIRTKEY, CONTROL, NOINVERT
+    VK_F3,          IDM_EDIT_FINDNEXT,      VIRTKEY, NOINVERT
     "G",            IDM_EDIT_GOTO,          VIRTKEY, CONTROL, NOINVERT
     "H",            IDM_EDIT_REPLACE,       VIRTKEY, CONTROL, NOINVERT
     "N",            IDM_FILE_NEW,           VIRTKEY, CONTROL, NOINVERT
@@ -350,16 +351,16 @@ BEGIN
     PUSHBUTTON      "&Close",IDCANCEL,241,24,64,14
 END
 
-IDD_SEARCHBAR DIALOGEX 0, 0, 390, 28
+IDD_SEARCHBAR DIALOGEX 0, 0, 455, 28
 STYLE DS_SETFONT | DS_FIXEDSYS | DS_CONTROL | WS_CHILD | WS_CLIPCHILDREN
 EXSTYLE WS_EX_CONTROLPARENT
 FONT 8, "MS Shell Dlg", 0, 0, 0x1
 BEGIN
-    PUSHBUTTON      "",IDC_SEARCH_OPTIONS,8,5,20,18,BS_FLAT | WS_TABSTOP
-    EDITTEXT        IDC_EDIT1,32,5,160,18,ES_MULTILINE | ES_AUTOHSCROLL | WS_TABSTOP
-    PUSHBUTTON      "",IDC_SEARCH_PREVIOUS,196,5,20,18,BS_FLAT | WS_TABSTOP
-    PUSHBUTTON      "",IDC_SEARCH_NEXT,220,5,20,18,BS_FLAT | WS_TABSTOP
-    PUSHBUTTON      "",IDCANCEL,362,5,20,18,BS_FLAT | WS_TABSTOP
+    PUSHBUTTON      "",IDC_SEARCH_OPTIONS,8,5,20,18,BS_FLAT
+    EDITTEXT        IDC_EDIT1,32,5,218,18,ES_MULTILINE | ES_AUTOHSCROLL
+    PUSHBUTTON      "",IDC_SEARCH_PREVIOUS,257,5,20,18,BS_FLAT
+    PUSHBUTTON      "",IDC_SEARCH_NEXT,281,5,20,18,BS_FLAT
+    PUSHBUTTON      "",IDCANCEL,362,5,20,18,BS_FLAT
 END
 
 
@@ -484,8 +485,8 @@ IDB_SEARCHBAR_BUTTONS   BITMAP                  "searchbar_buttons.bmp"
 //
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 0,18,19,1
- PRODUCTVERSION 0,18,19,1
+ FILEVERSION 1,22,19,1
+ PRODUCTVERSION 1,22,19,1
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x1L
@@ -503,12 +504,12 @@ BEGIN
             VALUE "Comments", "Neatpad text editor by www.catch22.net"
             VALUE "CompanyName", "Catch22 Productions"
             VALUE "FileDescription", "Neatpad Text Editor"
-            VALUE "FileVersion", "0, 18, 19, 1"
+            VALUE "FileVersion", "1.22.19.1"
             VALUE "InternalName", "Neatpad"
             VALUE "LegalCopyright", "Copyright © 2006 Catch22 Productions"
             VALUE "OriginalFilename", "Neatpad.exe"
             VALUE "ProductName", "Neatpad"
-            VALUE "ProductVersion", "0, 18, 19, 1"
+            VALUE "ProductVersion", "1.22.19.1"
         END
     END
     BLOCK "VarFileInfo"
@@ -524,6 +525,11 @@ END
 //
 
 IDD_ABOUT AFX_DIALOG_LAYOUT
+BEGIN
+    0
+END
+
+IDD_SEARCHBAR AFX_DIALOG_LAYOUT
 BEGIN
     0
 END

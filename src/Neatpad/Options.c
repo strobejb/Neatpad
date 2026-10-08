@@ -45,6 +45,8 @@ int	  g_nLongLineLimit;
 BOOL  g_nHLCurLine;
 BOOL  g_fShowLineEndings;
 BOOL  g_fShowStatusbar;
+BOOL  g_fSearchMatchCase;
+BOOL  g_fSearchWrap;
 BOOL  g_fAddToExplorer		= 0;
 BOOL  g_fReplaceNotepad		= 0;
 
@@ -438,6 +440,8 @@ void LoadRegSettings()
 	GetSettingInt(hKey, _T("SaveOnExit"),	 &g_fSaveOnExit, TRUE);
 	GetSettingInt(hKey, _T("HLCurLine"),	 &g_nHLCurLine, FALSE);
 	GetSettingInt(hKey, _T("ShowLineEndings"), &g_fShowLineEndings, FALSE);
+	GetSettingInt(hKey, _T("SearchMatchCase"), &g_fSearchMatchCase, FALSE);
+	GetSettingInt(hKey, _T("SearchWrap"), &g_fSearchWrap, TRUE);
 
 	GetSettingInt(hKey, _T("AddExplorer"),	 &g_fAddToExplorer, FALSE);
 	GetSettingInt(hKey, _T("ReplaceNotepad"), &g_fReplaceNotepad, FALSE);
@@ -511,6 +515,8 @@ void SaveRegSettings()
 	WriteSettingInt(hKey, _T("LongLineLimit"),g_nLongLineLimit);
 	WriteSettingInt(hKey, _T("HLCurLine"),	  g_nHLCurLine);
 	WriteSettingInt(hKey, _T("ShowLineEndings"), g_fShowLineEndings);
+	WriteSettingInt(hKey, _T("SearchMatchCase"), g_fSearchMatchCase);
+	WriteSettingInt(hKey, _T("SearchWrap"), g_fSearchWrap);
 
 	WriteSettingInt(hKey, _T("AddExplorer"),  g_fAddToExplorer);
 	WriteSettingInt(hKey, _T("ReplaceNotepad"), g_fReplaceNotepad);

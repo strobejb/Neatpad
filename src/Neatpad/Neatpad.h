@@ -31,6 +31,8 @@ extern BOOL		g_fShowLineEndings;
 extern BOOL		g_fAddToExplorer;
 extern BOOL		g_fReplaceNotepad;
 extern BOOL		g_fShowStatusbar;
+extern BOOL		g_fSearchMatchCase;
+extern BOOL		g_fSearchWrap;
 
 extern LONG		g_nPaddingAbove;
 extern LONG		g_nPaddingBelow;
@@ -121,6 +123,8 @@ HWND ShowSearchBar(HWND hwndParent);
 void HideSearchBar(void);
 int  SearchBarHeight(void);
 BOOL SearchBarIsVisible(void);
+UINT SearchBarFindNext(HWND hwndParent);
+UINT SearchBarFindPrevious(HWND hwndParent);
 
 
 //

@@ -127,6 +127,7 @@ private:
 	//
 	size_w		SelectionSize();
 	ULONG		SelectAll();
+	UINT		FindText(TEXTVIEWFIND *find);
 	bool		GetSelection(TextCoord *start, TextCoord *end);
 	void		SelectionColumns(TextCoord *line, ULONG lineLen, ULONG *start, ULONG *end);
 

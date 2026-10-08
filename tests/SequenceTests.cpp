@@ -10,6 +10,7 @@
 #include "../src/TextView/sequence.h"
 #include "../src/TextView/TextDocument.h"
 #include "../src/TextView/TextView.h"
+#include "../src/TextView/Unicode.h"
 
 // Test access to a document's sequence, for line-number lookups (such as where
 // line N starts) that TextDocument itself doesn't offer
@@ -303,6 +304,24 @@ bool write_textdocument_file(const char *text, DocTestEncoding encoding, TCHAR p
         else
         {
             bytes.push_back(static_cast<char>(ch));
+        }
+    }
+
+    return write_temp_file(bytes.data(), bytes.size(), path);
+}
+
+// Write code units of unit_size bytes in either byte order. Start the units
+// with 0xFEFF to write the matching byte-order mark.
+bool write_units_file(const ULONG *units, size_t count, size_t unit_size, bool big_endian, TCHAR path[MAX_PATH])
+{
+    std::string bytes;
+
+    for(size_t i = 0; i < count; i++)
+    {
+        for(size_t b = 0; b < unit_size; b++)
+        {
+            size_t shift = 8 * (big_endian ? unit_size - 1 - b : b);
+            bytes.push_back(static_cast<char>((units[i] >> shift) & 0xff));
         }
     }
 
@@ -2528,6 +2547,335 @@ void textdocument_change_excludes_header()
     DeleteFile(path);
 }
 
+void textdocument_find_text_searches_raw_sequence()
+{
+    TextDocument doc;
+    TCHAR path[MAX_PATH];
+    TCHAR alpha[] = TEXT("alpha");
+    TCHAR missing[] = TEXT("omega");
+    size_w match = static_cast<size_w>(-1);
+    size_w match_length = 0;
+
+    CHECK(write_textdocument_file("alpha beta alpha", DOC_ASCII, path));
+    CHECK(doc.init(path));
+
+    CHECK(doc.find_text(alpha, 5, 0, doc.byte_length(), false, true, &match, &match_length));
+    CHECK(match == 0);
+    CHECK(match_length == 5);
+
+    CHECK(doc.find_text(alpha, 5, 1, doc.byte_length(), false, true, &match, &match_length));
+    CHECK(match == 11);
+    CHECK(match_length == 5);
+
+    CHECK(doc.find_text(alpha, 5, 0, 11, true, true, &match, &match_length));
+    CHECK(match == 0);
+    CHECK(match_length == 5);
+
+    CHECK(doc.find_text(alpha, 5, 0, doc.byte_length(), true, true, &match, &match_length));
+    CHECK(match == 11);
+    CHECK(match_length == 5);
+
+    CHECK(!doc.find_text(missing, 5, 0, doc.byte_length(), false, true, &match, &match_length));
+
+    doc.clear();
+    DeleteFile(path);
+}
+
+void textdocument_find_text_matches_ascii_case_insensitive()
+{
+    TextDocument doc;
+    TCHAR path[MAX_PATH];
+    TCHAR alpha[] = TEXT("alpha");
+    size_w match = static_cast<size_w>(-1);
+    size_w match_length = 0;
+
+    CHECK(write_textdocument_file("ALPHA beta", DOC_UTF16LE_BOM, path));
+    CHECK(doc.init(path));
+
+    CHECK(!doc.find_text(alpha, 5, 0, doc.byte_length(), false, true, &match, &match_length));
+    CHECK(doc.find_text(alpha, 5, 0, doc.byte_length(), false, false, &match, &match_length));
+    CHECK(match == 0);
+    CHECK(match_length == 10);
+
+    doc.clear();
+    DeleteFile(path);
+}
+
+void textdocument_find_text_matches_unicode_case_insensitive_across_encodings()
+{
+    TextDocument doc;
+    TCHAR path[MAX_PATH];
+    TCHAR cafe[] = { 'c', 'a', 'f', 0x00e9, 0 };
+    size_w match = static_cast<size_w>(-1);
+    size_w match_length = 0;
+
+    const char utf8[] =
+    {
+        static_cast<char>(0xef), static_cast<char>(0xbb), static_cast<char>(0xbf),
+        'C', 'A', 'F', static_cast<char>(0xc3), static_cast<char>(0x89)
+    };
+    CHECK(write_temp_file(utf8, sizeof(utf8), path));
+    CHECK(doc.init(path));
+    CHECK(doc.find_text(cafe, 4, 0, doc.byte_length(), false, false, &match, &match_length));
+    CHECK(match == 0);
+    CHECK(match_length == 5);
+    doc.clear();
+    DeleteFile(path);
+
+    const WCHAR utf16[] = { 0xfeff, 'C', 'A', 'F', 0x00c9 };
+    CHECK(write_temp_file(reinterpret_cast<const char *>(utf16), sizeof(utf16), path));
+    CHECK(doc.init(path));
+    CHECK(doc.find_text(cafe, 4, 0, doc.byte_length(), false, false, &match, &match_length));
+    CHECK(match == 0);
+    CHECK(match_length == 8);
+    doc.clear();
+    DeleteFile(path);
+}
+
+void textdocument_find_text_converts_query_to_document_encoding()
+{
+    TextDocument doc;
+    TCHAR path[MAX_PATH];
+    TCHAR beta[] = TEXT("beta");
+    size_w match = static_cast<size_w>(-1);
+    size_w match_length = 0;
+
+    CHECK(write_textdocument_file("alpha beta gamma", DOC_UTF16BE_BOM, path));
+    CHECK(doc.init(path));
+
+    CHECK(doc.find_text(beta, 4, 0, doc.byte_length(), false, true, &match, &match_length));
+    CHECK(match == 12);
+    CHECK(match_length == 8);
+
+    doc.clear();
+    DeleteFile(path);
+}
+
+void textdocument_find_text_nocase_slides_window()
+{
+    TextDocument doc;
+    TCHAR path[MAX_PATH];
+    TCHAR alpha[] = TEXT("alpha");
+    TCHAR z[] = TEXT("Z");
+    size_w match = static_cast<size_w>(-1);
+    size_w match_length = 0;
+
+    CHECK(write_textdocument_file("zz Alpha zz aLPHA zb", DOC_ASCII, path));
+    CHECK(doc.init(path));
+
+    // the window wraps round several times before each match
+    CHECK(doc.find_text(alpha, 5, 0, doc.byte_length(), false, false, &match, &match_length));
+    CHECK(match == 3);
+    CHECK(match_length == 5);
+
+    CHECK(doc.find_text(alpha, 5, 4, doc.byte_length(), false, false, &match, &match_length));
+    CHECK(match == 12);
+    CHECK(match_length == 5);
+
+    CHECK(doc.find_text(alpha, 5, 0, doc.byte_length(), true, false, &match, &match_length));
+    CHECK(match == 12);
+    CHECK(match_length == 5);
+
+    CHECK(doc.find_text(alpha, 5, 0, 16, true, false, &match, &match_length));
+    CHECK(match == 3);
+    CHECK(match_length == 5);
+
+    // a window of a single unit
+    CHECK(doc.find_text(z, 1, 11, doc.byte_length(), false, false, &match, &match_length));
+    CHECK(match == 18);
+    CHECK(match_length == 1);
+
+    CHECK(doc.find_text(z, 1, 0, 18, true, false, &match, &match_length));
+    CHECK(match == 10);
+    CHECK(match_length == 1);
+
+    doc.clear();
+    DeleteFile(path);
+}
+
+void textdocument_find_text_nocase_backwards_over_utf8()
+{
+    TextDocument doc;
+    TCHAR path[MAX_PATH];
+    TCHAR cafe[] = { 'c', 'a', 'f', 0x00e9, 0 };
+    size_w match = static_cast<size_w>(-1);
+    size_w match_length = 0;
+
+    // "cafe CAFE x", each final e accented as a 2-byte sequence
+    const ULONG utf8[] =
+    {
+        0xef, 0xbb, 0xbf,
+        'c', 'a', 'f', 0xc3, 0xa9, ' ', 'C', 'A', 'F', 0xc3, 0x89, ' ', 'x'
+    };
+
+    CHECK(write_units_file(utf8, sizeof(utf8) / sizeof(utf8[0]), 1, false, path));
+    CHECK(doc.init(path));
+
+    CHECK(doc.find_text(cafe, 4, 0, doc.byte_length(), true, false, &match, &match_length));
+    CHECK(match == 6);
+    CHECK(match_length == 5);
+
+    CHECK(doc.find_text(cafe, 4, 0, 6, true, false, &match, &match_length));
+    CHECK(match == 0);
+    CHECK(match_length == 5);
+
+    // ending the search between the bytes of the second accented E leaves only the first match
+    CHECK(doc.find_text(cafe, 4, 0, 10, true, false, &match, &match_length));
+    CHECK(match == 0);
+    CHECK(match_length == 5);
+
+    doc.clear();
+    DeleteFile(path);
+}
+
+void textdocument_find_text_nocase_matches_supplementary_chars_in_each_encoding()
+{
+    TextDocument doc;
+    TCHAR path[MAX_PATH];
+    TCHAR pattern[] = { 0xd83d, 0xde00, 'a', 0 };
+    size_w match = static_cast<size_w>(-1);
+    size_w match_length = 0;
+
+    // U+1F600 then A, twice over with a space between
+    const ULONG utf8[]  = { 0xef, 0xbb, 0xbf, 0xf0, 0x9f, 0x98, 0x80, 'A', ' ', 0xf0, 0x9f, 0x98, 0x80, 'A' };
+    const ULONG utf16[] = { 0xfeff, 0xd83d, 0xde00, 'A', ' ', 0xd83d, 0xde00, 'A' };
+    const ULONG utf32[] = { 0xfeff, 0x1f600, 'A', ' ', 0x1f600, 'A' };
+
+    const struct
+    {
+        const ULONG *units;
+        size_t count;
+        size_t unit_size;
+        bool big_endian;
+        size_w second;
+        size_w length;
+    }
+    files[] =
+    {
+        { utf8,  sizeof(utf8) / sizeof(utf8[0]),   1, false, 6,  5 },
+        { utf16, sizeof(utf16) / sizeof(utf16[0]), 2, false, 8,  6 },
+        { utf16, sizeof(utf16) / sizeof(utf16[0]), 2, true,  8,  6 },
+        { utf32, sizeof(utf32) / sizeof(utf32[0]), 4, false, 12, 8 },
+        { utf32, sizeof(utf32) / sizeof(utf32[0]), 4, true,  12, 8 },
+    };
+
+    for(size_t i = 0; i < sizeof(files) / sizeof(files[0]); i++)
+    {
+        CHECK(write_units_file(files[i].units, files[i].count, files[i].unit_size, files[i].big_endian, path));
+        CHECK(doc.init(path));
+
+        CHECK(doc.find_text(pattern, 3, 0, doc.byte_length(), false, false, &match, &match_length));
+        CHECK(match == 0);
+        CHECK(match_length == files[i].length);
+
+        CHECK(doc.find_text(pattern, 3, 0, doc.byte_length(), true, false, &match, &match_length));
+        CHECK(match == files[i].second);
+        CHECK(match_length == files[i].length);
+
+        doc.clear();
+        DeleteFile(path);
+    }
+}
+
+void textdocument_find_text_nocase_steps_over_split_surrogate_pair()
+{
+    TextDocument doc;
+    TCHAR path[MAX_PATH];
+    TCHAR pattern[] = { 0xd83d, 0xde00, 'a', 0 };
+    size_w match = static_cast<size_w>(-1);
+    size_w match_length = 0;
+
+    const ULONG utf16[] = { 0xfeff, 0xd83d, 0xde00, 'A', ' ', 0xd83d, 0xde00, 'A' };
+
+    CHECK(write_units_file(utf16, sizeof(utf16) / sizeof(utf16[0]), 2, false, path));
+    CHECK(doc.init(path));
+
+    // starting after the first high surrogate, the search picks up from the lone low one
+    CHECK(doc.find_text(pattern, 3, 2, doc.byte_length(), false, false, &match, &match_length));
+    CHECK(match == 8);
+    CHECK(match_length == 6);
+
+    // ending after the second high surrogate, the search steps back from the lone high one
+    CHECK(doc.find_text(pattern, 3, 0, 10, true, false, &match, &match_length));
+    CHECK(match == 0);
+    CHECK(match_length == 6);
+
+    doc.clear();
+    DeleteFile(path);
+}
+
+void unicode_utf8_prev_steps_back_to_lead_byte()
+{
+    UTF8 text[] = { 'a', 0xc3, 0xa9, 0xf0, 0x9f, 0x98, 0x80 };
+    UTF8 stray[] = { 0xc3, 0xa9, 0xa9 };
+    UTF8 headless[] = { 0x9f, 0x98, 0x80 };
+    UTF32 ch32 = 0;
+
+    // a 4-byte sequence, the 2-byte one before it, then plain ASCII
+    CHECK(utf8_to_utf32_prev(text, 7, &ch32) == 4);
+    CHECK(ch32 == 0x1f600);
+    CHECK(utf8_to_utf32_prev(text, 3, &ch32) == 2);
+    CHECK(ch32 == 0xe9);
+    CHECK(utf8_to_utf32_prev(text, 1, &ch32) == 1);
+    CHECK(ch32 == 'a');
+
+    // one trailing byte too many, or trailing bytes with no lead, go one byte at a time
+    CHECK(utf8_to_utf32_prev(stray, 3, &ch32) == 1);
+    CHECK(ch32 == UNI_REPLACEMENT_CHAR);
+    CHECK(utf8_to_utf32_prev(stray, 2, &ch32) == 2);
+    CHECK(ch32 == 0xe9);
+    CHECK(utf8_to_utf32_prev(headless, 3, &ch32) == 1);
+    CHECK(ch32 == UNI_REPLACEMENT_CHAR);
+}
+
+void unicode_utf16_prev_joins_surrogate_pair()
+{
+    // 'A' then U+1F600 as a surrogate pair, in each byte order
+    UTF8 le[] = { 'A', 0x00, 0x3d, 0xd8, 0x00, 0xde };
+    UTF8 be[] = { 0x00, 'A', 0xd8, 0x3d, 0xde, 0x00 };
+    UTF8 lone[] = { 'A', 0x00, 0x00, 0xde };
+    UTF32 ch32 = 0;
+
+    CHECK(utf16_to_utf32_prev(le, 6, &ch32) == 4);
+    CHECK(ch32 == 0x1f600);
+    CHECK(utf16_to_utf32_prev(le, 2, &ch32) == 2);
+    CHECK(ch32 == 'A');
+
+    CHECK(utf16be_to_utf32_prev(be, 6, &ch32) == 4);
+    CHECK(ch32 == 0x1f600);
+    CHECK(utf16be_to_utf32_prev(be, 2, &ch32) == 2);
+    CHECK(ch32 == 'A');
+
+    // a low surrogate with no high surrogate before it stands alone
+    CHECK(utf16_to_utf32_prev(lone, 4, &ch32) == 2);
+    CHECK(ch32 == 0xde00);
+    CHECK(utf16_to_utf32_prev(le + 4, 2, &ch32) == 2);
+    CHECK(ch32 == 0xde00);
+    CHECK(utf16be_to_utf32_prev(be + 4, 2, &ch32) == 2);
+    CHECK(ch32 == 0xde00);
+}
+
+void unicode_utf32_char_reads_both_byte_orders()
+{
+    UTF8 le[] = { 0x00, 0xf6, 0x01, 0x00 };
+    UTF8 be[] = { 0x00, 0x01, 0xf6, 0x00 };
+    UTF8 beyond[] = { 0x00, 0x00, 0x11, 0x00 };
+    UTF32 ch32 = 0;
+
+    CHECK(utf32_to_utf32_char(le, 4, &ch32) == 4);
+    CHECK(ch32 == 0x1f600);
+    CHECK(utf32be_to_utf32_char(be, 4, &ch32) == 4);
+    CHECK(ch32 == 0x1f600);
+
+    // 0x110000 is past the end of Unicode
+    CHECK(utf32_to_utf32_char(beyond, 4, &ch32) == 4);
+    CHECK(ch32 == UNI_REPLACEMENT_CHAR);
+
+    // a partial unit is not a character
+    CHECK(utf32_to_utf32_char(le, 3, &ch32) == 0);
+    CHECK(utf32be_to_utf32_char(be, 3, &ch32) == 0);
+}
+
 void textdocument_sequence_index_matches_ascii_after_edits()
 {
     TextDocument doc;
@@ -2788,6 +3136,17 @@ const test_case tests[] =
     { "textdocument_coord_moves_across_changes", textdocument_coord_moves_across_changes },
     { "textdocument_edits_by_coord", textdocument_edits_by_coord },
     { "textdocument_change_excludes_header", textdocument_change_excludes_header },
+    { "textdocument_find_text_searches_raw_sequence", textdocument_find_text_searches_raw_sequence },
+    { "textdocument_find_text_matches_ascii_case_insensitive", textdocument_find_text_matches_ascii_case_insensitive },
+    { "textdocument_find_text_matches_unicode_case_insensitive_across_encodings", textdocument_find_text_matches_unicode_case_insensitive_across_encodings },
+    { "textdocument_find_text_converts_query_to_document_encoding", textdocument_find_text_converts_query_to_document_encoding },
+    { "textdocument_find_text_nocase_slides_window", textdocument_find_text_nocase_slides_window },
+    { "textdocument_find_text_nocase_backwards_over_utf8", textdocument_find_text_nocase_backwards_over_utf8 },
+    { "textdocument_find_text_nocase_matches_supplementary_chars_in_each_encoding", textdocument_find_text_nocase_matches_supplementary_chars_in_each_encoding },
+    { "textdocument_find_text_nocase_steps_over_split_surrogate_pair", textdocument_find_text_nocase_steps_over_split_surrogate_pair },
+    { "unicode_utf8_prev_steps_back_to_lead_byte", unicode_utf8_prev_steps_back_to_lead_byte },
+    { "unicode_utf16_prev_joins_surrogate_pair", unicode_utf16_prev_joins_surrogate_pair },
+    { "unicode_utf32_char_reads_both_byte_orders", unicode_utf32_char_reads_both_byte_orders },
     { "textdocument_sequence_index_matches_ascii_after_edits", textdocument_sequence_index_matches_ascii_after_edits },
     { "textdocument_sequence_index_matches_utf16le", textdocument_sequence_index_matches_utf16le },
     { "textdocument_sequence_index_matches_utf16be", textdocument_sequence_index_matches_utf16be },

@@ -506,6 +506,10 @@ UINT CommandHandler(HWND hwnd, UINT nCtrlId, UINT nCtrlCode, HWND hwndFrom)
 		else
 			ShowSearchBar(hwnd);
 		return 0;
+
+	case IDM_EDIT_FINDNEXT:
+		SearchBarFindNext(hwnd);
+		return 0;
 		
 	case IDM_EDIT_REPLACE:
 		ShowFindDlg(hwnd, REPLACE_PAGE);

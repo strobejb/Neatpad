@@ -63,6 +63,7 @@ COLORREF RealizeColour(COLORREF col);
 #define TXM_CLEARFONTFALLBACKS	(TXM_BASE + 28)
 #define TXM_GETDOCSTATS			(TXM_BASE + 29)
 #define TXM_GETCURSORINFO		(TXM_BASE + 30)
+#define TXM_FINDTEXT			(TXM_BASE + 31)
 
 //
 //	TextView Notification Messages defined here - 
@@ -98,6 +99,19 @@ typedef struct _TEXTVIEWSTATS
 	unsigned __int64 sel_char_count;
 	UINT			 linebreaks_seen;	// TXL_* kinds of line break found so far (a large file is counted lazily)
 } TEXTVIEWDOCSTATS;
+
+#define TVFR_NOTFOUND			0
+#define TVFR_FOUND				1
+#define TVFR_FOUNDWRAPPED		2
+
+typedef struct _TEXTVIEWFIND
+{
+	TCHAR *text;
+	UINT length;
+	BOOL backwards;
+	BOOL wrap;
+	BOOL matchcase;
+} TEXTVIEWFIND;
 
 //
 //	TextView Window Styles defined here
@@ -239,6 +253,9 @@ typedef struct _TEXTVIEWSTATS
 
 #define TextView_GetCursorInfo(hwndTV, info) \
 	((BOOL)SendMessage((hwndTV), TXM_GETCURSORINFO, 0, (LPARAM)(TVNCURSORINFO *)(info)))
+
+#define TextView_FindText(hwndTV, find) \
+	((UINT)SendMessage((hwndTV), TXM_FINDTEXT, 0, (LPARAM)(TEXTVIEWFIND *)(find)))
 
 #define TextView_SetContextMenu(hwndTV, hPopupMenu) \
 	SendMessage((hwndTV), TXM_SETCONTEXTMENU, (WPARAM)(hPopupMenu), 0)

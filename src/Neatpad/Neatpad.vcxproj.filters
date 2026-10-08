@@ -84,9 +84,7 @@
     <Image Include="icon4.ico">
       <Filter>Resource Files</Filter>
     </Image>
-    <Image Include="searchbar_buttons.bmp">
-      <Filter>Resource Files</Filter>
-    </Image>
+    <Image Include="searchbar_buttons.bmp" />
   </ItemGroup>
   <ItemGroup>
     <Manifest Include="Neatpad.exe.manifest">
