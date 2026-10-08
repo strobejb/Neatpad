@@ -42,6 +42,11 @@ size_t	utf16_to_utf32_prev(UTF8 *utf16str, size_t utf16len, UTF32 *pch32);
 size_t	utf16be_to_utf32_prev(UTF8 *utf16str, size_t utf16len, UTF32 *pch32);
 
 //
+//	Length of a UTF-8 stream up to the end of its last whole sequence
+//
+size_t	utf8_complete_length(UTF8 *utf8str, size_t utf8len);
+
+//
 //	Conversions between UTF-16 and UTF-8 strings
 //
 size_t	utf8_to_utf16(UTF8 *utf8str,   size_t utf8len, UTF16 *utf16str, size_t *utf16len);
@@ -53,6 +58,14 @@ size_t  utf16_to_utf8(UTF16 *utf16str, size_t utf16len, UTF8 *utf8str,  size_t *
 size_t  utf16_to_utf32(UTF16 *utf16str,   size_t utf16len, UTF32 *utf32str, size_t *utf32len);
 size_t  utf32_to_utf16(UTF32 *utf32str,   size_t utf32len, UTF16 *utf16str, size_t *utf16len);
 size_t	utf16be_to_utf32(UTF16 *utf16str, size_t utf16len, UTF32 *utf32str, size_t *utf32len);
+
+//
+//	Conversions between UTF-16 strings and UTF-32 byte streams, in either byte order
+//
+size_t	utf32le_to_utf16(UTF8 *utf32str, size_t utf32len, UTF16 *utf16str, size_t *utf16len);
+size_t	utf32be_to_utf16(UTF8 *utf32str, size_t utf32len, UTF16 *utf16str, size_t *utf16len);
+size_t	utf16_to_utf32le(UTF16 *utf16str, size_t utf16len, UTF8 *utf32str, size_t *utf32len);
+size_t	utf16_to_utf32be(UTF16 *utf16str, size_t utf16len, UTF8 *utf32str, size_t *utf32len);
 
 
 //

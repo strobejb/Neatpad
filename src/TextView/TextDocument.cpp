@@ -321,6 +321,16 @@ size_w TextDocument::decode_text(size_w offset, size_w lenbytes, TCHAR *buf, ULO
 		if(rendered == 0)
 			break;
 
+		// with more of the range to come, end the block on a whole character
+		// rather than decode one cut short by the block
+		if(rendered == rawlen && rawlen < lenbytes)
+		{
+			size_t whole = rawdata_complete_length(rawdata, (size_t)rendered);
+
+			if(whole > 0)
+				rendered = whole;
+		}
+
 		// convert to UTF-16 
 		size_t tmplen = *buflen;
 		rawlen = rawdata_to_utf16(rawdata, (size_t)rendered, buf, &tmplen);
@@ -503,6 +513,9 @@ bool TextDocument::find_text(TCHAR *text, ULONG length, size_w from, size_w to, 
 	size_t copied;
 	size_w blockLength;
 
+	// a match must start on a code unit, not part way through one
+	size_w unitSize = encoding_info(m_nFileFormat)->code_unit_bits / 8;
+
 	BYTE * pattern = 0;
 	BYTE * block = 0;
 
@@ -569,6 +582,7 @@ bool TextDocument::find_text(TCHAR *text, ULONG length, size_w from, size_w to, 
 				candidates--;
 
 				if(candidates + patternLength <= rendered &&
+					(chunkStart + candidates) % unitSize == 0 &&
 					memcmp(block + candidates, pattern, (size_t)patternLength) == 0)
 				{
 					found = chunkStart + candidates;
@@ -592,7 +606,8 @@ bool TextDocument::find_text(TCHAR *text, ULONG length, size_w from, size_w to, 
 
 			for(size_w pos = 0; pos < candidates && pos + patternLength <= rendered; pos++)
 			{
-				if(memcmp(block + pos, pattern, (size_t)patternLength) == 0)
+				if((chunkStart + pos) % unitSize == 0 &&
+					memcmp(block + pos, pattern, (size_t)patternLength) == 0)
 				{
 					found = chunkStart + pos;
 					matched = true;
@@ -713,10 +728,43 @@ size_t TextDocument::rawdata_to_utf16(BYTE *rawdata, size_t rawlen, TCHAR *utf16
 		rawlen /= sizeof(TCHAR);
 		return swap_utf16((UTF16 *)rawdata, rawlen, (UTF16 *)utf16str, utf16len) * sizeof(TCHAR);
 
+	case NCP_UTF32:
+		return utf32le_to_utf16(rawdata, rawlen, (UTF16 *)utf16str, utf16len);
+
+	case NCP_UTF32BE:
+		return utf32be_to_utf16(rawdata, rawlen, (UTF16 *)utf16str, utf16len);
+
 	// error! we should *never* reach this point
 	default:
 		*utf16len = 0;
-		return 0;	
+		return 0;
+	}
+}
+
+//
+//	The length of the RAW buffer up to the end of its last whole character, so
+//	that text can be converted a block at a time without splitting a character
+//	between two blocks
+//
+size_t TextDocument::rawdata_complete_length(BYTE *rawdata, size_t rawlen)
+{
+	switch(m_nFileFormat)
+	{
+	case NCP_UTF8:
+		return utf8_complete_length(rawdata, rawlen);
+
+	// whole code units: the halves of a surrogate pair convert separately
+	case NCP_UTF16:
+	case NCP_UTF16BE:
+		return rawlen & ~(size_t)1;
+
+	case NCP_UTF32:
+	case NCP_UTF32BE:
+		return rawlen & ~(size_t)3;
+
+	case NCP_ASCII:
+	default:
+		return rawlen;
 	}
 }
 
@@ -752,6 +800,12 @@ size_t TextDocument::utf16_to_rawdata(TCHAR *utf16str, size_t utf16len, BYTE *ra
 		utf16len = swap_utf16((UTF16 *)utf16str, utf16len, (UTF16 *)rawdata, rawlen);
 		*rawlen *= sizeof(TCHAR);
 		return utf16len;
+
+	case NCP_UTF32:
+		return utf16_to_utf32le((UTF16 *)utf16str, utf16len, rawdata, rawlen);
+
+	case NCP_UTF32BE:
+		return utf16_to_utf32be((UTF16 *)utf16str, utf16len, rawdata, rawlen);
 
 	// error! we should *never* reach this point
 	default:

@@ -281,6 +281,59 @@ size_t utf8_to_utf32_prev(UTF8 *utf8str, size_t utf8len, UTF32 *pch32)
 }
 
 //
+//	The number of trailing bytes a UTF-8 lead byte calls for, as utf8_to_utf32
+//	reads them (including the illegal 5 and 6-byte forms). 0 for anything that
+//	is not a lead byte.
+//
+static size_t utf8_trailing_bytes(UTF8 ch)
+{
+	if((ch & 0xE0) == 0xC0)	return 1;
+	if((ch & 0xF0) == 0xE0)	return 2;
+	if((ch & 0xF8) == 0xF0)	return 3;
+	if((ch & 0xFC) == 0xF8)	return 4;
+	if((ch & 0xFE) == 0xFC)	return 5;
+	return 0;
+}
+
+//
+//	utf8_complete_length
+//
+//	The length of the specified UTF-8 stream of text up to the end of its last
+//	whole sequence: a lead byte at the end whose trailing bytes are cut short
+//	is left out, along with the trailing bytes it does have.
+//
+//	Lets a stream be converted a block at a time without splitting a sequence
+//	between two blocks.
+//
+//	utf8str		- [in]   buffer containing UTF-8 text
+//	utf8len		- [in]   number of code-units (bytes) available in buffer
+//
+//	Returns the number of bytes up to the end of the last whole sequence
+//
+size_t utf8_complete_length(UTF8 *utf8str, size_t utf8len)
+{
+	size_t start;
+
+	if(utf8str == 0)
+		return 0;
+
+	// find the last lead byte: a sequence is at most 6 bytes in utf8_to_utf32's eyes
+	for(start = utf8len; start > 0 && utf8len - start < 6; start--)
+	{
+		if((utf8str[start - 1] & 0xC0) != 0x80)
+		{
+			// cut short if it calls for more trailing bytes than follow it
+			if(utf8len - start < utf8_trailing_bytes(utf8str[start - 1]))
+				return start - 1;
+
+			break;
+		}
+	}
+
+	return utf8len;
+}
+
+//
 //	utf16_to_utf32_prev
 //
 //	Converts the single codepoint that ends the specified UTF-16LE stream
@@ -479,6 +532,7 @@ size_t utf16_to_utf8(UTF16 *utf16str, size_t utf16len, UTF8 *utf8str, size_t *ut
 	UTF16 * utf16start = utf16str;
 	UTF8  * utf8start  = utf8str;
 	size_t  len;
+	size_t  len16;
 	UTF32	ch32;
 	size_t	ch32len;
 
@@ -486,12 +540,16 @@ size_t utf16_to_utf8(UTF16 *utf16str, size_t utf16len, UTF8 *utf8str, size_t *ut
 	{
 		// convert to utf-32
 		ch32len	    = 1;
-		len		    = utf16_to_utf32(utf16str, utf16len, &ch32, &ch32len);
-		utf16str   += len;
-		utf16len   -= len;
+		len16	    = utf16_to_utf32(utf16str, utf16len, &ch32, &ch32len);
 
-		// convert to utf-8
+		// convert to utf-8, leaving the character for next time if it doesn't fit
 		len		    = utf32_to_utf8(utf8str, *utf8len, ch32);
+
+		if(len == 0)
+			break;
+
+		utf16str   += len16;
+		utf16len   -= len16;
 		utf8str    += len;
 		(*utf8len) -= len;
 	}
@@ -773,4 +831,130 @@ size_t utf16be_to_utf32(UTF16 *utf16str, size_t utf16len, UTF32 *utf32str, size_
 
 	*utf32len = utf32str - utf32start;
 	return utf16str - utf16start;
+}
+
+//
+//	utf32le_to_utf16, utf32be_to_utf16
+//
+//	Convert the specified stream of UTF-32 bytes, in either byte order, to
+//	UTF-16. Only whole characters are converted: a partial unit at the end of
+//	utf32str, or a character with no room left in utf16str, is left for the
+//	next call. Illegal values are converted to the unicode replacement character.
+//
+//	utf32str	- [in]		buffer containing utf-32 bytes
+//	utf32len	- [in]		number of bytes in utf32str
+//	utf16str	- [out]		receives resulting utf-16 text
+//	utf16len	- [in/out]	on input, specifies the size (in UTF16s) of utf16str
+//							on output, holds actual number of UTF16s stored in utf16str
+//
+//	Returns the number of bytes processed from utf32str
+//
+static size_t utf32bytes_to_utf16(UTF8 *utf32str, size_t utf32len, UTF16 *utf16str, size_t *utf16len, BOOL bigendian)
+{
+	UTF16 *utf16start = utf16str;
+	UTF8  *utf32start = utf32str;
+	size_t len16;
+	UTF32  ch32;
+
+	while(utf32len >= 4 && *utf16len > 0)
+	{
+		// convert to utf-32
+		if(bigendian)
+			utf32be_to_utf32_char(utf32str, utf32len, &ch32);
+		else
+			utf32_to_utf32_char(utf32str, utf32len, &ch32);
+
+		// convert to utf-16, leaving the character for next time if it doesn't fit
+		len16 = *utf16len;
+		utf32_to_utf16(&ch32, 1, utf16str, &len16);
+
+		if(len16 == 0)
+			break;
+
+		utf32str    += 4;
+		utf32len    -= 4;
+		utf16str    += len16;
+		(*utf16len) -= len16;
+	}
+
+	*utf16len = utf16str - utf16start;
+	return utf32str - utf32start;
+}
+
+size_t utf32le_to_utf16(UTF8 *utf32str, size_t utf32len, UTF16 *utf16str, size_t *utf16len)
+{
+	return utf32bytes_to_utf16(utf32str, utf32len, utf16str, utf16len, FALSE);
+}
+
+size_t utf32be_to_utf16(UTF8 *utf32str, size_t utf32len, UTF16 *utf16str, size_t *utf16len)
+{
+	return utf32bytes_to_utf16(utf32str, utf32len, utf16str, utf16len, TRUE);
+}
+
+//
+//	utf16_to_utf32le, utf16_to_utf32be
+//
+//	Convert the specified UTF-16 stream of text to UTF-32 bytes, in either
+//	byte order. As many whole characters as possible are stored in utf32str,
+//	and illegal sequences are converted to the unicode replacement character.
+//
+//	utf16str	- [in]		buffer containing utf-16 text
+//	utf16len	- [in]		number of code-units (UTF16s) in utf16str
+//	utf32str	- [out]		receives resulting utf-32 bytes
+//	utf32len	- [in/out]	on input, specifies the size (in bytes) of utf32str
+//							on output, holds actual number of bytes stored in utf32str
+//
+//	Returns the number of UTF16s processed from utf16str
+//
+static size_t utf16_to_utf32bytes(UTF16 *utf16str, size_t utf16len, UTF8 *utf32str, size_t *utf32len, BOOL bigendian)
+{
+	UTF16 *utf16start = utf16str;
+	UTF8  *utf32start = utf32str;
+	size_t len;
+	UTF32  ch32;
+	size_t ch32len;
+
+	while(utf16len > 0 && *utf32len >= 4)
+	{
+		// convert to utf-32
+		ch32len = 1;
+		len     = utf16_to_utf32(utf16str, utf16len, &ch32, &ch32len);
+
+		// a surrogate on its own has no utf-32 form
+		if(ch32 >= UNI_SUR_HIGH_START && ch32 <= UNI_SUR_LOW_END)
+			ch32 = UNI_REPLACEMENT_CHAR;
+
+		if(bigendian)
+		{
+			utf32str[0] = (UTF8)(ch32 >> 24);
+			utf32str[1] = (UTF8)(ch32 >> 16);
+			utf32str[2] = (UTF8)(ch32 >> 8);
+			utf32str[3] = (UTF8)ch32;
+		}
+		else
+		{
+			utf32str[0] = (UTF8)ch32;
+			utf32str[1] = (UTF8)(ch32 >> 8);
+			utf32str[2] = (UTF8)(ch32 >> 16);
+			utf32str[3] = (UTF8)(ch32 >> 24);
+		}
+
+		utf16str    += len;
+		utf16len    -= len;
+		utf32str    += 4;
+		(*utf32len) -= 4;
+	}
+
+	*utf32len = utf32str - utf32start;
+	return utf16str - utf16start;
+}
+
+size_t utf16_to_utf32le(UTF16 *utf16str, size_t utf16len, UTF8 *utf32str, size_t *utf32len)
+{
+	return utf16_to_utf32bytes(utf16str, utf16len, utf32str, utf32len, FALSE);
+}
+
+size_t utf16_to_utf32be(UTF16 *utf16str, size_t utf16len, UTF8 *utf32str, size_t *utf32len)
+{
+	return utf16_to_utf32bytes(utf16str, utf16len, utf32str, utf32len, TRUE);
 }

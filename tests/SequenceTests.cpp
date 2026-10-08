@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include <string>
+#include <vector>
 
 #include "../src/TextView/sequence.h"
 #include "../src/TextView/TextDocument.h"
@@ -2876,6 +2877,304 @@ void unicode_utf32_char_reads_both_byte_orders()
     CHECK(utf32be_to_utf32_char(be, 3, &ch32) == 0);
 }
 
+void unicode_utf8_complete_length_leaves_out_cut_sequence()
+{
+    UTF8 text[] = { 'a', 'b', 0xe4, 0xb8, 0xad };
+    UTF8 four[] = { 0xf0, 0x9f, 0x98, 0x80 };
+    UTF8 stray[] = { 'a', 0x80, 0x80 };
+
+    CHECK(utf8_complete_length(text, 5) == 5);
+    CHECK(utf8_complete_length(text, 4) == 2);
+    CHECK(utf8_complete_length(text, 3) == 2);
+    CHECK(utf8_complete_length(text, 2) == 2);
+    CHECK(utf8_complete_length(four, 4) == 4);
+    CHECK(utf8_complete_length(four, 3) == 0);
+
+    // trailing bytes with no lead byte waiting for them are already whole
+    CHECK(utf8_complete_length(stray, 3) == 3);
+}
+
+void unicode_utf16_to_utf8_leaves_character_that_does_not_fit()
+{
+    // 'a', a 3-byte character, then a 4-byte one
+    UTF16 text[] = { 'a', 0x4e2d, 0xd83d, 0xde00 };
+    UTF8 out[8];
+    size_t len;
+
+    len = 3;
+    CHECK(utf16_to_utf8(text, 4, out, &len) == 1);
+    CHECK(len == 1);
+
+    len = 4;
+    CHECK(utf16_to_utf8(text, 4, out, &len) == 2);
+    CHECK(len == 4);
+
+    len = 7;
+    CHECK(utf16_to_utf8(text, 4, out, &len) == 2);
+    CHECK(len == 4);
+
+    len = 8;
+    CHECK(utf16_to_utf8(text, 4, out, &len) == 4);
+    CHECK(len == 8);
+}
+
+void unicode_utf32_streams_convert_both_byte_orders()
+{
+    // 'A' then U+1F600, then half a unit
+    UTF8 le[] = { 'A', 0, 0, 0, 0x00, 0xf6, 0x01, 0x00, 'B', 0 };
+    UTF8 be[] = { 0, 0, 0, 'A', 0x00, 0x01, 0xf6, 0x00, 0, 'B' };
+
+    // 'A', U+1F600, then a lone low surrogate
+    UTF16 text[] = { 'A', 0xd83d, 0xde00, 0xdc00 };
+    const UTF8 text_le[] = { 'A', 0, 0, 0, 0x00, 0xf6, 0x01, 0x00, 0xfd, 0xff, 0x00, 0x00 };
+    const UTF8 text_be[] = { 0, 0, 0, 'A', 0x00, 0x01, 0xf6, 0x00, 0x00, 0x00, 0xff, 0xfd };
+
+    UTF16 out16[4];
+    UTF8 out32[16];
+    size_t len;
+
+    len = 4;
+    CHECK(utf32le_to_utf16(le, sizeof(le), out16, &len) == 8);
+    CHECK(len == 3);
+    CHECK(out16[0] == 'A' && out16[1] == 0xd83d && out16[2] == 0xde00);
+
+    len = 4;
+    CHECK(utf32be_to_utf16(be, sizeof(be), out16, &len) == 8);
+    CHECK(len == 3);
+    CHECK(out16[0] == 'A' && out16[1] == 0xd83d && out16[2] == 0xde00);
+
+    // a surrogate pair with no room for both halves is left for next time
+    len = 2;
+    CHECK(utf32le_to_utf16(le, sizeof(le), out16, &len) == 4);
+    CHECK(len == 1);
+
+    // a lone surrogate has no UTF-32 form
+    len = sizeof(out32);
+    CHECK(utf16_to_utf32le(text, 4, out32, &len) == 4);
+    CHECK(len == 12);
+    CHECK(memcmp(out32, text_le, 12) == 0);
+
+    len = sizeof(out32);
+    CHECK(utf16_to_utf32be(text, 4, out32, &len) == 4);
+    CHECK(len == 12);
+    CHECK(memcmp(out32, text_be, 12) == 0);
+
+    // a character with no room is left for next time
+    len = 7;
+    CHECK(utf16_to_utf32le(text, 4, out32, &len) == 1);
+    CHECK(len == 4);
+}
+
+// The whole of the line containing byte_anchor, as the view reads it to draw
+std::wstring read_line(TextDocument &doc, size_w byte_anchor)
+{
+    TextCoord line;
+    std::vector<TCHAR> buf(static_cast<size_t>(doc.byte_length()) + 1);
+
+    CHECK(doc.coord_from_byte_anchor(byte_anchor, &line));
+    return std::wstring(&buf[0], doc.getline(line, &buf[0], static_cast<ULONG>(buf.size())));
+}
+
+// The whole document, as the view reads it to copy
+std::wstring read_document(TextDocument &doc)
+{
+    TextCoord from;
+    TextCoord to;
+    std::vector<TCHAR> buf(static_cast<size_t>(doc.byte_length()) + 1);
+
+    CHECK(doc.coord_from_byte_anchor(0, &from));
+    CHECK(doc.coord_from_document_end(&to));
+
+    TextReader reader = doc.text_from_range(&from, &to);
+    return std::wstring(&buf[0], reader.read(&buf[0], static_cast<ULONG>(buf.size())));
+}
+
+void textdocument_utf8_decodes_characters_across_blocks()
+{
+    TextDocument doc;
+    TCHAR path[MAX_PATH];
+    TextCoord line;
+    TextCoord coord;
+    std::vector<ULONG> bytes;
+    std::wstring expected(255, 'a');
+
+    // 255 bytes of 'a' put the two bytes of an accented e either side of byte 256
+    bytes.push_back(0xef);
+    bytes.push_back(0xbb);
+    bytes.push_back(0xbf);
+    bytes.insert(bytes.end(), 255, static_cast<ULONG>('a'));
+    bytes.push_back(0xc3);
+    bytes.push_back(0xa9);
+    bytes.push_back('b');
+    expected += static_cast<wchar_t>(0x00e9);
+    expected += 'b';
+
+    CHECK(write_units_file(&bytes[0], bytes.size(), 1, false, path));
+    CHECK(doc.init(path));
+
+    CHECK(read_line(doc, 0) == expected);
+    CHECK(read_document(doc) == expected);
+
+    CHECK(doc.coord_from_byte_anchor(258, &coord));
+    CHECK(coord.line_offset_chars == 257);
+
+    CHECK(doc.coord_from_byte_anchor(0, &line));
+    CHECK(doc.coord_from_line_pos(&line, 256, &coord));
+    CHECK(coord.byte_anchor == 257);
+
+    doc.clear();
+    DeleteFile(path);
+
+    // 3-byte characters cross two block boundaries in three
+    bytes.resize(3);
+    for(int i = 0; i < 100; i++)
+    {
+        bytes.push_back(0xe4);
+        bytes.push_back(0xb8);
+        bytes.push_back(0xad);
+    }
+    expected.assign(100, static_cast<wchar_t>(0x4e2d));
+
+    CHECK(write_units_file(&bytes[0], bytes.size(), 1, false, path));
+    CHECK(doc.init(path));
+
+    CHECK(read_line(doc, 0) == expected);
+    CHECK(read_document(doc) == expected);
+
+    CHECK(doc.coord_from_byte_anchor(300, &coord));
+    CHECK(coord.line_offset_chars == 100);
+
+    CHECK(doc.coord_from_byte_anchor(0, &line));
+    CHECK(doc.coord_from_line_pos(&line, 90, &coord));
+    CHECK(coord.byte_anchor == 270);
+
+    doc.clear();
+    DeleteFile(path);
+}
+
+void textdocument_utf8_edits_keep_characters_across_buffers()
+{
+    TextDocument doc;
+    TCHAR path[MAX_PATH];
+    const ULONG bom[] = { 0xef, 0xbb, 0xbf };
+    std::wstring text(255, 'a');
+    std::wstring cjk(100, static_cast<wchar_t>(0x4e2d));
+    TCHAR xy[] = TEXT("xy");
+
+    // the accented e doesn't fit in what is left of the first 256-byte buffer
+    text += static_cast<wchar_t>(0x00e9);
+    text += 'b';
+
+    CHECK(write_units_file(bom, 3, 1, false, path));
+    CHECK(doc.init(path));
+    CHECK(doc_insert(doc, 0, &text[0], static_cast<ULONG>(text.size())) == 258);
+    CHECK(doc.byte_length() == 258);
+    CHECK(read_document(doc) == text);
+    doc.clear();
+    DeleteFile(path);
+
+    // nor do the 86th and later of these 3-byte characters
+    CHECK(write_units_file(bom, 3, 1, false, path));
+    CHECK(doc.init(path));
+    CHECK(doc_insert(doc, 0, &cjk[0], static_cast<ULONG>(cjk.size())) == 300);
+    CHECK(read_document(doc) == cjk);
+    doc.clear();
+    DeleteFile(path);
+
+    // replacing goes through the same buffer
+    CHECK(write_units_file(bom, 3, 1, false, path));
+    CHECK(doc.init(path));
+    CHECK(doc_insert(doc, 0, xy, 2) == 2);
+    CHECK(doc_replace(doc, 0, 2, &cjk[0], static_cast<ULONG>(cjk.size())) == 300);
+    CHECK(read_document(doc) == cjk);
+    doc.clear();
+    DeleteFile(path);
+}
+
+void textdocument_utf32_reads_and_edits_text()
+{
+    TextDocument doc;
+    TCHAR path[MAX_PATH];
+    TCHAR b[] = TEXT("b");
+    TCHAR x[] = TEXT("x");
+    TCHAR face[] = { 0xd83d, 0xde00, 0 };
+    TextCoord coord;
+    size_w match = static_cast<size_w>(-1);
+    size_w match_length = 0;
+    seqchar raw[4];
+    const ULONG abc[] = { 0xfeff, 'a', 'b', 'c' };
+
+    for(int big_endian = 0; big_endian < 2; big_endian++)
+    {
+        CHECK(write_units_file(abc, 4, 4, big_endian != 0, path));
+        CHECK(doc.init(path));
+
+        CHECK(read_line(doc, 0) == L"abc");
+        CHECK(doc.coord_from_byte_anchor(12, &coord));
+        CHECK(coord.line_offset_chars == 3);
+
+        CHECK(doc.find_text(b, 1, 0, doc.byte_length(), false, true, &match, &match_length));
+        CHECK(match == 4);
+        CHECK(match_length == 4);
+
+        // an insert is stored in the document's own byte order, after the 4-byte BOM
+        CHECK(doc_insert(doc, 0, x, 1) == 4);
+        CHECK(TextDocumentLineIndexProbe::seq(doc).render(4, raw, 4) == 4);
+        CHECK(raw[big_endian ? 3 : 0] == 'x');
+        CHECK(raw[big_endian ? 0 : 3] == 0);
+
+        // a surrogate pair is one UTF-32 unit
+        CHECK(doc_replace(doc, 8, 12, face, 2) == 4);
+        CHECK(read_document(doc) == std::wstring(L"xa") + face + L"c");
+
+        CHECK(doc.find_text(face, 2, 0, doc.byte_length(), false, true, &match, &match_length));
+        CHECK(match == 8);
+        CHECK(match_length == 4);
+
+        doc.clear();
+        DeleteFile(path);
+    }
+}
+
+void textdocument_find_text_matchcase_stays_on_code_units()
+{
+    TextDocument doc;
+    TCHAR path[MAX_PATH];
+    TCHAR n[] = TEXT("N");
+    size_w match = static_cast<size_w>(-1);
+    size_w match_length = 0;
+
+    // U+4E01 U+4E00 is 01 4E 00 4E in UTF-16LE: an "N" (4E 00) at byte 1, across two characters
+    const ULONG before[] = { 0xfeff, 0x4e01, 0x4e00, 'N' };
+    const ULONG after[]  = { 0xfeff, 'N', 0x4e01, 0x4e00 };
+
+    // U+4E01 U+10000 is 01 4E 00 00 00 00 01 00 in UTF-32LE: an "N" at byte 1
+    const ULONG utf32[]  = { 0xfeff, 0x4e01, 0x10000 };
+
+    CHECK(write_units_file(before, 4, 2, false, path));
+    CHECK(doc.init(path));
+    CHECK(doc.find_text(n, 1, 0, doc.byte_length(), false, true, &match, &match_length));
+    CHECK(match == 4);
+    CHECK(match_length == 2);
+    doc.clear();
+    DeleteFile(path);
+
+    CHECK(write_units_file(after, 4, 2, false, path));
+    CHECK(doc.init(path));
+    CHECK(doc.find_text(n, 1, 0, doc.byte_length(), true, true, &match, &match_length));
+    CHECK(match == 0);
+    CHECK(match_length == 2);
+    doc.clear();
+    DeleteFile(path);
+
+    CHECK(write_units_file(utf32, 3, 4, false, path));
+    CHECK(doc.init(path));
+    CHECK(!doc.find_text(n, 1, 0, doc.byte_length(), false, true, &match, &match_length));
+    CHECK(!doc.find_text(n, 1, 0, doc.byte_length(), true, true, &match, &match_length));
+    doc.clear();
+    DeleteFile(path);
+}
+
 void textdocument_sequence_index_matches_ascii_after_edits()
 {
     TextDocument doc;
@@ -3147,6 +3446,13 @@ const test_case tests[] =
     { "unicode_utf8_prev_steps_back_to_lead_byte", unicode_utf8_prev_steps_back_to_lead_byte },
     { "unicode_utf16_prev_joins_surrogate_pair", unicode_utf16_prev_joins_surrogate_pair },
     { "unicode_utf32_char_reads_both_byte_orders", unicode_utf32_char_reads_both_byte_orders },
+    { "unicode_utf8_complete_length_leaves_out_cut_sequence", unicode_utf8_complete_length_leaves_out_cut_sequence },
+    { "unicode_utf16_to_utf8_leaves_character_that_does_not_fit", unicode_utf16_to_utf8_leaves_character_that_does_not_fit },
+    { "unicode_utf32_streams_convert_both_byte_orders", unicode_utf32_streams_convert_both_byte_orders },
+    { "textdocument_utf8_decodes_characters_across_blocks", textdocument_utf8_decodes_characters_across_blocks },
+    { "textdocument_utf8_edits_keep_characters_across_buffers", textdocument_utf8_edits_keep_characters_across_buffers },
+    { "textdocument_utf32_reads_and_edits_text", textdocument_utf32_reads_and_edits_text },
+    { "textdocument_find_text_matchcase_stays_on_code_units", textdocument_find_text_matchcase_stays_on_code_units },
     { "textdocument_sequence_index_matches_ascii_after_edits", textdocument_sequence_index_matches_ascii_after_edits },
     { "textdocument_sequence_index_matches_utf16le", textdocument_sequence_index_matches_utf16le },
     { "textdocument_sequence_index_matches_utf16be", textdocument_sequence_index_matches_utf16be },

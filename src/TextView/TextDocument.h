@@ -191,6 +191,7 @@ private:
 
 	size_t utf16_to_rawdata(TCHAR *utf16str, size_t utf16len, BYTE *rawdata, size_t *rawlen);
 	size_t rawdata_to_utf16(BYTE *rawdata, size_t rawlen, TCHAR *utf16str, size_t *utf16len);
+	size_t rawdata_complete_length(BYTE *rawdata, size_t rawlen);
 
 	//
 	//	Raw file access
