@@ -54,6 +54,7 @@ jobs:
 
           build = 0
           numeric = f"{major},{minor},{patch},{build}"
+          file_version = f"{major}.{minor}.{patch}.{build}"
           if any(n > 65535 for n in (major, minor, patch, build)):
               sys.exit(f"Version {numeric} has a component > 65535 (VERSIONINFO limit)")
 
@@ -101,10 +102,13 @@ jobs:
               r"^(\s*(?:FILE|PRODUCT)VERSION\s+)\d+\s*,\s*\d+\s*,\s*\d+\s*,\s*\d+",
               rf"\g<1>{numeric}", rc, flags=re.M)
           rc, n2 = re.subn(
-              r'(VALUE\s+"(?:File|Product)Version",\s*)"[^"]*"',
+              r'(VALUE\s+"FileVersion",\s*)"[^"]*"',
+              rf'\g<1>"{file_version}"', rc)
+          rc, n3 = re.subn(
+              r'(VALUE\s+"ProductVersion",\s*)"[^"]*"',
               rf'\g<1>"{display}"', rc)
-          if (n1, n2) != (2, 2):
-              sys.exit(f"Expected 2+2 version replacements, got {n1}+{n2} in {RC_PATH}")
+          if (n1, n2, n3) != (2, 1, 1):
+              sys.exit(f"Expected 2+1+1 version replacements, got {n1}+{n2}+{n3} in {RC_PATH}")
 
           # About dialog title (only present from part 18 onwards).
           rc = re.sub(r'"[^"]*"(\s*,\s*IDC_ABOUT_APPNAME\b)',
@@ -116,7 +120,7 @@ jobs:
 
           with open(os.environ["GITHUB_OUTPUT"], "a") as f:
               f.write(f"version={display}\ntitle={title}\nasset=neatpad-v{display}.exe\n")
-          print(f"{tag} -> {numeric} / \"{display}\"")
+          print(f"{tag} -> {numeric} / FileVersion \"{file_version}\" / ProductVersion \"{display}\"")
 
       - uses: microsoft/setup-msbuild@v2
 

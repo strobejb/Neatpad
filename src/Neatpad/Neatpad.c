@@ -23,6 +23,7 @@
 #endif
 
 #pragma comment(lib, "uxtheme.lib")
+#pragma comment(lib, "version.lib")
 
 TCHAR		g_szAppName[] = APP_TITLE;
 HWND		g_hwndMain;
@@ -42,6 +43,107 @@ HINSTANCE	g_hResourceModule;
 #if defined(_MSC_VER) && _MSC_VER < 1300
 #pragma comment(linker, "/OPT:NOWIN98")
 #endif
+
+typedef struct VERSION_TRANSLATION
+{
+	WORD language;
+	WORD codepage;
+} VERSION_TRANSLATION;
+
+static BOOL QueryVersionString(void *versionInfo, WORD language, WORD codepage, TCHAR *name, TCHAR *buf, UINT cch)
+{
+	TCHAR query[128];
+	TCHAR *value;
+	UINT valueLen;
+
+	wsprintf(query, _T("\\StringFileInfo\\%04x%04x\\%s"), language, codepage, name);
+
+	if(VerQueryValue(versionInfo, query, (LPVOID *)&value, &valueLen) && value && value[0])
+	{
+		lstrcpyn(buf, value, cch);
+		return TRUE;
+	}
+
+	return FALSE;
+}
+
+static BOOL GetVersionString(void *versionInfo, TCHAR *name, TCHAR *buf, UINT cch)
+{
+	VERSION_TRANSLATION *translation;
+	UINT translationLen;
+
+	if(VerQueryValue(versionInfo, _T("\\VarFileInfo\\Translation"), (LPVOID *)&translation, &translationLen) &&
+		translationLen >= sizeof(VERSION_TRANSLATION) &&
+		QueryVersionString(versionInfo, translation[0].language, translation[0].codepage, name, buf, cch))
+	{
+		return TRUE;
+	}
+
+	return QueryVersionString(versionInfo, 0x0809, 1200, name, buf, cch) ||
+		QueryVersionString(versionInfo, 0x0409, 1200, name, buf, cch);
+}
+
+static BOOL FormatFixedFileVersion(void *versionInfo, TCHAR *buf, UINT cch)
+{
+	VS_FIXEDFILEINFO *fixedInfo;
+	UINT fixedInfoLen;
+
+	if(!VerQueryValue(versionInfo, _T("\\"), (LPVOID *)&fixedInfo, &fixedInfoLen) ||
+		fixedInfoLen < sizeof(VS_FIXEDFILEINFO) ||
+		fixedInfo->dwSignature != VS_FFI_SIGNATURE)
+	{
+		return FALSE;
+	}
+
+	_sntprintf(buf, cch, _T("%u.%u.%u.%u"),
+		HIWORD(fixedInfo->dwFileVersionMS),
+		LOWORD(fixedInfo->dwFileVersionMS),
+		HIWORD(fixedInfo->dwFileVersionLS),
+		LOWORD(fixedInfo->dwFileVersionLS));
+	buf[cch - 1] = 0;
+	return TRUE;
+}
+
+static void SetAboutVersionText(HWND hwnd)
+{
+	TCHAR filename[MAX_PATH];
+	TCHAR productName[80] = APP_TITLE;
+	TCHAR version[80] = _T("");
+	TCHAR aboutText[180];
+	DWORD handle;
+	DWORD size;
+	void *versionInfo;
+
+	if(GetModuleFileName(0, filename, ARRAYSIZE(filename)) == 0)
+		return;
+
+	size = GetFileVersionInfoSize(filename, &handle);
+	if(size == 0)
+		return;
+
+	versionInfo = GlobalAlloc(GPTR, size);
+	if(versionInfo == 0)
+		return;
+
+	if(GetFileVersionInfo(filename, 0, size, versionInfo))
+	{
+		GetVersionString(versionInfo, _T("ProductName"), productName, ARRAYSIZE(productName));
+
+		if(!GetVersionString(versionInfo, _T("ProductVersion"), version, ARRAYSIZE(version)))
+			FormatFixedFileVersion(versionInfo, version, ARRAYSIZE(version));
+
+		if(version[0])
+			_sntprintf(aboutText, ARRAYSIZE(aboutText), _T("%s %s"), productName, version);
+		else
+			_sntprintf(aboutText, ARRAYSIZE(aboutText), _T("%s"), productName);
+
+		aboutText[ARRAYSIZE(aboutText) - 1] = 0;
+		SetDlgItemText(hwnd, IDC_ABOUT_APPNAME, aboutText);
+	}
+
+	GlobalFree(versionInfo);
+}
+
 //
 //	Set the main window filename
 //
@@ -282,6 +384,7 @@ LRESULT CALLBACK AboutDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		//	Get the current font for the dialog and create a BOLD version,
 		//	set this as the AppName static-label's font
 		//
+		SetAboutVersionText(hwnd);
 		hFont = CreateBoldFontFromHwnd(hwnd);
 		SendDlgItemMessage(hwnd, IDC_ABOUT_APPNAME, WM_SETFONT, (WPARAM)hFont, 0);
 
