@@ -29,6 +29,7 @@ HWND		g_hwndMain;
 HWND		g_hwndTextView;
 HWND		g_hwndStatusbar;
 HWND		g_hwndSearchDlg;
+HWND		g_hwndSearchBar;
 HFONT		g_hFont;
 
 TCHAR		g_szFileName[MAX_PATH];
@@ -500,7 +501,10 @@ UINT CommandHandler(HWND hwnd, UINT nCtrlId, UINT nCtrlCode, HWND hwndFrom)
 		return 0;
 
 	case IDM_EDIT_FIND:
-		ShowFindDlg(hwnd, FIND_PAGE);
+		if(SearchBarIsVisible())
+			HideSearchBar();
+		else
+			ShowSearchBar(hwnd);
 		return 0;
 		
 	case IDM_EDIT_REPLACE:
@@ -566,7 +570,7 @@ UINT CommandHandler(HWND hwnd, UINT nCtrlId, UINT nCtrlCode, HWND hwndFrom)
 //
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
-	int width, height, heightsb;
+	int width, height, heightsb, heightsrch;
 	HIMAGELIST hImgList;
 	RECT rect;
 	HDWP hdwp;
@@ -578,6 +582,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 	case WM_CREATE:
 		g_hwndTextView  = CreateTextView(hwnd);
 		g_hwndStatusbar = CreateStatusBar(hwnd);
+		g_hwndSearchBar = CreateSearchBar(hwnd);
 		UpdateStatusBarFileInfo();
 
 		TextView_SetContextMenu(g_hwndTextView, GetSubMenu(LoadMenu(GetModuleHandle(0),
@@ -651,6 +656,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
 		// keep the modeless find/replace dialog in the same enabled state as the main window
 		EnableWindow(g_hwndSearchDlg, (BOOL)wParam);
+		EnableWindow(g_hwndSearchBar, (BOOL)wParam);
 		return 0;
 
 	case WM_MENUSELECT:
@@ -690,9 +696,10 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
 	case WM_SIZE:
 
-		// resize the TextView and StatusBar to fit within the main window's client area
-		width  = (short)LOWORD(lParam);
-		height = (short)HIWORD(lParam);
+		// resize the TextView, SearchBar and StatusBar to fit within the main window's client area
+		GetClientRect(hwnd, &rect);
+		width  = rect.right - rect.left;
+		height = rect.bottom - rect.top;
 		
 		GetWindowRect(g_hwndStatusbar, &rect);
 		heightsb = rect.bottom-rect.top;
@@ -704,6 +711,13 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			DeferWindowPos(hdwp, g_hwndStatusbar, 0, 0, height - heightsb, width, heightsb, SWP_SHOWWINDOW);
 		//	MoveWindow(g_hwndStatusbar, 0, height - heightsb, width, heightsb, TRUE);
 			height -= heightsb;
+		}
+
+		if(SearchBarIsVisible())
+		{
+			heightsrch = SearchBarHeight();
+			DeferWindowPos(hdwp, g_hwndSearchBar, 0, 0, height - heightsrch, width, heightsrch, SWP_SHOWWINDOW);
+			height -= heightsrch;
 		}
 
 		DeferWindowPos(hdwp, g_hwndTextView, 0,  0, 0, width, height, SWP_SHOWWINDOW);
@@ -929,7 +943,8 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmdLine, int iShowC
 	{
 		if(!TranslateAccelerator(g_hwndMain, hAccel, &msg))
 		{
-			if((!IsWindow(g_hwndSearchDlg) || !IsDialogMessage(g_hwndSearchDlg, &msg)))
+			if((!SearchBarIsVisible() || !IsDialogMessage(g_hwndSearchBar, &msg)) &&
+				(!IsWindow(g_hwndSearchDlg) || !IsDialogMessage(g_hwndSearchDlg, &msg)))
 			{
 				TranslateMessage(&msg);
 				DispatchMessage(&msg);

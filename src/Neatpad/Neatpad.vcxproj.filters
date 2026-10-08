@@ -39,6 +39,9 @@
     <ClCompile Include="Search.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="SearchBar.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="Toolbars.c">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -79,6 +82,9 @@
       <Filter>Resource Files</Filter>
     </Image>
     <Image Include="icon4.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="searchbar_buttons.bmp">
       <Filter>Resource Files</Filter>
     </Image>
   </ItemGroup>

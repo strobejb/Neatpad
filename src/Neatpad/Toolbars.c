@@ -30,6 +30,12 @@ DWORD dwStatusBarStyles = WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLI
 
 // width of each pane, fitted to its text (the message pane takes whatever is left)
 static int g_nPaneWidth[MAX_STATUS_PARTS];
+static HFONT g_hStatusFont;
+
+HFONT StatusBarFont(void)
+{
+	return g_hStatusFont;
+}
 
 //
 //	Process WM_MENUSELECT message to display menu-item hints in statusbar
@@ -167,6 +173,12 @@ HWND CreateStatusBar (HWND hwndParent)
 	if (SystemParametersInfo(SPI_GETNONCLIENTMETRICS, sizeof(NONCLIENTMETRICS), &ncm, 0)) {
 		LOGFONT statusFontDetails = ncm.lfStatusFont;
 		int statusHeight = abs(statusFontDetails.lfHeight) + verticalPadding * 2;
+
+		if(g_hStatusFont == 0)
+			g_hStatusFont = CreateFontIndirect(&statusFontDetails);
+
+		if(g_hStatusFont)
+			SendMessage(hwndSB, WM_SETFONT, (WPARAM)g_hStatusFont, TRUE);
 
 		SendMessage(hwndSB, SB_SETMINHEIGHT, (WPARAM)(statusHeight), 0);
 		SendMessage(hwndSB, WM_SIZE, 0, 0);

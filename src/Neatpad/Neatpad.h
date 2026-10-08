@@ -113,11 +113,21 @@ HFONT CreateBoldFontFromHwnd(HWND hwnd);
 #define GOTO_PAGE 2
 HWND ShowFindDlg(HWND hwndParent, UINT nPage);
 
+//
+//	SearchBar.c functions
+//
+HWND CreateSearchBar(HWND hwndParent);
+HWND ShowSearchBar(HWND hwndParent);
+void HideSearchBar(void);
+int  SearchBarHeight(void);
+BOOL SearchBarIsVisible(void);
+
 
 //
 //	Toolbars.c functions
 //
 HWND CreateStatusBar (HWND hwndParent);
+HFONT StatusBarFont(void);
 void SetStatusBarParts(HWND hwndSB);
 int  StatusBarMenuSelect(HWND hwnd, HWND hwndSB, WPARAM wParam, LPARAM lParam);
 void SetStatusBarText(HWND hwndSB, UINT nPart, UINT uStyle, TCHAR *fmt, ...);

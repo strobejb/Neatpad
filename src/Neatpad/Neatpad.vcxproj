@@ -158,6 +158,7 @@
     <ClCompile Include="OptionsMisc.c" />
     <ClCompile Include="Printing.c" />
     <ClCompile Include="Search.c" />
+    <ClCompile Include="SearchBar.c" />
     <ClCompile Include="Toolbars.c" />
   </ItemGroup>
   <ItemGroup>
@@ -176,6 +177,7 @@
     <Image Include="icon2.ico" />
     <Image Include="icon3.ico" />
     <Image Include="icon4.ico" />
+    <Image Include="searchbar_buttons.bmp" />
   </ItemGroup>
   <ItemGroup>
     <Manifest Include="Neatpad.exe.manifest" />

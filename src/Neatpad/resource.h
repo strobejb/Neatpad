@@ -29,6 +29,7 @@
 #define IDB_BITMAP3                     128
 #define IDI_ICON4                       129
 #define IDB_BITMAP4                     130
+#define IDB_SEARCHBAR_BUTTONS           131
 #define IDC_COMBO1                      1000
 #define IDC_FONTLIST                    1000
 #define IDC_COMBO2                      1001
@@ -96,6 +97,9 @@
 #define IDC_FIND                        1052
 #define IDC_REPLACE                     1053
 #define IDC_SHIELD                      1054
+#define IDC_SEARCH_OPTIONS              1055
+#define IDC_SEARCH_PREVIOUS             1056
+#define IDC_SEARCH_NEXT                 1057
 #define IDM_FILE_NEW                    40001
 #define IDM_FILE_OPEN                   40002
 #define IDM_FILE_EXIT                   40003
@@ -141,9 +145,9 @@
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
-#define _APS_NEXT_RESOURCE_VALUE        131
+#define _APS_NEXT_RESOURCE_VALUE        132
 #define _APS_NEXT_COMMAND_VALUE         40054
-#define _APS_NEXT_CONTROL_VALUE         1055
+#define _APS_NEXT_CONTROL_VALUE         1058
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif
