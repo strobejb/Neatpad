@@ -9,12 +9,14 @@
 #include <vector>
 
 #include "../src/TextView/sequence.h"
+#include "../src/TextView/SaveFile.h"
 #include "../src/TextView/TextDocument.h"
 #include "../src/TextView/TextView.h"
 #include "../src/TextView/Unicode.h"
 
-// Test access to a document's sequence, for line-number lookups (such as where
-// line N starts) that TextDocument itself doesn't offer
+// Test access to a document's insides: its sequence, for line-number lookups
+// (such as where line N starts) that TextDocument itself doesn't offer, and
+// functions only TextDocument uses
 class TextDocumentLineIndexProbe
 {
 public:
@@ -26,6 +28,16 @@ public:
     static ULONG header(TextDocument &doc)
     {
         return static_cast<ULONG>(doc.m_nHeaderSize);
+    }
+
+    static bool linecount_known(TextDocument &doc)
+    {
+        return doc.linecount_known();
+    }
+
+    static TextPos pos_after_change(TextDocument &doc, TextPos pos, const TextChange *change)
+    {
+        return doc.pos_after_change(pos, change);
     }
 };
 
@@ -1675,7 +1687,7 @@ void textdocument_ctrl_end_uses_final_page_when_lines_are_lazy()
     CHECK(doc.coord_from_document_end(&eof));
     CHECK(eof.line_begin.byte_offset == doc.byte_length());
     CHECK(eof.line_next.byte_offset == doc.byte_length());
-    CHECK(!doc.linecount_known());
+    CHECK(!TextDocumentLineIndexProbe::linecount_known(doc));
     doc.lineno_from_pos(eof, &exact);
     CHECK(!exact);
 
@@ -1783,7 +1795,7 @@ void textdocument_lazy_offset_lookup_uses_sequence_line_bounds()
 
     CHECK(write_temp_file(data, file_length, path));
     CHECK(doc.init(path));
-    CHECK(!doc.linecount_known());
+    CHECK(!TextDocumentLineIndexProbe::linecount_known(doc));
 
     CHECK(doc.coord_from_pos(TextPos(target_offset), &coord));
     CHECK(coord.line_begin.byte_offset == first_break + 1);
@@ -2403,7 +2415,7 @@ void textdocument_coord_tracks_lazy_eof_after_newline_edits()
 
     CHECK(write_large_pattern_file(line, line_length, line_count, path));
     CHECK(doc.init(path));
-    CHECK(!doc.linecount_known());
+    CHECK(!TextDocumentLineIndexProbe::linecount_known(doc));
 
     CHECK(doc.coord_from_document_end(&before));
     CHECK(doc.insert_text(before, newlines, 6, 0) == 6);
@@ -3270,11 +3282,11 @@ void textdocument_pos_after_change()
     // bytes [2, 4) replaced by 3 bytes
     TextChange change = { TextPos(2), 2, 3 };
 
-    CHECK(doc.pos_after_change(TextPos(1), &change) == TextPos(1));
-    CHECK(doc.pos_after_change(TextPos(2), &change) == TextPos(2));
-    CHECK(doc.pos_after_change(TextPos(3), &change) == TextPos(2));
-    CHECK(doc.pos_after_change(TextPos(4), &change) == TextPos(5));
-    CHECK(doc.pos_after_change(TextPos(6), &change) == TextPos(7));
+    CHECK(TextDocumentLineIndexProbe::pos_after_change(doc, TextPos(1), &change) == TextPos(1));
+    CHECK(TextDocumentLineIndexProbe::pos_after_change(doc, TextPos(2), &change) == TextPos(2));
+    CHECK(TextDocumentLineIndexProbe::pos_after_change(doc, TextPos(3), &change) == TextPos(2));
+    CHECK(TextDocumentLineIndexProbe::pos_after_change(doc, TextPos(4), &change) == TextPos(5));
+    CHECK(TextDocumentLineIndexProbe::pos_after_change(doc, TextPos(6), &change) == TextPos(7));
 }
 
 void textdocument_find_text_reports_begin_and_end()
@@ -3466,6 +3478,653 @@ void lineiterator_on_empty_document()
     CHECK(!none.prev());
     CHECK(iterator_text(none) == L"");
     CHECK(none.reader().at_end());
+}
+
+// A temporary file name, with no file there
+bool temp_name(TCHAR path[MAX_PATH])
+{
+    TCHAR temp_path[MAX_PATH];
+
+    path[0] = 0;
+
+    if(GetTempPath(MAX_PATH, temp_path) == 0 || GetTempFileName(temp_path, TEXT("seq"), 0, path) == 0)
+        return false;
+
+    return DeleteFile(path) != 0;
+}
+
+bool file_exists(const TCHAR *path)
+{
+    return GetFileAttributes(path) != INVALID_FILE_ATTRIBUTES;
+}
+
+std::string read_file(const TCHAR *path)
+{
+    std::string bytes;
+    HANDLE hFile = CreateFile(path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_DELETE, 0, OPEN_EXISTING, 0, 0);
+    char buf[0x10000];
+    DWORD got;
+
+    if(hFile == INVALID_HANDLE_VALUE)
+        return "<missing>";
+
+    while(ReadFile(hFile, buf, sizeof(buf), &got, 0) && got != 0)
+        bytes.append(buf, got);
+
+    CloseHandle(hFile);
+    return bytes;
+}
+
+void sequence_modified_follows_undo_history()
+{
+    sequence seq;
+
+    init(seq, "abc");
+    CHECK(!seq.modified());
+
+    CHECK(insert_bytes(seq, 0, "X"));
+    CHECK(seq.modified());
+
+    // saved as "Xabc"
+    seq.mark_saved();
+    CHECK(!seq.modified());
+
+    CHECK(insert_bytes(seq, 4, "Y"));
+    CHECK(seq.modified());
+
+    // undo and redo across the saved point
+    CHECK(seq.undo());
+    CHECK(render_content(seq) == "Xabc");
+    CHECK(!seq.modified());
+    CHECK(seq.redo());
+    CHECK(seq.modified());
+
+    // a different edit after undoing replaces the redo history, but undoing it
+    // still lands back on the saved text
+    CHECK(seq.undo());
+    CHECK(insert_bytes(seq, 0, "Z"));
+    CHECK(seq.modified());
+    CHECK(seq.undo());
+    CHECK(render_content(seq) == "Xabc");
+    CHECK(!seq.modified());
+
+    // and undoing past it is modified again
+    CHECK(seq.undo());
+    CHECK(render_content(seq) == "abc");
+    CHECK(seq.modified());
+}
+
+void sequence_mark_saved_stops_typing_joining_the_saved_record()
+{
+    sequence seq;
+
+    init(seq, "");
+
+    // typing one character after another goes into one undo record...
+    CHECK(insert_bytes(seq, 0, "a"));
+    seq.mark_saved();
+
+    // ...but not across a save: "b" would otherwise join the saved "a"
+    CHECK(insert_bytes(seq, 1, "b"));
+    CHECK(seq.modified());
+
+    CHECK(seq.undo());
+    CHECK(render_content(seq) == "a");
+    CHECK(!seq.modified());
+}
+
+void sequence_modified_treats_group_as_one_edit()
+{
+    sequence seq;
+
+    init(seq, "abc");
+    seq.mark_saved();
+
+    seq.group();
+    CHECK(insert_bytes(seq, 0, "X"));
+    CHECK(insert_bytes(seq, 4, "Y"));
+    seq.ungroup();
+    CHECK(seq.modified());
+
+    // the whole group undoes at once, back to the saved text
+    CHECK(seq.undo());
+    CHECK(render_content(seq) == "abc");
+    CHECK(!seq.modified());
+    CHECK(!seq.canundo());
+}
+
+void textdocument_open_file_can_be_replaced_but_not_written()
+{
+    TextDocument doc;
+    TCHAR path[MAX_PATH];
+    TCHAR newpath[MAX_PATH];
+    HANDLE writer;
+
+    CHECK(write_textdocument_file("alpha\nbeta", DOC_ASCII, path));
+    CHECK(write_textdocument_file("REPLACED", DOC_ASCII, newpath));
+    CHECK(doc.init(path));
+
+    // another program can't change the bytes the text is read from
+    writer = CreateFile(path, GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, 0, OPEN_EXISTING, 0, 0);
+    CHECK(writer == INVALID_HANDLE_VALUE && GetLastError() == ERROR_SHARING_VIOLATION);
+    if(writer != INVALID_HANDLE_VALUE)
+        CloseHandle(writer);
+
+    // but the file can be replaced, as a save does, and the document still has its text
+    CHECK(ReplaceFile(path, newpath, 0, REPLACEFILE_IGNORE_MERGE_ERRORS, 0, 0));
+    CHECK(read_document(doc) == L"alpha\nbeta");
+
+    doc.clear();
+    DeleteFile(path);
+    DeleteFile(newpath);
+}
+
+// Write text with a SaveFile, as a save does
+bool save_bytes(const TCHAR *path, const char *text)
+{
+    SaveFile file;
+
+    return file.open(path) && file.write(text, strlen(text)) && file.commit();
+}
+
+void savefile_writes_a_new_file()
+{
+    TCHAR path[MAX_PATH];
+    std::wstring first;
+
+    CHECK(temp_name(path));
+    CHECK(save_bytes(path, "hello"));
+    CHECK(read_file(path) == "hello");
+
+    // the file written first, beside the target, has become the target
+    first = path;
+    first += TEXT(".~0");
+    CHECK(!file_exists(first.c_str()));
+
+    // saving again replaces it
+    CHECK(save_bytes(path, ""));
+    CHECK(read_file(path) == "");
+    CHECK(!file_exists(first.c_str()));
+
+    DeleteFile(path);
+}
+
+void savefile_steps_past_a_file_in_the_way()
+{
+    TCHAR path[MAX_PATH];
+    std::wstring taken;
+    std::wstring next;
+    HANDLE hFile;
+    DWORD written;
+
+    CHECK(temp_name(path));
+    taken = path;
+    taken += TEXT(".~0");
+    next = path;
+    next += TEXT(".~1");
+
+    // something already has the name the save would write to first
+    hFile = CreateFile(taken.c_str(), GENERIC_WRITE, 0, 0, CREATE_NEW, 0, 0);
+    CHECK(hFile != INVALID_HANDLE_VALUE);
+    CHECK(WriteFile(hFile, "leftover", 8, &written, 0));
+    CloseHandle(hFile);
+
+    CHECK(save_bytes(path, "text"));
+    CHECK(read_file(path) == "text");
+    CHECK(read_file(taken.c_str()) == "leftover");
+    CHECK(!file_exists(next.c_str()));
+
+    DeleteFile(taken.c_str());
+    DeleteFile(path);
+}
+
+void savefile_leaves_the_file_as_it_was_until_committed()
+{
+    TCHAR path[MAX_PATH];
+    std::wstring other;
+
+    CHECK(write_temp_file("original", 8, path));
+    other = path;
+    other += TEXT(".~0");
+
+    // written, but never committed
+    {
+        SaveFile file;
+
+        CHECK(file.open(path));
+        CHECK(file.write("changed", 7));
+        CHECK(file_exists(other.c_str()));
+        CHECK(read_file(path) == "original");
+    }
+
+    CHECK(read_file(path) == "original");
+    CHECK(!file_exists(other.c_str()));
+
+    // a read-only file can't be replaced; the error is the one to report
+    CHECK(SetFileAttributes(path, FILE_ATTRIBUTE_READONLY));
+    CHECK(!save_bytes(path, "changed"));
+    CHECK(GetLastError() == ERROR_ACCESS_DENIED);
+    CHECK(read_file(path) == "original");
+    CHECK(!file_exists(other.c_str()));
+
+    // nor can it save where there's no directory to write to
+    other = path;
+    other += TEXT("\\missing.txt");
+    CHECK(!save_bytes(other.c_str(), "changed"));
+
+    SetFileAttributes(path, FILE_ATTRIBUTE_NORMAL);
+    DeleteFile(path);
+}
+
+// What render passes on, joined, and how many blocks it came in
+std::string render_blocks(const sequence &seq, size_w index, size_w length, size_t *blocks)
+{
+    std::string text;
+
+    *blocks = 0;
+
+    seq.render(index, [&](const seqchar *block, size_t blocklen)
+    {
+        text.append(reinterpret_cast<const char *>(block), blocklen);
+        (*blocks)++;
+        return true;
+    }, length);
+
+    return text;
+}
+
+void sequence_render_passes_a_block_per_span()
+{
+    sequence seq;
+    size_t blocks;
+    size_t calls = 0;
+
+    // "ab", "XY" and "cdef" in three spans
+    init(seq, "abcdef");
+    CHECK(insert_bytes(seq, 2, "XY"));
+
+    // from inside the first span, from a span's start, and from inside the last
+    CHECK(render_blocks(seq, 1, 7, &blocks) == "bXYcdef");
+    CHECK(blocks == 3);
+    CHECK(render_blocks(seq, 2, 6, &blocks) == "XYcdef");
+    CHECK(blocks == 2);
+    CHECK(render_blocks(seq, 5, 3, &blocks) == "def");
+    CHECK(blocks == 1);
+
+    // only as far as the end, and nothing from there
+    CHECK(render_blocks(seq, 6, 100, &blocks) == "ef");
+    CHECK(render_blocks(seq, seq.size(), 1, &blocks) == "");
+    CHECK(blocks == 0);
+
+    // stopped at the second block, it has rendered only the first
+    CHECK(seq.render(0, [&calls](const seqchar *, size_t) { return ++calls < 2; }, seq.size()) == 2);
+    CHECK(calls == 2);
+}
+
+void textdocument_failed_save_stays_modified()
+{
+    TextDocument doc;
+    TCHAR path[MAX_PATH];
+    TCHAR x[] = TEXT("X");
+
+    CHECK(write_textdocument_file("ab", DOC_ASCII, path));
+    CHECK(doc.init(path));
+    CHECK(doc_insert(doc, 0, x, 1) == 1);
+    CHECK(SetFileAttributes(path, FILE_ATTRIBUTE_READONLY));
+
+    CHECK(!doc.save(path, doc.getformat(), false, 0));
+    CHECK(doc.modified());
+    CHECK(read_file(path) == "ab");
+
+    SetFileAttributes(path, FILE_ATTRIBUTE_NORMAL);
+    doc.clear();
+    DeleteFile(path);
+}
+
+void textdocument_save_over_its_own_file_keeps_text_and_undo()
+{
+    TextDocument doc;
+    TCHAR path[MAX_PATH];
+    std::string original;
+    std::string edited;
+    TCHAR head[] = TEXT("HEAD");
+    TCHAR tail[] = TEXT("TAIL");
+
+    // more blocks than the document keeps in memory, so after the save most of
+    // the text has to be read again - from the file that was replaced
+    for(size_w i = 0; i < 6 * MEM_BLOCK_SIZE + 123; i++)
+        original += (i % 61 == 60) ? '\n' : static_cast<char>('a' + i % 23);
+
+    CHECK(write_temp_file(original.data(), original.size(), path));
+    CHECK(doc.init(path));
+
+    // edit the start, middle and end
+    edited = original;
+    CHECK(doc_insert(doc, 0, head, 4) == 4);
+    edited.insert(0, "HEAD");
+    CHECK(doc_erase(doc, 1000, 1010) == 10);
+    edited.erase(1000, 10);
+    CHECK(doc_insert(doc, edited.size(), tail, 4) == 4);
+    edited += "TAIL";
+
+    CHECK(doc.save(path, doc.getformat(), true, 0));
+    CHECK(read_file(path) == edited);
+    CHECK(!doc.modified());
+    CHECK(read_document(doc) == std::wstring(edited.begin(), edited.end()));
+
+    // undo back to the original text, now only in the replaced file
+    CHECK(doc.undo(0));
+    CHECK(doc.undo(0));
+    CHECK(doc.undo(0));
+    CHECK(!doc.can_undo());
+    CHECK(doc.modified());
+    CHECK(read_document(doc) == std::wstring(original.begin(), original.end()));
+
+    // which saves as well
+    CHECK(doc.save(path, doc.getformat(), true, 0));
+    CHECK(read_file(path) == original);
+    CHECK(!doc.modified());
+
+    CHECK(doc.redo(0));
+    CHECK(doc.modified());
+
+    doc.clear();
+    DeleteFile(path);
+}
+
+void textdocument_save_keeps_the_byte_order_mark()
+{
+    TextDocument doc;
+    TCHAR path[MAX_PATH];
+    TCHAR x[] = TEXT("X");
+    const char expected[] = { '\xff', '\xfe', 'X', 0, 'a', 0, 'b', 0 };
+
+    CHECK(write_textdocument_file("ab", DOC_UTF16LE_BOM, path));
+    CHECK(doc.init(path));
+    CHECK(doc_insert(doc, 0, x, 1) == 2);
+
+    CHECK(doc.save(path, doc.getformat(), true, 0));
+    CHECK(read_file(path) == std::string(expected, sizeof(expected)));
+
+    // a document can write UTF-16 without one, though Neatpad doesn't offer it
+    CHECK(doc.save(path, doc.getformat(), false, 0));
+    CHECK(read_file(path) == std::string(expected + 2, sizeof(expected) - 2));
+
+    doc.clear();
+    DeleteFile(path);
+}
+
+void textdocument_save_with_or_without_the_byte_order_mark()
+{
+    TextDocument doc;
+    TCHAR path[MAX_PATH];
+    TCHAR x[] = TEXT("X");
+    const std::string bom = "\xef\xbb\xbf";
+
+    CHECK(write_textdocument_file("ab", DOC_UTF8_BOM, path));
+    CHECK(doc.init(path));
+    CHECK(doc.has_bom());
+    CHECK(doc_insert(doc, 0, x, 1) == 1);
+
+    CHECK(doc.save(path, doc.getformat(), false, 0));
+    CHECK(read_file(path) == "Xab");
+    CHECK(!doc.has_bom());
+    CHECK(read_document(doc) == L"Xab");
+
+    // and back again: the mark comes from the encoding, not the text
+    CHECK(doc.save(path, doc.getformat(), true, 0));
+    CHECK(read_file(path) == bom + "Xab");
+    CHECK(doc.has_bom());
+
+    doc.clear();
+    CHECK(!doc.has_bom());
+    DeleteFile(path);
+
+    // ASCII has no byte-order mark to write
+    CHECK(write_textdocument_file("ab", DOC_ASCII, path));
+    CHECK(doc.init(path));
+    CHECK(!doc.has_bom());
+    CHECK(doc.save(path, doc.getformat(), true, 0));
+    CHECK(read_file(path) == "ab");
+    CHECK(!doc.has_bom());
+
+    doc.clear();
+    DeleteFile(path);
+}
+
+// Text in UTF-16 big-endian, as bytes
+std::string utf16be_bytes(const char *text, bool bom)
+{
+    std::string bytes;
+
+    if(bom)
+        bytes += "\xfe\xff";
+
+    for(; *text; text++)
+    {
+        bytes += '\0';
+        bytes += *text;
+    }
+
+    return bytes;
+}
+
+void textdocument_save_converts_the_encoding()
+{
+    TextDocument doc;
+    TextDocument converted;
+    TCHAR path[MAX_PATH];
+    TCHAR newpath[MAX_PATH];
+    TCHAR x[] = TEXT("X");
+
+    // "a", a line break, e with an acute accent, and a grinning face (a surrogate pair)
+    const ULONG units[] = { 0xfeff, 'a', '\r', '\n', 0xe9, 0xd83d, 0xde00 };
+    const std::string utf8 = "Xa\r\n\xc3\xa9\xf0\x9f\x98\x80";
+    const char utf32be[] = { 0, 0, '\xfe', '\xff', 0, 0, 0, 'X', 0, 0, 0, 'a', 0, 0, 0, '\r', 0, 0, 0, '\n',
+                             0, 0, 0, '\xe9', 0, 1, '\xf6', 0 };
+    std::wstring text(1, 'X');
+
+    for(size_t i = 1; i < sizeof(units) / sizeof(units[0]); i++)
+        text += static_cast<wchar_t>(units[i]);
+
+    CHECK(write_units_file(units, sizeof(units) / sizeof(units[0]), 2, false, path));
+    CHECK(doc.init(path));
+    CHECK(doc_insert(doc, 0, x, 1) == 2);
+    CHECK(temp_name(newpath));
+
+    CHECK(doc.save(newpath, NCP_UTF8, true, 0));
+    CHECK(read_file(newpath) == "\xef\xbb\xbf" + utf8);
+    CHECK(doc.save(newpath, NCP_UTF8, false, 0));
+    CHECK(read_file(newpath) == utf8);
+    CHECK(doc.save(newpath, NCP_UTF32BE, true, 0));
+    CHECK(read_file(newpath) == std::string(utf32be, sizeof(utf32be)));
+
+    // the document is left as it was, edit and all
+    CHECK(doc.getformat() == NCP_UTF16);
+    CHECK(doc.has_bom());
+    CHECK(doc.modified());
+    CHECK(doc.can_undo());
+    CHECK(read_document(doc) == text);
+
+    // and the file opens again in its new encoding
+    CHECK(converted.init(newpath));
+    CHECK(converted.getformat() == NCP_UTF32BE);
+    CHECK(read_document(converted) == text);
+
+    // nothing says what this one is, so it has to be opened as UTF-8
+    CHECK(doc.save(newpath, NCP_UTF8, false, 0));
+    CHECK(converted.init(newpath, NCP_UTF8));
+    CHECK(read_document(converted) == text);
+
+    // an encoding that doesn't exist is an error
+    CHECK(!doc.save(newpath, static_cast<TEXT_ENCODING>(99), false, 0));
+
+    converted.clear();
+    doc.clear();
+    DeleteFile(path);
+    DeleteFile(newpath);
+}
+
+void textdocument_save_converts_line_breaks()
+{
+    TextDocument doc;
+    TCHAR path[MAX_PATH];
+    TCHAR newpath[MAX_PATH];
+
+    CHECK(write_textdocument_file("a\r\nb\nc\rd\r\n\r\ne", DOC_ASCII, path));
+    CHECK(doc.init(path));
+    CHECK(temp_name(newpath));
+
+    CHECK(doc.save(newpath, NCP_ASCII, false, TXL_LF));
+    CHECK(read_file(newpath) == "a\nb\nc\nd\n\ne");
+    CHECK(doc.save(newpath, NCP_ASCII, false, TXL_CRLF));
+    CHECK(read_file(newpath) == "a\r\nb\r\nc\r\nd\r\n\r\ne");
+    CHECK(doc.save(newpath, NCP_ASCII, false, TXL_CR));
+    CHECK(read_file(newpath) == "a\rb\rc\rd\r\re");
+
+    // and the encoding at the same time
+    CHECK(doc.save(newpath, NCP_UTF16BE, true, TXL_LF));
+    CHECK(read_file(newpath) == utf16be_bytes("a\nb\nc\nd\n\ne", true));
+
+    doc.clear();
+    DeleteFile(path);
+    DeleteFile(newpath);
+}
+
+void textdocument_save_keeps_a_crlf_split_between_reads_as_one()
+{
+    // the conversion reads 0x4000 UTF-16 units at a time: put the CR and LF of
+    // a CRLF either side of that, and either side of that
+    for(size_t before = 0x4000 - 3; before <= 0x4000 + 1; before++)
+    {
+        TextDocument doc;
+        TCHAR path[MAX_PATH];
+        std::string text(before, 'x');
+
+        text += "\r\ny";
+
+        CHECK(write_temp_file(text.data(), text.size(), path));
+        CHECK(doc.init(path));
+        CHECK(doc.save(path, NCP_ASCII, false, TXL_LF));
+        CHECK(read_file(path) == std::string(before, 'x') + "\ny");
+
+        doc.clear();
+        DeleteFile(path);
+    }
+}
+
+void textdocument_init_in_a_given_encoding()
+{
+    TextDocument doc;
+    TCHAR path[MAX_PATH];
+    const char utf8[] = "a\xc3\xa9";
+
+    CHECK(write_temp_file(utf8, 3, path));
+
+    // without a byte-order mark it opens as ASCII...
+    CHECK(doc.init(path));
+    CHECK(doc.getformat() == NCP_ASCII);
+
+    // ...unless told otherwise
+    CHECK(doc.init(path, NCP_UTF8));
+    CHECK(doc.getformat() == NCP_UTF8);
+    CHECK(!doc.has_bom());
+    CHECK(read_document(doc) == std::wstring(L"a") + static_cast<wchar_t>(0xe9));
+
+    CHECK(!doc.init(path, static_cast<TEXT_ENCODING>(99)));
+
+    doc.clear();
+    DeleteFile(path);
+
+    // the encoding's own byte-order mark is skipped, and another's is text
+    CHECK(write_textdocument_file("ab", DOC_UTF8_BOM, path));
+    CHECK(doc.init(path, NCP_UTF8));
+    CHECK(doc.has_bom());
+    CHECK(read_document(doc) == L"ab");
+
+    CHECK(doc.init(path, NCP_ASCII));
+    CHECK(!doc.has_bom());
+    CHECK(doc.byte_length() == 5);
+
+    doc.clear();
+    DeleteFile(path);
+
+    // UTF-16 starting with U+0000 looks like UTF-32's byte-order mark
+    const ULONG units[] = { 0xfeff, 0, 'a' };
+
+    CHECK(write_units_file(units, sizeof(units) / sizeof(units[0]), 2, false, path));
+    CHECK(doc.init(path));
+    CHECK(doc.getformat() == NCP_UTF32);
+
+    CHECK(doc.init(path, NCP_UTF16));
+    CHECK(doc.has_bom());
+    CHECK(doc.byte_length() == 4);
+    CHECK(read_document(doc) == std::wstring(1, L'\0') + L"a");
+
+    doc.clear();
+    DeleteFile(path);
+}
+
+void textdocument_ascii_turns_what_it_cant_hold_into_question_marks()
+{
+    TextDocument doc;
+    TCHAR path[MAX_PATH];
+    TCHAR newpath[MAX_PATH];
+    const ULONG units[] = { 0xfeff, 'a', 0xd83d, 0xde00, 'b' };
+    const TCHAR face[] = { 0xd83d, 0xde00 };
+
+    // a UTF-8 code page can hold everything
+    if(GetACP() == CP_UTF8)
+        return;
+
+    // converted: a '?' for each half of the pair, and no byte-order mark
+    CHECK(write_units_file(units, sizeof(units) / sizeof(units[0]), 2, false, path));
+    CHECK(doc.init(path));
+    CHECK(temp_name(newpath));
+    CHECK(doc.save(newpath, NCP_ASCII, true, 0));
+    CHECK(read_file(newpath) == "a??b");
+    doc.clear();
+    DeleteFile(path);
+
+    // typed into an ASCII document, the same
+    CHECK(write_textdocument_file("ab", DOC_ASCII, path));
+    CHECK(doc.init(path));
+    CHECK(doc_insert(doc, 1, face, 2) == 2);
+    CHECK(read_document(doc) == L"a??b");
+
+    doc.clear();
+    DeleteFile(path);
+    DeleteFile(newpath);
+}
+
+// Neatpad keeps a file's window position in a stream of the file
+void textdocument_save_keeps_the_files_other_streams()
+{
+    TextDocument doc;
+    TCHAR path[MAX_PATH];
+    TCHAR x[] = TEXT("X");
+    std::wstring stream;
+    HANDLE hFile;
+    DWORD written;
+
+    CHECK(write_textdocument_file("abc", DOC_ASCII, path));
+    stream = path;
+    stream += TEXT(":Neatpad.Settings");
+
+    hFile = CreateFile(stream.c_str(), GENERIC_WRITE, 0, 0, CREATE_ALWAYS, 0, 0);
+    CHECK(hFile != INVALID_HANDLE_VALUE);
+    CHECK(WriteFile(hFile, "settings", 8, &written, 0));
+    CloseHandle(hFile);
+
+    CHECK(doc.init(path));
+    CHECK(doc_insert(doc, 0, x, 1) == 1);
+    CHECK(doc.save(path, doc.getformat(), true, 0));
+
+    CHECK(read_file(path) == "Xabc");
+    CHECK(read_file(stream.c_str()) == "settings");
+
+    doc.clear();
+    DeleteFile(path);
 }
 
 void textdocument_sequence_index_matches_ascii_after_edits()
@@ -3754,6 +4413,24 @@ const test_case tests[] =
     { "lineiterator_walks_lines", lineiterator_walks_lines },
     { "lineiterator_ends_with_empty_line_after_final_break", lineiterator_ends_with_empty_line_after_final_break },
     { "lineiterator_on_empty_document", lineiterator_on_empty_document },
+    { "sequence_modified_follows_undo_history", sequence_modified_follows_undo_history },
+    { "sequence_mark_saved_stops_typing_joining_the_saved_record", sequence_mark_saved_stops_typing_joining_the_saved_record },
+    { "sequence_modified_treats_group_as_one_edit", sequence_modified_treats_group_as_one_edit },
+    { "textdocument_open_file_can_be_replaced_but_not_written", textdocument_open_file_can_be_replaced_but_not_written },
+    { "savefile_writes_a_new_file", savefile_writes_a_new_file },
+    { "savefile_steps_past_a_file_in_the_way", savefile_steps_past_a_file_in_the_way },
+    { "savefile_leaves_the_file_as_it_was_until_committed", savefile_leaves_the_file_as_it_was_until_committed },
+    { "sequence_render_passes_a_block_per_span", sequence_render_passes_a_block_per_span },
+    { "textdocument_failed_save_stays_modified", textdocument_failed_save_stays_modified },
+    { "textdocument_save_over_its_own_file_keeps_text_and_undo", textdocument_save_over_its_own_file_keeps_text_and_undo },
+    { "textdocument_save_keeps_the_byte_order_mark", textdocument_save_keeps_the_byte_order_mark },
+    { "textdocument_save_with_or_without_the_byte_order_mark", textdocument_save_with_or_without_the_byte_order_mark },
+    { "textdocument_save_converts_the_encoding", textdocument_save_converts_the_encoding },
+    { "textdocument_save_converts_line_breaks", textdocument_save_converts_line_breaks },
+    { "textdocument_save_keeps_a_crlf_split_between_reads_as_one", textdocument_save_keeps_a_crlf_split_between_reads_as_one },
+    { "textdocument_init_in_a_given_encoding", textdocument_init_in_a_given_encoding },
+    { "textdocument_ascii_turns_what_it_cant_hold_into_question_marks", textdocument_ascii_turns_what_it_cant_hold_into_question_marks },
+    { "textdocument_save_keeps_the_files_other_streams", textdocument_save_keeps_the_files_other_streams },
     { "textdocument_sequence_index_matches_ascii_after_edits", textdocument_sequence_index_matches_ascii_after_edits },
     { "textdocument_sequence_index_matches_utf16le", textdocument_sequence_index_matches_utf16le },
     { "textdocument_sequence_index_matches_utf16be", textdocument_sequence_index_matches_utf16be },

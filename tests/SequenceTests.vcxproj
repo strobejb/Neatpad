@@ -131,6 +131,7 @@
     <ClCompile Include="..\src\TextView\TextDocument.cpp" />
     <ClCompile Include="..\src\TextView\TextDocumentCoord.cpp" />
     <ClCompile Include="..\src\TextView\TextDocumentFind.cpp" />
+    <ClCompile Include="..\src\TextView\SaveFile.cpp" />
     <ClCompile Include="..\src\TextView\sequence.cpp" />
     <ClCompile Include="..\src\TextView\sequence_buf.cpp" />
     <ClCompile Include="..\src\TextView\sequence_lines.cpp" />
@@ -138,6 +139,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\src\TextView\codepages.h" />
+    <ClInclude Include="..\src\TextView\SaveFile.h" />
     <ClInclude Include="..\src\TextView\sequence.h" />
     <ClInclude Include="..\src\TextView\TextDocument.h" />
     <ClInclude Include="..\src\TextView\TextView.h" />

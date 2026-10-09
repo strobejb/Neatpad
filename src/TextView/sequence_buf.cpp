@@ -8,20 +8,18 @@
 #include <string.h>
 #include "sequence.h"
 
-// Opening a seqfilechar file name, with 64-bit file positions. Windows names are
-// UTF-16 and need _wfopen; elsewhere, fseeko/ftello are 64-bit when built with
+// 64-bit file positions. Elsewhere, fseeko/ftello are 64-bit when built with
 // _FILE_OFFSET_BITS=64.
 #ifdef _WIN32
-#define SEQ_MODE(mode) L##mode
-#define seq_fopen(result, filename, mode) (_wfopen_s((result), (filename), (mode)) == 0 && *(result) != 0)
 #define seq_fseek(fp, offset, origin) _fseeki64((fp), (offset), (origin))
 #define seq_ftell(fp) _ftelli64(fp)
 #else
-#define SEQ_MODE(mode) mode
-#define seq_fopen(result, filename, mode) ((*(result) = fopen((filename), (mode))) != 0)
 #define seq_fseek(fp, offset, origin) fseeko((fp), (off_t)(offset), (origin))
 #define seq_ftell(fp) ((long long)ftello(fp))
 #endif
+
+// Open a file to read, shared as the text read from it needs (at the end of the file)
+static FILE *seq_fopen_shared(const seqfilechar *filename);
 
 sequence::buffer_control::buffer_control()
 {
@@ -130,19 +128,13 @@ bool sequence::buffer_control::init_file(const seqfilechar *filename, bool read_
 	long long file_length;
 
 	clear();
+
+	// The file is only ever read. Writing changes back into it (quicksave) is
+	// not supported yet, so it is opened for reading whatever read_only says;
+	// read_only is kept to say whether that will be allowed.
 	readonly = read_only;
 
-	if(!seq_fopen(&file, filename, readonly ? SEQ_MODE("rb") : SEQ_MODE("r+b")))
-		file = 0;
-
-	if(file == 0 && !readonly)
-	{
-		readonly = true;
-		if(!seq_fopen(&file, filename, SEQ_MODE("rb")))
-			file = 0;
-	}
-
-	if(file == 0)
+	if((file = seq_fopen_shared(filename)) == 0)
 		return false;
 
 	if(seq_fseek(file, 0, SEEK_END) != 0)
@@ -374,3 +366,51 @@ bool sequence::import_buffer(const seqchar *buf, size_t len, size_t *buffer_offs
 
 	return true;
 }
+
+//
+//	Open a file to read, sharing it so that others can read it, and delete,
+//	rename or replace it, but not write to it: the text is read from it on
+//	demand, so its bytes must not change underneath. Being replaced while open
+//	is how a save swaps in its new file; this handle still reads the old one
+//	until it is closed.
+//
+#ifdef _WIN32
+
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include <io.h>
+#include <fcntl.h>
+
+static FILE *seq_fopen_shared(const seqfilechar *filename)
+{
+	// the C runtime can't share delete, so open with CreateFile and wrap the handle
+	HANDLE h = CreateFileW(filename, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_DELETE, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
+	FILE  *fp;
+	int    fd;
+
+	if(h == INVALID_HANDLE_VALUE)
+		return 0;
+
+	if((fd = _open_osfhandle((intptr_t)h, _O_RDONLY | _O_BINARY)) == -1)
+	{
+		CloseHandle(h);
+		return 0;
+	}
+
+	// from here, closing the descriptor (or the FILE) closes the handle too
+	if((fp = _fdopen(fd, "rb")) == 0)
+		_close(fd);
+
+	return fp;
+}
+
+#else
+
+// Other systems let an open file be renamed over or deleted anyway, and have
+// no way to stop others writing to it
+static FILE *seq_fopen_shared(const seqfilechar *filename)
+{
+	return fopen(filename, "rb");
+}
+
+#endif

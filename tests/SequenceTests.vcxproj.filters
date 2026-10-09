@@ -12,6 +12,9 @@
     <ClCompile Include="SequenceTests.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\src\TextView\SaveFile.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="..\src\TextView\sequence.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -36,6 +39,9 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\src\TextView\codepages.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\TextView\SaveFile.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\src\TextView\sequence.h">

@@ -118,7 +118,8 @@ private:
 	//
 	//	Internal private functions
 	//
-	LONG		OpenFile(TCHAR *szFileName);
+	LONG		OpenFile(TCHAR *szFileName, int nEncoding);	// -1 for its byte-order mark to say
+	LONG		SaveFile(TCHAR *szFileName, UINT nEncoding, BOOL fBom, UINT nLineBreak);
 	LONG		ClearFile();
 	void		ResetLineCache();
 

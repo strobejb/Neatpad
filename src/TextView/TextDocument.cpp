@@ -9,6 +9,7 @@
 #include <limits.h>
 #include <string.h>
 #include "TextDocument.h"
+#include "SaveFile.h"
 #include "Unicode.h"
 
 //
@@ -99,6 +100,7 @@ TextDocument::TextDocument()
 
 	m_nFileFormat		= NCP_ASCII;
 	m_nHeaderSize		= 0;
+	m_fBom				= false;
 }
 
 //
@@ -107,6 +109,25 @@ TextDocument::TextDocument()
 TextDocument::~TextDocument()
 {
 	clear();
+}
+
+//
+//	The byte-order mark of an encoding, or the empty entry that ends BOMLOOK
+//	for an encoding without one
+//
+static const BOM_LOOKUP * bom_for(TEXT_ENCODING encoding)
+{
+	const BOM_LOOKUP *bom = BOMLOOK;
+
+	while(bom->len && bom->encoding != encoding)
+		bom++;
+
+	return bom;
+}
+
+static bool known_encoding(TEXT_ENCODING encoding)
+{
+	return encoding_info(encoding)->encoding == encoding;
 }
 
 //
@@ -121,26 +142,81 @@ bool TextDocument::init(const seqfilechar *filename)
 
 	// try to detect if this is an ascii/unicode/utf8 file
 	m_nFileFormat = detect_file_format(&m_nHeaderSize);
+	m_fBom = m_nHeaderSize > 0;
 	m_seq.set_line_scan_mode(line_scan_mode_from_encoding(m_nFileFormat));
 	return true;
 }
 
-//	Initialize the TextDocument with the specified file
 //
-/*bool TextDocument::save(textchar *filename)
+//	Initialize the TextDocument with a file in the given encoding, whatever its
+//	byte-order mark says. The encoding's own byte-order mark is skipped.
+//
+bool TextDocument::init(const seqfilechar *filename, TEXT_ENCODING encoding)
 {
-	HANDLE hFile;
-	
-	hFile = CreateFile(filename, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
+	const BOM_LOOKUP *bom = bom_for(encoding);
+	uint8_t header[4] = { 0 };
 
-	if(hFile == INVALID_HANDLE_VALUE)
+	if(!known_encoding(encoding) || !init(filename))
 		return false;
 
+	if(m_nFileFormat != encoding)
+	{
+		m_seq.render(0, header, 4);
 
+		m_nFileFormat = encoding;
+		m_nHeaderSize = m_seq.size() >= bom->len && memcmp(header, bom->bom, bom->len) == 0 ? bom->len : 0;
+		m_fBom = m_nHeaderSize > 0;
+		m_seq.set_line_scan_mode(line_scan_mode_from_encoding(m_nFileFormat));
+	}
 
-	CloseHandle(hFile);
 	return true;
-}*/
+}
+
+//
+//	Save the document to a file. Kept in the encoding it was read in, with its
+//	line breaks, its bytes are written as they are - after the encoding's own
+//	byte-order mark, if wanted, rather than the one they were read with - and
+//	the undo history carries on. Otherwise the text is converted as it's written.
+//
+bool TextDocument::save(const seqfilechar *filename, TEXT_ENCODING encoding, bool bom, uint32_t linebreak)
+{
+	const BOM_LOOKUP *header = bom_for(bom ? encoding : NCP_ASCII);	// ASCII has none
+	bool  same_encoding = encoding == m_nFileFormat && linebreak == 0;
+	SaveFile file;
+
+	if(!known_encoding(encoding) || !file.open(filename) || !file.write(header->bom, header->len))
+		return false;
+
+	// does the destination encoding match this open file's encoding?
+	if(same_encoding)
+	{
+		size_w length = m_seq.size() - m_nHeaderSize;
+
+		if(m_seq.render(m_nHeaderSize, [&file](const seqchar *block, size_t blocklen) { return file.write(block, blocklen); }, length) != length)
+			return false;
+	}
+	// otherwise convert
+	else if(!write_converted(file, encoding, linebreak))
+	{
+		return false;
+	}
+
+	if(!file.commit())
+		return false;
+
+	if(same_encoding)
+	{
+		m_seq.mark_saved();
+		m_fBom = header->len > 0;
+	}
+
+	return true;
+}
+
+bool TextDocument::has_bom()
+{
+	return m_fBom;
+}
 
 
 //
@@ -188,6 +264,7 @@ bool TextDocument::clear()
 
 	m_nFileFormat = NCP_ASCII;
 	m_nHeaderSize = 0;
+	m_fBom		  = false;
 	return true;
 }
 
@@ -525,15 +602,15 @@ size_t TextDocument::rawdata_complete_length(uint8_t *rawdata, size_t rawlen)
 }
 
 //
-//	Converts specified UTF16 string to the underlying RAW format of the text-document
+//	Converts specified UTF16 string to an encoding's RAW format
 //	(i.e. UTF-16 -> UTF-8
 //		  UTF-16 -> UTF-32 etc)
 //
 //	returns number of WCHARs processed from utf16str
 //
-size_t TextDocument::utf16_to_rawdata(const textchar *utf16str, size_t utf16len, uint8_t *rawdata, size_t *rawlen)
+static size_t encode_utf16(TEXT_ENCODING encoding, const textchar *utf16str, size_t utf16len, uint8_t *rawdata, size_t *rawlen)
 {
-	switch(m_nFileFormat)
+	switch(encoding)
 	{
 	// convert from UTF16 -> ASCII
 	case NCP_ASCII:
@@ -569,6 +646,88 @@ size_t TextDocument::utf16_to_rawdata(const textchar *utf16str, size_t utf16len,
 		return 0;	
 	}
 
+}
+
+//
+//	Converts specified UTF16 string to the underlying RAW format of the text-document
+//
+size_t TextDocument::utf16_to_rawdata(const textchar *utf16str, size_t utf16len, uint8_t *rawdata, size_t *rawlen)
+{
+	return encode_utf16(m_nFileFormat, utf16str, utf16len, rawdata, rawlen);
+}
+
+//
+//	Make every line break in text the same: linebreak, which is TXL_CR, TXL_LF
+//	or TXL_CRLF. dest holds twice length. A CR that ends one piece of text and
+//	an LF that starts the next are one CRLF; *after_cr carries that between them.
+//
+static size_t convert_linebreaks(const textchar *text, size_t length, uint32_t linebreak, textchar *dest, bool *after_cr)
+{
+	size_t n = 0;
+
+	for(size_t i = 0; i < length; i++)
+	{
+		textchar ch = text[i];
+		bool     lf_of_crlf = ch == '\n' && *after_cr;
+
+		*after_cr = ch == '\r';
+
+		if(lf_of_crlf)
+			continue;
+
+		if(ch == '\r' || ch == '\n')
+		{
+			if(linebreak != TXL_LF)
+				dest[n++] = '\r';
+
+			if(linebreak != TXL_CR)
+				dest[n++] = '\n';
+		}
+		else
+		{
+			dest[n++] = ch;
+		}
+	}
+
+	return n;
+}
+
+//
+//	Write the text in another encoding, and with every line break made
+//	linebreak (unless that is 0). It goes through UTF-16, as it's displayed.
+//
+bool TextDocument::write_converted(SaveFile &file, TEXT_ENCODING encoding, uint32_t linebreak)
+{
+	const uint32_t CHUNK = 0x4000;
+
+	std::vector<textchar> text(CHUNK);
+	std::vector<textchar> lines(CHUNK * 2);		// each line break can become two
+	std::vector<uint8_t>  raw(CHUNK * 2 * 4);	// four bytes a UTF-16 unit at most, as UTF-32
+	TextReader reader = text_from_range(TextPos(0), TextPos(byte_length()));
+	bool       after_cr = false;
+
+	while(!reader.at_end())
+	{
+		size_t          len    = reader.read(&text[0], CHUNK);
+		const textchar *src    = &text[0];
+		size_t          rawlen = raw.size();
+
+		// nothing read short of the end: the text can't be read
+		if(len == 0)
+			return false;
+
+		if(linebreak)
+		{
+			len = convert_linebreaks(&text[0], len, linebreak, &lines[0], &after_cr);
+			src = &lines[0];
+		}
+
+		// raw holds the most any encoding makes of it, so it all goes at once
+		if(encode_utf16(encoding, src, len, &raw[0], &rawlen) != len || !file.write(&raw[0], rawlen))
+			return false;
+	}
+
+	return true;
 }
 
 //
@@ -754,4 +913,9 @@ void TextDocument::undo_group_end()
 void TextDocument::undo_group_break()
 {
 	m_seq.breakopt();
+}
+
+bool TextDocument::modified()
+{
+	return m_seq.modified();
 }

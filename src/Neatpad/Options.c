@@ -325,6 +325,9 @@ BOOL OpenRecentFile(HWND hwnd, UINT nCommandId)
 
 	lstrcpy(szFileName, g_szRecentFiles[index]);
 
+	if(!QuerySaveChanges(hwnd))
+		return FALSE;
+
 	if(NeatpadOpenFile(hwnd, szFileName))
 		return TRUE;
 

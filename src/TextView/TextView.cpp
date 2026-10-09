@@ -528,6 +528,10 @@ LRESULT WINAPI TextView::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 	case TXM_CANREDO: case EM_CANREDO:
 		return CanRedo();
 
+	// whether the text differs from its file, as an edit control reports it
+	case EM_GETMODIFY:
+		return m_pTextDoc->modified();
+
 	case WM_CHAR:
 		return OnChar((UINT)wParam, (UINT)lParam);
 
@@ -558,7 +562,10 @@ LRESULT WINAPI TextView::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 
 	//
 	case TXM_OPENFILE:
-		return OpenFile((TCHAR *)lParam);
+		return OpenFile((TCHAR *)lParam, -1);
+
+	case TXM_SAVEFILE:
+		return SaveFile((TCHAR *)lParam, LOBYTE(LOWORD(wParam)), HIWORD(wParam), HIBYTE(LOWORD(wParam)));
 
 	case TXM_CLEAR:
 		return ClearFile();
@@ -595,6 +602,9 @@ LRESULT WINAPI TextView::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 
 	case TXM_GETFORMAT:
 		return m_pTextDoc->getformat();
+
+	case TXM_GETBOM:
+		return m_pTextDoc->has_bom();
 
 	case TXM_GETLINEFORMAT:
 		return m_nCRLFMode;

@@ -3,6 +3,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <functional>
 #include <vector>
 
 //
@@ -41,8 +42,6 @@ public:
 	class			span;
 	class			span_range;
 	class			buffer_control;
-	class			iterator;
-	class			ref;
 	enum			action : int;
 	enum			line_scan_mode : int;
 
@@ -112,7 +111,6 @@ public:
 	bool		linecount_known() const;
 
 	void		set_line_scan_mode(line_scan_mode mode);
-	line_scan_mode get_line_scan_mode() const;
 
 	// Exactness checks for sequence line-number facts.
 	bool		lineno_known(size_w lineno) const;
@@ -134,14 +132,8 @@ public:
 	// sequence manipulation 
 	//
 	bool		insert (size_w index, const seqchar *buf, size_w length);
-	bool		insert (size_w index, const seqchar  val);
 	bool		replace(size_w index, const seqchar *buf, size_w length, size_w erase_length);
-	bool		replace(size_w index, const seqchar *buf, size_w length);
-	bool		replace(size_w index, const seqchar  val);
 	bool		erase  (size_w index, size_w len);
-	bool		erase  (size_w index);
-	bool		append (const seqchar *buf, size_w len);
-	bool		append (const seqchar val);
 	void		breakopt();
 
 	//
@@ -157,19 +149,27 @@ public:
 	// Bytes changed by the last undo/redo: [offset, offset + erased) became [offset, offset + inserted).
 	void		event_change(size_w *offset, size_w *erased, size_w *inserted) const;
 
+	// The saved state. mark_saved() says the text now matches its file - it was
+	// just saved; modified() is true whenever the undo history is anywhere else,
+	// so undoing or redoing back to that point is unmodified again.
+	void		mark_saved();
+	bool		modified() const;
+
+#ifdef DEBUG_SEQUENCE
 	// print out the sequence
 	void		debug1();
 	void		debug2();
+#endif
 
 	//
-	// access and iteration
+	// access: the bytes from index on, len of them (fewer at the end), copied
+	// to buf, or passed to fn a block at a time, as they are stored. A block's
+	// pointer is only good during the call, and fn mustn't change the sequence;
+	// it returns false to stop. Each returns how many bytes it rendered.
 	//
 	size_w		render(size_w index, seqchar *buf, size_w len) const;
-	seqchar		peek(size_w index) const;
-	bool		poke(size_w index, seqchar val);
+	size_w		render(size_w index, const std::function<bool(const seqchar *block, size_t length)> &fn, size_w len) const;
 
-	seqchar		operator[] (size_w index) const;
-	ref			operator[] (size_w index);
 
 private:
 
@@ -241,8 +241,14 @@ private:
 
 	eventstack		undostack;
 	eventstack		redostack;
+
+	// Every undo record belongs to a group (one on its own is a group of one),
+	// and group ids are never reused, so the newest record's group identifies
+	// the state of the text.
+	size_t			new_group();
 	size_t			group_id;
 	size_t			group_refcount;
+	size_t			saved_group;	// the newest record's group at mark_saved(); 0 = no records
 	size_w			change_offset;
 	size_w			change_erased;
 	size_w			change_inserted;
@@ -268,6 +274,10 @@ private:
 
 	size_w			lastaction_index;
 	action			lastaction;
+
+	// Quicksave - writing just the changed parts back into the original file -
+	// is not supported yet. The flag, and each undo record's copy of it, are
+	// kept for when it is; until then it stays false.
 	bool			can_quicksave;
 	line_scan_mode	line_mode;
 	
@@ -499,38 +509,6 @@ private:
 };
 
 //
-//	sequence::ref
-//
-//	temporary 'reference' to the sequence, used for
-//  non-const array access with sequence::operator[]
-//
-class sequence::ref
-{
-public:
-	ref(sequence *s, size_w i) 
-		:
-		index(i),
-		seq(s)
-	{
-	}
-
-	operator seqchar() const		
-	{ 
-		return seq->peek(index);	          
-	}
-	
-	ref & operator= (seqchar rhs)	
-	{ 
-		seq->poke(index, rhs); 
-		return *this;	
-	}
-
-private:
-	size_w		index;
-	sequence *	seq;
-};
-
-//
 //	buffer_control
 //
 class sequence::buffer_control
@@ -605,12 +583,6 @@ private:
 	void	reset_line_pages();
 	size_w	page_length(size_w page) const;
 	bool	scan_range(size_w offset, size_w end, line_range *range);
-};
-
-class sequence::iterator
-{
-public:
-
 };
 
 #endif

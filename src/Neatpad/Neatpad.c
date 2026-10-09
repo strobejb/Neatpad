@@ -463,7 +463,7 @@ UINT TextViewNotifyHandler(HWND hwnd, NMHDR *nmhdr)
 
 		if(g_szFileTitle[0])
 		{
-			BOOL fModified = TextView_CanUndo(g_hwndTextView);
+			BOOL fModified = TextView_GetModify(g_hwndTextView);
 
 			if(fModified != g_fFileChanged)
 			{
@@ -525,7 +525,10 @@ UINT CommandHandler(HWND hwnd, UINT nCtrlId, UINT nCtrlCode, HWND hwndFrom)
 	switch(nCtrlId)
 	{
 	case IDM_FILE_NEW:
-		
+
+		if(!QuerySaveChanges(hwnd))
+			return 0;
+
 		// reset to an empty file
 		SetWindowFileName(hwnd, _T("Untitled"), FALSE);
 		TextView_Clear(g_hwndTextView);
@@ -538,7 +541,7 @@ UINT CommandHandler(HWND hwnd, UINT nCtrlId, UINT nCtrlCode, HWND hwndFrom)
 	case IDM_FILE_OPEN:
 		
 		// get a filename to open
-		if(ShowOpenFileDlg(hwnd, g_szFileName, g_szFileTitle))
+		if(QuerySaveChanges(hwnd) && ShowOpenFileDlg(hwnd, g_szFileName, g_szFileTitle))
 		{
 			DoOpenFile(hwnd, g_szFileName, g_szFileTitle);
 		}
@@ -550,17 +553,11 @@ UINT CommandHandler(HWND hwnd, UINT nCtrlId, UINT nCtrlCode, HWND hwndFrom)
 		return 0;
 
 	case IDM_FILE_SAVE:
-		MessageBox(hwnd, _T("Not implemented"), APP_TITLE, MB_ICONINFORMATION);
+		NeatpadSaveFile(hwnd);
 		return 0;
 
 	case IDM_FILE_SAVEAS:
-
-		// does nothing yet
-		if(ShowSaveFileDlg(hwnd, g_szFileName, g_szFileTitle))
-		{
-			MessageBox(hwnd, _T("Not implemented"), APP_TITLE, MB_ICONINFORMATION);
-		}
-
+		NeatpadSaveFileAs(hwnd);
 		return 0;
 		
 	/*case IDM_FILE_PRINT:
@@ -682,7 +679,6 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 	RECT rect;
 	HDWP hdwp;
 	NMHDR *nmhdr;
-	TCHAR msgstr[MAX_PATH+200];
 
 	switch(msg)
 	{
@@ -788,15 +784,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 	case WM_CLOSE:
 		
 		// does the file need saving?
-		if(TextView_CanUndo(g_hwndTextView))
-		{
-			UINT r;
-			wsprintf(msgstr, _T("Do you want to save changes to\r\n%s?"), g_szFileName);
-			r = MessageBox(hwnd, msgstr, APP_TITLE, MB_YESNOCANCEL | MB_ICONQUESTION);
-
-			if(r == IDCANCEL)
-				return 0;
-		}
+		if(!QuerySaveChanges(hwnd))
+			return 0;
 
 		DestroyWindow(hwnd);
 		return 0;

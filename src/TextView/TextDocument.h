@@ -22,6 +22,7 @@ static_assert(sizeof(textchar) == 2, "textchar must be a UTF-16 code unit");
 
 class TextDocument;
 class TextDocumentLineIndexProbe;
+class SaveFile;
 
 //
 //	TextDocument is the boundary between the view and the storage engine.
@@ -137,10 +138,25 @@ public:
 	//	Lifetime
 	//
 
-	// Load and reset the document.
+	// Load and reset the document: in the encoding its byte-order mark says
+	// (ASCII without one), or in the given encoding.
 	bool  init(const seqfilechar *filename);
+	bool  init(const seqfilechar *filename, TEXT_ENCODING encoding);
 
 	bool  clear();
+
+	// Write the document to a file, replacing any that is there, in encoding,
+	// with or without its byte-order mark (ASCII has none). linebreak - TXL_CR,
+	// TXL_LF or TXL_CRLF - makes every line break the same; 0 keeps them.
+	//
+	// Kept in its own encoding with its line breaks, the document is unchanged,
+	// undo history and all, and is unmodified afterwards. Converted, the file no
+	// longer matches the document, which is left as it was: open the file again,
+	// in the encoding it was written in, to carry on editing it.
+	bool  save(const seqfilechar *filename, TEXT_ENCODING encoding, bool bom, uint32_t linebreak);
+
+	// Whether the file has a byte-order mark: as it was opened, then as last saved.
+	bool  has_bom();
 
 	//
 	//	Editing
@@ -152,6 +168,10 @@ public:
 	void	undo_group_begin();
 	void	undo_group_end();
 	void	undo_group_break();
+
+	// Whether the text differs from its file. Undoing or redoing back to the
+	// saved text is unmodified again.
+	bool	modified();
 
 	//
 	// Editing (by position). 
@@ -176,9 +196,8 @@ public:
 	bool  previous_line_from_coord(const TextCoord *coord, uint32_t num_lines, TextCoord *line);
 	bool  next_line_from_coord(const TextCoord *coord, uint32_t num_lines, TextCoord *line);
 
-	// Move a position, or a coordinate (refreshing its line), across a change. One
-	// exactly at the change stays before any inserted text.
-	TextPos pos_after_change(TextPos pos, const TextChange *change);
+	// Move a coordinate across a change and refresh its line. One exactly at the
+	// change stays before any inserted text.
 	bool  coord_after_change(TextCoord *coord, const TextChange *change);
 
 	// Line numbers are a query, never stored in a coordinate. Returns an estimate when *exact is false.
@@ -205,14 +224,13 @@ public:
 
 	//
 	//	Document info
-	//  linecount() may be estimated until linecount_known() is true.
+	//  linecount() may be an estimate until the whole document has been counted.
 	//
 	TEXT_ENCODING getformat();
 	size_w linecount();
-	bool   linecount_known();
 
 	// The kinds of line break found so far (TXL_CRLF, TXL_CR, TXL_LF bits). Covers the
-	// part of the document with exact line numbers, so the whole of it once linecount_known().
+	// part of the document with exact line numbers, so all of it once it has been counted.
 	uint32_t linebreaks_seen();
 
 	size_w byte_length();
@@ -232,6 +250,16 @@ private:
 	template <class T> static T max_of(T a, T b) { return a < b ? b : a; }
 
 	//
+	//	Used inside TextDocument only
+	//
+
+	// Move a position across a change, as coord_after_change() does
+	TextPos pos_after_change(TextPos pos, const TextChange *change);
+
+	// Whether linecount() is exact: the whole document has been counted
+	bool   linecount_known();
+
+	//
 	//	Line navigation
 	//
 	bool unit_before(size_w offset_bytes, uint32_t *ch, uint32_t *size);
@@ -249,6 +277,8 @@ private:
 	size_t utf16_to_rawdata(const textchar *utf16str, size_t utf16len, uint8_t *rawdata, size_t *rawlen);
 	size_t rawdata_to_utf16(uint8_t *rawdata, size_t rawlen, textchar *utf16str, size_t *utf16len);
 	size_t rawdata_complete_length(uint8_t *rawdata, size_t rawlen);
+
+	bool   write_converted(SaveFile &file, TEXT_ENCODING encoding, uint32_t linebreak);
 
 	//
 	//	Raw file access
@@ -273,7 +303,8 @@ private:
 	sequence m_seq;
 
 	TEXT_ENCODING m_nFileFormat;
-	int    m_nHeaderSize;
+	int    m_nHeaderSize;	// the byte-order mark the sequence starts with, if the file had one
+	bool   m_fBom;			// whether the file has one now
 };
 
 //

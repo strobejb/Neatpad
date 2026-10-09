@@ -66,6 +66,8 @@ COLORREF RealizeColour(COLORREF col);
 #define TXM_GETDOCSTATS			(TXM_BASE + 29)
 #define TXM_GETCURSORINFO		(TXM_BASE + 30)
 #define TXM_FINDTEXT			(TXM_BASE + 31)
+#define TXM_SAVEFILE			(TXM_BASE + 32)
+#define TXM_GETBOM				(TXM_BASE + 33)
 
 //
 //	TextView Notification Messages defined here - 
@@ -169,6 +171,13 @@ typedef struct _TEXTVIEWFIND
 #define TextView_OpenFile(hwndTV, szFile)	\
 	SendMessage((hwndTV), TXM_OPENFILE, 0, (LPARAM)(TCHAR *)(szFile))
 
+//	Save in nEncoding (NCP_*), with or without its byte-order mark, and with every
+//	line break made nLineBreak (TXL_CR, TXL_LF or TXL_CRLF; 0 keeps them).
+//	Converting reopens the file, which starts the undo history again.
+#define TextView_SaveFile(hwndTV, szFile, nEncoding, fBom, nLineBreak)	\
+	((BOOL)SendMessage((hwndTV), TXM_SAVEFILE, \
+		MAKEWPARAM(MAKEWORD((nEncoding), (nLineBreak)), (fBom) ? 1 : 0), (LPARAM)(TCHAR *)(szFile)))
+
 #define TextView_Clear(hwndTV)	\
 	SendMessage((hwndTV), TXM_CLEAR, 0, 0)
 
@@ -208,6 +217,10 @@ typedef struct _TEXTVIEWFIND
 #define TextView_GetFormat(hwndTV) \
 	((UINT)SendMessage((hwndTV), TXM_GETFORMAT, 0, 0))
 
+// whether the file has a byte-order mark: as opened, then as last saved
+#define TextView_GetBom(hwndTV) \
+	((BOOL)SendMessage((hwndTV), TXM_GETBOM, 0, 0))
+
 #define TextView_GetLineFormat(hwndTV) \
 	((UINT)SendMessage((hwndTV), TXM_GETLINEFORMAT, 0, 0))
 
@@ -222,6 +235,9 @@ typedef struct _TEXTVIEWFIND
 
 #define TextView_CanRedo(hwndTV) \
 	((BOOL)SendMessage((hwndTV), TXM_CANREDO, 0, 0))
+
+#define TextView_GetModify(hwndTV) \
+	((BOOL)SendMessage((hwndTV), EM_GETMODIFY, 0, 0))
 
 #define TextView_GetSelSize(hwndTV) \
 	((UINT_PTR)SendMessage((hwndTV), TXM_GETSELSIZE, 0, 0))

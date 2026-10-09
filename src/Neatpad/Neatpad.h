@@ -82,12 +82,23 @@ BOOL SetImageFileExecutionOptions(BOOL fReplaceWithCurrentApp);
 //
 //	OpenSave.c functions
 //
+// How to save: as the file is now, or as chosen in the Save As dialog
+typedef struct
+{
+	UINT	nEncoding;		// NCP_*
+	BOOL	fBom;			// write the encoding's byte-order mark
+	UINT	nLineBreak;		// TXL_CR, TXL_LF or TXL_CRLF; 0 keeps them as they are
+} SAVEOPTIONS;
+
 BOOL DoOpenFile(HWND hwndMain, TCHAR *szFileName, TCHAR *szFileTitle);
-BOOL DoSaveFile(HWND hwndMain, TCHAR *szFileName, TCHAR *szFileTitle);
+BOOL DoSaveFile(HWND hwndMain, TCHAR *szFileName, TCHAR *szFileTitle, const SAVEOPTIONS *pOptions);
 BOOL ShowOpenFileDlg(HWND hwnd, TCHAR *pstrFileName, TCHAR *pstrTitleName);
-BOOL ShowSaveFileDlg(HWND hwnd, TCHAR *pstrFileName, TCHAR *pstrTitleName);
+BOOL ShowSaveFileDlg(HWND hwnd, TCHAR *pstrFileName, TCHAR *pstrTitleName, SAVEOPTIONS *pOptions);
 void HandleDropFiles(HWND hwnd, HDROP hDrop);
 BOOL NeatpadOpenFile(HWND hwnd, TCHAR *szFile);
+BOOL NeatpadSaveFile(HWND hwnd);
+BOOL NeatpadSaveFileAs(HWND hwnd);
+BOOL QuerySaveChanges(HWND hwnd);
 
 //
 //	NeatUtils.c functions

@@ -68,6 +68,8 @@ sequence::sequence ()
 	sequence_length = 0;
 	group_id		= 0;
 	group_refcount	= 0;
+	saved_group		= 0;
+	can_quicksave	= false;
 	line_mode		= line_scan_bytes;
 
 	change_offset	= 0;
@@ -109,6 +111,8 @@ bool sequence::init ()
 	record_action(action_invalid, 0);
 	group_id		= 0;
 	group_refcount	= 0;
+	saved_group		= 0;
+	can_quicksave	= false;
 	change_offset	= 0;
 	change_erased	= 0;
 	change_inserted = 0;
@@ -168,14 +172,6 @@ bool sequence::open(const seqfilechar *filename, bool readonly)
 	return true;
 }
 
-//
-//	Initialize from an on-disk file
-//
-//bool sequence::save(const seqfilechar *filename)
-//{
-//	return false;
-//}
-
 template <class type>
 void sequence::clear_vector (type &vectorobject)
 {
@@ -195,6 +191,8 @@ void sequence::clearstack (eventstack &dest)
 
 	dest.clear();
 }
+
+#ifdef DEBUG_SEQUENCE
 
 void sequence::debug1 ()
 {
@@ -249,6 +247,8 @@ void sequence::debug2 ()
 	printf("\nsequence length = %llu chars\n", (unsigned long long)sequence_length);
 	printf("\n\n");
 }
+
+#endif
 
 sequence::span* sequence::alloc_span(size_w offset, size_w length, int buffer, span *next, span *prev)
 {
@@ -520,10 +520,7 @@ bool sequence::canredo () const
 void sequence::group()
 {
 	if(group_refcount == 0)
-	{
-		if(++group_id == 0)
-			++group_id;
-	}
+		new_group();
 
 	group_refcount++;
 }
@@ -535,6 +532,36 @@ void sequence::ungroup()
 {
 	if(group_refcount > 0)
 		group_refcount--;
+}
+
+//
+//	Start a new group of undo records. Ids are never reused, and never 0,
+//	which stands for "no records".
+//
+size_t sequence::new_group()
+{
+	if(++group_id == 0)
+		++group_id;
+
+	return group_id;
+}
+
+//
+//	The text now matches its file: remember where the undo history is
+//
+void sequence::mark_saved()
+{
+	// the next edit starts a new record, rather than adding to the saved one
+	breakopt();
+
+	saved_group = undostack.empty() ? 0 : undostack.back()->group_id;
+}
+
+bool sequence::modified() const
+{
+	size_t newest = undostack.empty() ? 0 : undostack.back()->group_id;
+
+	return newest != saved_group;
 }
 
 //
@@ -561,11 +588,6 @@ void sequence::set_line_scan_mode(line_scan_mode mode)
 	index_range(0, seq_min(sequence_length, MEM_BLOCK_SIZE));
 }
 
-sequence::line_scan_mode sequence::get_line_scan_mode() const
-{
-	return line_mode;
-}
-
 
 
 //
@@ -581,7 +603,7 @@ sequence::span_range* sequence::initundo (size_w index, size_w length, action ac
 								length,
 								act,
 								can_quicksave, 
-								group_refcount ? group_id : 0
+								group_refcount ? group_id : new_group()
 								);
 
 	undostack.push_back(event);
@@ -731,16 +753,6 @@ bool sequence::insert (size_w index, const seqchar *buf, size_w length)
 	{
 		return false;
 	}
-}
-
-//
-//	sequence::insert
-//
-//	Insert specified character-value into sequence
-//
-bool sequence::insert (size_w index, const seqchar val)
-{
-	return insert(index, &val, 1);
 }
 
 //
@@ -950,16 +962,6 @@ bool sequence::erase (size_w index, size_w len)
 }
 
 //
-//	sequence::erase
-//
-//	remove single character from sequence
-//
-bool sequence::erase (size_w index)
-{
-	return erase(index, 1);
-}
-
-//
 //	sequence::replace
 //
 //	A 'replace' (or 'overwrite') is a combination of erase+inserting
@@ -1018,47 +1020,6 @@ bool sequence::replace(size_w index, const seqchar *buf, size_w length, size_w e
 }
 
 //
-//	sequence::replace
-//
-//	overwrite with the specified buffer
-//
-bool sequence::replace (size_w index, const seqchar *buf, size_w length)
-{
-	return replace(index, buf, length, length);
-}
-
-//
-//	sequence::replace
-//
-//	overwrite with a single character-value
-//
-bool sequence::replace (size_w index, const seqchar val)
-{
-	return replace(index, &val, 1);
-}
-
-//
-//	sequence::append
-//
-//	very simple wrapper around sequence::insert, just inserts at
-//  the end of the sequence
-//
-bool sequence::append (const seqchar *buf, size_w length)
-{
-	return insert(size(), buf, length);
-}
-
-//
-//	sequence::append
-//
-//	append a single character to the sequence
-//
-bool sequence::append (const seqchar val)
-{
-	return append(&val, 1);
-}
-
-//
 //	sequence::clear
 //
 //	empty the entire sequence, clear undo/redo history etc
@@ -1097,11 +1058,12 @@ bool sequence::clear ()
 //
 //	sequence::render
 //
-//	render the specified range of data (index, len) and store in 'dest'
+//	Pass the range of data (index, length) to fn, a block at a time: as much of
+//	one span as one buffer view holds. Stops early if fn returns false.
 //
-//	Returns number of chars copied into destination
+//	Returns number of chars passed to fn
 //
-size_w sequence::render(size_w index, seqchar *dest, size_w length) const
+size_w sequence::render(size_w index, const std::function<bool(const seqchar *block, size_t length)> &fn, size_w length) const
 {
 	size_w spanoffset = 0;
 	size_w total = 0;
@@ -1109,81 +1071,47 @@ size_w sequence::render(size_w index, seqchar *dest, size_w length) const
 
 	// find span to start rendering at
 	if((sptr = spanfromindex(index, &spanoffset)) == 0)
-		return false;
+		return 0;
 
 	// might need to start mid-way through the first span
 	spanoffset = index - spanoffset;
 
-	// copy each span's referenced data in succession
+	// pass on each span's referenced data in succession
 	while(length && sptr != tail)
 	{
-		size_w copylen   = seq_min(sptr->length - spanoffset, length);
-		seqchar *source;
+		size_w   blocklen = seq_min(seq_min(sptr->length - spanoffset, length), MEM_BLOCK_SIZE);
+		seqchar *source   = buffer_list[sptr->buffer]->getptr(sptr->offset + spanoffset, blocklen);
 
-		while(copylen)
+		if(source == 0 || !fn(source, (size_t)blocklen))
+			break;
+
+		spanoffset	+= blocklen;
+		length		-= blocklen;
+		total		+= blocklen;
+
+		if(spanoffset == sptr->length)
 		{
-			size_w partlen = seq_min(copylen, (size_w)100);
-
-			source = buffer_list[sptr->buffer]->getptr(sptr->offset + spanoffset, partlen);
-
-			if(source == 0)
-				return total;
-
-			memcpy(dest, source, (size_t)partlen * sizeof(seqchar));
-		
-			dest		+= partlen;
-			spanoffset	+= partlen;
-			copylen		-= partlen;
-			length		-= partlen;
-			total		+= partlen;
+			sptr = sptr->next;
+			spanoffset = 0;
 		}
-
-		sptr = sptr->next;
-		spanoffset = 0;
 	}
 
 	return total;
 }
 
 //
-//	sequence::peek
+//	render the specified range of data (index, len) and store in 'dest'
 //
-//	return single element at specified position in the sequence
+//	Returns number of chars copied into destination
 //
-seqchar sequence::peek(size_w index) const
+size_w sequence::render(size_w index, seqchar *dest, size_w length) const
 {
-	seqchar   value;
-	return render(index, &value, 1) ? value : 0;
-}
-
-//
-//	sequence::poke
-//
-//	modify single element at specified position in the sequence
-//
-bool sequence::poke(size_w index, seqchar value) 
-{
-	return replace(index, &value, 1);
-}
-
-//
-//	sequence::operator[] const
-//
-//	readonly array access
-//
-seqchar sequence::operator[] (size_w index) const
-{
-	return peek(index);
-}
-
-//
-//	sequence::operator[] 
-//
-//	read/write array access
-//
-sequence::ref sequence::operator[] (size_w index)
-{
-	return ref(this, index);
+	return render(index, [&dest](const seqchar *block, size_t blocklen)
+	{
+		memcpy(dest, block, blocklen * sizeof(seqchar));
+		dest += blocklen;
+		return true;
+	}, length);
 }
 
 //
