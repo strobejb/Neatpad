@@ -5,6 +5,8 @@
 #ifndef TEXTVIEW_INCLUDED
 #define TEXTVIEW_INCLUDED
 
+#include "codepages.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -125,12 +127,9 @@ typedef struct _TEXTVIEWFIND
 #define TXS_SHOWLINEENDINGS		32		// show every line ending, not just those that don't match the line format
 
 //
-//	End-of-line mode
+//	End-of-line mode: the TXL_ line break kinds come from codepages.h,
+//	shared with TextDocument
 //
-#define TXL_LF				1		// line-feed
-#define TXL_CR				2		// carriage-return
-#define TXL_CRLF			4		// carriage-return, line-feed (default)
-#define TXL_ALL				7		// allow all forms regardless
 
 //
 //	TextView Macros defined here

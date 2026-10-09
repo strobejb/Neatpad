@@ -6,39 +6,59 @@
 //	NOTES:		www.catch22.net
 //
 
-#define STRICT
-#define WIN32_LEAN_AND_MEAN
-
-#include <windows.h>
+#include <limits.h>
 #include <string.h>
 #include "TextDocument.h"
-#include "TextView.h"
 #include "Unicode.h"
 
-static BOM_LOOKUP BOMLOOK[] =
+//
+//	The byte-order marks that identify a file's encoding, as the bytes that
+//	start the file
+//
+struct BOM_LOOKUP
 {
-	// define longest headers first
-	{ 0x0000FEFF, 4, NCP_UTF32    },
-	{ 0xFFFE0000, 4, NCP_UTF32BE  },
-	{ 0xBFBBEF,	  3, NCP_UTF8	  },
-	{ 0xFFFE,	  2, NCP_UTF16BE  },
-	{ 0xFEFF,	  2, NCP_UTF16    },
-	{ 0,          0, NCP_ASCII	  },
+	uint8_t		  bom[4];
+	uint32_t	  len;
+	TEXT_ENCODING encoding;
 };
 
-static TEXT_ENCODING_INFO ENCODINGINFO[] =
+static const BOM_LOOKUP BOMLOOK[] =
 {
-	{ NCP_ASCII,   8,  TRUE,  TRUE  },
-	{ NCP_UTF8,    8,  FALSE, FALSE },
-	{ NCP_UTF16,  16, TRUE,  FALSE },
-	{ NCP_UTF16BE,16, TRUE,  FALSE },
-	{ NCP_UTF32,  32, TRUE,  FALSE },
-	{ NCP_UTF32BE,32, TRUE,  FALSE },
+	// define longest headers first
+	{ { 0xFF, 0xFE, 0x00, 0x00 }, 4, NCP_UTF32   },
+	{ { 0x00, 0x00, 0xFE, 0xFF }, 4, NCP_UTF32BE },
+	{ { 0xEF, 0xBB, 0xBF },       3, NCP_UTF8    },
+	{ { 0xFE, 0xFF },             2, NCP_UTF16BE },
+	{ { 0xFF, 0xFE },             2, NCP_UTF16   },
+	{ { 0 },                      0, NCP_ASCII   },
+};
+
+//
+//	What TextDocument needs to know about each encoding
+//
+struct TEXT_ENCODING_INFO
+{
+	TEXT_ENCODING encoding;
+	uint32_t	  code_unit_bits;
+	bool		  fixed_width;
+
+	// TextDocument character offsets are UTF-16 code units.
+	bool		  byte_offset_equals_char_offset;
+};
+
+static const TEXT_ENCODING_INFO ENCODINGINFO[] =
+{
+	{ NCP_ASCII,   8,  true,  true  },
+	{ NCP_UTF8,    8,  false, false },
+	{ NCP_UTF16,  16, true,  false },
+	{ NCP_UTF16BE,16, true,  false },
+	{ NCP_UTF32,  32, true,  false },
+	{ NCP_UTF32BE,32, true,  false },
 };
 
 static const TEXT_ENCODING_INFO * encoding_info(TEXT_ENCODING encoding)
 {
-	for(int i = 0; i < sizeof(ENCODINGINFO) / sizeof(ENCODINGINFO[0]); i++)
+	for(size_t i = 0; i < sizeof(ENCODINGINFO) / sizeof(ENCODINGINFO[0]); i++)
 	{
 		if(ENCODINGINFO[i].encoding == encoding)
 			return &ENCODINGINFO[i];
@@ -70,11 +90,6 @@ static sequence::line_scan_mode line_scan_mode_from_encoding(TEXT_ENCODING encod
 	}
 }
 
-static bool utf16_match_nocase(const TCHAR *data, const TCHAR *pattern, ULONG length)
-{
-	return CompareStringW(LOCALE_INVARIANT, NORM_IGNORECASE, data, (int)length, pattern, (int)length) == CSTR_EQUAL;
-}
-
 //
 //	TextDocument constructor
 //
@@ -97,7 +112,7 @@ TextDocument::~TextDocument()
 //
 //	Initialize the TextDocument with the specified file
 //
-bool TextDocument::init(TCHAR *filename)
+bool TextDocument::init(const seqfilechar *filename)
 {
 	clear();
 
@@ -112,7 +127,7 @@ bool TextDocument::init(TCHAR *filename)
 
 //	Initialize the TextDocument with the specified file
 //
-/*bool TextDocument::save(TCHAR *filename)
+/*bool TextDocument::save(textchar *filename)
 {
 	HANDLE hFile;
 	
@@ -145,13 +160,13 @@ bool TextDocument::init(TCHAR *filename)
 //
 TEXT_ENCODING TextDocument::detect_file_format(int *m_nHeaderSize)
 {
-	BYTE header[4] = { 0 };
+	uint8_t header[4] = { 0 };
 	m_seq.render(0, header, 4);
 
 	for(int i = 0; BOMLOOK[i].len; i++)
 	{
 		if(m_seq.size() >= BOMLOOK[i].len &&
-		   memcmp(header, &BOMLOOK[i].bom, BOMLOOK[i].len) == 0)
+		   memcmp(header, BOMLOOK[i].bom, BOMLOOK[i].len) == 0)
 		{
 			*m_nHeaderSize = BOMLOOK[i].len;
 			return BOMLOOK[i].encoding;
@@ -179,29 +194,30 @@ bool TextDocument::clear()
 //
 //	Return a UTF-32 character value
 //
-size_w TextDocument::decode_char(size_w offset, size_t lenbytes, ULONG *pch32)
+size_w TextDocument::decode_char(size_w offset, size_t lenbytes, uint32_t *pch32)
 {
-//	BYTE	*rawdata   = (BYTE *)(buffer + offset + m_nHeaderSize);
-	BYTE	rawdata[16];
+//	uint8_t	*rawdata   = (uint8_t *)(buffer + offset + m_nHeaderSize);
+	uint8_t	rawdata[16];
 	size_w	rendered;
 
-	lenbytes = min(sizeof(rawdata), lenbytes);
+	lenbytes = min_of(sizeof(rawdata), lenbytes);
 	rendered = m_seq.render(offset + m_nHeaderSize, rawdata, lenbytes);
-	lenbytes = min(lenbytes, (size_t)rendered);
+	lenbytes = min_of(lenbytes, (size_t)rendered);
 
 	if(lenbytes == 0 || pch32 == 0)
 		return 0;
 
-#ifdef UNICODE
-
-	WCHAR     ch16;
-
 	switch(m_nFileFormat)
 	{
 	case NCP_ASCII:
-		MultiByteToWideChar(CP_ACP, 0, (CCHAR*)rawdata, 1, &ch16, 1);
-		*pch32 = ch16;
-		return 1;
+		{
+			UTF16  ch16;
+			size_t len16 = 1;
+
+			ascii_to_utf16(rawdata, 1, &ch16, &len16);
+			*pch32 = ch16;
+			return 1;
+		}
 
 	case NCP_UTF16:
 		return utf16_to_utf32_char(rawdata, lenbytes, pch32);
@@ -221,13 +237,6 @@ size_w TextDocument::decode_char(size_w offset, size_t lenbytes, ULONG *pch32)
 	default:
 		return 0;
 	}
-
-#else
-
-	*pch32 = (ULONG)(BYTE)rawdata[0];
-	return 1;
-
-#endif
 }
 
 //
@@ -236,16 +245,16 @@ size_w TextDocument::decode_char(size_w offset, size_t lenbytes, ULONG *pch32)
 //
 //	returns the number of bytes the character occupies
 //
-size_w TextDocument::decode_prev_char(size_w offset, size_w lower_bound, ULONG *pch32)
+size_w TextDocument::decode_prev_char(size_w offset, size_w lower_bound, uint32_t *pch32)
 {
-	BYTE	rawdata[4];
+	uint8_t	rawdata[4];
 	size_t	lenbytes;
 
 	if(offset <= lower_bound || pch32 == 0)
 		return 0;
 
 	// no character is longer than 4 bytes in any encoding
-	lenbytes = (size_t)min(offset - lower_bound, (size_w)sizeof(rawdata));
+	lenbytes = (size_t)min_of(offset - lower_bound, (size_w)sizeof(rawdata));
 
 	if(m_seq.render(offset - lenbytes + m_nHeaderSize, rawdata, lenbytes) != lenbytes)
 		return 0;
@@ -289,18 +298,18 @@ size_w TextDocument::decode_prev_char(size_w offset, size_w lower_bound, ULONG *
 //		  make sure that combining chars kept together
 //		  make sure that bidirectional text kep together (will be *hard*) 
 //
-//	offset   - BYTE offset within underlying data sequence
+//	offset   - uint8_t offset within underlying data sequence
 //	lenbytes - max number of bytes to process (i.e. to limit to a line)
 //  buf		 - UTF16/ASCII output buffer
 //	plen	 - [in] - length of buffer, [out] - number of code-units stored
 //
 //	returns  - number of bytes processed
 //
-size_w TextDocument::decode_text(size_w offset, size_w lenbytes, TCHAR *buf, ULONG *buflen)
+size_w TextDocument::decode_text(size_w offset, size_w lenbytes, textchar *buf, uint32_t *buflen)
 {
-//	BYTE	*rawdata = (BYTE *)(buffer + offset + m_nHeaderSize);
+//	uint8_t	*rawdata = (uint8_t *)(buffer + offset + m_nHeaderSize);
 
-	ULONG chars_copied = 0;
+	uint32_t chars_copied = 0;
 	size_w bytes_processed = 0;
 
 	if(offset >= m_seq.size())
@@ -311,8 +320,8 @@ size_w TextDocument::decode_text(size_w offset, size_w lenbytes, TCHAR *buf, ULO
 
 	while(lenbytes > 0 && *buflen > 0)
 	{
-		BYTE   rawdata[0x100];
-		size_w rawlen = min(lenbytes, (size_w)sizeof(rawdata));
+		uint8_t   rawdata[0x100];
+		size_w rawlen = min_of(lenbytes, (size_w)sizeof(rawdata));
 		size_w rendered;
 
 		// get next block of data from the piece-table
@@ -344,8 +353,8 @@ size_w TextDocument::decode_text(size_w offset, size_w lenbytes, TCHAR *buf, ULO
 		bytes_processed += rawlen;
 
 		buf				+= tmplen;
-		*buflen			-= (ULONG)tmplen;
-		chars_copied	+= (ULONG)tmplen;
+		*buflen			-= (uint32_t)tmplen;
+		chars_copied	+= (uint32_t)tmplen;
 	}
 
 	*buflen = chars_copied;
@@ -381,32 +390,36 @@ size_w TextDocument::file_length()
 //	the start when searching forwards, the end when searching backwards -
 //	the edge a match needs once that unit is the oldest in the window.
 //
-bool TextDocument::find_text_nocase(TCHAR *text, ULONG length, size_w from, size_w to, bool backwards, size_w *match, size_w *match_length)
+bool TextDocument::find_text_nocase(textchar *text, uint32_t length, size_w from, size_w to, bool backwards, size_w *match, size_w *match_length)
 {
-	size_w docLength = byte_length();
-	size_w offset;
-	size_w bytes;
-	ULONG  ch32;
-	TCHAR  units[2];
-	size_t unitCount;
-	ULONG  slot = 0;
-	ULONG  used = 0;
+	size_w    docLength = byte_length();
+	size_w    offset;
+	size_w    bytes;
+
+	uint32_t  ch32;
+	textchar  units[2];
+	size_t    unitCount;
+	
+	uint32_t  slot = 0;
+	uint32_t  used = 0;
 	bool   matched = false;
 
-	TCHAR  *window = 0;
+	textchar  *window = 0;
 	size_w *edges  = 0;
 
 	if(text == 0 || length == 0 || match == 0 || match_length == 0)
 		return false;
 
-	from = min(from, docLength);
-	to   = min(to, docLength);
+	from = min_of(from, docLength);
+	to   = min_of(to, docLength);
+
 	if(from > to) { size_w tmp = from; from = to; to = tmp; }
 	if(from == to || length > INT_MAX)
 		return false;
 
-	window = new TCHAR[length * 2];
+	window = new textchar[length * 2];
 	edges  = new size_w[length];
+
 	if(window == 0 || edges == 0)
 	{
 		delete[] edges;
@@ -430,7 +443,7 @@ bool TextDocument::find_text_nocase(TCHAR *text, ULONG length, size_w from, size
 			// add to the front of the window, last unit first
 			for(size_t i = unitCount; i > 0 && !matched; i--)
 			{
-				ULONG lastSlot;
+				uint32_t lastSlot;
 
 				if(slot == 0)
 					slot = length - 1;
@@ -438,10 +451,10 @@ bool TextDocument::find_text_nocase(TCHAR *text, ULONG length, size_w from, size
 					slot--;
 
 				window[slot] = window[slot + length] = units[i - 1];
-				edges[slot] = offset;
-				used = min(used + 1, length);
+				edges[slot]  = offset;
+				used         = min_of(used + 1, length);
 
-				if(used == length && utf16_match_nocase(window + slot, text, length))
+				if(used == length && utf16_equal_nocase((UTF16 *)(window + slot), (UTF16 *)text, length))
 				{
 					lastSlot = slot == 0 ? length - 1 : slot - 1;
 
@@ -460,7 +473,7 @@ bool TextDocument::find_text_nocase(TCHAR *text, ULONG length, size_w from, size
 
 		while(offset < to && !matched)
 		{
-			bytes = decode_char(offset, (size_t)min(to - offset, (size_w)16), &ch32);
+			bytes = decode_char(offset, (size_t)min_of(to - offset, (size_w)16), &ch32);
 			if(bytes == 0)
 			{
 				offset++;
@@ -474,15 +487,15 @@ bool TextDocument::find_text_nocase(TCHAR *text, ULONG length, size_w from, size
 			for(size_t i = 0; i < unitCount && !matched; i++)
 			{
 				window[slot] = window[slot + length] = units[i];
-				edges[slot] = offset;
+				edges[slot]  = offset;
 
 				slot++;
 				if(slot == length)
 					slot = 0;
 
-				used = min(used + 1, length);
+				used = min_of(used + 1, length);
 
-				if(used == length && utf16_match_nocase(window + slot, text, length))
+				if(used == length && utf16_equal_nocase((UTF16 *)(window + slot), (UTF16 *)text, length))
 				{
 					*match        = edges[slot];
 					*match_length = offset + bytes - *match;
@@ -499,7 +512,7 @@ bool TextDocument::find_text_nocase(TCHAR *text, ULONG length, size_w from, size
 	return matched;
 }
 
-bool TextDocument::find_text(TCHAR *text, ULONG length, size_w from, size_w to, bool backwards, bool matchcase, size_w *match, size_w *match_length)
+bool TextDocument::find_text(textchar *text, uint32_t length, size_w from, size_w to, bool backwards, bool matchcase, size_w *match, size_w *match_length)
 {
 	const size_w chunkSize = 0x10000;
 
@@ -516,13 +529,14 @@ bool TextDocument::find_text(TCHAR *text, ULONG length, size_w from, size_w to, 
 	// a match must start on a code unit, not part way through one
 	size_w unitSize = encoding_info(m_nFileFormat)->code_unit_bits / 8;
 
-	BYTE * pattern = 0;
-	BYTE * block = 0;
+	uint8_t * pattern = 0;
+	uint8_t * block = 0;
 
 	bool   matched = false;
 
 	if(text == 0 || length == 0 || match == 0 || match_length == 0)
 		return false;
+
 	if(!matchcase)
 		return find_text_nocase(text, length, from, to, backwards, match, match_length);
 
@@ -530,7 +544,7 @@ bool TextDocument::find_text(TCHAR *text, ULONG length, size_w from, size_w to, 
 	if(rawCapacity < length || rawCapacity == 0)
 		return false;
 
-	pattern = new BYTE[rawCapacity];
+	pattern = new uint8_t[rawCapacity];
 	if(pattern == 0)
 		return false;
 
@@ -544,8 +558,9 @@ bool TextDocument::find_text(TCHAR *text, ULONG length, size_w from, size_w to, 
 	}
 
 	patternLength = (size_w)rawLength;
-	from = min(from, docLength);
-	to   = min(to, docLength);
+	from = min_of(from, docLength);
+	to   = min_of(to, docLength);
+
 	if(from > to)      { size_w tmp = from; from = to; to = tmp; }
 	if(patternLength > to - from)
 	{
@@ -553,8 +568,8 @@ bool TextDocument::find_text(TCHAR *text, ULONG length, size_w from, size_w to, 
 		return false;
 	}
 
-	blockLength = min(chunkSize + patternLength - 1, to - from);
-	block = new BYTE[(size_t)blockLength];
+	blockLength = min_of(chunkSize + patternLength - 1, to - from);
+	block = new uint8_t[(size_t)blockLength];
 	if(block == 0)
 	{
 		delete[] pattern;
@@ -570,7 +585,7 @@ bool TextDocument::find_text(TCHAR *text, ULONG length, size_w from, size_w to, 
 
 		while(chunkEnd > from && !matched)
 		{
-			size_w candidates = min(chunkSize, chunkEnd - from);
+			size_w candidates = min_of(chunkSize, chunkEnd - from);
 			chunkStart = chunkEnd - candidates;
 
 			size_w rendered = m_seq.render(chunkStart + m_nHeaderSize, block, candidates + patternLength - 1);
@@ -598,7 +613,7 @@ bool TextDocument::find_text(TCHAR *text, ULONG length, size_w from, size_w to, 
 	{
 		while(chunkStart < startLimit && !matched)
 		{
-			size_w candidates = min(chunkSize, startLimit - chunkStart);
+			size_w candidates = min_of(chunkSize, startLimit - chunkStart);
 			size_w rendered = m_seq.render(chunkStart + m_nHeaderSize, block, candidates + patternLength - 1);
 
 			if(rendered < patternLength)
@@ -632,9 +647,9 @@ bool TextDocument::find_text(TCHAR *text, ULONG length, size_w from, size_w to, 
 
 TextReader TextDocument::text_from_range(const TextCoord *from, const TextCoord *to)
 {
-	size_w offset = min(from->byte_anchor, to->byte_anchor);
+	size_w offset = min_of(from->byte_anchor, to->byte_anchor);
 
-	return TextReader(offset, max(from->byte_anchor, to->byte_anchor) - offset, this);
+	return TextReader(offset, max_of(from->byte_anchor, to->byte_anchor) - offset, this);
 }
 
 TextReader::TextReader()
@@ -655,7 +670,7 @@ TextReader & TextReader::operator= (const TextReader &reader)
 	return *this;
 }
 
-ULONG TextReader::read(TCHAR *buf, ULONG buflen)
+uint32_t TextReader::read(textchar *buf, uint32_t buflen)
 {
 	if(text_doc)
 	{
@@ -687,7 +702,7 @@ TextReader::TextReader(size_w off, size_w len, TextDocument *td)
 //
 //	Retrieve the entire line containing coord
 //
-ULONG TextDocument::getline(TextCoord &coord, TCHAR *buf, ULONG buflen)
+uint32_t TextDocument::getline(TextCoord &coord, textchar *buf, uint32_t buflen)
 {
 	size_w len_bytes = coord.line_next >= coord.line_begin ? coord.line_next - coord.line_begin : 0;
 
@@ -707,7 +722,7 @@ ULONG TextDocument::getline(TextCoord &coord, TCHAR *buf, ULONG buflen)
 //
 //	returns bytes processed from rawdata
 //
-size_t TextDocument::rawdata_to_utf16(BYTE *rawdata, size_t rawlen, TCHAR *utf16str, size_t *utf16len)
+size_t TextDocument::rawdata_to_utf16(uint8_t *rawdata, size_t rawlen, textchar *utf16str, size_t *utf16len)
 {
 	switch(m_nFileFormat)
 	{
@@ -720,13 +735,13 @@ size_t TextDocument::rawdata_to_utf16(BYTE *rawdata, size_t rawlen, TCHAR *utf16
 
 	// already unicode, do a straight memory copy
 	case NCP_UTF16:
-		rawlen /= sizeof(TCHAR);
-		return copy_utf16((UTF16 *)rawdata, rawlen, (UTF16 *)utf16str, utf16len) * sizeof(TCHAR);
+		rawlen /= sizeof(UTF16);
+		return copy_utf16((UTF16 *)rawdata, rawlen, (UTF16 *)utf16str, utf16len) * sizeof(UTF16);
 
 	// need to convert from big-endian to little-endian
 	case NCP_UTF16BE:
-		rawlen /= sizeof(TCHAR);
-		return swap_utf16((UTF16 *)rawdata, rawlen, (UTF16 *)utf16str, utf16len) * sizeof(TCHAR);
+		rawlen /= sizeof(UTF16);
+		return swap_utf16((UTF16 *)rawdata, rawlen, (UTF16 *)utf16str, utf16len) * sizeof(UTF16);
 
 	case NCP_UTF32:
 		return utf32le_to_utf16(rawdata, rawlen, (UTF16 *)utf16str, utf16len);
@@ -746,7 +761,7 @@ size_t TextDocument::rawdata_to_utf16(BYTE *rawdata, size_t rawlen, TCHAR *utf16
 //	that text can be converted a block at a time without splitting a character
 //	between two blocks
 //
-size_t TextDocument::rawdata_complete_length(BYTE *rawdata, size_t rawlen)
+size_t TextDocument::rawdata_complete_length(uint8_t *rawdata, size_t rawlen)
 {
 	switch(m_nFileFormat)
 	{
@@ -775,7 +790,7 @@ size_t TextDocument::rawdata_complete_length(BYTE *rawdata, size_t rawlen)
 //
 //	returns number of WCHARs processed from utf16str
 //
-size_t TextDocument::utf16_to_rawdata(TCHAR *utf16str, size_t utf16len, BYTE *rawdata, size_t *rawlen)
+size_t TextDocument::utf16_to_rawdata(textchar *utf16str, size_t utf16len, uint8_t *rawdata, size_t *rawlen)
 {
 	switch(m_nFileFormat)
 	{
@@ -789,16 +804,16 @@ size_t TextDocument::utf16_to_rawdata(TCHAR *utf16str, size_t utf16len, BYTE *ra
 
 	// already unicode, do a straight memory copy
 	case NCP_UTF16:
-		*rawlen /= sizeof(TCHAR);
+		*rawlen /= sizeof(UTF16);
 		utf16len = copy_utf16((UTF16 *)utf16str, utf16len, (UTF16 *)rawdata, rawlen);
-		*rawlen *= sizeof(TCHAR);
+		*rawlen *= sizeof(UTF16);
 		return utf16len;
 
 	// need to convert from big-endian to little-endian
 	case NCP_UTF16BE:
-		*rawlen /= sizeof(TCHAR);
+		*rawlen /= sizeof(UTF16);
 		utf16len = swap_utf16((UTF16 *)utf16str, utf16len, (UTF16 *)rawdata, rawlen);
-		*rawlen *= sizeof(TCHAR);
+		*rawlen *= sizeof(UTF16);
 		return utf16len;
 
 	case NCP_UTF32:
@@ -816,13 +831,13 @@ size_t TextDocument::utf16_to_rawdata(TCHAR *utf16str, size_t utf16len, BYTE *ra
 }
 
 //
-//	Insert UTF-16 text at specified BYTE offset
+//	Insert UTF-16 text at specified uint8_t offset
 //
 //	returns number of BYTEs stored
 //
-size_w TextDocument::insert_raw(size_w offset_bytes, TCHAR *text, ULONG length)
+size_w TextDocument::insert_raw(size_w offset_bytes, textchar *text, uint32_t length)
 {
-	BYTE  buf[0x100];
+	uint8_t  buf[0x100];
 	size_t buflen;
 	size_t copied;
 	size_w rawlen = 0;
@@ -838,7 +853,7 @@ size_w TextDocument::insert_raw(size_w offset_bytes, TCHAR *text, ULONG length)
 			break;
 
 		text   += copied;
-		length -= (ULONG)copied;
+		length -= (uint32_t)copied;
 		rawlen += buflen;
 		offset += buflen;
 	}
@@ -846,9 +861,9 @@ size_w TextDocument::insert_raw(size_w offset_bytes, TCHAR *text, ULONG length)
 	return rawlen;
 }
 
-size_w TextDocument::replace_raw(size_w offset_bytes, TCHAR *text, ULONG length, size_w erase_bytes)
+size_w TextDocument::replace_raw(size_w offset_bytes, textchar *text, uint32_t length, size_w erase_bytes)
 {
-	BYTE  buf[0x100];
+	uint8_t  buf[0x100];
 	size_t buflen;
 	size_t copied;
 	size_w rawlen = 0;
@@ -864,7 +879,7 @@ size_w TextDocument::replace_raw(size_w offset_bytes, TCHAR *text, ULONG length,
 			break;
 
 		text   += copied;
-		length -= (ULONG)copied;
+		length -= (uint32_t)copied;
 		rawlen += buflen;
 		offset += buflen;
 
@@ -889,7 +904,7 @@ size_w TextDocument::count_chars(size_w offset_bytes, size_w length_chars)
 
 	case NCP_UTF16:
 	case NCP_UTF16BE:
-		return length_chars * sizeof(WCHAR);
+		return length_chars * sizeof(UTF16);
 
 	default:
 		break;
@@ -899,17 +914,17 @@ size_w TextDocument::count_chars(size_w offset_bytes, size_w length_chars)
 
 	while(length_chars && offset_bytes < rawLength)
 	{
-		TCHAR buf[0x100];
-		ULONG charlen = (ULONG)min(length_chars, (size_w)0x100);
-		size_w bytelen;
+		textchar buf[0x100];
+		uint32_t charlen = (uint32_t)min_of(length_chars, (size_w)0x100);
+		size_w   bytelen;
 
 		bytelen = decode_text(offset_bytes, rawLength - offset_bytes, buf, &charlen);
 
 		if(bytelen == 0 || charlen == 0)
 		{
-			ULONG ch32 = 0;
-			size_w chlen = decode_char(offset_bytes, (size_t)min(rawLength - offset_bytes, (size_w)16), &ch32);
-			ULONG units = ch32 > 0xffff ? 2 : 1;
+			uint32_t  ch32 = 0;
+			size_w   chlen = decode_char(offset_bytes, (size_t)min_of(rawLength - offset_bytes, (size_w)16), &ch32);
+			uint32_t units = ch32 > 0xffff ? 2 : 1;
 
 			if(chlen == 0)
 				break;
@@ -939,9 +954,9 @@ size_w TextDocument::count_code_units(size_w offset_bytes, size_w length_bytes)
 
 	while(length_bytes && offset_bytes < rawLength)
 	{
-		TCHAR buf[0x100];
-		ULONG charlen = 0x100;
-		size_w bytelen = decode_text(offset_bytes, min(length_bytes, rawLength - offset_bytes), buf, &charlen);
+		textchar buf[0x100];
+		uint32_t charlen = 0x100;
+		size_w bytelen = decode_text(offset_bytes, min_of(length_bytes, rawLength - offset_bytes), buf, &charlen);
 
 		if(bytelen == 0)
 			break;
@@ -957,10 +972,10 @@ size_w TextDocument::count_code_units(size_w offset_bytes, size_w length_bytes)
 //
 //	Insert text at a coordinate
 //
-size_w TextDocument::insert_text(const TextCoord *at, TCHAR *text, ULONG length, TextChange *change)
+size_w TextDocument::insert_text(const TextCoord *at, textchar *text, uint32_t length, TextChange *change)
 {
 	size_w old_size = m_seq.size();
-	size_w rawlen = insert_raw(at->byte_anchor, text, length);
+	size_w rawlen   = insert_raw(at->byte_anchor, text, length);
 
 	if(change)
 	{
@@ -975,12 +990,12 @@ size_w TextDocument::insert_text(const TextCoord *at, TCHAR *text, ULONG length,
 //
 //	Replace the text between two coordinates
 //
-size_w TextDocument::replace_text(const TextCoord *from, const TextCoord *to, TCHAR *text, ULONG length, TextChange *change)
+size_w TextDocument::replace_text(const TextCoord *from, const TextCoord *to, textchar *text, uint32_t length, TextChange *change)
 {
-	size_w offset = min(from->byte_anchor, to->byte_anchor);
-	size_w erase_bytes = max(from->byte_anchor, to->byte_anchor) - offset;
-	size_w old_size = m_seq.size();
-	size_w rawlen = replace_raw(offset, text, length, erase_bytes);
+	size_w offset      = min_of(from->byte_anchor, to->byte_anchor);
+	size_w erase_bytes = max_of(from->byte_anchor, to->byte_anchor) - offset;
+	size_w old_size    = m_seq.size();
+	size_w rawlen      = replace_raw(offset, text, length, erase_bytes);
 
 	// The sequence clamps a replace that runs past the end, so measure what it erased.
 	if(change)
@@ -998,8 +1013,8 @@ size_w TextDocument::replace_text(const TextCoord *from, const TextCoord *to, TC
 //
 size_w TextDocument::erase_text(const TextCoord *from, const TextCoord *to, TextChange *change)
 {
-	size_w offset = min(from->byte_anchor, to->byte_anchor);
-	size_w erase_bytes = max(from->byte_anchor, to->byte_anchor) - offset;
+	size_w offset = min_of(from->byte_anchor, to->byte_anchor);
+	size_w erase_bytes = max_of(from->byte_anchor, to->byte_anchor) - offset;
 	size_w erased = 0;
 
 	if(erase_bytes && m_seq.erase(offset + m_nHeaderSize, erase_bytes))

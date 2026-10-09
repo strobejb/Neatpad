@@ -3,9 +3,22 @@
 #ifndef NEATPAD_TEXTDOCUMENT_INCLUDED
 #define NEATPAD_TEXTDOCUMENT_INCLUDED
 
-#include <windows.h>
+#include <stdint.h>
 #include "codepages.h"
 #include "sequence.h"
+
+//
+//	A unit of the UTF-16 text TextDocument reads and writes. On Windows it is a
+//	wchar_t, so the view's WCHAR buffers pass straight in; elsewhere it is a
+//	char16_t, which is what Qt's QString holds.
+//
+#ifdef _WIN32
+typedef wchar_t	 textchar;
+#else
+typedef char16_t textchar;
+#endif
+
+static_assert(sizeof(textchar) == 2, "textchar must be a UTF-16 code unit");
 
 class TextDocument;
 class TextDocumentLineIndexProbe;
@@ -72,7 +85,7 @@ public:
 	// assignment operator
 	TextReader & operator= (const TextReader &reader);
 
-	ULONG read(TCHAR *buf, ULONG buflen);
+	uint32_t read(textchar *buf, uint32_t buflen);
 
 	operator bool();
 
@@ -101,7 +114,7 @@ public:
 	//
 
 	// Load and reset the document.
-	bool  init(TCHAR *filename);
+	bool  init(const seqfilechar *filename);
 
 	bool  clear();
 
@@ -119,8 +132,8 @@ public:
 	// Edits by coordinate. A range is [from, to) in either order; each returns the bytes
 	// it inserted (insert/replace) or erased (erase), and can report the bytes it changed
 	// so callers can move their TextCoords across it.
-	size_w	insert_text  (const TextCoord *at, TCHAR *text, ULONG length, TextChange *change);
-	size_w	replace_text (const TextCoord *from, const TextCoord *to, TCHAR *text, ULONG length, TextChange *change);
+	size_w	insert_text  (const TextCoord *at, textchar *text, uint32_t length, TextChange *change);
+	size_w	replace_text (const TextCoord *from, const TextCoord *to, textchar *text, uint32_t length, TextChange *change);
 	size_w	erase_text   (const TextCoord *from, const TextCoord *to, TextChange *change);
 
 	//
@@ -129,8 +142,8 @@ public:
 	bool  coord_from_byte_anchor(size_w byte_anchor, TextCoord *coord);
 	bool  coord_from_document_end(TextCoord *coord);
 	bool  coord_from_line_pos(TextCoord *line, size_w line_offset_chars, TextCoord *coord);
-	bool  previous_line_from_coord(TextCoord *coord, ULONG num_lines, TextCoord *line);
-	bool  next_line_from_coord(TextCoord *coord, ULONG num_lines, TextCoord *line);
+	bool  previous_line_from_coord(TextCoord *coord, uint32_t num_lines, TextCoord *line);
+	bool  next_line_from_coord(TextCoord *coord, uint32_t num_lines, TextCoord *line);
 
 	// Move a coordinate across a change and refresh its line bounds. A coordinate
 	// exactly at the change offset stays before any inserted text.
@@ -144,14 +157,14 @@ public:
 	bool  charoffset_from_coord(const TextCoord *coord, size_w *offset_chars);
 
 	// The line break ending a coordinate's line: TXL_CRLF, TXL_LF or TXL_CR, or 0 for a last line without one.
-	ULONG linebreak_from_coord(const TextCoord *line);
+	uint32_t linebreak_from_coord(const TextCoord *line);
 
 	//
 	//	Text access
 	//
 	TextReader text_from_range(const TextCoord *from, const TextCoord *to);
-	ULONG getline(TextCoord &coord, TCHAR *buf, ULONG buflen);
-	bool  find_text(TCHAR *text, ULONG length, size_w from, size_w to, bool backwards, bool matchcase, size_w *match, size_w *match_length);
+	uint32_t getline(TextCoord &coord, textchar *buf, uint32_t buflen);
+	bool  find_text(textchar *text, uint32_t length, size_w from, size_w to, bool backwards, bool matchcase, size_w *match, size_w *match_length);
 
 	//
 	//	Document facts
@@ -164,7 +177,7 @@ public:
 
 	// The kinds of line break found so far (TXL_CRLF, TXL_CR, TXL_LF bits). Covers the
 	// part of the document with exact line numbers, so the whole of it once linecount_known().
-	ULONG linebreaks_seen();
+	uint32_t linebreaks_seen();
 
 	size_w byte_length();
 	size_w file_length();
@@ -175,12 +188,20 @@ public:
 private:
 
 	//
+	//	The smaller and larger of two values of the same type. Not min() and max(),
+	//	which windows.h defines as macros; a mix of types won't compile, rather than
+	//	comparing signed with unsigned.
+	//
+	template <class T> static T min_of(T a, T b) { return a < b ? a : b; }
+	template <class T> static T max_of(T a, T b) { return a < b ? b : a; }
+
+	//
 	//	Line navigation
 	//
-	bool unit_before(size_w offset_bytes, ULONG *ch, ULONG *size);
+	bool unit_before(size_w offset_bytes, uint32_t *ch, uint32_t *size);
 	bool line_bounds_from_offset(size_w offset_bytes, size_w *line_begin, size_w *line_next);
 	void coord_in_line(size_w line_begin, size_w line_next, size_w line_offset_chars, TextCoord *coord);
-	bool find_text_nocase(TCHAR *text, ULONG length, size_w from, size_w to, bool backwards, size_w *match, size_w *match_length);
+	bool find_text_nocase(textchar *text, uint32_t length, size_w from, size_w to, bool backwards, size_w *match, size_w *match_length);
 
 	//
 	//	UTF-16 / backing-byte conversion
@@ -189,25 +210,25 @@ private:
 	size_w count_code_units(size_w offset_bytes, size_w length_bytes);
 	bool   charoffset_from_bytes(size_w offset_bytes, size_w *offset_chars);
 
-	size_t utf16_to_rawdata(TCHAR *utf16str, size_t utf16len, BYTE *rawdata, size_t *rawlen);
-	size_t rawdata_to_utf16(BYTE *rawdata, size_t rawlen, TCHAR *utf16str, size_t *utf16len);
-	size_t rawdata_complete_length(BYTE *rawdata, size_t rawlen);
+	size_t utf16_to_rawdata(textchar *utf16str, size_t utf16len, uint8_t *rawdata, size_t *rawlen);
+	size_t rawdata_to_utf16(uint8_t *rawdata, size_t rawlen, textchar *utf16str, size_t *utf16len);
+	size_t rawdata_complete_length(uint8_t *rawdata, size_t rawlen);
 
 	//
 	//	Raw file access
 	//
 
 	TEXT_ENCODING detect_file_format(int *headersize);
-	size_w decode_text(size_w offset_bytes, size_w lenbytes, TCHAR *buf, ULONG *len);
-	size_w decode_char(size_w offset_bytes, size_t lenbytes, ULONG *pch32);
-	size_w decode_prev_char(size_w offset_bytes, size_w lower_bound, ULONG *pch32);
+	size_w decode_text(size_w offset_bytes, size_w lenbytes, textchar *buf, uint32_t *len);
+	size_w decode_char(size_w offset_bytes, size_t lenbytes, uint32_t *pch32);
+	size_w decode_prev_char(size_w offset_bytes, size_w lower_bound, uint32_t *pch32);
 
 	//
 	//	Raw editing
 	//
 
-	size_w	insert_raw(size_w offset_bytes, TCHAR *text, ULONG length);
-	size_w	replace_raw(size_w offset_bytes, TCHAR *text, ULONG length, size_w erase_bytes);
+	size_w	insert_raw(size_w offset_bytes, textchar *text, uint32_t length);
+	size_w	replace_raw(size_w offset_bytes, textchar *text, uint32_t length, size_w erase_bytes);
 	void	event_change(TextChange *change);
 
 

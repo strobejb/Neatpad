@@ -6,12 +6,8 @@
 //	NOTES:		www.catch22.net
 //
 
-#define STRICT
-#define WIN32_LEAN_AND_MEAN
-
-#include <windows.h>
 #include "TextDocument.h"
-#include "TextView.h"
+#include "Unicode.h"
 
 //
 //	Return the number of lines. This is an estimate until linecount_known() is true.
@@ -29,7 +25,7 @@ bool TextDocument::linecount_known()
 //
 //	The kinds of line break found in the exactly-counted part of the document
 //
-ULONG TextDocument::linebreaks_seen()
+uint32_t TextDocument::linebreaks_seen()
 {
 	sequence::break_kinds kinds = m_seq.linebreak_kinds();
 
@@ -53,8 +49,8 @@ bool TextDocument::line_bounds_from_offset(size_w offset_bytes, size_w *line_beg
 	*line_begin = sequenceLineOffset <= (size_w)m_nHeaderSize ? 0 : sequenceLineOffset - m_nHeaderSize;
 	*line_next  = sequenceNextOffset <= (size_w)m_nHeaderSize ? 0 : sequenceNextOffset - m_nHeaderSize;
 
-	*line_begin = min(*line_begin, rawLength);
-	*line_next  = min(max(*line_next, *line_begin), rawLength);
+	*line_begin = min_of(*line_begin, rawLength);
+	*line_next  = min_of(max_of(*line_next, *line_begin), rawLength);
 	return true;
 }
 
@@ -130,7 +126,7 @@ bool TextDocument::coord_from_line_pos(TextCoord *line, size_w line_offset_chars
 	return true;
 }
 
-bool TextDocument::previous_line_from_coord(TextCoord *coord, ULONG num_lines, TextCoord *line)
+bool TextDocument::previous_line_from_coord(TextCoord *coord, uint32_t num_lines, TextCoord *line)
 {
 	TextCoord target;
 
@@ -155,7 +151,7 @@ bool TextDocument::previous_line_from_coord(TextCoord *coord, ULONG num_lines, T
 	return true;
 }
 
-bool TextDocument::next_line_from_coord(TextCoord *coord, ULONG num_lines, TextCoord *line)
+bool TextDocument::next_line_from_coord(TextCoord *coord, uint32_t num_lines, TextCoord *line)
 {
 	TextCoord target;
 	size_w rawLength = m_seq.size() - m_nHeaderSize;
@@ -184,7 +180,7 @@ bool TextDocument::next_line_from_coord(TextCoord *coord, ULONG num_lines, TextC
 
 		line_next = sequenceLineNext <= (size_w)m_nHeaderSize ? 0 : sequenceLineNext - m_nHeaderSize;
 
-		coord_in_line(target.line_next, min(line_next, rawLength), 0, &target);
+		coord_in_line(target.line_next, min_of(line_next, rawLength), 0, &target);
 	}
 
 	*line = target;
@@ -272,7 +268,7 @@ bool TextDocument::charoffset_from_bytes(size_w offset_bytes, size_w *offset_cha
 
 	case NCP_UTF16:
 	case NCP_UTF16BE:
-		*offset_chars = offset_bytes / sizeof(WCHAR);
+		*offset_chars = offset_bytes / sizeof(UTF16);
 		return true;
 
 	default:
@@ -284,11 +280,11 @@ bool TextDocument::charoffset_from_bytes(size_w offset_bytes, size_w *offset_cha
 //	The line break that ends a line. A line break is CR, LF or CRLF in the file's
 //	own code units: the same as the sequence counts.
 //
-ULONG TextDocument::linebreak_from_coord(const TextCoord *line)
+uint32_t TextDocument::linebreak_from_coord(const TextCoord *line)
 {
-	ULONG ch;
-	ULONG prev;
-	ULONG size;
+	uint32_t ch;
+	uint32_t prev;
+	uint32_t size;
 
 	// the last unit must lie inside the line
 	if(line == 0 || !unit_before(line->line_next, &ch, &size) || line->line_next - size < line->line_begin)
@@ -309,10 +305,10 @@ ULONG TextDocument::linebreak_from_coord(const TextCoord *line)
 //
 //	The code unit that ends at offset_bytes, in the file's own encoding, and its size in bytes
 //
-bool TextDocument::unit_before(size_w offset_bytes, ULONG *ch, ULONG *size)
+bool TextDocument::unit_before(size_w offset_bytes, uint32_t *ch, uint32_t *size)
 {
-	BYTE raw[4];
-	ULONG unit = 1;
+	uint8_t raw[4];
+	uint32_t unit = 1;
 
 	switch(m_nFileFormat)
 	{
@@ -342,19 +338,19 @@ bool TextDocument::unit_before(size_w offset_bytes, ULONG *ch, ULONG *size)
 	switch(m_nFileFormat)
 	{
 	case NCP_UTF16:
-		*ch = (ULONG)raw[0] | ((ULONG)raw[1] << 8);
+		*ch = (uint32_t)raw[0] | ((uint32_t)raw[1] << 8);
 		break;
 
 	case NCP_UTF16BE:
-		*ch = ((ULONG)raw[0] << 8) | (ULONG)raw[1];
+		*ch = ((uint32_t)raw[0] << 8) | (uint32_t)raw[1];
 		break;
 
 	case NCP_UTF32:
-		*ch = (ULONG)raw[0] | ((ULONG)raw[1] << 8) | ((ULONG)raw[2] << 16) | ((ULONG)raw[3] << 24);
+		*ch = (uint32_t)raw[0] | ((uint32_t)raw[1] << 8) | ((uint32_t)raw[2] << 16) | ((uint32_t)raw[3] << 24);
 		break;
 
 	case NCP_UTF32BE:
-		*ch = ((ULONG)raw[0] << 24) | ((ULONG)raw[1] << 16) | ((ULONG)raw[2] << 8) | (ULONG)raw[3];
+		*ch = ((uint32_t)raw[0] << 24) | ((uint32_t)raw[1] << 16) | ((uint32_t)raw[2] << 8) | (uint32_t)raw[3];
 		break;
 
 	case NCP_ASCII:

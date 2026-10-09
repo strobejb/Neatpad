@@ -922,12 +922,14 @@ size_t utf16_to_utf32be(UTF16 *utf16str, size_t utf16len, UTF8 *utf32str, size_t
 }
 
 //
-//	Conversions between the Windows ANSI code page and UTF-16
+//	Conversions between the Windows ANSI code page and UTF-16, and comparing
+//	text without regard to case
 //
 //	These are the only routines here that need the operating system: the ANSI
 //	code page comes from the user's Windows locale, and only Windows converts
-//	it. They come last, after windows.h, so that nothing above them can come to
-//	depend on it. Other platforms have no implementation yet.
+//	it, and case is compared by the Windows invariant locale. They come last,
+//	after windows.h, so that nothing above them can come to depend on it. Other
+//	platforms have no implementation yet.
 //
 #ifdef _WIN32
 
@@ -978,6 +980,25 @@ size_t utf16_to_ascii(UTF16 *utf16str, size_t utf16len, UTF8 *asciistr, size_t *
 	WideCharToMultiByte(CP_ACP, 0, utf16str, (int)len, (LPSTR)asciistr, (int)size_min(*asciilen, (size_t)INT_MAX), 0, 0);
 	*asciilen = len;
 	return len;
+}
+
+//
+//	utf16_equal_nocase
+//
+//	Compares two UTF-16 strings of the same length, ignoring case as the
+//	Windows invariant locale does
+//
+//	str1, str2	- [in]	buffers containing UTF-16 text
+//	len			- [in]	number of UTF16s in each buffer
+//
+//	Returns true when the two match
+//
+bool utf16_equal_nocase(const UTF16 *str1, const UTF16 *str2, size_t len)
+{
+	if(len > INT_MAX)
+		return false;
+
+	return CompareStringW(LOCALE_INVARIANT, NORM_IGNORECASE, (LPCWCH)str1, (int)len, (LPCWCH)str2, (int)len) == CSTR_EQUAL;
 }
 
 #endif

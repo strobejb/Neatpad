@@ -14,21 +14,13 @@ typedef enum TEXT_ENCODING
 	NCP_UTF32BE
 } TEXT_ENCODING;
 
-typedef struct BOM_LOOKUP
-{
-	DWORD		  bom;
-	ULONG		  len;
-	TEXT_ENCODING encoding;
-} BOM_LOOKUP;
-
-typedef struct TEXT_ENCODING_INFO
-{
-	TEXT_ENCODING encoding;
-	ULONG		  code_unit_bits;
-	BOOL		  fixed_width;
-
-	// TextDocument character offsets are UTF-16 code units.
-	BOOL		  byte_offset_equals_char_offset;
-} TEXT_ENCODING_INFO;
+//
+//	Kinds of line break, as bits: one is a line format, several are the
+//	breaks a document has been seen to use
+//
+#define TXL_LF				1		// line-feed
+#define TXL_CR				2		// carriage-return
+#define TXL_CRLF			4		// carriage-return, line-feed (default)
+#define TXL_ALL				7		// allow all forms regardless
 
 #endif
