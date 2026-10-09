@@ -1,6 +1,8 @@
 #ifndef UNICODE_LIB_INCLUDED
 #define UNICODE_LIB_INCLUDED
 
+#include <stddef.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -69,7 +71,8 @@ size_t	utf16_to_utf32be(UTF16 *utf16str, size_t utf16len, UTF8 *utf32str, size_t
 
 
 //
-//	Conversions between ASCII/ANSI and UTF-16 strings
+//	Conversions between ASCII/ANSI and UTF-16 strings. These use the Windows
+//	ANSI code page, so for now they only exist on Windows.
 //
 size_t	ascii_to_utf16(UTF8 *asciistr,  size_t asciilen, UTF16 *utf16str, size_t *utf16len);
 size_t  utf16_to_ascii(UTF16 *utf16str, size_t utf16len, UTF8  *asciistr, size_t *asciilen);

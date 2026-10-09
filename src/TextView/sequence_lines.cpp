@@ -26,7 +26,6 @@
 	so each place that counts or joins breaks makes one break_kinds call.
 */
 
-#include <windows.h>
 #include "sequence.h"
 
 static const unsigned long CR = '\r';

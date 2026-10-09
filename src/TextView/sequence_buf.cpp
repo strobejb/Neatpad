@@ -4,18 +4,21 @@
 	Backing-buffer management for the data-sequence class.
 */
 
-#include <memory.h>
 #include <stdio.h>
-#include <tchar.h>
+#include <string.h>
 #include "sequence.h"
 
-// 64-bit file positions. Elsewhere, fseeko/ftello are 64-bit when built with _FILE_OFFSET_BITS=64.
-#ifdef _MSC_VER
-#define seq_fopen(result, filename, mode) (_tfopen_s((result), (filename), (mode)) == 0 && *(result) != 0)
+// Opening a seqfilechar file name, with 64-bit file positions. Windows names are
+// UTF-16 and need _wfopen; elsewhere, fseeko/ftello are 64-bit when built with
+// _FILE_OFFSET_BITS=64.
+#ifdef _WIN32
+#define SEQ_MODE(mode) L##mode
+#define seq_fopen(result, filename, mode) (_wfopen_s((result), (filename), (mode)) == 0 && *(result) != 0)
 #define seq_fseek(fp, offset, origin) _fseeki64((fp), (offset), (origin))
 #define seq_ftell(fp) _ftelli64(fp)
 #else
-#define seq_fopen(result, filename, mode) ((*(result) = _tfopen((filename), (mode))) != 0)
+#define SEQ_MODE(mode) mode
+#define seq_fopen(result, filename, mode) ((*(result) = fopen((filename), (mode))) != 0)
 #define seq_fseek(fp, offset, origin) fseeko((fp), (off_t)(offset), (origin))
 #define seq_ftell(fp) ((long long)ftello(fp))
 #endif
@@ -121,7 +124,7 @@ static bool read_data(void *file, seqchar *buffer, size_w offset, size_w length)
 	return fread(buffer, 1, bytes, fp) == bytes;
 }
 
-bool sequence::buffer_control::init_file(TCHAR *filename, bool read_only)
+bool sequence::buffer_control::init_file(const seqfilechar *filename, bool read_only)
 {
 	FILE *file;
 	long long file_length;
@@ -129,13 +132,13 @@ bool sequence::buffer_control::init_file(TCHAR *filename, bool read_only)
 	clear();
 	readonly = read_only;
 
-	if(!seq_fopen(&file, filename, readonly ? _T("rb") : _T("r+b")))
+	if(!seq_fopen(&file, filename, readonly ? SEQ_MODE("rb") : SEQ_MODE("r+b")))
 		file = 0;
 
 	if(file == 0 && !readonly)
 	{
 		readonly = true;
-		if(!seq_fopen(&file, filename, _T("rb")))
+		if(!seq_fopen(&file, filename, SEQ_MODE("rb")))
 			file = 0;
 	}
 

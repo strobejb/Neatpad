@@ -3,26 +3,27 @@
 
 	data-sequence class
 
-	Copyright J Brown 1999-2006
+	Copyright J Brown 1999-2026
 	www.catch22.net
 */
-#include <windows.h>
+
+#include <utility>
 #include <limits.h>
 #include <stdarg.h>
 #include <stdio.h>
+#include <string.h>
+#include <time.h>
 #include "sequence.h"
 
 #ifdef DEBUG_SEQUENCE
 
-char debugfile[_MAX_PATH];
+char debugfile[FILENAME_MAX];
 void odebug(const char *fmt, ...)
 {
 	va_list varg;
 	va_start(varg, fmt);
-	char buf[512];
 
-	vsprintf(buf, fmt, varg);
-	OutputDebugString(buf);
+	vfprintf(stderr, fmt, varg);
 
 	va_end(varg);
 }
@@ -43,9 +44,19 @@ void debug(const char *fmt, ...)
 }
 
 #else
-#define debug
-#define odebug
+#define debug(...)  ((void)0)
+#define odebug(...) ((void)0)
 #endif
+
+//
+//	The smaller of two sizes. A function rather than a macro, so each argument
+//	is evaluated once and converted to size_w, and not named min() so it can't
+//	collide with the macro windows.h defines.
+//
+static inline size_w seq_min(size_w a, size_w b)
+{
+	return a < b ? a : b;
+}
 
 
 
@@ -75,9 +86,8 @@ sequence::sequence ()
 	tail->prev		= head;
 
 #ifdef DEBUG_SEQUENCE
-	SYSTEMTIME st;
-	GetLocalTime(&st);
-	sprintf(debugfile, "seqlog-%04d%02d%02d-%02d%02d%0d.txt", st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
+	time_t now = time(0);
+	strftime(debugfile, sizeof(debugfile), "seqlog-%Y%m%d-%H%M%S.txt", localtime(&now));
 #endif
 }
 
@@ -127,7 +137,7 @@ bool sequence::init (const seqchar *buffer, size_t length)
 //
 //	Initialize from an on-disk file
 //
-bool sequence::open(TCHAR *filename, bool readonly)
+bool sequence::open(const seqfilechar *filename, bool readonly)
 {
 	clear();
 
@@ -154,14 +164,14 @@ bool sequence::open(TCHAR *filename, bool readonly)
 	sequence_length = bc->length;
 
 	// Count the first block up front so small files have exact line numbers immediately.
-	index_range(0, min(sequence_length, MEM_BLOCK_SIZE));
+	index_range(0, seq_min(sequence_length, MEM_BLOCK_SIZE));
 	return true;
 }
 
 //
 //	Initialize from an on-disk file
 //
-//bool sequence::save(TCHAR *filename)
+//bool sequence::save(const seqfilechar *filename)
 //{
 //	return false;
 //}
@@ -193,7 +203,7 @@ void sequence::debug1 ()
 	for(sptr = head; sptr; sptr = sptr->next)
 	{
 		char *buffer = (char *)buffer_list[sptr->buffer]->getptr(0, buffer_list[sptr->buffer]->length);
-		int length = (int)min(sptr->length, (size_w)INT_MAX);
+		int length = (int)seq_min(sptr->length, (size_w)INT_MAX);
 		printf("%.*s", length, buffer + sptr->offset);
 	}
 
@@ -208,7 +218,7 @@ void sequence::debug2 ()
 	for(sptr = head; sptr; sptr = sptr->next)
 	{
 		char *buffer = (char *)buffer_list[sptr->buffer]->getptr(0, buffer_list[sptr->buffer]->length);
-		int length = (int)min(sptr->length, (size_w)INT_MAX);
+		int length = (int)seq_min(sptr->length, (size_w)INT_MAX);
 		
 		printf("[%d] [%4llu %4llu] %.*s\n", sptr->id, 
 			(unsigned long long)sptr->offset, (unsigned long long)sptr->length,
@@ -220,7 +230,7 @@ void sequence::debug2 ()
 	for(sptr = tail; sptr; sptr = sptr->prev)
 	{
 		char *buffer = (char *)buffer_list[sptr->buffer]->getptr(0, buffer_list[sptr->buffer]->length);
-		int length = (int)min(sptr->length, (size_w)INT_MAX);
+		int length = (int)seq_min(sptr->length, (size_w)INT_MAX);
 		
 		printf("[%d] [%4llu %4llu] %.*s\n", sptr->id, 
 			(unsigned long long)sptr->offset, (unsigned long long)sptr->length,
@@ -232,7 +242,7 @@ void sequence::debug2 ()
 	for(sptr = head; sptr; sptr = sptr->next)
 	{
 		char *buffer = (char *)buffer_list[sptr->buffer]->getptr(0, buffer_list[sptr->buffer]->length);
-		int length = (int)min(sptr->length, (size_w)INT_MAX);
+		int length = (int)seq_min(sptr->length, (size_w)INT_MAX);
 		printf("%.*s", length, buffer + sptr->offset);
 	}
 
@@ -441,17 +451,17 @@ bool sequence::undoredo (eventstack &source, eventstack &dest)
 
 		// Each event leaves the bytes before its index, and the same number
 		// of bytes at the end of both of its sequence lengths, untouched.
-		smaller = min(range->sequence_length, sequence_length);
-		prefix  = min(prefix, range->index);
-		suffix  = min(suffix, smaller - min(range->index, smaller));
+		smaller = seq_min(range->sequence_length, sequence_length);
+		prefix  = seq_min(prefix, range->index);
+		suffix  = seq_min(suffix, smaller - seq_min(range->index, smaller));
 
 		// do the actual work
 		restore_spanrange(range);
 	}
 	while(!source.empty() && (source.back()->group_id == group_id && group_id != 0));
 
-	if(prefix + suffix > min(old_length, sequence_length))
-		suffix = min(old_length, sequence_length) - prefix;
+	if(prefix + suffix > seq_min(old_length, sequence_length))
+		suffix = seq_min(old_length, sequence_length) - prefix;
 
 	change_offset	= prefix;
 	change_erased	= old_length - prefix - suffix;
@@ -548,7 +558,7 @@ void sequence::set_line_scan_mode(line_scan_mode mode)
 	for(span *sptr = head->next; sptr != tail; sptr = sptr->next)
 		update_span_line_data(sptr);
 
-	index_range(0, min(sequence_length, MEM_BLOCK_SIZE));
+	index_range(0, seq_min(sequence_length, MEM_BLOCK_SIZE));
 }
 
 sequence::line_scan_mode sequence::get_line_scan_mode() const
@@ -874,7 +884,7 @@ bool sequence::erase_worker (size_w index, size_w length, action act)
 			frag2 = newspans.last;
 		}
 
-		removelen -= min(removelen, (sptr->length - remoffset));
+		removelen -= seq_min(removelen, (sptr->length - remoffset));
 
 		// archive the span we are going to replace
 		oldspans.append(sptr);
@@ -898,7 +908,7 @@ bool sequence::erase_worker (size_w index, size_w length, action act)
 			frag2 = newspans.last;
 		}
 
-		removelen -= min(removelen, sptr->length);
+		removelen -= seq_min(removelen, sptr->length);
 
 		// archive the span we are replacing
 		oldspans.append(sptr);
@@ -973,7 +983,7 @@ bool sequence::replace(size_w index, const seqchar *buf, size_w length, size_w e
 
 	// for a "replace" which will overrun the sequence, make sure we 
 	// only delete up to the end of the sequence
-	remlen = min(sequence_length - index, erase_length);
+	remlen = seq_min(sequence_length - index, erase_length);
 
 	// combine the erase+insert actions together
 	group();
@@ -1107,12 +1117,12 @@ size_w sequence::render(size_w index, seqchar *dest, size_w length) const
 	// copy each span's referenced data in succession
 	while(length && sptr != tail)
 	{
-		size_w copylen   = min(sptr->length - spanoffset, length);
+		size_w copylen   = seq_min(sptr->length - spanoffset, length);
 		seqchar *source;
 
 		while(copylen)
 		{
-			size_w partlen = min(copylen, (size_w)100);
+			size_w partlen = seq_min(copylen, (size_w)100);
 
 			source = buffer_list[sptr->buffer]->getptr(sptr->offset + spanoffset, partlen);
 

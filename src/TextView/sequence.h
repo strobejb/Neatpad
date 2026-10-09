@@ -1,21 +1,29 @@
 #ifndef SEQUENCE_INCLUDED
 #define SEQUENCE_INCLUDED
 
-#include <windows.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <vector>
 
 //
 //	Define the underlying string/character type of the sequence.
 //
-//	'seqchar' can be redefined to BYTE, WCHAR, ULONG etc 
+//	'seqchar' can be redefined to unsigned short, unsigned long etc
 //	depending on what kind of string you want your sequence to hold
 //
 typedef unsigned char	  seqchar;
 
-#if defined(SEQUENCE64) || defined(SEQUENCE_64)
-typedef unsigned long long size_w;
+// Sizes and offsets in the sequence: 64-bit on every platform and build
+typedef uint64_t		  size_w;
+
+//
+//	File names are in the platform's own form: UTF-16 on Windows, where they
+//	are opened with _wfopen, and narrow (normally UTF-8) everywhere else.
+//
+#ifdef _WIN32
+typedef wchar_t			  seqfilechar;
 #else
-typedef unsigned long	  size_w;
+typedef char			  seqfilechar;
 #endif
 
 const size_w MAX_SEQUENCE_LENGTH = ((size_w)(-1) / sizeof(seqchar));
@@ -35,8 +43,8 @@ public:
 	class			buffer_control;
 	class			iterator;
 	class			ref;
-	enum			action;
-	enum			line_scan_mode;
+	enum			action : int;
+	enum			line_scan_mode : int;
 
 	//
 	//	The kinds of line break found in some text, for spotting mixed line endings.
@@ -86,7 +94,7 @@ public:
 	// initialize with a file
 	//
 	bool		init();
-	bool		open(TCHAR *filename, bool readonly);
+	bool		open(const seqfilechar *filename, bool readonly);
 	bool		clear();
 
 	//
@@ -273,7 +281,7 @@ private:
 //	only important when we try to 'optimize' repeated operations on the
 //	sequence by coallescing them into a single span.
 //
-enum sequence::action
+enum sequence::action : int
 { 
 	action_invalid, 
 	action_insert, 
@@ -281,7 +289,7 @@ enum sequence::action
 	action_replace 
 };
 
-enum sequence::line_scan_mode
+enum sequence::line_scan_mode : int
 {
 	line_scan_bytes,
 	line_scan_utf16le,
@@ -500,9 +508,9 @@ class sequence::ref
 {
 public:
 	ref(sequence *s, size_w i) 
-		:  
-		seq(s),  
-		index(i) 
+		:
+		index(i),
+		seq(s)
 	{
 	}
 
@@ -533,7 +541,7 @@ public:
 
 	bool	init(size_t maxsize);
 	bool	init(const seqchar *buffer, size_w length);
-	bool	init_file(TCHAR *filename, bool readonly);
+	bool	init_file(const seqfilechar *filename, bool readonly);
 	bool	append(const seqchar *buffer, size_t length, size_t *buffer_offset);
 	seqchar *getptr(size_w offset, size_w length);
 	void	clear();

@@ -7,12 +7,20 @@
 //	Written by J Brown 2006
 //	
 
-#define STRICT
-#define WIN32_LEAN_AND_MEAN
-
-#include <windows.h>
 #include <limits.h>
+#include <stdbool.h>
+#include <string.h>
 #include "Unicode.h"
+
+//
+//	The smaller of two sizes. A function rather than a macro, so each argument
+//	is evaluated once, and not named min() so it can't collide with the macro
+//	windows.h defines.
+//
+static size_t size_min(size_t a, size_t b)
+{
+	return a < b ? a : b;
+}
 
 //
 //	utf8_to_utf32
@@ -436,25 +444,25 @@ size_t utf32_to_utf8(UTF8 *utf8str, size_t utf8len, UTF32 ch32)
 	// 2-byte sequence
 	if(ch32 < 0x800 && utf8len >= 2)
 	{
-		*utf8str++ = (UTF8)((ch32 >> 6)			| 0xC0);
-		*utf8str++ = (UTF8)((ch32 & 0x3f)		| 0x80);
+		*utf8str++ = (UTF8)((ch32 >> 6)			  | 0xC0);
+		*utf8str++ = (UTF8)((ch32 & 0x3f)		  | 0x80);
 		len = 2;
 	}
 	// 3-byte sequence
 	else if(ch32 < 0x10000 && utf8len >= 3)
 	{
-		*utf8str++ = (UTF8)((ch32 >> 12)        | 0xE0);
-		*utf8str++ = (UTF8)((ch32 >> 6) & 0x3f  | 0x80);
-		*utf8str++ = (UTF8)((ch32 & 0x3f)       | 0x80);
+		*utf8str++ = (UTF8)((ch32 >> 12)          | 0xE0);
+		*utf8str++ = (UTF8)(((ch32 >> 6) & 0x3f)  | 0x80);
+		*utf8str++ = (UTF8)((ch32 & 0x3f)         | 0x80);
 		len = 3;
 	}
 	// 4-byte sequence
 	else if(ch32 <= UNI_MAX_LEGAL_UTF32 && utf8len >= 4)
 	{
-		*utf8str++ = (UTF8)((ch32 >> 18)        | 0xF0);
-		*utf8str++ = (UTF8)((ch32 >> 12) & 0x3f | 0x80);
-		*utf8str++ = (UTF8)((ch32 >> 6) & 0x3f  | 0x80);
-		*utf8str++ = (UTF8)((ch32 & 0x3f)       | 0x80);
+		*utf8str++ = (UTF8)((ch32 >> 18)          | 0xF0);
+		*utf8str++ = (UTF8)(((ch32 >> 12) & 0x3f) | 0x80);
+		*utf8str++ = (UTF8)(((ch32 >> 6) & 0x3f)  | 0x80);
+		*utf8str++ = (UTF8)((ch32 & 0x3f)         | 0x80);
 		len = 4;
 	}
 
@@ -559,52 +567,6 @@ size_t utf16_to_utf8(UTF16 *utf16str, size_t utf16len, UTF8 *utf8str, size_t *ut
 }
 
 //
-//	ascii_to_utf16
-//
-//	Converts plain ASCII string to UTF-16
-//
-//	asciistr	- [in]     buffer containing ASCII characters
-//	asciilen	- [in]     number of characters in buffer
-//	utf16str	- [out]    receives the resulting UTF-16 text
-//	utf16len	- [in/out] on input, specifies length of utf16 buffer,
-//						   on output, holds number of chars stored in utf16str
-//
-//	Returns number of characters processed from asciistr
-//
-size_t ascii_to_utf16(UTF8 *asciistr, size_t asciilen, UTF16 *utf16str, size_t *utf16len)
-{
-	size_t len = min(*utf16len, asciilen);
-	len = min(len, (size_t)INT_MAX);
-		
-	MultiByteToWideChar(CP_ACP, 0, (CCHAR*)asciistr, (int)len, (WCHAR *)utf16str, (int)len);
-	*utf16len = len;
-	return len;
-}
-
-//
-//	utf16_to_ascii
-//
-//	Converts UTF-16 to plain ASCII (lossy)
-//
-//	utf16str	- [in]     buffer containing UTF16 characters
-//	utf16len	- [in]     number of WCHARs in buffer
-//	asciistr	- [out]    receives the resulting UTF-16 text
-//	asciilen	- [in/out] on input, specifies length of ascii buffer,
-//						   on output, holds number of chars stored in asciistr
-//
-//	Returns number of characters processed from utf16str
-//
-size_t utf16_to_ascii(UTF16 *utf16str, size_t utf16len, UTF8 *asciistr, size_t *asciilen)
-{
-	size_t len = min(utf16len, *asciilen);
-	len = min(len, (size_t)INT_MAX);
-	
-	WideCharToMultiByte(CP_ACP, 0, utf16str, (int)len, asciistr, (int)min(*asciilen, (size_t)INT_MAX), 0, 0);
-	*asciilen = len;
-	return len;
-}
-
-//
 //	copy_utf16
 //
 //	Copies UTF-16 string from src to dest
@@ -619,7 +581,7 @@ size_t utf16_to_ascii(UTF16 *utf16str, size_t utf16len, UTF8 *asciistr, size_t *
 //
 size_t copy_utf16(UTF16 *src, size_t srclen, UTF16 *dest, size_t *destlen)
 {
-	size_t len = min(*destlen, srclen);
+	size_t len = size_min(*destlen, srclen);
 	memcpy(dest, src, len * sizeof(UTF16));
 
 	*destlen = len;
@@ -642,7 +604,7 @@ size_t copy_utf16(UTF16 *src, size_t srclen, UTF16 *dest, size_t *destlen)
 //
 size_t swap_utf16(UTF16 *src, size_t srclen, UTF16 *dest, size_t *destlen)
 {
-	size_t len = min(*destlen, srclen);
+	size_t len = size_min(*destlen, srclen);
 	size_t i;
 	
 	for(i = 0; i < len; i++)
@@ -687,7 +649,7 @@ size_t utf32_to_utf16(UTF32 *utf32str, size_t utf32len, UTF16 *utf16str, size_t 
 			}
 			else
 			{
-				*utf16str++ = (WORD)ch32;
+				*utf16str++ = (UTF16)ch32;
 				(*utf16len)--;
 			}
 		}
@@ -708,8 +670,8 @@ size_t utf32_to_utf16(UTF32 *utf32str, size_t utf32len, UTF16 *utf16str, size_t 
 		{ 
 			ch32 -= 0x0010000;
 
-			*utf16str++ = (WORD)((ch32 >> 10)   + UNI_SUR_HIGH_START);
-			*utf16str++ = (WORD)((ch32 & 0x3ff) + UNI_SUR_LOW_START);
+			*utf16str++ = (UTF16)((ch32 >> 10)   + UNI_SUR_HIGH_START);
+			*utf16str++ = (UTF16)((ch32 & 0x3ff) + UNI_SUR_LOW_START);
 
 			(*utf16len)-=2;
 		}
@@ -849,7 +811,7 @@ size_t utf16be_to_utf32(UTF16 *utf16str, size_t utf16len, UTF32 *utf32str, size_
 //
 //	Returns the number of bytes processed from utf32str
 //
-static size_t utf32bytes_to_utf16(UTF8 *utf32str, size_t utf32len, UTF16 *utf16str, size_t *utf16len, BOOL bigendian)
+static size_t utf32bytes_to_utf16(UTF8 *utf32str, size_t utf32len, UTF16 *utf16str, size_t *utf16len, bool bigendian)
 {
 	UTF16 *utf16start = utf16str;
 	UTF8  *utf32start = utf32str;
@@ -883,12 +845,12 @@ static size_t utf32bytes_to_utf16(UTF8 *utf32str, size_t utf32len, UTF16 *utf16s
 
 size_t utf32le_to_utf16(UTF8 *utf32str, size_t utf32len, UTF16 *utf16str, size_t *utf16len)
 {
-	return utf32bytes_to_utf16(utf32str, utf32len, utf16str, utf16len, FALSE);
+	return utf32bytes_to_utf16(utf32str, utf32len, utf16str, utf16len, false);
 }
 
 size_t utf32be_to_utf16(UTF8 *utf32str, size_t utf32len, UTF16 *utf16str, size_t *utf16len)
 {
-	return utf32bytes_to_utf16(utf32str, utf32len, utf16str, utf16len, TRUE);
+	return utf32bytes_to_utf16(utf32str, utf32len, utf16str, utf16len, true);
 }
 
 //
@@ -906,7 +868,7 @@ size_t utf32be_to_utf16(UTF8 *utf32str, size_t utf32len, UTF16 *utf16str, size_t
 //
 //	Returns the number of UTF16s processed from utf16str
 //
-static size_t utf16_to_utf32bytes(UTF16 *utf16str, size_t utf16len, UTF8 *utf32str, size_t *utf32len, BOOL bigendian)
+static size_t utf16_to_utf32bytes(UTF16 *utf16str, size_t utf16len, UTF8 *utf32str, size_t *utf32len, bool bigendian)
 {
 	UTF16 *utf16start = utf16str;
 	UTF8  *utf32start = utf32str;
@@ -951,10 +913,71 @@ static size_t utf16_to_utf32bytes(UTF16 *utf16str, size_t utf16len, UTF8 *utf32s
 
 size_t utf16_to_utf32le(UTF16 *utf16str, size_t utf16len, UTF8 *utf32str, size_t *utf32len)
 {
-	return utf16_to_utf32bytes(utf16str, utf16len, utf32str, utf32len, FALSE);
+	return utf16_to_utf32bytes(utf16str, utf16len, utf32str, utf32len, false);
 }
 
 size_t utf16_to_utf32be(UTF16 *utf16str, size_t utf16len, UTF8 *utf32str, size_t *utf32len)
 {
-	return utf16_to_utf32bytes(utf16str, utf16len, utf32str, utf32len, TRUE);
+	return utf16_to_utf32bytes(utf16str, utf16len, utf32str, utf32len, true);
 }
+
+//
+//	Conversions between the Windows ANSI code page and UTF-16
+//
+//	These are the only routines here that need the operating system: the ANSI
+//	code page comes from the user's Windows locale, and only Windows converts
+//	it. They come last, after windows.h, so that nothing above them can come to
+//	depend on it. Other platforms have no implementation yet.
+//
+#ifdef _WIN32
+
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+
+//
+//	ascii_to_utf16
+//
+//	Converts plain ASCII string to UTF-16
+//
+//	asciistr	- [in]     buffer containing ASCII characters
+//	asciilen	- [in]     number of characters in buffer
+//	utf16str	- [out]    receives the resulting UTF-16 text
+//	utf16len	- [in/out] on input, specifies length of utf16 buffer,
+//						   on output, holds number of chars stored in utf16str
+//
+//	Returns number of characters processed from asciistr
+//
+size_t ascii_to_utf16(UTF8 *asciistr, size_t asciilen, UTF16 *utf16str, size_t *utf16len)
+{
+	size_t len = size_min(*utf16len, asciilen);
+	len = size_min(len, (size_t)INT_MAX);
+
+	MultiByteToWideChar(CP_ACP, 0, (CCHAR*)asciistr, (int)len, (WCHAR *)utf16str, (int)len);
+	*utf16len = len;
+	return len;
+}
+
+//
+//	utf16_to_ascii
+//
+//	Converts UTF-16 to plain ASCII (lossy)
+//
+//	utf16str	- [in]     buffer containing UTF16 characters
+//	utf16len	- [in]     number of WCHARs in buffer
+//	asciistr	- [out]    receives the resulting UTF-16 text
+//	asciilen	- [in/out] on input, specifies length of ascii buffer,
+//						   on output, holds number of chars stored in asciistr
+//
+//	Returns number of characters processed from utf16str
+//
+size_t utf16_to_ascii(UTF16 *utf16str, size_t utf16len, UTF8 *asciistr, size_t *asciilen)
+{
+	size_t len = size_min(utf16len, *asciilen);
+	len = size_min(len, (size_t)INT_MAX);
+
+	WideCharToMultiByte(CP_ACP, 0, utf16str, (int)len, (LPSTR)asciistr, (int)size_min(*asciilen, (size_t)INT_MAX), 0, 0);
+	*asciilen = len;
+	return len;
+}
+
+#endif
