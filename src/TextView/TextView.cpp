@@ -71,7 +71,7 @@ TextView::TextView(HWND hwnd)
 	for(int i = 0; i < USP_CACHE_SIZE; i++)
 	{
 		m_uspCache[i].usage   = 0;
-		m_uspCache[i].line_begin = 0;
+		m_uspCache[i].line_begin = TextPos();
 		m_uspCache[i].uspData = UspAllocate();
 	}
 
@@ -174,10 +174,10 @@ VOID TextView::FillCursorInfo(TVNCURSORINFO *info)
 	bool   exact = false;
 	size_w offset_chars = 0;
 
-	info->nLineNo		= m_pTextDoc->lineno_from_coord(&m_cursorPos, &exact);
+	info->nLineNo		= m_pTextDoc->lineno_from_pos(m_cursorPos, &exact);
 	info->fLineNoKnown	= exact;
-	info->nColumnNo		= m_cursorPos.line_offset_chars;
-	info->fOffsetKnown	= m_pTextDoc->charoffset_from_coord(&m_cursorPos, &offset_chars);
+	info->nColumnNo		= m_cursorPos.column;
+	info->fOffsetKnown	= m_pTextDoc->charoffset_from_pos(m_cursorPos, &offset_chars);
 	info->nOffset		= offset_chars;
 }
 
@@ -349,12 +349,12 @@ LINEINFO* TextView::GetLineInfo(ULONG nLineNo)
 //
 bool TextView::GetSelection(TextCoord *start, TextCoord *end)
 {
-	bool forward = m_selAnchor.byte_anchor <= m_cursorPos.byte_anchor;
+	bool forward = m_selAnchor <= m_cursorPos;
 
 	*start = forward ? m_selAnchor : m_cursorPos;
 	*end   = forward ? m_cursorPos : m_selAnchor;
 
-	return start->byte_anchor != end->byte_anchor;
+	return start->byte_offset != end->byte_offset;
 }
 
 //
@@ -362,11 +362,11 @@ bool TextView::GetSelection(TextCoord *start, TextCoord *end)
 //
 static ULONG LineColumn(TextCoord *line, TextCoord *pos, ULONG lineLen)
 {
-	if(pos->byte_anchor <= line->line_begin)
+	if(*pos <= line->line_begin)
 		return 0;
 
 	if(pos->line_begin == line->line_begin)
-		return (ULONG)min(pos->line_offset_chars, (size_w)lineLen);
+		return (ULONG)min(pos->column, (size_w)lineLen);
 
 	return lineLen;
 }
@@ -392,12 +392,12 @@ size_w TextView::SelectionSize()
 	TextCoord start, end;
 
 	GetSelection(&start, &end);
-	return end.byte_anchor - start.byte_anchor;
+	return end - start;
 }
 
 ULONG TextView::SelectAll()
 {
-	m_pTextDoc->coord_from_byte_anchor(0, &m_selAnchor);
+	m_pTextDoc->coord_from_pos(TextPos(0), &m_selAnchor);
 	m_pTextDoc->coord_from_document_end(&m_cursorPos);
 
 	UpdateViewState(TRUE);
@@ -409,36 +409,37 @@ UINT TextView::FindText(TEXTVIEWFIND *find)
 {
 	TextCoord selStart;
 	TextCoord selEnd;
-	size_w start;
-	size_w end;
-	size_w match;
-	size_w matchLength;
+	TextPos docStart;
+	TextPos docEnd;
+	TextPos start;
+	TextPos matchBegin;
+	TextPos matchEnd;
 	UINT result = TVFR_FOUND;
 
 	if(find == 0 || find->text == 0 || find->length == 0)
 		return TVFR_NOTFOUND;
 
-	end = m_pTextDoc->byte_length();
+	docEnd = TextPos(m_pTextDoc->byte_length());
 
 	if(GetSelection(&selStart, &selEnd))
-		start = find->backwards ? selStart.byte_anchor : selEnd.byte_anchor;
+		start = find->backwards ? selStart : selEnd;
 	else
-		start = m_cursorPos.byte_anchor;
+		start = m_cursorPos;
 
-	if(!m_pTextDoc->find_text(find->text, find->length, find->backwards ? 0 : start, find->backwards ? start : end, find->backwards != FALSE, find->matchcase != FALSE, &match, &matchLength))
+	if(!m_pTextDoc->find_text(find->text, find->length, find->backwards ? docStart : start, find->backwards ? start : docEnd, find->backwards != FALSE, find->matchcase != FALSE, &matchBegin, &matchEnd))
 	{
-		if(!find->wrap || end == 0)
+		if(!find->wrap || docEnd == docStart)
 			return TVFR_NOTFOUND;
 
-		if(!m_pTextDoc->find_text(find->text, find->length, find->backwards ? start : 0, find->backwards ? end : start, find->backwards != FALSE, find->matchcase != FALSE, &match, &matchLength))
+		if(!m_pTextDoc->find_text(find->text, find->length, find->backwards ? start : docStart, find->backwards ? docEnd : start, find->backwards != FALSE, find->matchcase != FALSE, &matchBegin, &matchEnd))
 			return TVFR_NOTFOUND;
 
 		result = TVFR_FOUNDWRAPPED;
 	}
 
-	if(!m_pTextDoc->coord_from_byte_anchor(match, &m_selAnchor))
+	if(!m_pTextDoc->coord_from_pos(matchBegin, &m_selAnchor))
 		return TVFR_NOTFOUND;
-	if(!m_pTextDoc->coord_from_byte_anchor(match + matchLength, &m_cursorPos))
+	if(!m_pTextDoc->coord_from_pos(matchEnd, &m_cursorPos))
 		return TVFR_NOTFOUND;
 
 	m_nSelectionType = SEL_NORMAL;
@@ -606,19 +607,19 @@ LRESULT WINAPI TextView::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 
 	// only cheap for fixed-width encodings: -1 for the others
 	case TXM_GETCURPOS:
-		return m_pTextDoc->charoffset_from_coord(&m_cursorPos, &offset_chars) ? ResultFromSize(offset_chars) : -1;
+		return m_pTextDoc->charoffset_from_pos(m_cursorPos, &offset_chars) ? ResultFromSize(offset_chars) : -1;
 
 	case TXM_GETCURLINE:
-		return ResultFromSize(m_pTextDoc->lineno_from_coord(&m_cursorPos, &exact));
+		return ResultFromSize(m_pTextDoc->lineno_from_pos(m_cursorPos, &exact));
 
 	case TXM_GETCURCOL:
-		return ResultFromSize(m_cursorPos.line_offset_chars);
+		return ResultFromSize(m_cursorPos.column);
 
 	case TXM_GETEDITMODE:
 		return m_nEditMode;
 
 	case TXM_GETCURLINEKNOWN:
-		m_pTextDoc->lineno_from_coord(&m_cursorPos, &exact);
+		m_pTextDoc->lineno_from_pos(m_cursorPos, &exact);
 		return exact;
 
 	case TXM_GETDOCSTATS:
@@ -646,11 +647,11 @@ LRESULT WINAPI TextView::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 		// the selection, counted the same way
 		if(GetSelection(&selStart, &selEnd))
 		{
-			stats->sel_byte_count = (unsigned __int64)(selEnd.byte_anchor - selStart.byte_anchor);
+			stats->sel_byte_count = (unsigned __int64)(selEnd - selStart);
 
 			if(stats->char_count_known &&
-				m_pTextDoc->charoffset_from_coord(&selStart, &startChars) &&
-				m_pTextDoc->charoffset_from_coord(&selEnd, &endChars))
+				m_pTextDoc->charoffset_from_pos(selStart, &startChars) &&
+				m_pTextDoc->charoffset_from_pos(selEnd, &endChars))
 			{
 				stats->sel_char_count = (unsigned __int64)(endChars - startChars);
 			}

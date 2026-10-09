@@ -27,7 +27,7 @@ HRESULT (WINAPI * DrawThemeBackground_Proc)(HTHEME hTheme, HDC hdc, int, int, co
 typedef struct
 {
 	USPDATA *uspData;
-	size_w	 line_begin;	// byte offset of the line's start (cache key; flushed on every edit)
+	TextPos	 line_begin;	// the line's start (cache key; flushed on every edit)
 	ULONG	 usage;			// cache-count
 
 	int		 length;		// length in chars INCLUDING CR/LF
@@ -63,7 +63,7 @@ enum SELMODE { SEL_NONE, SEL_NORMAL, SEL_MARGIN, SEL_BLOCK };
 
 typedef struct
 {
-	size_w	line_begin;		// byte offset of the line's start
+	TextPos	line_begin;		// the line's start
 	ULONG	xpos;
 
 } CURPOS;

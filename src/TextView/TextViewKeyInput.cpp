@@ -39,11 +39,11 @@ ULONG TextView::EnterText(TCHAR *szText, ULONG nLength)
 		{
 			// group this erase with the insert/replace operation
 			m_pTextDoc->undo_group_begin();
-			m_pTextDoc->erase_text(&selStart, &selEnd, &change);
+			m_pTextDoc->erase_text(selStart, selEnd, &change);
 			AdjustCoordsForChange(&change);
 		}
 
-		if(!m_pTextDoc->insert_text(&selStart, szText, nLength, &change))
+		if(!m_pTextDoc->insert_text(selStart, szText, nLength, &change))
 			return 0;
 
 		AdjustCoordsForChange(&change);
@@ -72,19 +72,19 @@ ULONG TextView::EnterText(TCHAR *szText, ULONG nLength)
 			if(nLength == 1)
 			{
 				MoveCharNext();
-				endPos = m_cursorPos.line_begin == selStart.line_begin ? m_cursorPos.line_offset_chars : lineEnd;
+				endPos = m_cursorPos.line_begin == selStart.line_begin ? m_cursorPos.column : lineEnd;
 				m_cursorPos = selStart;
 			}
 			else
 			{
-				endPos = selStart.line_offset_chars + nLength;
+				endPos = selStart.column + nLength;
 			}
 
 			if(!m_pTextDoc->coord_from_line_pos(&selStart, min(endPos, lineEnd), &selEnd))
 				return 0;
 		}
 
-		if(!m_pTextDoc->replace_text(&selStart, &selEnd, szText, nLength, &change))
+		if(!m_pTextDoc->replace_text(selStart, selEnd, szText, nLength, &change))
 			return 0;
 
 		AdjustCoordsForChange(&change);
@@ -95,7 +95,7 @@ ULONG TextView::EnterText(TCHAR *szText, ULONG nLength)
 	}
 
 	// the caret follows the inserted text
-	m_pTextDoc->coord_from_byte_anchor(change.offset + change.inserted, &m_cursorPos);
+	m_pTextDoc->coord_from_pos(TextPos(change.at.byte_offset + change.inserted), &m_cursorPos);
 	m_selAnchor = m_cursorPos;
 
 	// we altered the document, recalculate line+scrollbar information
@@ -115,19 +115,19 @@ BOOL TextView::ForwardDelete()
 
 	if(GetSelection(&selStart, &selEnd))
 	{
-		m_pTextDoc->erase_text(&selStart, &selEnd, &change);
+		m_pTextDoc->erase_text(selStart, selEnd, &change);
 		m_pTextDoc->undo_group_break();
 	}
 	else
 	{
 		// erase the whole character-cluster after the caret
 		MoveCharNext();
-		m_pTextDoc->erase_text(&selStart, &m_cursorPos, &change);
+		m_pTextDoc->erase_text(selStart, m_cursorPos, &change);
 	}
 
 	AdjustCoordsForChange(&change);
 
-	m_pTextDoc->coord_from_byte_anchor(change.offset, &m_cursorPos);
+	m_pTextDoc->coord_from_pos(change.at, &m_cursorPos);
 	m_selAnchor = m_cursorPos;
 
 	ResetLineCache();
@@ -141,24 +141,24 @@ BOOL TextView::BackDelete()
 {
 	TextCoord	selStart;
 	TextCoord	selEnd;
-	TextChange	change = { m_cursorPos.byte_anchor, 0, 0 };
+	TextChange	change = { m_cursorPos, 0, 0 };
 
 	// if there's a selection then delete it
 	if(GetSelection(&selStart, &selEnd))
 	{
-		m_pTextDoc->erase_text(&selStart, &selEnd, &change);
+		m_pTextDoc->erase_text(selStart, selEnd, &change);
 		m_pTextDoc->undo_group_break();
 	}
 	// otherwise erase the character-cluster before the caret
-	else if(m_cursorPos.byte_anchor > 0)
+	else if(m_cursorPos.byte_offset > 0)
 	{
 		MoveCharPrev();
-		m_pTextDoc->erase_text(&m_cursorPos, &selEnd, &change);
+		m_pTextDoc->erase_text(m_cursorPos, selEnd, &change);
 	}
 
 	AdjustCoordsForChange(&change);
 
-	m_pTextDoc->coord_from_byte_anchor(change.offset, &m_cursorPos);
+	m_pTextDoc->coord_from_pos(change.at, &m_cursorPos);
 	m_selAnchor = m_cursorPos;
 
 	ResetLineCache();
@@ -201,8 +201,8 @@ BOOL TextView::Undo()
 	AdjustCoordsForChange(&change);
 
 	// select the text that came back
-	m_pTextDoc->coord_from_byte_anchor(change.offset, &m_selAnchor);
-	m_pTextDoc->coord_from_byte_anchor(change.offset + change.inserted, &m_cursorPos);
+	m_pTextDoc->coord_from_pos(change.at, &m_selAnchor);
+	m_pTextDoc->coord_from_pos(TextPos(change.at.byte_offset + change.inserted), &m_cursorPos);
 
 	ResetLineCache();
 	RefreshWindow();
@@ -225,8 +225,8 @@ BOOL TextView::Redo()
 	AdjustCoordsForChange(&change);
 
 	// select the text that came back
-	m_pTextDoc->coord_from_byte_anchor(change.offset, &m_selAnchor);
-	m_pTextDoc->coord_from_byte_anchor(change.offset + change.inserted, &m_cursorPos);
+	m_pTextDoc->coord_from_pos(change.at, &m_selAnchor);
+	m_pTextDoc->coord_from_pos(TextPos(change.at.byte_offset + change.inserted), &m_cursorPos);
 
 	ResetLineCache();
 	RefreshWindow();

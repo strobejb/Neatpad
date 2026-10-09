@@ -52,7 +52,7 @@ bool TextView::CoordAtPreviousLineEnd(TextCoord *coord, TextCoord *result)
 	USPCACHE *uspCache;
 	TextCoord target;
 
-	if(coord->line_begin == 0 || !m_pTextDoc->previous_line_from_coord(coord, 1, &target))
+	if(coord->line_begin.byte_offset == 0 || !m_pTextDoc->previous_line_from_coord(coord, 1, &target))
 		return false;
 
 	if(!GetLineLayout(&target, &uspCache, 0))
@@ -157,7 +157,7 @@ VOID TextView::MoveWordPrev()
 		return;
 
 	// move 1 character to left
-	charPos = (int)min(m_cursorPos.line_offset_chars, (ULONG)uspCache->length_CRLF) - 1;
+	charPos = (int)min(m_cursorPos.column, (ULONG)uspCache->length_CRLF) - 1;
 
 	// skip to end of *previous* line if necessary
 	if(charPos < 0)
@@ -195,7 +195,7 @@ VOID TextView::MoveWordNext()
 	if(!GetLineLayout(&m_cursorPos, &uspCache, &logAttr))
 		return;
 
-	charPos = (int)min(m_cursorPos.line_offset_chars, (ULONG)uspCache->length_CRLF);
+	charPos = (int)min(m_cursorPos.column, (ULONG)uspCache->length_CRLF);
 
 	// if already at end-of-line, skip to next line
 	if(charPos == uspCache->length_CRLF)
@@ -236,7 +236,7 @@ VOID TextView::MoveWordStart()
 	if(!GetLineLayout(&m_cursorPos, &uspCache, &logAttr))
 		return;
 
-	charPos = (int)min(m_cursorPos.line_offset_chars, (ULONG)uspCache->length_CRLF);
+	charPos = (int)min(m_cursorPos.column, (ULONG)uspCache->length_CRLF);
 
 	while(charPos > 0 && !logAttr[charPos-1].fWhiteSpace)
 		charPos--;
@@ -256,7 +256,7 @@ VOID TextView::MoveWordEnd()
 	if(!GetLineLayout(&m_cursorPos, &uspCache, &logAttr))
 		return;
 
-	charPos = (int)min(m_cursorPos.line_offset_chars, (ULONG)uspCache->length_CRLF);
+	charPos = (int)min(m_cursorPos.column, (ULONG)uspCache->length_CRLF);
 
 	while(charPos < uspCache->length_CRLF && !logAttr[charPos].fWhiteSpace)
 		charPos++;
@@ -277,7 +277,7 @@ VOID TextView::MoveCharPrev()
 	if(!GetLineLayout(&m_cursorPos, &uspCache, &logAttr))
 		return;
 
-	charPos = (int)min(m_cursorPos.line_offset_chars, (ULONG)uspCache->length_CRLF);
+	charPos = (int)min(m_cursorPos.column, (ULONG)uspCache->length_CRLF);
 
 	// find the previous valid character-position
 	for( --charPos; charPos >= 0; charPos--)
@@ -311,7 +311,7 @@ VOID TextView::MoveCharNext()
 	if(!GetLineLayout(&m_cursorPos, &uspCache, &logAttr))
 		return;
 
-	charPos = (int)min(m_cursorPos.line_offset_chars, (ULONG)uspCache->length_CRLF);
+	charPos = (int)min(m_cursorPos.column, (ULONG)uspCache->length_CRLF);
 
 	// find the next valid character-position
 	for( ++charPos; charPos <= uspCache->length_CRLF; charPos++)
@@ -352,7 +352,7 @@ VOID TextView::MoveFileStart()
 {
 	TextCoord coord;
 
-	if(m_pTextDoc->coord_from_byte_anchor(0, &coord))
+	if(m_pTextDoc->coord_from_pos(TextPos(0), &coord))
 		SetCursorCoord(&coord);
 }
 
@@ -521,7 +521,7 @@ LONG TextView::OnKeyDown(UINT nKeyCode, UINT nFlags)
 	// Otherwise clear the selection
 	else
 	{
-		bool hadSelection = m_selAnchor.byte_anchor != oldCursor.byte_anchor;
+		bool hadSelection = m_selAnchor != oldCursor;
 
 		if(hadSelection)
 			InvalidateRange(&m_selAnchor, &oldCursor);

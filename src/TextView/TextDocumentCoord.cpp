@@ -55,43 +55,45 @@ bool TextDocument::line_bounds_from_offset(size_w offset_bytes, size_w *line_beg
 }
 
 //
-//	Fill coord with the position line_offset_chars UTF-16 units into the line
-//	[line_begin, line_next), stopping at the end of the line
+//	Fill coord with the position 'column' UTF-16 units into the line
+//	[line_begin, line_next), stopping at the end of the line. A column part way
+//	through a character moves back to the character's start.
 //
-void TextDocument::coord_in_line(size_w line_begin, size_w line_next, size_w line_offset_chars, TextCoord *coord)
+void TextDocument::coord_in_line(size_w line_begin, size_w line_next, size_w column, TextCoord *coord)
 {
 	size_w linelen_bytes = line_next >= line_begin ? line_next - line_begin : 0;
 	size_w offset_bytes;
 
 	// a code unit always takes at least one byte, so this just bounds the scan
-	if(line_offset_chars > linelen_bytes)
-		line_offset_chars = linelen_bytes;
+	if(column > linelen_bytes)
+		column = linelen_bytes;
 
-	offset_bytes = count_chars(line_begin, line_offset_chars);
+	offset_bytes = count_chars(line_begin, &column);
 
 	if(offset_bytes > linelen_bytes)
 	{
 		offset_bytes = linelen_bytes;
-		line_offset_chars = count_code_units(line_begin, linelen_bytes);
+		column = count_code_units(line_begin, linelen_bytes);
 	}
 
-	coord->byte_anchor = line_begin + offset_bytes;
-	coord->line_begin = line_begin;
-	coord->line_next = line_begin + linelen_bytes;
-	coord->line_offset_chars = line_offset_chars;
+	coord->byte_offset = line_begin + offset_bytes;
+	coord->line_begin  = TextPos(line_begin);
+	coord->line_next   = TextPos(line_begin + linelen_bytes);
+	coord->column      = column;
 }
 
-bool TextDocument::coord_from_byte_anchor(size_w byte_anchor, TextCoord *coord)
+bool TextDocument::coord_from_pos(TextPos pos, TextCoord *coord)
 {
 	size_w rawLength = m_seq.size() - m_nHeaderSize;
+	size_w offset = pos.byte_offset;
 	size_w line_begin;
 	size_w line_next;
 
 	if(coord == 0)
 		return false;
 
-	if(byte_anchor > rawLength)
-		byte_anchor = rawLength;
+	if(offset > rawLength)
+		offset = rawLength;
 
 	if(rawLength == 0)
 	{
@@ -99,34 +101,32 @@ bool TextDocument::coord_from_byte_anchor(size_w byte_anchor, TextCoord *coord)
 		return true;
 	}
 
-	if(!line_bounds_from_offset(byte_anchor, &line_begin, &line_next))
+	if(!line_bounds_from_offset(offset, &line_begin, &line_next))
 		return false;
 
-	coord->byte_anchor = byte_anchor;
-	coord->line_begin = line_begin;
-	coord->line_next = line_next;
-	coord->line_offset_chars = count_code_units(line_begin, byte_anchor - line_begin);
+	coord->byte_offset = offset;
+	coord->line_begin  = TextPos(line_begin);
+	coord->line_next   = TextPos(line_next);
+	coord->column      = count_code_units(line_begin, offset - line_begin);
 
 	return true;
 }
 
 bool TextDocument::coord_from_document_end(TextCoord *coord)
 {
-	size_w rawLength = m_seq.size() - m_nHeaderSize;
-
-	return coord_from_byte_anchor(rawLength, coord);
+	return coord_from_pos(TextPos(byte_length()), coord);
 }
 
-bool TextDocument::coord_from_line_pos(TextCoord *line, size_w line_offset_chars, TextCoord *coord)
+bool TextDocument::coord_from_line_pos(const TextCoord *line, size_w column, TextCoord *coord)
 {
 	if(line == 0 || coord == 0)
 		return false;
 
-	coord_in_line(line->line_begin, line->line_next, line_offset_chars, coord);
+	coord_in_line(line->line_begin.byte_offset, line->line_next.byte_offset, column, coord);
 	return true;
 }
 
-bool TextDocument::previous_line_from_coord(TextCoord *coord, uint32_t num_lines, TextCoord *line)
+bool TextDocument::previous_line_from_coord(const TextCoord *coord, uint32_t num_lines, TextCoord *line)
 {
 	TextCoord target;
 
@@ -135,13 +135,13 @@ bool TextDocument::previous_line_from_coord(TextCoord *coord, uint32_t num_lines
 
 	target = *coord;
 
-	while(num_lines-- > 0 && target.line_begin > 0)
+	while(num_lines-- > 0 && target.line_begin.byte_offset > 0)
 	{
 		size_w line_begin;
 		size_w line_next;
 
 		// the line which ends where this one begins
-		if(!line_bounds_from_offset(target.line_begin - 1, &line_begin, &line_next))
+		if(!line_bounds_from_offset(target.line_begin.byte_offset - 1, &line_begin, &line_next))
 			return false;
 
 		coord_in_line(line_begin, line_next, 0, &target);
@@ -151,7 +151,7 @@ bool TextDocument::previous_line_from_coord(TextCoord *coord, uint32_t num_lines
 	return true;
 }
 
-bool TextDocument::next_line_from_coord(TextCoord *coord, uint32_t num_lines, TextCoord *line)
+bool TextDocument::next_line_from_coord(const TextCoord *coord, uint32_t num_lines, TextCoord *line)
 {
 	TextCoord target;
 	size_w rawLength = m_seq.size() - m_nHeaderSize;
@@ -166,21 +166,21 @@ bool TextDocument::next_line_from_coord(TextCoord *coord, uint32_t num_lines, Te
 		size_w sequenceLineNext = 0;
 		size_w line_next;
 
-		if(target.line_next >= rawLength)
+		if(target.line_next.byte_offset >= rawLength)
 		{
 			// a line break at the very end is followed by one more, empty, line
-			if(target.line_next == rawLength && linebreak_from_coord(&target))
+			if(target.line_next.byte_offset == rawLength && linebreak_from_coord(&target))
 				coord_in_line(rawLength, rawLength, 0, &target);
 
 			break;
 		}
 
-		if(!m_seq.next_line_from_offset(target.line_next + m_nHeaderSize, &sequenceLineNext))
+		if(!m_seq.next_line_from_offset(target.line_next.byte_offset + m_nHeaderSize, &sequenceLineNext))
 			return false;
 
 		line_next = sequenceLineNext <= (size_w)m_nHeaderSize ? 0 : sequenceLineNext - m_nHeaderSize;
 
-		coord_in_line(target.line_next, min_of(line_next, rawLength), 0, &target);
+		coord_in_line(target.line_next.byte_offset, min_of(line_next, rawLength), 0, &target);
 	}
 
 	*line = target;
@@ -188,45 +188,47 @@ bool TextDocument::next_line_from_coord(TextCoord *coord, uint32_t num_lines, Te
 }
 
 //
-//	Move a coordinate across a change to the document and refresh its line bounds.
-//	A coordinate inside the erased bytes moves to the start of the change; one
-//	exactly at the change offset stays before any inserted text.
+//	Move a position across a change to the document. A position inside the
+//	erased bytes moves to the start of the change; one exactly at the change
+//	stays before any inserted text.
 //
-bool TextDocument::coord_after_change(TextCoord *coord, const TextChange *change)
+TextPos TextDocument::pos_after_change(TextPos pos, const TextChange *change)
 {
-	size_w anchor;
+	if(change == 0 || pos <= change->at)
+		return pos;
 
-	if(coord == 0 || change == 0)
-		return false;
+	if(pos - change->at >= change->erased)
+		return TextPos(pos.byte_offset - change->erased + change->inserted);
 
-	anchor = coord->byte_anchor;
-
-	if(anchor > change->offset)
-	{
-		if(anchor - change->offset >= change->erased)
-			anchor = anchor - change->erased + change->inserted;
-		else
-			anchor = change->offset;
-	}
-
-	return coord_from_byte_anchor(anchor, coord);
+	return change->at;
 }
 
 //
-//	Return the line number of a coordinate. Past the exactly counted part of a
+//	Move a coordinate across a change, as pos_after_change(), and refresh its line
+//
+bool TextDocument::coord_after_change(TextCoord *coord, const TextChange *change)
+{
+	if(coord == 0 || change == 0)
+		return false;
+
+	return coord_from_pos(pos_after_change(*coord, change), coord);
+}
+
+//
+//	Return the line number of a position. Past the exactly counted part of a
 //	lazily indexed file the number is an estimate, and *exact is false.
 //
-size_w TextDocument::lineno_from_coord(const TextCoord *coord, bool *exact)
+size_w TextDocument::lineno_from_pos(TextPos pos, bool *exact)
 {
 	size_w sequenceOffset;
 	size_w line = 0;
 
 	*exact = true;
 
-	if(coord == 0 || m_seq.size() <= (size_w)m_nHeaderSize)
+	if(m_seq.size() <= (size_w)m_nHeaderSize)
 		return 0;
 
-	sequenceOffset = coord->byte_anchor + m_nHeaderSize;
+	sequenceOffset = pos.byte_offset + m_nHeaderSize;
 
 	if(!m_seq.lineno_from_offset(sequenceOffset, &line, 0))
 	{
@@ -238,12 +240,9 @@ size_w TextDocument::lineno_from_coord(const TextCoord *coord, bool *exact)
 	return line;
 }
 
-bool TextDocument::charoffset_from_coord(const TextCoord *coord, size_w *offset_chars)
+bool TextDocument::charoffset_from_pos(TextPos pos, size_w *offset_chars)
 {
-	if(coord == 0)
-		return false;
-
-	return charoffset_from_bytes(coord->byte_anchor, offset_chars);
+	return charoffset_from_bytes(pos.byte_offset, offset_chars);
 }
 
 bool TextDocument::charcount(size_w *chars)
@@ -285,9 +284,17 @@ uint32_t TextDocument::linebreak_from_coord(const TextCoord *line)
 	uint32_t ch;
 	uint32_t prev;
 	uint32_t size;
+	size_w   begin;
+	size_w   next;
+
+	if(line == 0)
+		return 0;
+
+	begin = line->line_begin.byte_offset;
+	next  = line->line_next.byte_offset;
 
 	// the last unit must lie inside the line
-	if(line == 0 || !unit_before(line->line_next, &ch, &size) || line->line_next - size < line->line_begin)
+	if(!unit_before(next, &ch, &size) || next - size < begin)
 		return 0;
 
 	if(ch == '\r')
@@ -296,7 +303,7 @@ uint32_t TextDocument::linebreak_from_coord(const TextCoord *line)
 	if(ch != '\n')
 		return 0;
 
-	if(line->line_next - size - line->line_begin >= size && unit_before(line->line_next - size, &prev, &size) && prev == '\r')
+	if(next - size - begin >= size && unit_before(next - size, &prev, &size) && prev == '\r')
 		return TXL_CRLF;
 
 	return TXL_LF;

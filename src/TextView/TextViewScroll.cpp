@@ -103,10 +103,10 @@ VOID TextView::SetupScrollbars()
 	//	Vertical scrollbar, in bytes: the thumb is the top line's offset and the
 	//	page is the text shown in the window, so a document that fits needs no scrolling
 	//
-	pageEnd = ViewportLineFromRow(m_nWindowLines, &belowWindow) ? belowWindow.line_begin : docBytes;
+	pageEnd = ViewportLineFromRow(m_nWindowLines, &belowWindow) ? belowWindow.line_begin.byte_offset : docBytes;
 
-	SetScrollInfo64(m_hWnd, SB_VERT, si.fMask, docBytes ? docBytes - 1 : 0, m_scrollVPos.line_begin,
-		max(pageEnd - m_scrollVPos.line_begin, (size_w)1), TRUE);
+	SetScrollInfo64(m_hWnd, SB_VERT, si.fMask, docBytes ? docBytes - 1 : 0, m_scrollVPos.line_begin.byte_offset,
+		max(pageEnd - m_scrollVPos.line_begin.byte_offset, (size_w)1), TRUE);
 
 	//
 	//	Horizontal scrollbar
@@ -125,7 +125,7 @@ VOID TextView::SetupScrollbars()
 bool TextView::PinToBottomCorner()
 {
 	bool repos = false;
-	size_w topLine = m_scrollVPos.line_begin;
+	TextPos topLine = m_scrollVPos.line_begin;
 	ULONG windowColumns = m_nWindowColumns > 0 ? (ULONG)m_nWindowColumns : 0;
 	ULONG longestLine = m_nLongestLine > 0 ? (ULONG)m_nLongestLine : 0;
 
@@ -554,14 +554,14 @@ LONG GetTrackPos32(HWND hwnd, int nBar)
 //
 LONG TextView::OnVScroll(UINT nSBCode, UINT nPos)
 {
-	size_w oldpos = m_scrollVPos.line_begin;
+	TextPos oldpos = m_scrollVPos.line_begin;
 	size_w docBytes = m_pTextDoc->byte_length();
 	TextCoord coord;
 
 	switch(nSBCode)
 	{
 	case SB_TOP:
-		if(m_pTextDoc->coord_from_byte_anchor(0, &coord))
+		if(m_pTextDoc->coord_from_pos(TextPos(0), &coord))
 			SetScrollCoord(&coord);
 
 		RefreshWindow();
@@ -591,8 +591,9 @@ LONG TextView::OnVScroll(UINT nSBCode, UINT nPos)
 	case SB_THUMBPOSITION:
 	case SB_THUMBTRACK:
 
-		// the thumb is a byte offset: show the line containing it
-		if(m_pTextDoc->coord_from_byte_anchor(GetScrollPos64(m_hWnd, SB_VERT, SIF_TRACKPOS, docBytes ? docBytes - 1 : 0), &coord))
+		// the thumb is a byte offset, which can fall part way through a character:
+		// only the line containing it is used, to show that line
+		if(m_pTextDoc->coord_from_pos(TextPos(GetScrollPos64(m_hWnd, SB_VERT, SIF_TRACKPOS, docBytes ? docBytes - 1 : 0)), &coord))
 			SetScrollCoord(&coord);
 
 		RefreshWindow();

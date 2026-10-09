@@ -27,7 +27,7 @@ LONG TextView::OpenFile(TCHAR *szFileName)
 		ULONG linebreak;
 
 		// the first line's ending sets the line format
-		m_pTextDoc->coord_from_byte_anchor(0, &start);
+		m_pTextDoc->coord_from_pos(TextPos(0), &start);
 
 		if((linebreak = m_pTextDoc->linebreak_from_coord(&start)) != 0)
 			m_nCRLFMode = linebreak;

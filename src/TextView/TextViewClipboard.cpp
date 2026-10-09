@@ -69,7 +69,7 @@ BOOL TextView::OnCopy()
 		return FALSE;
 
 	// a byte never decodes to more than one UTF-16 unit, so this is always enough room
-	sellen = selEnd.byte_anchor - selStart.byte_anchor;
+	sellen = selEnd - selStart;
 
 	// reader.read takes a ULONG, and (sellen + 1) TCHARs must not overflow the
 	// allocation size (a 32-bit SIZE_T on Win32 wraps at 2GB of text)
@@ -86,7 +86,7 @@ BOOL TextView::OnCopy()
 		{
 			if((ptr = (TCHAR *)GlobalLock(hMem)) != 0)
 			{
-				TextReader reader = m_pTextDoc->text_from_range(&selStart, &selEnd);
+				TextReader reader = m_pTextDoc->text_from_range(selStart, selEnd);
 
 				EmptyClipboard();
 

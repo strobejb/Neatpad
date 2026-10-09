@@ -163,8 +163,8 @@ LONG TextView::OnLButtonDown(UINT nFlags, int mx, int my)
 			RefreshWindow();
 		}
 
-		m_pTextDoc->coord_from_byte_anchor(m_selMarginLine.line_begin, &m_selAnchor);
-		m_pTextDoc->coord_from_byte_anchor(m_selMarginLine.line_next, &coord);
+		m_pTextDoc->coord_from_pos(m_selMarginLine.line_begin, &m_selAnchor);
+		m_pTextDoc->coord_from_pos(m_selMarginLine.line_next, &coord);
 
 		InvalidateRange(&m_selAnchor, &coord);
 
@@ -327,12 +327,12 @@ LONG TextView::OnMouseMove(UINT nFlags, int mx, int my)
 		{
 			if(coord.line_begin >= m_selMarginLine.line_begin)
 			{
-				m_pTextDoc->coord_from_byte_anchor(m_selMarginLine.line_begin, &m_selAnchor);
-				m_pTextDoc->coord_from_byte_anchor(coord.line_next, &coord);
+				m_pTextDoc->coord_from_pos(m_selMarginLine.line_begin, &m_selAnchor);
+				m_pTextDoc->coord_from_pos(coord.line_next, &coord);
 			}
 			else
 			{
-				m_pTextDoc->coord_from_byte_anchor(m_selMarginLine.line_next, &m_selAnchor);
+				m_pTextDoc->coord_from_pos(m_selMarginLine.line_next, &m_selAnchor);
 			}
 		}
 
@@ -340,7 +340,7 @@ LONG TextView::OnMouseMove(UINT nFlags, int mx, int my)
 		UpdateLine(&coord);
 
 		// update the region of text that has changed selection state
-		fCurChanged = coord.byte_anchor != m_cursorPos.byte_anchor;
+		fCurChanged = coord != m_cursorPos;
 
 		if(fCurChanged)
 		{
@@ -569,8 +569,8 @@ LONG TextView::InvalidateLine(TextCoord *line, bool forceAnalysis)
 //
 LONG TextView::InvalidateRange(TextCoord *startCoord, TextCoord *finishCoord)
 {
-	size_w start  = min(startCoord->byte_anchor, finishCoord->byte_anchor);
-	size_w finish = max(startCoord->byte_anchor, finishCoord->byte_anchor);
+	TextPos start  = *startCoord < *finishCoord ? *startCoord : *finishCoord;
+	TextPos finish = *startCoord < *finishCoord ? *finishCoord : *startCoord;
 
 	ULONG row;
 	RECT  rect;
@@ -590,8 +590,8 @@ LONG TextView::InvalidateRange(TextCoord *startCoord, TextCoord *finishCoord)
 	// all output is double-buffered now, and this method is much simpler
 	for(row = 0; row < (ULONG)m_nWindowLines; row++)
 	{
-		size_w lineStart = lineCoord.line_begin;
-		size_w lineEnd = lineCoord.line_next;
+		TextPos lineStart = lineCoord.line_begin;
+		TextPos lineEnd   = lineCoord.line_next;
 
 		if(lineEnd >= start && lineStart <= finish)
 		{
@@ -686,7 +686,7 @@ VOID TextView::UpdateCaretCoord(TextCoord *coord, BOOL fTrailing, int *outx)
 
 	if(coord)
 	{
-		off_chars = coord->line_offset_chars;
+		off_chars = coord->column;
 		m_cursorPos = *coord;
 
 		// locate the USPDATA for this line

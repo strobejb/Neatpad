@@ -36,7 +36,7 @@ static size_t size_min(size_t a, size_t b)
 //
 //	Returns number of bytes processed from utf8str
 //
-size_t utf8_to_utf32(UTF8 *utf8str, size_t utf8len, UTF32 *pch32)
+size_t utf8_to_utf32(const UTF8 *utf8str, size_t utf8len, UTF32 *pch32)
 {
 	UTF8   ch       = *utf8str++;
 	UTF32  val32    = 0;	
@@ -140,7 +140,7 @@ size_t utf8_to_utf32(UTF8 *utf8str, size_t utf8len, UTF32 *pch32)
 //
 //	Returns number of bytes processed from utf16str.
 //
-size_t utf16_to_utf32_char(UTF8 *utf16str, size_t utf16len, UTF32 *pch32)
+size_t utf16_to_utf32_char(const UTF8 *utf16str, size_t utf16len, UTF32 *pch32)
 {
 	UTF32 ch;
 
@@ -176,7 +176,7 @@ size_t utf16_to_utf32_char(UTF8 *utf16str, size_t utf16len, UTF32 *pch32)
 //
 //	Returns number of bytes processed from utf16str.
 //
-size_t utf16be_to_utf32_char(UTF8 *utf16str, size_t utf16len, UTF32 *pch32)
+size_t utf16be_to_utf32_char(const UTF8 *utf16str, size_t utf16len, UTF32 *pch32)
 {
 	UTF32 ch;
 
@@ -213,7 +213,7 @@ size_t utf16be_to_utf32_char(UTF8 *utf16str, size_t utf16len, UTF32 *pch32)
 //
 //	Returns number of bytes processed from utf32str.
 //
-size_t utf32_to_utf32_char(UTF8 *utf32str, size_t utf32len, UTF32 *pch32)
+size_t utf32_to_utf32_char(const UTF8 *utf32str, size_t utf32len, UTF32 *pch32)
 {
 	UTF32 ch;
 
@@ -236,7 +236,7 @@ size_t utf32_to_utf32_char(UTF8 *utf32str, size_t utf32len, UTF32 *pch32)
 //
 //	Returns number of bytes processed from utf32str.
 //
-size_t utf32be_to_utf32_char(UTF8 *utf32str, size_t utf32len, UTF32 *pch32)
+size_t utf32be_to_utf32_char(const UTF8 *utf32str, size_t utf32len, UTF32 *pch32)
 {
 	UTF32 ch;
 
@@ -266,7 +266,7 @@ size_t utf32be_to_utf32_char(UTF8 *utf32str, size_t utf32len, UTF32 *pch32)
 //
 //	Returns number of bytes processed, counting back from the end of utf8str
 //
-size_t utf8_to_utf32_prev(UTF8 *utf8str, size_t utf8len, UTF32 *pch32)
+size_t utf8_to_utf32_prev(const UTF8 *utf8str, size_t utf8len, UTF32 *pch32)
 {
 	size_t start;
 
@@ -318,7 +318,7 @@ static size_t utf8_trailing_bytes(UTF8 ch)
 //
 //	Returns the number of bytes up to the end of the last whole sequence
 //
-size_t utf8_complete_length(UTF8 *utf8str, size_t utf8len)
+size_t utf8_complete_length(const UTF8 *utf8str, size_t utf8len)
 {
 	size_t start;
 
@@ -349,7 +349,7 @@ size_t utf8_complete_length(UTF8 *utf8str, size_t utf8len)
 //
 //	Returns number of bytes processed, counting back from the end of utf16str.
 //
-size_t utf16_to_utf32_prev(UTF8 *utf16str, size_t utf16len, UTF32 *pch32)
+size_t utf16_to_utf32_prev(const UTF8 *utf16str, size_t utf16len, UTF32 *pch32)
 {
 	UTF32 ch;
 
@@ -382,7 +382,7 @@ size_t utf16_to_utf32_prev(UTF8 *utf16str, size_t utf16len, UTF32 *pch32)
 //
 //	Returns number of bytes processed, counting back from the end of utf16str.
 //
-size_t utf16be_to_utf32_prev(UTF8 *utf16str, size_t utf16len, UTF32 *pch32)
+size_t utf16be_to_utf32_prev(const UTF8 *utf16str, size_t utf16len, UTF32 *pch32)
 {
 	UTF32 ch;
 
@@ -488,10 +488,10 @@ size_t utf32_to_utf8(UTF8 *utf8str, size_t utf8len, UTF32 ch32)
 //
 //	Returns the number of bytes processed from utf8str
 //
-size_t utf8_to_utf16(UTF8 *utf8str, size_t utf8len, UTF16 *utf16str, size_t *utf16len)
+size_t utf8_to_utf16(const UTF8 *utf8str, size_t utf8len, UTF16 *utf16str, size_t *utf16len)
 {
 	UTF16 *utf16start = utf16str;
-	UTF8  *utf8start  = utf8str;
+	const UTF8  *utf8start  = utf8str;
 
 	size_t len;
 	size_t tmp16len;
@@ -535,9 +535,9 @@ size_t utf8_to_utf16(UTF8 *utf8str, size_t utf8len, UTF16 *utf16str, size_t *utf
 //
 //	Returns the number of characters (UTF16s) processed from utf16str
 //
-size_t utf16_to_utf8(UTF16 *utf16str, size_t utf16len, UTF8 *utf8str, size_t *utf8len)
+size_t utf16_to_utf8(const UTF16 *utf16str, size_t utf16len, UTF8 *utf8str, size_t *utf8len)
 {
-	UTF16 * utf16start = utf16str;
+	const UTF16 * utf16start = utf16str;
 	UTF8  * utf8start  = utf8str;
 	size_t  len;
 	size_t  len16;
@@ -579,7 +579,7 @@ size_t utf16_to_utf8(UTF16 *utf16str, size_t utf16len, UTF8 *utf8str, size_t *ut
 //
 //	returns number of WCHARs processed from src
 //
-size_t copy_utf16(UTF16 *src, size_t srclen, UTF16 *dest, size_t *destlen)
+size_t copy_utf16(const UTF16 *src, size_t srclen, UTF16 *dest, size_t *destlen)
 {
 	size_t len = size_min(*destlen, srclen);
 	memcpy(dest, src, len * sizeof(UTF16));
@@ -602,7 +602,7 @@ size_t copy_utf16(UTF16 *src, size_t srclen, UTF16 *dest, size_t *destlen)
 //
 //	Returns number of WCHARs processed from src
 //
-size_t swap_utf16(UTF16 *src, size_t srclen, UTF16 *dest, size_t *destlen)
+size_t swap_utf16(const UTF16 *src, size_t srclen, UTF16 *dest, size_t *destlen)
 {
 	size_t len = size_min(*destlen, srclen);
 	size_t i;
@@ -627,10 +627,10 @@ size_t swap_utf16(UTF16 *src, size_t srclen, UTF16 *dest, size_t *destlen)
 //
 //	returns number of UTF32s processed from utf32str
 //
-size_t utf32_to_utf16(UTF32 *utf32str, size_t utf32len, UTF16 *utf16str, size_t *utf16len)
+size_t utf32_to_utf16(const UTF32 *utf32str, size_t utf32len, UTF16 *utf16str, size_t *utf16len)
 {
 	UTF16 *utf16start = utf16str;
-	UTF32 *utf32start = utf32str;
+	const UTF32 *utf32start = utf32str;
 
 	while(utf32len > 0 && *utf16len > 0)
 	{
@@ -699,9 +699,9 @@ size_t utf32_to_utf16(UTF32 *utf32str, size_t utf32len, UTF16 *utf16str, size_t 
 //
 //	returns number of UTF16s processed from utf16str
 //
-size_t utf16_to_utf32(UTF16 *utf16str, size_t utf16len, UTF32 *utf32str, size_t *utf32len)
+size_t utf16_to_utf32(const UTF16 *utf16str, size_t utf16len, UTF32 *utf32str, size_t *utf32len)
 {
-	UTF16 *utf16start = utf16str;
+	const UTF16 *utf16start = utf16str;
 	UTF32 *utf32start = utf32str;
 
 	while(utf16len > 0 && *utf32len > 0)
@@ -754,9 +754,9 @@ size_t utf16_to_utf32(UTF16 *utf16str, size_t utf16len, UTF32 *utf32str, size_t 
 //
 //	returns number of UTF16s processed from utf16str
 //
-size_t utf16be_to_utf32(UTF16 *utf16str, size_t utf16len, UTF32 *utf32str, size_t *utf32len)
+size_t utf16be_to_utf32(const UTF16 *utf16str, size_t utf16len, UTF32 *utf32str, size_t *utf32len)
 {
-	UTF16 *utf16start = utf16str;
+	const UTF16 *utf16start = utf16str;
 	UTF32 *utf32start = utf32str;
 
 	while(utf16len > 0 && *utf32len > 0)
@@ -811,10 +811,10 @@ size_t utf16be_to_utf32(UTF16 *utf16str, size_t utf16len, UTF32 *utf32str, size_
 //
 //	Returns the number of bytes processed from utf32str
 //
-static size_t utf32bytes_to_utf16(UTF8 *utf32str, size_t utf32len, UTF16 *utf16str, size_t *utf16len, bool bigendian)
+static size_t utf32bytes_to_utf16(const UTF8 *utf32str, size_t utf32len, UTF16 *utf16str, size_t *utf16len, bool bigendian)
 {
 	UTF16 *utf16start = utf16str;
-	UTF8  *utf32start = utf32str;
+	const UTF8  *utf32start = utf32str;
 	size_t len16;
 	UTF32  ch32;
 
@@ -843,12 +843,12 @@ static size_t utf32bytes_to_utf16(UTF8 *utf32str, size_t utf32len, UTF16 *utf16s
 	return utf32str - utf32start;
 }
 
-size_t utf32le_to_utf16(UTF8 *utf32str, size_t utf32len, UTF16 *utf16str, size_t *utf16len)
+size_t utf32le_to_utf16(const UTF8 *utf32str, size_t utf32len, UTF16 *utf16str, size_t *utf16len)
 {
 	return utf32bytes_to_utf16(utf32str, utf32len, utf16str, utf16len, false);
 }
 
-size_t utf32be_to_utf16(UTF8 *utf32str, size_t utf32len, UTF16 *utf16str, size_t *utf16len)
+size_t utf32be_to_utf16(const UTF8 *utf32str, size_t utf32len, UTF16 *utf16str, size_t *utf16len)
 {
 	return utf32bytes_to_utf16(utf32str, utf32len, utf16str, utf16len, true);
 }
@@ -868,9 +868,9 @@ size_t utf32be_to_utf16(UTF8 *utf32str, size_t utf32len, UTF16 *utf16str, size_t
 //
 //	Returns the number of UTF16s processed from utf16str
 //
-static size_t utf16_to_utf32bytes(UTF16 *utf16str, size_t utf16len, UTF8 *utf32str, size_t *utf32len, bool bigendian)
+static size_t utf16_to_utf32bytes(const UTF16 *utf16str, size_t utf16len, UTF8 *utf32str, size_t *utf32len, bool bigendian)
 {
-	UTF16 *utf16start = utf16str;
+	const UTF16 *utf16start = utf16str;
 	UTF8  *utf32start = utf32str;
 	size_t len;
 	UTF32  ch32;
@@ -911,12 +911,12 @@ static size_t utf16_to_utf32bytes(UTF16 *utf16str, size_t utf16len, UTF8 *utf32s
 	return utf16str - utf16start;
 }
 
-size_t utf16_to_utf32le(UTF16 *utf16str, size_t utf16len, UTF8 *utf32str, size_t *utf32len)
+size_t utf16_to_utf32le(const UTF16 *utf16str, size_t utf16len, UTF8 *utf32str, size_t *utf32len)
 {
 	return utf16_to_utf32bytes(utf16str, utf16len, utf32str, utf32len, false);
 }
 
-size_t utf16_to_utf32be(UTF16 *utf16str, size_t utf16len, UTF8 *utf32str, size_t *utf32len)
+size_t utf16_to_utf32be(const UTF16 *utf16str, size_t utf16len, UTF8 *utf32str, size_t *utf32len)
 {
 	return utf16_to_utf32bytes(utf16str, utf16len, utf32str, utf32len, true);
 }
@@ -949,12 +949,12 @@ size_t utf16_to_utf32be(UTF16 *utf16str, size_t utf16len, UTF8 *utf32str, size_t
 //
 //	Returns number of characters processed from asciistr
 //
-size_t ascii_to_utf16(UTF8 *asciistr, size_t asciilen, UTF16 *utf16str, size_t *utf16len)
+size_t ascii_to_utf16(const UTF8 *asciistr, size_t asciilen, UTF16 *utf16str, size_t *utf16len)
 {
 	size_t len = size_min(*utf16len, asciilen);
 	len = size_min(len, (size_t)INT_MAX);
 
-	MultiByteToWideChar(CP_ACP, 0, (CCHAR*)asciistr, (int)len, (WCHAR *)utf16str, (int)len);
+	MultiByteToWideChar(CP_ACP, 0, (LPCCH)asciistr, (int)len, (WCHAR *)utf16str, (int)len);
 	*utf16len = len;
 	return len;
 }
@@ -972,7 +972,7 @@ size_t ascii_to_utf16(UTF8 *asciistr, size_t asciilen, UTF16 *utf16str, size_t *
 //
 //	Returns number of characters processed from utf16str
 //
-size_t utf16_to_ascii(UTF16 *utf16str, size_t utf16len, UTF8 *asciistr, size_t *asciilen)
+size_t utf16_to_ascii(const UTF16 *utf16str, size_t utf16len, UTF8 *asciistr, size_t *asciilen)
 {
 	size_t len = size_min(utf16len, *asciilen);
 	len = size_min(len, (size_t)INT_MAX);

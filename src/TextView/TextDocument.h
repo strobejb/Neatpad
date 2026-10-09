@@ -26,50 +26,69 @@ class TextDocumentLineIndexProbe;
 //
 //	TextDocument is the boundary between the view and the storage engine.
 //
-//	Positions are TextCoords: byte offsets into the document, plus the UTF-16
-//	position within their own line that TextView lays out. Text is decoded to
+//	Positions are TextPos: byte offsets into the document's text. A TextCoord is
+//	a position with its line cached, as TextView lays it out. Text is decoded to
 //	UTF-16 for the view and encoded back to the file's format on edit.
 //
 //	sequence stores raw bytes. It does not know about the display encoding,
 //	the caret, or the TextView line layout.
 //
 
-// A position in the document. Everything is local to the position's own line, so a
-// coordinate never needs global line numbers or character offsets: those are queries.
-struct TextCoord
+//
+//	A position in the document: a byte offset into its text, after any BOM.
+//	TextPos always falls on a character boundary. The TextDocument issues TestPos objects;
+//	anything made from a raw number (n) has to be explicit with TextPos(n).
+//
+struct TextPos
+{
+	TextPos() : byte_offset(0) {}
+	explicit TextPos(size_w offset) : byte_offset(offset) {}
+
+	bool operator==(TextPos p) const { return byte_offset == p.byte_offset; }
+	bool operator!=(TextPos p) const { return byte_offset != p.byte_offset; }
+	bool operator< (TextPos p) const { return byte_offset <  p.byte_offset; }
+	bool operator<=(TextPos p) const { return byte_offset <= p.byte_offset; }
+	bool operator> (TextPos p) const { return byte_offset >  p.byte_offset; }
+	bool operator>=(TextPos p) const { return byte_offset >= p.byte_offset; }
+
+	// The bytes from p up to this position (p must not come after it). There is
+	// no pos + n: moving through text is the document's job, so a position can't
+	// land part way through a character.
+	size_w operator-(TextPos p) const { return byte_offset - p.byte_offset; }
+
+	size_w byte_offset;
+};
+
+//
+//	A position together with its line, as the view needs it. Everything is local
+//	to the position's own line, so a coordinate never needs global line numbers
+//	or character offsets: those are queries. Only valid until the document
+//	changes; coord_after_change() brings one up to date.
+//
+struct TextCoord : TextPos
 {
 	// The start of the document (and the only position in an empty one)
-	TextCoord()
-		: byte_anchor(0), line_begin(0), line_next(0), line_offset_chars(0)
-	{
-	}
+	TextCoord() : column(0) {}
 
-	// Exact byte position in the document payload, excluding any BOM/header.
-	size_w byte_anchor;
+	// The line holding the position, [line_begin, line_next), its line break included
+	TextPos line_begin;
+	TextPos line_next;
 
-	// Exact byte bounds for the containing physical line, in the same coordinate
-	// space as byte_anchor. These avoid rediscovering the local line span when
-	// moving/rendering around the anchor.
-	size_w line_begin;
-	size_w line_next;
-
-	// Exact UTF-16 code-unit offset from line_begin to byte_anchor.
-	size_w line_offset_chars; 
+	// UTF-16 code units from line_begin to the position, as the status bar's "Col"
+	// and Qt's QTextCursor::columnNumber() count them: a surrogate pair is two,
+	// a tab is one. Never between the halves of a pair.
+	size_w  column;
 };
 
-struct TextRange
-{
-	TextCoord anchor;
-	TextCoord active;
-};
-
-// One change to the document, in document bytes (excluding any BOM/header):
-// bytes [offset, offset + erased) were replaced by [offset, offset + inserted).
+//
+//	One change to the document: the bytes [at, at + erased) were replaced by
+//	[at, at + inserted)
+//
 struct TextChange
 {
-	size_w offset;
-	size_w erased;
-	size_w inserted;
+	TextPos at;
+	size_w  erased;
+	size_w  inserted;
 };
 
 // Byte-backed reader which decodes UTF-16 text for callers.
@@ -129,32 +148,38 @@ public:
 	void	undo_group_end();
 	void	undo_group_break();
 
-	// Edits by coordinate. A range is [from, to) in either order; each returns the bytes
+	// Edits by position. A range is [from, to) in either order; each returns the bytes
 	// it inserted (insert/replace) or erased (erase), and can report the bytes it changed
-	// so callers can move their TextCoords across it.
-	size_w	insert_text  (const TextCoord *at, textchar *text, uint32_t length, TextChange *change);
-	size_w	replace_text (const TextCoord *from, const TextCoord *to, textchar *text, uint32_t length, TextChange *change);
-	size_w	erase_text   (const TextCoord *from, const TextCoord *to, TextChange *change);
+	// so callers can move their positions across it.
+	size_w	insert_text  (TextPos at, const textchar *text, uint32_t length, TextChange *change);
+	size_w	replace_text (TextPos from, TextPos to, const textchar *text, uint32_t length, TextChange *change);
+	size_w	erase_text   (TextPos from, TextPos to, TextChange *change);
 
 	//
 	//	Coordinates
 	//
-	bool  coord_from_byte_anchor(size_w byte_anchor, TextCoord *coord);
-	bool  coord_from_document_end(TextCoord *coord);
-	bool  coord_from_line_pos(TextCoord *line, size_w line_offset_chars, TextCoord *coord);
-	bool  previous_line_from_coord(TextCoord *coord, uint32_t num_lines, TextCoord *line);
-	bool  next_line_from_coord(TextCoord *coord, uint32_t num_lines, TextCoord *line);
 
-	// Move a coordinate across a change and refresh its line bounds. A coordinate
-	// exactly at the change offset stays before any inserted text.
+	// The coordinate of a position: the one place a position gains its line.
+	bool  coord_from_pos(TextPos pos, TextCoord *coord);
+	bool  coord_from_document_end(TextCoord *coord);
+
+	// The coordinate at a UTF-16 column of a line. A column part way through a
+	// character (between the halves of a surrogate pair) moves back to its start.
+	bool  coord_from_line_pos(const TextCoord *line, size_w column, TextCoord *coord);
+	bool  previous_line_from_coord(const TextCoord *coord, uint32_t num_lines, TextCoord *line);
+	bool  next_line_from_coord(const TextCoord *coord, uint32_t num_lines, TextCoord *line);
+
+	// Move a position, or a coordinate (refreshing its line), across a change. One
+	// exactly at the change stays before any inserted text.
+	TextPos pos_after_change(TextPos pos, const TextChange *change);
 	bool  coord_after_change(TextCoord *coord, const TextChange *change);
 
 	// Line numbers are a query, never stored in a coordinate. Returns an estimate when *exact is false.
-	size_w lineno_from_coord(const TextCoord *coord, bool *exact);
+	size_w lineno_from_pos(TextPos pos, bool *exact);
 
-	// UTF-16 offset of a coordinate from the start of the document. Only fixed-width
+	// UTF-16 offset of a position from the start of the document. Only fixed-width
 	// encodings can answer without scanning the file; the others return false.
-	bool  charoffset_from_coord(const TextCoord *coord, size_w *offset_chars);
+	bool  charoffset_from_pos(TextPos pos, size_w *offset_chars);
 
 	// The line break ending a coordinate's line: TXL_CRLF, TXL_LF or TXL_CR, or 0 for a last line without one.
 	uint32_t linebreak_from_coord(const TextCoord *line);
@@ -162,9 +187,11 @@ public:
 	//
 	//	Text access
 	//
-	TextReader text_from_range(const TextCoord *from, const TextCoord *to);
-	uint32_t getline(TextCoord &coord, textchar *buf, uint32_t buflen);
-	bool  find_text(textchar *text, uint32_t length, size_w from, size_w to, bool backwards, bool matchcase, size_w *match, size_w *match_length);
+	TextReader text_from_range(TextPos from, TextPos to);
+	uint32_t getline(const TextCoord &line, textchar *buf, uint32_t buflen);
+
+	// Find text within [from, to), from 'to' backwards if asked, and report where the match begins and ends.
+	bool  find_text(const textchar *text, uint32_t length, TextPos from, TextPos to, bool backwards, bool matchcase, TextPos *match_begin, TextPos *match_end);
 
 	//
 	//	Document facts
@@ -182,7 +209,7 @@ public:
 	size_w byte_length();
 	size_w file_length();
 
-	// Length of the document in UTF-16 units, where that is cheap (as charoffset_from_coord).
+	// Length of the document in UTF-16 units, where that is cheap (as charoffset_from_pos).
 	bool  charcount(size_w *chars);
 
 private:
@@ -200,17 +227,17 @@ private:
 	//
 	bool unit_before(size_w offset_bytes, uint32_t *ch, uint32_t *size);
 	bool line_bounds_from_offset(size_w offset_bytes, size_w *line_begin, size_w *line_next);
-	void coord_in_line(size_w line_begin, size_w line_next, size_w line_offset_chars, TextCoord *coord);
-	bool find_text_nocase(textchar *text, uint32_t length, size_w from, size_w to, bool backwards, size_w *match, size_w *match_length);
+	void coord_in_line(size_w line_begin, size_w line_next, size_w column, TextCoord *coord);
+	bool find_text_nocase(const textchar *text, uint32_t length, size_w from, size_w to, bool backwards, size_w *match, size_w *match_length);
 
 	//
 	//	UTF-16 / backing-byte conversion
 	//
-	size_w count_chars(size_w offset_bytes, size_w length_chars);
+	size_w count_chars(size_w offset_bytes, size_w *length_chars);
 	size_w count_code_units(size_w offset_bytes, size_w length_bytes);
 	bool   charoffset_from_bytes(size_w offset_bytes, size_w *offset_chars);
 
-	size_t utf16_to_rawdata(textchar *utf16str, size_t utf16len, uint8_t *rawdata, size_t *rawlen);
+	size_t utf16_to_rawdata(const textchar *utf16str, size_t utf16len, uint8_t *rawdata, size_t *rawlen);
 	size_t rawdata_to_utf16(uint8_t *rawdata, size_t rawlen, textchar *utf16str, size_t *utf16len);
 	size_t rawdata_complete_length(uint8_t *rawdata, size_t rawlen);
 
@@ -227,8 +254,8 @@ private:
 	//	Raw editing
 	//
 
-	size_w	insert_raw(size_w offset_bytes, textchar *text, uint32_t length);
-	size_w	replace_raw(size_w offset_bytes, textchar *text, uint32_t length, size_w erase_bytes);
+	size_w	insert_raw(size_w offset_bytes, const textchar *text, uint32_t length);
+	size_w	replace_raw(size_w offset_bytes, const textchar *text, uint32_t length, size_w erase_bytes);
 	void	event_change(TextChange *change);
 
 

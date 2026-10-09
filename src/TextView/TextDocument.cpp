@@ -390,7 +390,7 @@ size_w TextDocument::file_length()
 //	the start when searching forwards, the end when searching backwards -
 //	the edge a match needs once that unit is the oldest in the window.
 //
-bool TextDocument::find_text_nocase(textchar *text, uint32_t length, size_w from, size_w to, bool backwards, size_w *match, size_w *match_length)
+bool TextDocument::find_text_nocase(const textchar *text, uint32_t length, size_w from, size_w to, bool backwards, size_w *match, size_w *match_length)
 {
 	size_w    docLength = byte_length();
 	size_w    offset;
@@ -454,7 +454,7 @@ bool TextDocument::find_text_nocase(textchar *text, uint32_t length, size_w from
 				edges[slot]  = offset;
 				used         = min_of(used + 1, length);
 
-				if(used == length && utf16_equal_nocase((UTF16 *)(window + slot), (UTF16 *)text, length))
+				if(used == length && utf16_equal_nocase((const UTF16 *)(window + slot), (const UTF16 *)text, length))
 				{
 					lastSlot = slot == 0 ? length - 1 : slot - 1;
 
@@ -495,7 +495,7 @@ bool TextDocument::find_text_nocase(textchar *text, uint32_t length, size_w from
 
 				used = min_of(used + 1, length);
 
-				if(used == length && utf16_equal_nocase((UTF16 *)(window + slot), (UTF16 *)text, length))
+				if(used == length && utf16_equal_nocase((const UTF16 *)(window + slot), (const UTF16 *)text, length))
 				{
 					*match        = edges[slot];
 					*match_length = offset + bytes - *match;
@@ -512,15 +512,18 @@ bool TextDocument::find_text_nocase(textchar *text, uint32_t length, size_w from
 	return matched;
 }
 
-bool TextDocument::find_text(textchar *text, uint32_t length, size_w from, size_w to, bool backwards, bool matchcase, size_w *match, size_w *match_length)
+bool TextDocument::find_text(const textchar *text, uint32_t length, TextPos from_pos, TextPos to_pos, bool backwards, bool matchcase, TextPos *match_begin, TextPos *match_end)
 {
 	const size_w chunkSize = 0x10000;
 
+	size_w from = from_pos.byte_offset;
+	size_w to   = to_pos.byte_offset;
 	size_w docLength = byte_length();
 	size_w patternLength;
 	size_w chunkStart;
 	size_w startLimit;
 	size_w found = 0;
+	size_w foundLength = 0;
 	size_t rawCapacity;
 	size_t rawLength;
 	size_t copied;
@@ -534,11 +537,18 @@ bool TextDocument::find_text(textchar *text, uint32_t length, size_w from, size_
 
 	bool   matched = false;
 
-	if(text == 0 || length == 0 || match == 0 || match_length == 0)
+	if(text == 0 || length == 0 || match_begin == 0 || match_end == 0)
 		return false;
 
 	if(!matchcase)
-		return find_text_nocase(text, length, from, to, backwards, match, match_length);
+	{
+		if(!find_text_nocase(text, length, from, to, backwards, &found, &foundLength))
+			return false;
+
+		*match_begin = TextPos(found);
+		*match_end   = TextPos(found + foundLength);
+		return true;
+	}
 
 	rawCapacity = (size_t)length * 4;
 	if(rawCapacity < length || rawCapacity == 0)
@@ -636,8 +646,8 @@ bool TextDocument::find_text(textchar *text, uint32_t length, size_w from, size_
 
 	if(matched)
 	{
-		*match = found;
-		*match_length = patternLength;
+		*match_begin = TextPos(found);
+		*match_end   = TextPos(found + patternLength);
 	}
 
 	delete[] block;
@@ -645,11 +655,11 @@ bool TextDocument::find_text(textchar *text, uint32_t length, size_w from, size_
 	return matched;
 }
 
-TextReader TextDocument::text_from_range(const TextCoord *from, const TextCoord *to)
+TextReader TextDocument::text_from_range(TextPos from, TextPos to)
 {
-	size_w offset = min_of(from->byte_anchor, to->byte_anchor);
+	TextPos begin = min_of(from, to);
 
-	return TextReader(offset, max_of(from->byte_anchor, to->byte_anchor) - offset, this);
+	return TextReader(begin.byte_offset, max_of(from, to) - begin, this);
 }
 
 TextReader::TextReader()
@@ -700,16 +710,17 @@ TextReader::TextReader(size_w off, size_w len, TextDocument *td)
 }
 
 //
-//	Retrieve the entire line containing coord
+//	Retrieve the whole of a coordinate's line
 //
-uint32_t TextDocument::getline(TextCoord &coord, textchar *buf, uint32_t buflen)
+uint32_t TextDocument::getline(const TextCoord &line, textchar *buf, uint32_t buflen)
 {
-	size_w len_bytes = coord.line_next >= coord.line_begin ? coord.line_next - coord.line_begin : 0;
+	size_w begin     = line.line_begin.byte_offset;
+	size_w len_bytes = line.line_next >= line.line_begin ? line.line_next - line.line_begin : 0;
 
-	if(coord.line_begin + len_bytes > m_seq.size() - m_nHeaderSize)
-		len_bytes = m_seq.size() - m_nHeaderSize - coord.line_begin;
+	if(begin + len_bytes > byte_length())
+		len_bytes = byte_length() - begin;
 
-	decode_text(coord.line_begin, len_bytes, buf, &buflen);
+	decode_text(begin, len_bytes, buf, &buflen);
 	return buflen;
 }
 
@@ -790,37 +801,37 @@ size_t TextDocument::rawdata_complete_length(uint8_t *rawdata, size_t rawlen)
 //
 //	returns number of WCHARs processed from utf16str
 //
-size_t TextDocument::utf16_to_rawdata(textchar *utf16str, size_t utf16len, uint8_t *rawdata, size_t *rawlen)
+size_t TextDocument::utf16_to_rawdata(const textchar *utf16str, size_t utf16len, uint8_t *rawdata, size_t *rawlen)
 {
 	switch(m_nFileFormat)
 	{
 	// convert from UTF16 -> ASCII
 	case NCP_ASCII:
-		return utf16_to_ascii((UTF16 *)utf16str, utf16len, rawdata, rawlen);
+		return utf16_to_ascii((const UTF16 *)utf16str, utf16len, rawdata, rawlen);
 		
 	// convert from UTF16 -> UTF8
 	case NCP_UTF8:
-		return utf16_to_utf8((UTF16 *)utf16str, utf16len, rawdata, rawlen);
+		return utf16_to_utf8((const UTF16 *)utf16str, utf16len, rawdata, rawlen);
 
 	// already unicode, do a straight memory copy
 	case NCP_UTF16:
 		*rawlen /= sizeof(UTF16);
-		utf16len = copy_utf16((UTF16 *)utf16str, utf16len, (UTF16 *)rawdata, rawlen);
+		utf16len = copy_utf16((const UTF16 *)utf16str, utf16len, (UTF16 *)rawdata, rawlen);
 		*rawlen *= sizeof(UTF16);
 		return utf16len;
 
 	// need to convert from big-endian to little-endian
 	case NCP_UTF16BE:
 		*rawlen /= sizeof(UTF16);
-		utf16len = swap_utf16((UTF16 *)utf16str, utf16len, (UTF16 *)rawdata, rawlen);
+		utf16len = swap_utf16((const UTF16 *)utf16str, utf16len, (UTF16 *)rawdata, rawlen);
 		*rawlen *= sizeof(UTF16);
 		return utf16len;
 
 	case NCP_UTF32:
-		return utf16_to_utf32le((UTF16 *)utf16str, utf16len, rawdata, rawlen);
+		return utf16_to_utf32le((const UTF16 *)utf16str, utf16len, rawdata, rawlen);
 
 	case NCP_UTF32BE:
-		return utf16_to_utf32be((UTF16 *)utf16str, utf16len, rawdata, rawlen);
+		return utf16_to_utf32be((const UTF16 *)utf16str, utf16len, rawdata, rawlen);
 
 	// error! we should *never* reach this point
 	default:
@@ -835,7 +846,7 @@ size_t TextDocument::utf16_to_rawdata(textchar *utf16str, size_t utf16len, uint8
 //
 //	returns number of BYTEs stored
 //
-size_w TextDocument::insert_raw(size_w offset_bytes, textchar *text, uint32_t length)
+size_w TextDocument::insert_raw(size_w offset_bytes, const textchar *text, uint32_t length)
 {
 	uint8_t  buf[0x100];
 	size_t buflen;
@@ -861,7 +872,7 @@ size_w TextDocument::insert_raw(size_w offset_bytes, textchar *text, uint32_t le
 	return rawlen;
 }
 
-size_w TextDocument::replace_raw(size_w offset_bytes, textchar *text, uint32_t length, size_w erase_bytes)
+size_w TextDocument::replace_raw(size_w offset_bytes, const textchar *text, uint32_t length, size_w erase_bytes)
 {
 	uint8_t  buf[0x100];
 	size_t buflen;
@@ -890,60 +901,55 @@ size_w TextDocument::replace_raw(size_w offset_bytes, textchar *text, uint32_t l
 }
 
 //
-//	return number of bytes comprising 'length_chars' characters
-//	in the underlying raw file
+//	The number of bytes taken by up to *length_chars UTF-16 units of text from
+//	offset_bytes. Only whole characters are counted: a surrogate pair the count
+//	would split is left out. On return *length_chars holds the units counted.
 //
-size_w TextDocument::count_chars(size_w offset_bytes, size_w length_chars)
+size_w TextDocument::count_chars(size_w offset_bytes, size_w *length_chars)
 {
 	size_w rawLength = m_seq.size() - m_nHeaderSize;
+	size_w wanted = *length_chars;
+	size_w remaining = wanted;
+	size_w offset_start = offset_bytes;
+	uint32_t ch32;
 
 	switch(m_nFileFormat)
 	{
 	case NCP_ASCII:
-		return length_chars;
+		return wanted;
 
 	case NCP_UTF16:
 	case NCP_UTF16BE:
-		return length_chars * sizeof(UTF16);
+		offset_bytes += wanted * sizeof(UTF16);
+
+		// ending between the halves of a pair? leave the pair out
+		if(wanted > 0 && decode_char(offset_bytes - sizeof(UTF16), 2 * sizeof(UTF16), &ch32) == 2 * sizeof(UTF16))
+		{
+			offset_bytes -= sizeof(UTF16);
+			*length_chars = wanted - 1;
+		}
+
+		return offset_bytes - offset_start;
 
 	default:
 		break;
 	}
 
-	size_w offset_start = offset_bytes;
-
-	while(length_chars && offset_bytes < rawLength)
+	while(remaining && offset_bytes < rawLength)
 	{
 		textchar buf[0x100];
-		uint32_t charlen = (uint32_t)min_of(length_chars, (size_w)0x100);
-		size_w   bytelen;
+		uint32_t charlen = (uint32_t)min_of(remaining, (size_w)0x100);
+		size_w   bytelen = decode_text(offset_bytes, rawLength - offset_bytes, buf, &charlen);
 
-		bytelen = decode_text(offset_bytes, rawLength - offset_bytes, buf, &charlen);
-
+		// nothing fits: the next character is a surrogate pair and one unit is left
 		if(bytelen == 0 || charlen == 0)
-		{
-			uint32_t  ch32 = 0;
-			size_w   chlen = decode_char(offset_bytes, (size_t)min_of(rawLength - offset_bytes, (size_w)16), &ch32);
-			uint32_t units = ch32 > 0xffff ? 2 : 1;
+			break;
 
-			if(chlen == 0)
-				break;
-
-			// A UTF-16 offset can point inside a surrogate pair encoded as one raw character.
-			offset_bytes += chlen;
-
-			if(length_chars > units)
-				length_chars -= units;
-			else
-				length_chars = 0;
-
-			continue;
-		}
-
-		length_chars -= charlen;
+		remaining    -= charlen;
 		offset_bytes += bytelen;
 	}
 
+	*length_chars = wanted - remaining;
 	return offset_bytes - offset_start;
 }
 
@@ -970,16 +976,16 @@ size_w TextDocument::count_code_units(size_w offset_bytes, size_w length_bytes)
 }
 
 //
-//	Insert text at a coordinate
+//	Insert text at a position
 //
-size_w TextDocument::insert_text(const TextCoord *at, textchar *text, uint32_t length, TextChange *change)
+size_w TextDocument::insert_text(TextPos at, const textchar *text, uint32_t length, TextChange *change)
 {
 	size_w old_size = m_seq.size();
-	size_w rawlen   = insert_raw(at->byte_anchor, text, length);
+	size_w rawlen   = insert_raw(at.byte_offset, text, length);
 
 	if(change)
 	{
-		change->offset = at->byte_anchor;
+		change->at = at;
 		change->erased = 0;
 		change->inserted = m_seq.size() - old_size;
 	}
@@ -988,19 +994,19 @@ size_w TextDocument::insert_text(const TextCoord *at, textchar *text, uint32_t l
 }
 
 //
-//	Replace the text between two coordinates
+//	Replace the text between two positions
 //
-size_w TextDocument::replace_text(const TextCoord *from, const TextCoord *to, textchar *text, uint32_t length, TextChange *change)
+size_w TextDocument::replace_text(TextPos from, TextPos to, const textchar *text, uint32_t length, TextChange *change)
 {
-	size_w offset      = min_of(from->byte_anchor, to->byte_anchor);
-	size_w erase_bytes = max_of(from->byte_anchor, to->byte_anchor) - offset;
+	TextPos begin      = min_of(from, to);
+	size_w erase_bytes = max_of(from, to) - begin;
 	size_w old_size    = m_seq.size();
-	size_w rawlen      = replace_raw(offset, text, length, erase_bytes);
+	size_w rawlen      = replace_raw(begin.byte_offset, text, length, erase_bytes);
 
 	// The sequence clamps a replace that runs past the end, so measure what it erased.
 	if(change)
 	{
-		change->offset = offset;
+		change->at = begin;
 		change->erased = old_size + rawlen - m_seq.size();
 		change->inserted = rawlen;
 	}
@@ -1009,20 +1015,20 @@ size_w TextDocument::replace_text(const TextCoord *from, const TextCoord *to, te
 }
 
 //
-//	Erase the text between two coordinates
+//	Erase the text between two positions
 //
-size_w TextDocument::erase_text(const TextCoord *from, const TextCoord *to, TextChange *change)
+size_w TextDocument::erase_text(TextPos from, TextPos to, TextChange *change)
 {
-	size_w offset = min_of(from->byte_anchor, to->byte_anchor);
-	size_w erase_bytes = max_of(from->byte_anchor, to->byte_anchor) - offset;
-	size_w erased = 0;
+	TextPos begin      = min_of(from, to);
+	size_w erase_bytes = max_of(from, to) - begin;
+	size_w erased      = 0;
 
-	if(erase_bytes && m_seq.erase(offset + m_nHeaderSize, erase_bytes))
+	if(erase_bytes && m_seq.erase(begin.byte_offset + m_nHeaderSize, erase_bytes))
 		erased = erase_bytes;
 
 	if(change)
 	{
-		change->offset = offset;
+		change->at = begin;
 		change->erased = erased;
 		change->inserted = 0;
 	}
@@ -1044,7 +1050,7 @@ void TextDocument::event_change(TextChange *change)
 
 	m_seq.event_change(&offset, &erased, &inserted);
 
-	change->offset = offset > (size_w)m_nHeaderSize ? offset - m_nHeaderSize : 0;
+	change->at = TextPos(offset > (size_w)m_nHeaderSize ? offset - m_nHeaderSize : 0);
 	change->erased = erased;
 	change->inserted = inserted;
 }
