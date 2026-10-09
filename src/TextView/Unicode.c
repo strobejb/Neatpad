@@ -342,6 +342,35 @@ size_t utf8_complete_length(const UTF8 *utf8str, size_t utf8len)
 }
 
 //
+//	utf8_is_valid
+//
+//	Whether the specified UTF-8 stream of text decodes without errors: nothing
+//	in it becomes a replacement character, unless it was one (EF BF BD) already.
+//	A sequence cut short by the end of the buffer is an error: when more of the
+//	stream follows, leave it out first with utf8_complete_length.
+//
+//	utf8str		- [in]   buffer containing UTF-8 text
+//	utf8len		- [in]   number of code-units (bytes) available in buffer
+//
+bool utf8_is_valid(const UTF8 *utf8str, size_t utf8len)
+{
+	while(utf8len > 0)
+	{
+		UTF32  ch32;
+		size_t len = utf8_to_utf32(utf8str, utf8len, &ch32);
+
+		if(ch32 == UNI_REPLACEMENT_CHAR &&
+		   !(len == 3 && utf8str[0] == 0xEF && utf8str[1] == 0xBF && utf8str[2] == 0xBD))
+			return false;
+
+		utf8str += len;
+		utf8len -= len;
+	}
+
+	return true;
+}
+
+//
 //	utf16_to_utf32_prev
 //
 //	Converts the single codepoint that ends the specified UTF-16LE stream

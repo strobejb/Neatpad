@@ -2299,7 +2299,9 @@ void textdocument_charoffset_only_for_fixed_width()
         bool utf16 = encodings[i] == DOC_UTF16LE_BOM || encodings[i] == DOC_UTF16BE_BOM;
 
         CHECK(write_textdocument_file("abc\r\nxyz", encodings[i], path));
-        CHECK(doc.init(path));
+
+        // ASCII here is ANSI, a byte a character, rather than the UTF-8 it would open as
+        CHECK(encodings[i] == DOC_ASCII ? doc.init(path, NCP_ASCII) : doc.init(path));
 
         // the 'y', six characters in
         CHECK(doc.coord_from_pos(TextPos(utf16 ? 12 : 6), &coord));
@@ -3619,6 +3621,12 @@ void textdocument_open_file_can_be_replaced_but_not_written()
     DeleteFile(newpath);
 }
 
+// Save a document as it is: its own encoding, byte-order mark and line breaks
+bool save_as_is(TextDocument &doc, const TCHAR *path)
+{
+    return doc.save(path, doc.getformat(), doc.has_bom(), 0);
+}
+
 // Write text with a SaveFile, as a save does
 bool save_bytes(const TCHAR *path, const char *text)
 {
@@ -3807,7 +3815,7 @@ void textdocument_save_over_its_own_file_keeps_text_and_undo()
     CHECK(doc_insert(doc, edited.size(), tail, 4) == 4);
     edited += "TAIL";
 
-    CHECK(doc.save(path, doc.getformat(), true, 0));
+    CHECK(save_as_is(doc, path));
     CHECK(read_file(path) == edited);
     CHECK(!doc.modified());
     CHECK(read_document(doc) == std::wstring(edited.begin(), edited.end()));
@@ -3821,7 +3829,7 @@ void textdocument_save_over_its_own_file_keeps_text_and_undo()
     CHECK(read_document(doc) == std::wstring(original.begin(), original.end()));
 
     // which saves as well
-    CHECK(doc.save(path, doc.getformat(), true, 0));
+    CHECK(save_as_is(doc, path));
     CHECK(read_file(path) == original);
     CHECK(!doc.modified());
 
@@ -3882,7 +3890,7 @@ void textdocument_save_with_or_without_the_byte_order_mark()
 
     // ASCII has no byte-order mark to write
     CHECK(write_textdocument_file("ab", DOC_ASCII, path));
-    CHECK(doc.init(path));
+    CHECK(doc.init(path, NCP_ASCII));
     CHECK(!doc.has_bom());
     CHECK(doc.save(path, doc.getformat(), true, 0));
     CHECK(read_file(path) == "ab");
@@ -3951,9 +3959,11 @@ void textdocument_save_converts_the_encoding()
     CHECK(converted.getformat() == NCP_UTF32BE);
     CHECK(read_document(converted) == text);
 
-    // nothing says what this one is, so it has to be opened as UTF-8
+    // without a byte-order mark too
     CHECK(doc.save(newpath, NCP_UTF8, false, 0));
-    CHECK(converted.init(newpath, NCP_UTF8));
+    CHECK(converted.init(newpath));
+    CHECK(converted.getformat() == NCP_UTF8);
+    CHECK(!converted.has_bom());
     CHECK(read_document(converted) == text);
 
     // an encoding that doesn't exist is an error
@@ -4017,19 +4027,19 @@ void textdocument_init_in_a_given_encoding()
 {
     TextDocument doc;
     TCHAR path[MAX_PATH];
-    const char utf8[] = "a\xc3\xa9";
+    const char ansi[] = "caf\xe9";
 
-    CHECK(write_temp_file(utf8, 3, path));
+    CHECK(write_temp_file(ansi, 4, path));
 
-    // without a byte-order mark it opens as ASCII...
+    // not valid UTF-8, so it opens as ASCII...
     CHECK(doc.init(path));
     CHECK(doc.getformat() == NCP_ASCII);
 
-    // ...unless told otherwise
+    // ...unless told otherwise, when its last byte isn't a character
     CHECK(doc.init(path, NCP_UTF8));
     CHECK(doc.getformat() == NCP_UTF8);
     CHECK(!doc.has_bom());
-    CHECK(read_document(doc) == std::wstring(L"a") + static_cast<wchar_t>(0xe9));
+    CHECK(read_document(doc) == std::wstring(L"caf") + static_cast<wchar_t>(0xfffd));
 
     CHECK(!doc.init(path, static_cast<TEXT_ENCODING>(99)));
 
@@ -4065,6 +4075,104 @@ void textdocument_init_in_a_given_encoding()
     DeleteFile(path);
 }
 
+void unicode_utf8_is_valid_only_without_errors()
+{
+    const UTF8 ascii[]    = { 'a', 'b', 'c' };
+    const UTF8 accents[]  = { 'c', 'a', 'f', 0xc3, 0xa9, 0xf0, 0x9f, 0x98, 0x80 };  // cafe, a grinning face
+    const UTF8 fffd[]     = { 'a', 0xef, 0xbf, 0xbd };  // a replacement character, as text
+    const UTF8 ansi[]     = { 'c', 'a', 'f', 0xe9 };  // cafe in Windows-1252
+    const UTF8 stray[]    = { 'a', 0x80, 'b' };  // a trailing byte on its own
+    const UTF8 overlong[] = { 0xc0, 0x80 };  // NUL, longer than it needs to be
+    const UTF8 badlead[]  = { 'a', 0xff };
+    const UTF8 cut[]      = { 'a', 0xe2, 0x82 };  // a euro sign cut short
+
+    CHECK(utf8_is_valid(ascii, sizeof(ascii)));
+    CHECK(utf8_is_valid(accents, sizeof(accents)));
+    CHECK(utf8_is_valid(fffd, sizeof(fffd)));
+    CHECK(utf8_is_valid(ascii, 0));
+
+    CHECK(!utf8_is_valid(ansi, sizeof(ansi)));
+    CHECK(!utf8_is_valid(stray, sizeof(stray)));
+    CHECK(!utf8_is_valid(overlong, sizeof(overlong)));
+    CHECK(!utf8_is_valid(badlead, sizeof(badlead)));
+    CHECK(!utf8_is_valid(cut, sizeof(cut)));
+
+    // unless what cuts it short is left out
+    CHECK(utf8_is_valid(cut, utf8_complete_length(cut, sizeof(cut))));
+}
+
+void textdocument_detects_utf8_without_a_bom()
+{
+    TextDocument doc;
+    TCHAR path[MAX_PATH];
+    std::string text(MEM_BLOCK_SIZE - 1, 'a');
+
+    // valid UTF-8
+    CHECK(write_temp_file("caf\xc3\xa9", 5, path));
+    CHECK(doc.init(path));
+    CHECK(doc.getformat() == NCP_UTF8);
+    CHECK(!doc.has_bom());
+    CHECK(read_document(doc) == std::wstring(L"caf") + static_cast<wchar_t>(0xe9));
+    doc.clear();
+    DeleteFile(path);
+
+    // plain ASCII is valid UTF-8, and so is nothing at all
+    CHECK(write_temp_file("plain", 5, path));
+    CHECK(doc.init(path));
+    CHECK(doc.getformat() == NCP_UTF8);
+    doc.clear();
+    DeleteFile(path);
+
+    CHECK(write_temp_file("", 0, path));
+    CHECK(doc.init(path));
+    CHECK(doc.getformat() == NCP_UTF8);
+    doc.clear();
+    DeleteFile(path);
+
+    // anything else is ANSI
+    CHECK(write_temp_file("caf\xe9 au lait", 12, path));
+    CHECK(doc.init(path));
+    CHECK(doc.getformat() == NCP_ASCII);
+    doc.clear();
+    DeleteFile(path);
+
+    // only the first block is checked: a character it cuts in two is fine,
+    // and what comes after it isn't looked at
+    text += "\xc3\xa9";
+    text += "caf\xe9";
+
+    CHECK(write_temp_file(text.data(), text.size(), path));
+    CHECK(doc.init(path));
+    CHECK(doc.getformat() == NCP_UTF8);
+    doc.clear();
+    DeleteFile(path);
+}
+
+void textdocument_new_document_is_utf8()
+{
+    TextDocument doc;
+    TCHAR path[MAX_PATH];
+    TCHAR newpath[MAX_PATH];
+    const TCHAR text[] = { 'a', 0xe9, '\n', 'b' };
+
+    // after a UTF-16 file, none of which should be left behind
+    CHECK(write_textdocument_file("x\ny", DOC_UTF16LE_BOM, path));
+    CHECK(doc.init(path));
+    CHECK(doc.clear());
+
+    CHECK(doc.getformat() == NCP_UTF8);
+    CHECK(!doc.has_bom());
+    CHECK(doc_insert(doc, 0, text, 4) == 5);
+    CHECK(doc.linecount() == 2);
+
+    CHECK(temp_name(newpath));
+    CHECK(save_as_is(doc, newpath));
+    CHECK(read_file(newpath) == "a\xc3\xa9\nb");
+
+    DeleteFile(path);
+    DeleteFile(newpath);
+}
+
 void textdocument_ascii_turns_what_it_cant_hold_into_question_marks()
 {
     TextDocument doc;
@@ -4088,7 +4196,7 @@ void textdocument_ascii_turns_what_it_cant_hold_into_question_marks()
 
     // typed into an ASCII document, the same
     CHECK(write_textdocument_file("ab", DOC_ASCII, path));
-    CHECK(doc.init(path));
+    CHECK(doc.init(path, NCP_ASCII));
     CHECK(doc_insert(doc, 1, face, 2) == 2);
     CHECK(read_document(doc) == L"a??b");
 
@@ -4118,7 +4226,7 @@ void textdocument_save_keeps_the_files_other_streams()
 
     CHECK(doc.init(path));
     CHECK(doc_insert(doc, 0, x, 1) == 1);
-    CHECK(doc.save(path, doc.getformat(), true, 0));
+    CHECK(save_as_is(doc, path));
 
     CHECK(read_file(path) == "Xabc");
     CHECK(read_file(stream.c_str()) == "settings");
@@ -4429,6 +4537,9 @@ const test_case tests[] =
     { "textdocument_save_converts_line_breaks", textdocument_save_converts_line_breaks },
     { "textdocument_save_keeps_a_crlf_split_between_reads_as_one", textdocument_save_keeps_a_crlf_split_between_reads_as_one },
     { "textdocument_init_in_a_given_encoding", textdocument_init_in_a_given_encoding },
+    { "unicode_utf8_is_valid_only_without_errors", unicode_utf8_is_valid_only_without_errors },
+    { "textdocument_detects_utf8_without_a_bom", textdocument_detects_utf8_without_a_bom },
+    { "textdocument_new_document_is_utf8", textdocument_new_document_is_utf8 },
     { "textdocument_ascii_turns_what_it_cant_hold_into_question_marks", textdocument_ascii_turns_what_it_cant_hold_into_question_marks },
     { "textdocument_save_keeps_the_files_other_streams", textdocument_save_keeps_the_files_other_streams },
     { "textdocument_sequence_index_matches_ascii_after_edits", textdocument_sequence_index_matches_ascii_after_edits },

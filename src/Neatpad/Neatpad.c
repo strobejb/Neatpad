@@ -532,7 +532,7 @@ UINT CommandHandler(HWND hwnd, UINT nCtrlId, UINT nCtrlCode, HWND hwndFrom)
 		// reset to an empty file
 		SetWindowFileName(hwnd, _T("Untitled"), FALSE);
 		TextView_Clear(g_hwndTextView);
-		UpdateStatusBarFileInfo();
+		ShowFileFormat(hwnd);
 
 		g_szFileTitle[0] = '\0';
 		g_fFileChanged   = FALSE;

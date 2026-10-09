@@ -96,6 +96,7 @@ BOOL ShowOpenFileDlg(HWND hwnd, TCHAR *pstrFileName, TCHAR *pstrTitleName);
 BOOL ShowSaveFileDlg(HWND hwnd, TCHAR *pstrFileName, TCHAR *pstrTitleName, SAVEOPTIONS *pOptions);
 void HandleDropFiles(HWND hwnd, HDROP hDrop);
 BOOL NeatpadOpenFile(HWND hwnd, TCHAR *szFile);
+void ShowFileFormat(HWND hwndMain);
 BOOL NeatpadSaveFile(HWND hwnd);
 BOOL NeatpadSaveFileAs(HWND hwnd);
 BOOL QuerySaveChanges(HWND hwnd);

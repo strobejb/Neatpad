@@ -98,7 +98,7 @@ TextDocument::TextDocument()
 {
 //	buffer			= 0;
 
-	m_nFileFormat		= NCP_ASCII;
+	m_nFileFormat		= NCP_UTF8;
 	m_nHeaderSize		= 0;
 	m_fBom				= false;
 }
@@ -220,9 +220,6 @@ bool TextDocument::has_bom()
 
 
 //
-//	Parse the file lo
-//
-//
 //	From the unicode.org FAQ:
 //
 //	00 00 FE FF			UTF-32, big-endian 
@@ -232,9 +229,10 @@ bool TextDocument::has_bom()
 //	EF BB BF			UTF-8 
 //
 //	Match the first x bytes of the file against the
-//  Byte-Order-Mark (BOM) lookup table
+//  Byte-Order-Mark (BOM) lookup table. Without one, the file is UTF-8 if its
+//	start is valid UTF-8 - which plain ASCII is - and ANSI otherwise.
 //
-TEXT_ENCODING TextDocument::detect_file_format(int *m_nHeaderSize)
+TEXT_ENCODING TextDocument::detect_file_format(int *headersize)
 {
 	uint8_t header[4] = { 0 };
 	m_seq.render(0, header, 4);
@@ -244,13 +242,24 @@ TEXT_ENCODING TextDocument::detect_file_format(int *m_nHeaderSize)
 		if(m_seq.size() >= BOMLOOK[i].len &&
 		   memcmp(header, BOMLOOK[i].bom, BOMLOOK[i].len) == 0)
 		{
-			*m_nHeaderSize = BOMLOOK[i].len;
+			*headersize = BOMLOOK[i].len;
 			return BOMLOOK[i].encoding;
 		}
 	}
 
-	*m_nHeaderSize = 0;
-	return NCP_ASCII;	// default to ASCII
+	*headersize = 0;
+
+	// The start is the first block, which opening the file has already read
+	// to count its lines. A character the block cuts short isn't an error:
+	// the rest of it follows.
+	size_w sample = min_of(m_seq.size(), MEM_BLOCK_SIZE);
+	std::vector<uint8_t> start((size_t)sample);
+
+	m_seq.render(0, start.data(), sample);
+
+	size_t whole = sample < m_seq.size() ? utf8_complete_length(start.data(), (size_t)sample) : (size_t)sample;
+
+	return utf8_is_valid(start.data(), whole) ? NCP_UTF8 : NCP_ASCII;
 }
 
 
@@ -262,9 +271,11 @@ bool TextDocument::clear()
 	m_seq.clear();
 	m_seq.init();
 
-	m_nFileFormat = NCP_ASCII;
+	// a new document is UTF-8, without a byte-order mark
+	m_nFileFormat = NCP_UTF8;
 	m_nHeaderSize = 0;
 	m_fBom		  = false;
+	m_seq.set_line_scan_mode(line_scan_mode_from_encoding(m_nFileFormat));
 	return true;
 }
 

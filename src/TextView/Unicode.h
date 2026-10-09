@@ -51,6 +51,11 @@ size_t	utf16be_to_utf32_prev (const UTF8 *utf16str, size_t utf16len, UTF32 *pch3
 size_t	utf8_complete_length (const UTF8 *utf8str, size_t utf8len);
 
 //
+//	Whether a UTF-8 stream decodes without errors
+//
+bool	utf8_is_valid (const UTF8 *utf8str, size_t utf8len);
+
+//
 //	Conversions between UTF-16 and UTF-8 strings
 //
 size_t	utf8_to_utf16 (const UTF8  *utf8str,  size_t utf8len, UTF16 *utf16str, size_t *utf16len);

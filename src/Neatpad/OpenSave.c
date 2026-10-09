@@ -143,16 +143,15 @@ static const UINT g_LineBreaks[] = { 0, TXL_CRLF, TXL_LF, TXL_CR };
 //	Show the byte-order mark choice for the encoding selected. Only UTF-8 is
 //	written either way: UTF-16 and UTF-32 keep their mark, which is the only way
 //	to tell them apart, and ASCII has none. A UTF-8 file starts with its own
-//	choice; one converted to UTF-8 starts with a mark, which is how Neatpad
-//	recognises UTF-8 when it opens the file again.
+//	choice; one converted to UTF-8 starts without a mark, as UTF-8 usually is.
 //
 static void ShowBomChoice(HWND hwnd, const SAVEOPTIONS *pOptions)
 {
 	UINT nEncoding = (UINT)SendDlgItemMessage(hwnd, IDC_ENCODINGLIST, CB_GETCURSEL, 0, 0);
 	BOOL fBom;
 
-	if(nEncoding == NCP_UTF8 && pOptions->nEncoding == NCP_UTF8)
-		fBom = pOptions->fBom;
+	if(nEncoding == NCP_UTF8)
+		fBom = pOptions->nEncoding == NCP_UTF8 && pOptions->fBom;
 	else
 		fBom = nEncoding != NCP_ASCII;
 
@@ -323,7 +322,7 @@ UINT FmtErrorMsg(HWND hwnd, DWORD dwMsgBoxType, DWORD dwError, TCHAR *szFmt, ...
 //
 //	Show the file's encoding: checked in the menu, and in the statusbar
 //
-static void ShowFileFormat(HWND hwndMain)
+void ShowFileFormat(HWND hwndMain)
 {
 	static const UINT fmtlook[] =
 	{
