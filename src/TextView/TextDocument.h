@@ -81,8 +81,11 @@ struct TextCoord : TextPos
 };
 
 //
-//	One change to the document: the bytes [at, at + erased) were replaced by
-//	[at, at + inserted)
+//	Single change event to the document: 
+//   the bytes:
+//     [at, at + erased) 
+//   were replaced by:
+//	   [at, at + inserted)
 //
 struct TextChange
 {
@@ -91,33 +94,35 @@ struct TextChange
 	size_w  inserted;
 };
 
-// Byte-backed reader which decodes UTF-16 text for callers.
+//
+//	Reads a stretch of the document as UTF-16, front to back. Each read ends on
+//	a whole character, never between the halves of a surrogate pair. Like a
+//	TextCoord, only valid until the document changes.
+//
 class TextReader
 {
 public:
-	// default constructor sets all members to zero
+	// A reader with nothing to read
 	TextReader();
 
-	// default copy-constructor
-	TextReader(const TextReader &reader);
-
-	// assignment operator
-	TextReader & operator= (const TextReader &reader);
-
+	// Read up to buflen units: returns how many, or 0 at the end. A surrogate pair
+	// needs room for 2.
 	uint32_t read(textchar *buf, uint32_t buflen);
 
-	operator bool();
+	TextPos pos() const;		// where the next read starts
+	bool    at_end() const;
 
 private:
 	friend class TextDocument;
 
-	TextReader(size_w off, size_w len, TextDocument *td);
+	TextReader(TextDocument *doc, TextPos from, TextPos to);
 
-	TextDocument *text_doc;
-
-	size_w off_bytes;
-	size_w len_bytes;
+	TextDocument *m_doc;
+	TextPos		  m_pos;
+	TextPos		  m_end;
 };
+
+class LineIterator;
 
 class TextDocument
 {
@@ -148,10 +153,12 @@ public:
 	void	undo_group_end();
 	void	undo_group_break();
 
-	// Edits by position. A range is [from, to) in either order; each returns the bytes
+	//
+	// Editing (by position). 
+	// A range is [from, to) in either order; each returns the bytes
 	// it inserted (insert/replace) or erased (erase), and can report the bytes it changed
 	// so callers can move their positions across it.
-	size_w	insert_text  (TextPos at, const textchar *text, uint32_t length, TextChange *change);
+	size_w	insert_text  (TextPos at,               const textchar *text, uint32_t length, TextChange *change);
 	size_w	replace_text (TextPos from, TextPos to, const textchar *text, uint32_t length, TextChange *change);
 	size_w	erase_text   (TextPos from, TextPos to, TextChange *change);
 
@@ -190,17 +197,19 @@ public:
 	TextReader text_from_range(TextPos from, TextPos to);
 	uint32_t getline(const TextCoord &line, textchar *buf, uint32_t buflen);
 
+	// The line holding a position, to walk the document a line at a time
+	LineIterator line_at(TextPos pos);
+
 	// Find text within [from, to), from 'to' backwards if asked, and report where the match begins and ends.
 	bool  find_text(const textchar *text, uint32_t length, TextPos from, TextPos to, bool backwards, bool matchcase, TextPos *match_begin, TextPos *match_end);
 
 	//
-	//	Document facts
+	//	Document info
+	//  linecount() may be estimated until linecount_known() is true.
 	//
-
-	// Document-wide facts. linecount() may be estimated until linecount_known() is true.
 	TEXT_ENCODING getformat();
 	size_w linecount();
-	bool  linecount_known();
+	bool   linecount_known();
 
 	// The kinds of line break found so far (TXL_CRLF, TXL_CR, TXL_LF bits). Covers the
 	// part of the document with exact line numbers, so the whole of it once linecount_known().
@@ -233,9 +242,9 @@ private:
 	//
 	//	UTF-16 / backing-byte conversion
 	//
-	size_w count_chars(size_w offset_bytes, size_w *length_chars);
-	size_w count_code_units(size_w offset_bytes, size_w length_bytes);
-	bool   charoffset_from_bytes(size_w offset_bytes, size_w *offset_chars);
+	size_w count_chars           (size_w offset_bytes, size_w *length_chars);
+	size_w count_code_units      (size_w offset_bytes, size_w  length_bytes);
+	bool   charoffset_from_bytes (size_w offset_bytes, size_w *offset_chars);
 
 	size_t utf16_to_rawdata(const textchar *utf16str, size_t utf16len, uint8_t *rawdata, size_t *rawlen);
 	size_t rawdata_to_utf16(uint8_t *rawdata, size_t rawlen, textchar *utf16str, size_t *utf16len);
@@ -249,6 +258,7 @@ private:
 	size_w decode_text(size_w offset_bytes, size_w lenbytes, textchar *buf, uint32_t *len);
 	size_w decode_char(size_w offset_bytes, size_t lenbytes, uint32_t *pch32);
 	size_w decode_prev_char(size_w offset_bytes, size_w lower_bound, uint32_t *pch32);
+	size_w code_unit_size();
 
 	//
 	//	Raw editing
@@ -266,13 +276,41 @@ private:
 	int    m_nHeaderSize;
 };
 
+//
+//	Walks the document a line at a time, forwards or backwards. It keeps no line
+//	numbers, which are queries; like a TextCoord, only valid until the document
+//	changes.
+//
 class LineIterator
 {
 public:
+	// An iterator on no line: it can't move
 	LineIterator();
 
+	// Step to the next or previous line: false, without moving, at either end.
+	// A final line break is followed by one more, empty, line.
+	bool next();
+	bool prev();
+
+	// The line: its start as the position, with its bounds
+	const TextCoord &line() const;
+
+	// The line break ending the line: TXL_CRLF, TXL_LF, TXL_CR, or 0 for a last line without one
+	uint32_t linebreak() const;
+
+	// The line's text, its line break included, as getline()
+	uint32_t text(textchar *buf, uint32_t buflen) const;
+
+	// The line's text as a stream, for a line too long for one buffer
+	TextReader reader() const;
+
 private:
-	TextDocument *m_pTextDoc;
+	friend class TextDocument;
+
+	LineIterator(TextDocument *doc, const TextCoord &line);
+
+	TextDocument *m_doc;
+	TextCoord	  m_line;
 };
 
 #endif

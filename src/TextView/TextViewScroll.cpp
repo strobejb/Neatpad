@@ -203,27 +203,18 @@ VOID TextView::AdjustCoordsForChange(TextChange *change)
 
 bool TextView::ViewportLineFromRow(ULONG row, TextCoord *coord)
 {
-	TextCoord lineCoord;
+	LineIterator line = m_pTextDoc->line_at(m_scrollVPos);
 
 	if(coord == 0)
 		return false;
 
-	lineCoord = m_scrollVPos;
-
 	while(row-- > 0)
 	{
-		TextCoord nextCoord;
-
-		if(!m_pTextDoc->next_line_from_coord(&lineCoord, 1, &nextCoord))
+		if(!line.next())
 			return false;
-
-		if(nextCoord.line_begin == lineCoord.line_begin)
-			return false;
-
-		lineCoord = nextCoord;
 	}
 
-	*coord = lineCoord;
+	*coord = line.line();
 	return true;
 }
 
@@ -234,25 +225,18 @@ bool TextView::ViewportLineFromRow(ULONG row, TextCoord *coord)
 bool TextView::ViewportRowFromLine(TextCoord *line, ULONG *row)
 {
 	ULONG windowLines = m_nWindowLines > 0 ? (ULONG)m_nWindowLines : 0;
-	TextCoord rowCoord = m_scrollVPos;
+	LineIterator rowLine = m_pTextDoc->line_at(m_scrollVPos);
 
 	for(ULONG r = 0; r <= windowLines; r++)
 	{
-		TextCoord nextCoord;
-
-		if(rowCoord.line_begin == line->line_begin)
+		if(rowLine.line().line_begin == line->line_begin)
 		{
 			*row = r;
 			return true;
 		}
 
-		if(rowCoord.line_begin > line->line_begin)
+		if(rowLine.line().line_begin > line->line_begin || !rowLine.next())
 			return false;
-
-		if(!m_pTextDoc->next_line_from_coord(&rowCoord, 1, &nextCoord) || nextCoord.line_begin == rowCoord.line_begin)
-			return false;
-
-		rowCoord = nextCoord;
 	}
 
 	return false;
@@ -264,7 +248,7 @@ bool TextView::ViewportRowFromLine(TextCoord *line, ULONG *row)
 //
 int TextView::ScrollVByLines(int dy)
 {
-	TextCoord target = m_scrollVPos;
+	LineIterator target = m_pTextDoc->line_at(m_scrollVPos);
 	TextCoord last;
 	int step = dy < 0 ? -1 : 1;
 	int moved = 0;
@@ -274,29 +258,26 @@ int TextView::ScrollVByLines(int dy)
 
 	while(dy != 0)
 	{
-		TextCoord nextCoord;
-
 		if(step < 0)
 		{
-			if(!m_pTextDoc->previous_line_from_coord(&target, 1, &nextCoord))
+			if(!target.prev())
 				break;
 		}
 		else
 		{
-			if(target.line_begin >= last.line_begin || !m_pTextDoc->next_line_from_coord(&target, 1, &nextCoord))
+			if(target.line().line_begin >= last.line_begin || !target.next())
 				break;
 		}
 
-		if(nextCoord.line_begin == target.line_begin)
-			break;
-
-		target = nextCoord;
 		moved += step;
 		dy -= step;
 	}
 
 	if(moved != 0)
-		SetScrollCoord(&target);
+	{
+		TextCoord top = target.line();
+		SetScrollCoord(&top);
+	}
 
 	return moved;
 }
@@ -468,31 +449,21 @@ VOID TextView::ScrollToCoord(int xpos, TextCoord *coord)
 
 	if(coord && windowLines > 0)
 	{
-		TextCoord rowCoord = m_scrollVPos;
+		LineIterator rowLine = m_pTextDoc->line_at(m_scrollVPos);
 
 		for(ULONG row = 0; row < windowLines; row++)
 		{
-			if(rowCoord.line_begin == coord->line_begin)
+			if(rowLine.line().line_begin == coord->line_begin)
 			{
 				coordVisible = true;
 				break;
 			}
 
-			if(rowCoord.line_begin > coord->line_begin)
+			if(rowLine.line().line_begin > coord->line_begin)
 				break;
 
-			if(row + 1 < windowLines)
-			{
-				TextCoord nextCoord;
-
-				if(!m_pTextDoc->next_line_from_coord(&rowCoord, 1, &nextCoord))
-					break;
-
-				if(nextCoord.line_begin == rowCoord.line_begin)
-					break;
-
-				rowCoord = nextCoord;
-			}
+			if(row + 1 < windowLines && !rowLine.next())
+				break;
 		}
 
 		if(!coordVisible)

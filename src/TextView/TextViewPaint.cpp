@@ -186,8 +186,9 @@ LONG TextView::OnPaint()
 	ULONG		first;
 	ULONG		last;
 	TextCoord	lineCoord;
+	LineIterator lines;
 	bool		haveLine;
-	
+
 	HRGN		hrgnUpdate;
 	HDC			hdcMem;
 	HBITMAP		hbmMem;
@@ -218,6 +219,7 @@ LONG TextView::OnPaint()
 
 	// rows past the end of the document have no line
 	haveLine = ViewportLineFromRow(first, &lineCoord);
+	lines = m_pTextDoc->line_at(lineCoord);
 
 	//
 	// draw the display line-by-line
@@ -242,10 +244,8 @@ LONG TextView::OnPaint()
 		// step down to the next line, if there is one
 		if(haveLine)
 		{
-			TextCoord nextCoord;
-
-			haveLine = m_pTextDoc->next_line_from_coord(&lineCoord, 1, &nextCoord) && nextCoord.line_begin != lineCoord.line_begin;
-			lineCoord = nextCoord;
+			haveLine  = lines.next();
+			lineCoord = lines.line();
 		}
 	}
 

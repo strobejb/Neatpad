@@ -3302,6 +3302,172 @@ void textdocument_find_text_reports_begin_and_end()
     DeleteFile(path);
 }
 
+void textreader_reads_whole_characters()
+{
+    TextDocument doc;
+    TCHAR path[MAX_PATH];
+    TCHAR buf[4];
+    TextReader reader;
+
+    // "a", U+1F600, "b"
+    const ULONG utf8[]  = { 0xef, 0xbb, 0xbf, 'a', 0xf0, 0x9f, 0x98, 0x80, 'b' };
+    const ULONG utf16[] = { 0xfeff, 'a', 0xd83d, 0xde00, 'b' };
+    const ULONG utf32[] = { 0xfeff, 'a', 0x1f600, 'b' };
+
+    const struct
+    {
+        const ULONG *units;
+        size_t count;
+        size_t unit_size;
+        bool big_endian;
+        size_w after_a;
+        size_w after_face;
+        size_w after_b;
+    }
+    files[] =
+    {
+        { utf8,  sizeof(utf8) / sizeof(utf8[0]),   1, false, 1, 5, 6  },
+        { utf16, sizeof(utf16) / sizeof(utf16[0]), 2, false, 2, 6, 8  },
+        { utf16, sizeof(utf16) / sizeof(utf16[0]), 2, true,  2, 6, 8  },
+        { utf32, sizeof(utf32) / sizeof(utf32[0]), 4, false, 4, 8, 12 },
+        { utf32, sizeof(utf32) / sizeof(utf32[0]), 4, true,  4, 8, 12 },
+    };
+
+    // nothing to read
+    CHECK(reader.at_end());
+    CHECK(reader.read(buf, 4) == 0);
+
+    for(size_t i = 0; i < sizeof(files) / sizeof(files[0]); i++)
+    {
+        CHECK(write_units_file(files[i].units, files[i].count, files[i].unit_size, files[i].big_endian, path));
+        CHECK(doc.init(path));
+
+        reader = doc.text_from_range(TextPos(0), TextPos(doc.byte_length()));
+
+        // room for "a" and half the pair: only "a" is read
+        CHECK(reader.read(buf, 2) == 1);
+        CHECK(buf[0] == 'a');
+        CHECK(reader.pos() == TextPos(files[i].after_a));
+
+        // no room for the pair at all: nothing is read, but there is more to come
+        CHECK(reader.read(buf, 1) == 0);
+        CHECK(!reader.at_end());
+
+        CHECK(reader.read(buf, 2) == 2);
+        CHECK(buf[0] == 0xd83d && buf[1] == 0xde00);
+        CHECK(reader.pos() == TextPos(files[i].after_face));
+
+        CHECK(reader.read(buf, 4) == 1);
+        CHECK(buf[0] == 'b');
+        CHECK(reader.pos() == TextPos(files[i].after_b));
+        CHECK(reader.at_end());
+        CHECK(reader.read(buf, 4) == 0);
+
+        doc.clear();
+        DeleteFile(path);
+    }
+}
+
+// The whole of a line's text, as the iterator reads it
+std::wstring iterator_text(const LineIterator &line)
+{
+    TCHAR buf[64];
+
+    return std::wstring(buf, line.text(buf, 64));
+}
+
+void lineiterator_walks_lines()
+{
+    TextDocument doc;
+    TCHAR path[MAX_PATH];
+    TCHAR buf[64];
+    TextReader reader;
+
+    // lines start at 0, 5 and 9
+    CHECK(write_textdocument_file("one\r\ntwo\nthree", DOC_ASCII, path));
+    CHECK(doc.init(path));
+
+    // from part way into a line: the iterator is at the line's start
+    LineIterator line = doc.line_at(TextPos(6));
+    CHECK(line.line() == TextPos(5));
+    CHECK(line.line().line_begin == TextPos(5));
+    CHECK(line.line().line_next == TextPos(9));
+    CHECK(line.line().column == 0);
+    CHECK(line.linebreak() == TXL_LF);
+    CHECK(iterator_text(line) == L"two\n");
+
+    CHECK(line.next());
+    CHECK(line.line() == TextPos(9));
+    CHECK(line.linebreak() == 0);
+    CHECK(iterator_text(line) == L"three");
+
+    // the last line: no further, and no movement
+    CHECK(!line.next());
+    CHECK(line.line() == TextPos(9));
+
+    CHECK(line.prev());
+    CHECK(line.prev());
+    CHECK(line.line() == TextPos(0));
+    CHECK(line.linebreak() == TXL_CRLF);
+
+    // the first line: no further back
+    CHECK(!line.prev());
+    CHECK(line.line() == TextPos(0));
+
+    reader = line.reader();
+    CHECK(std::wstring(buf, reader.read(buf, 64)) == L"one\r\n");
+    CHECK(reader.at_end());
+
+    doc.clear();
+    DeleteFile(path);
+}
+
+void lineiterator_ends_with_empty_line_after_final_break()
+{
+    TextDocument doc;
+    TCHAR path[MAX_PATH];
+
+    CHECK(write_textdocument_file("a\n", DOC_ASCII, path));
+    CHECK(doc.init(path));
+
+    LineIterator line = doc.line_at(TextPos(0));
+    CHECK(line.linebreak() == TXL_LF);
+
+    CHECK(line.next());
+    CHECK(line.line() == TextPos(2));
+    CHECK(line.line().line_next == TextPos(2));
+    CHECK(line.linebreak() == 0);
+    CHECK(iterator_text(line) == L"");
+
+    CHECK(!line.next());
+    CHECK(line.prev());
+    CHECK(line.line() == TextPos(0));
+
+    doc.clear();
+    DeleteFile(path);
+}
+
+void lineiterator_on_empty_document()
+{
+    TextDocument doc;
+    LineIterator none;
+
+    doc.clear();
+
+    LineIterator line = doc.line_at(TextPos(0));
+    CHECK(line.line() == TextPos(0));
+    CHECK(!line.next());
+    CHECK(!line.prev());
+    CHECK(line.linebreak() == 0);
+    CHECK(iterator_text(line) == L"");
+
+    // an iterator on no line can't move
+    CHECK(!none.next());
+    CHECK(!none.prev());
+    CHECK(iterator_text(none) == L"");
+    CHECK(none.reader().at_end());
+}
+
 void textdocument_sequence_index_matches_ascii_after_edits()
 {
     TextDocument doc;
@@ -3584,6 +3750,10 @@ const test_case tests[] =
     { "textdocument_coord_from_line_pos_rounds_back_inside_pair", textdocument_coord_from_line_pos_rounds_back_inside_pair },
     { "textdocument_pos_after_change", textdocument_pos_after_change },
     { "textdocument_find_text_reports_begin_and_end", textdocument_find_text_reports_begin_and_end },
+    { "textreader_reads_whole_characters", textreader_reads_whole_characters },
+    { "lineiterator_walks_lines", lineiterator_walks_lines },
+    { "lineiterator_ends_with_empty_line_after_final_break", lineiterator_ends_with_empty_line_after_final_break },
+    { "lineiterator_on_empty_document", lineiterator_on_empty_document },
     { "textdocument_sequence_index_matches_ascii_after_edits", textdocument_sequence_index_matches_ascii_after_edits },
     { "textdocument_sequence_index_matches_utf16le", textdocument_sequence_index_matches_utf16le },
     { "textdocument_sequence_index_matches_utf16be", textdocument_sequence_index_matches_utf16be },

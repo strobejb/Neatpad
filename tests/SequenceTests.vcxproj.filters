@@ -27,6 +27,9 @@
     <ClCompile Include="..\src\TextView\TextDocumentCoord.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\src\TextView\TextDocumentFind.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="..\src\TextView\Unicode.c">
       <Filter>Source Files</Filter>
     </ClCompile>

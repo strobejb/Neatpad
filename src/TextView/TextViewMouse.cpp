@@ -575,14 +575,12 @@ LONG TextView::InvalidateRange(TextCoord *startCoord, TextCoord *finishCoord)
 	ULONG row;
 	RECT  rect;
 	RECT  client;
-	TextCoord lineCoord;
 
 	// nothing to do?
 	if(start == finish)
 		return 0;
 
-	if(!ViewportLineFromRow(0, &lineCoord))
-		return 0;
+	LineIterator line = m_pTextDoc->line_at(m_scrollVPos);
 
 	GetClientRect(m_hWnd, &client);
 
@@ -590,8 +588,8 @@ LONG TextView::InvalidateRange(TextCoord *startCoord, TextCoord *finishCoord)
 	// all output is double-buffered now, and this method is much simpler
 	for(row = 0; row < (ULONG)m_nWindowLines; row++)
 	{
-		TextPos lineStart = lineCoord.line_begin;
-		TextPos lineEnd   = lineCoord.line_next;
+		TextPos lineStart = line.line().line_begin;
+		TextPos lineEnd   = line.line().line_next;
 
 		if(lineEnd >= start && lineStart <= finish)
 		{
@@ -605,18 +603,8 @@ LONG TextView::InvalidateRange(TextCoord *startCoord, TextCoord *finishCoord)
 		if(lineEnd > finish)
 			break;
 
-		if(row + 1 < (ULONG)m_nWindowLines)
-		{
-			TextCoord nextCoord;
-
-			if(!m_pTextDoc->next_line_from_coord(&lineCoord, 1, &nextCoord))
-				break;
-
-			if(nextCoord.line_begin == lineCoord.line_begin)
-				break;
-
-			lineCoord = nextCoord;
-		}
+		if(row + 1 < (ULONG)m_nWindowLines && !line.next())
+			break;
 	}
 
 	return 0;

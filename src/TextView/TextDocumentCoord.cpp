@@ -1,7 +1,7 @@
 //
 //	MODULE:		TextDocumentCoord.cpp
 //
-//	PURPOSE:	TextDocument line lookup and TextCoord navigation
+//	PURPOSE:	TextDocument positions, lines and line-by-line navigation
 //
 //	NOTES:		www.catch22.net
 //
@@ -369,4 +369,149 @@ bool TextDocument::unit_before(size_w offset_bytes, uint32_t *ch, uint32_t *size
 
 	*size = unit;
 	return true;
+}
+
+//
+//	The number of bytes taken by up to *length_chars UTF-16 units of text from
+//	offset_bytes. Only whole characters are counted: a surrogate pair the count
+//	would split is left out. On return *length_chars holds the units counted.
+//
+size_w TextDocument::count_chars(size_w offset_bytes, size_w *length_chars)
+{
+	size_w rawLength = m_seq.size() - m_nHeaderSize;
+	size_w wanted = *length_chars;
+	size_w remaining = wanted;
+	size_w offset_start = offset_bytes;
+	uint32_t ch32;
+
+	switch(m_nFileFormat)
+	{
+	case NCP_ASCII:
+		return wanted;
+
+	case NCP_UTF16:
+	case NCP_UTF16BE:
+		offset_bytes += wanted * sizeof(UTF16);
+
+		// ending between the halves of a pair? leave the pair out
+		if(wanted > 0 && decode_char(offset_bytes - sizeof(UTF16), 2 * sizeof(UTF16), &ch32) == 2 * sizeof(UTF16))
+		{
+			offset_bytes -= sizeof(UTF16);
+			*length_chars = wanted - 1;
+		}
+
+		return offset_bytes - offset_start;
+
+	default:
+		break;
+	}
+
+	while(remaining && offset_bytes < rawLength)
+	{
+		textchar buf[0x100];
+		uint32_t charlen = (uint32_t)min_of(remaining, (size_w)0x100);
+		size_w   bytelen = decode_text(offset_bytes, rawLength - offset_bytes, buf, &charlen);
+
+		// nothing fits: the next character is a surrogate pair and one unit is left
+		if(bytelen == 0 || charlen == 0)
+			break;
+
+		remaining    -= charlen;
+		offset_bytes += bytelen;
+	}
+
+	*length_chars = wanted - remaining;
+	return offset_bytes - offset_start;
+}
+
+size_w TextDocument::count_code_units(size_w offset_bytes, size_w length_bytes)
+{
+	size_w chars = 0;
+	size_w rawLength = m_seq.size() - m_nHeaderSize;
+
+	while(length_bytes && offset_bytes < rawLength)
+	{
+		textchar buf[0x100];
+		uint32_t charlen = 0x100;
+		size_w bytelen = decode_text(offset_bytes, min_of(length_bytes, rawLength - offset_bytes), buf, &charlen);
+
+		if(bytelen == 0)
+			break;
+
+		chars += charlen;
+		offset_bytes += bytelen;
+		length_bytes -= bytelen;
+	}
+
+	return chars;
+}
+
+//
+//	The line holding a position, its start as the iterator's position
+//
+LineIterator TextDocument::line_at(TextPos pos)
+{
+	TextCoord line;
+
+	if(!coord_from_pos(pos, &line))
+		return LineIterator();
+
+	coord_in_line(line.line_begin.byte_offset, line.line_next.byte_offset, 0, &line);
+	return LineIterator(this, line);
+}
+
+LineIterator::LineIterator()
+	: m_doc(0)
+{
+}
+
+LineIterator::LineIterator(TextDocument *doc, const TextCoord &line)
+	: m_doc(doc), m_line(line)
+{
+}
+
+//
+//	next_line_from_coord() stays on the last line rather than failing,
+//	so a step that lands on the same line is the end
+//
+bool LineIterator::next()
+{
+	TextCoord following;
+
+	if(m_doc == 0 || !m_doc->next_line_from_coord(&m_line, 1, &following) || following.line_begin == m_line.line_begin)
+		return false;
+
+	m_line = following;
+	return true;
+}
+
+bool LineIterator::prev()
+{
+	TextCoord preceding;
+
+	if(m_doc == 0 || !m_doc->previous_line_from_coord(&m_line, 1, &preceding) || preceding.line_begin == m_line.line_begin)
+		return false;
+
+	m_line = preceding;
+	return true;
+}
+
+const TextCoord &LineIterator::line() const
+{
+	return m_line;
+}
+
+uint32_t LineIterator::linebreak() const
+{
+	return m_doc ? m_doc->linebreak_from_coord(&m_line) : 0;
+}
+
+uint32_t LineIterator::text(textchar *buf, uint32_t buflen) const
+{
+	return m_doc ? m_doc->getline(m_line, buf, buflen) : 0;
+}
+
+TextReader LineIterator::reader() const
+{
+	return m_doc ? m_doc->text_from_range(m_line.line_begin, m_line.line_next) : TextReader();
 }

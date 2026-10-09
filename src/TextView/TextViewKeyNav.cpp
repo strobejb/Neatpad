@@ -50,10 +50,13 @@ bool TextView::GetLineLayout(TextCoord *line, USPCACHE **uspCache, CSCRIPT_LOGAT
 bool TextView::CoordAtPreviousLineEnd(TextCoord *coord, TextCoord *result)
 {
 	USPCACHE *uspCache;
+	LineIterator line = m_pTextDoc->line_at(*coord);
 	TextCoord target;
 
-	if(coord->line_begin.byte_offset == 0 || !m_pTextDoc->previous_line_from_coord(coord, 1, &target))
+	if(!line.prev())
 		return false;
+
+	target = line.line();
 
 	if(!GetLineLayout(&target, &uspCache, 0))
 		return false;
@@ -66,12 +69,13 @@ bool TextView::CoordAtPreviousLineEnd(TextCoord *coord, TextCoord *result)
 //
 bool TextView::CoordAtNextLineStart(TextCoord *coord, TextCoord *result)
 {
-	TextCoord target;
+	LineIterator line = m_pTextDoc->line_at(*coord);
 
-	if(!m_pTextDoc->next_line_from_coord(coord, 1, &target) || target.line_begin == coord->line_begin)
+	if(!line.next())
 		return false;
 
-	return m_pTextDoc->coord_from_line_pos(&target, 0, result);
+	*result = line.line();
+	return true;
 }
 
 //

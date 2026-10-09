@@ -357,6 +357,20 @@ size_w TextDocument::decode_text(size_w offset, size_w lenbytes, textchar *buf, 
 		chars_copied	+= (uint32_t)tmplen;
 	}
 
+	// A UTF-16 file is copied a unit at a time, so a full buffer can end between
+	// the halves of a pair: leave the first half for next time. (The other
+	// encodings only ever convert whole characters.)
+	if((m_nFileFormat == NCP_UTF16 || m_nFileFormat == NCP_UTF16BE) && chars_copied > 0 && lenbytes >= sizeof(UTF16))
+	{
+		uint32_t ch32;
+
+		if(decode_char(offset - sizeof(UTF16), 2 * sizeof(UTF16), &ch32) == 2 * sizeof(UTF16))
+		{
+			chars_copied	-= 1;
+			bytes_processed -= sizeof(UTF16);
+		}
+	}
+
 	*buflen = chars_copied;
 	return bytes_processed;
 }
@@ -364,6 +378,14 @@ size_w TextDocument::decode_text(size_w offset, size_w lenbytes, textchar *buf, 
 TEXT_ENCODING TextDocument::getformat()
 {
 	return m_nFileFormat;
+}
+
+//
+//	The bytes in one code unit of the file's encoding
+//
+size_w TextDocument::code_unit_size()
+{
+	return encoding_info(m_nFileFormat)->code_unit_bits / 8;
 }
 
 //
@@ -379,334 +401,42 @@ size_w TextDocument::file_length()
 	return m_seq.size();
 }
 
-//
-//	Case-insensitive search, one character at a time. Each character is
-//	decoded to UTF-16 and added to a window holding the last 'length' units,
-//	which is compared with the pattern every time it moves.
-//
-//	The window is a ring buffer stored twice over, so the 'length' units
-//	starting at any slot are contiguous and nothing has to be shifted.
-//	Each slot also records one edge of the character its unit came from:
-//	the start when searching forwards, the end when searching backwards -
-//	the edge a match needs once that unit is the oldest in the window.
-//
-bool TextDocument::find_text_nocase(const textchar *text, uint32_t length, size_w from, size_w to, bool backwards, size_w *match, size_w *match_length)
-{
-	size_w    docLength = byte_length();
-	size_w    offset;
-	size_w    bytes;
-
-	uint32_t  ch32;
-	textchar  units[2];
-	size_t    unitCount;
-	
-	uint32_t  slot = 0;
-	uint32_t  used = 0;
-	bool   matched = false;
-
-	textchar  *window = 0;
-	size_w *edges  = 0;
-
-	if(text == 0 || length == 0 || match == 0 || match_length == 0)
-		return false;
-
-	from = min_of(from, docLength);
-	to   = min_of(to, docLength);
-
-	if(from > to) { size_w tmp = from; from = to; to = tmp; }
-	if(from == to || length > INT_MAX)
-		return false;
-
-	window = new textchar[length * 2];
-	edges  = new size_w[length];
-
-	if(window == 0 || edges == 0)
-	{
-		delete[] edges;
-		delete[] window;
-		return false;
-	}
-
-	if(backwards)
-	{
-		offset = to;
-
-		while(offset > from && !matched)
-		{
-			bytes = decode_prev_char(offset, from, &ch32);
-			if(bytes == 0)
-				break;
-
-			unitCount = 2;
-			utf32_to_utf16(&ch32, 1, (UTF16 *)units, &unitCount);
-
-			// add to the front of the window, last unit first
-			for(size_t i = unitCount; i > 0 && !matched; i--)
-			{
-				uint32_t lastSlot;
-
-				if(slot == 0)
-					slot = length - 1;
-				else
-					slot--;
-
-				window[slot] = window[slot + length] = units[i - 1];
-				edges[slot]  = offset;
-				used         = min_of(used + 1, length);
-
-				if(used == length && utf16_equal_nocase((const UTF16 *)(window + slot), (const UTF16 *)text, length))
-				{
-					lastSlot = slot == 0 ? length - 1 : slot - 1;
-
-					*match = offset - bytes;
-					*match_length = edges[lastSlot] - *match;
-					matched = true;
-				}
-			}
-
-			offset -= bytes;
-		}
-	}
-	else
-	{
-		offset = from;
-
-		while(offset < to && !matched)
-		{
-			bytes = decode_char(offset, (size_t)min_of(to - offset, (size_w)16), &ch32);
-			if(bytes == 0)
-			{
-				offset++;
-				continue;
-			}
-
-			unitCount = 2;
-			utf32_to_utf16(&ch32, 1, (UTF16 *)units, &unitCount);
-
-			// add to the back of the window, leaving slot at the oldest unit
-			for(size_t i = 0; i < unitCount && !matched; i++)
-			{
-				window[slot] = window[slot + length] = units[i];
-				edges[slot]  = offset;
-
-				slot++;
-				if(slot == length)
-					slot = 0;
-
-				used = min_of(used + 1, length);
-
-				if(used == length && utf16_equal_nocase((const UTF16 *)(window + slot), (const UTF16 *)text, length))
-				{
-					*match        = edges[slot];
-					*match_length = offset + bytes - *match;
-					matched       = true;
-				}
-			}
-
-			offset += bytes;
-		}
-	}
-
-	delete[] edges;
-	delete[] window;
-	return matched;
-}
-
-bool TextDocument::find_text(const textchar *text, uint32_t length, TextPos from_pos, TextPos to_pos, bool backwards, bool matchcase, TextPos *match_begin, TextPos *match_end)
-{
-	const size_w chunkSize = 0x10000;
-
-	size_w from = from_pos.byte_offset;
-	size_w to   = to_pos.byte_offset;
-	size_w docLength = byte_length();
-	size_w patternLength;
-	size_w chunkStart;
-	size_w startLimit;
-	size_w found = 0;
-	size_w foundLength = 0;
-	size_t rawCapacity;
-	size_t rawLength;
-	size_t copied;
-	size_w blockLength;
-
-	// a match must start on a code unit, not part way through one
-	size_w unitSize = encoding_info(m_nFileFormat)->code_unit_bits / 8;
-
-	uint8_t * pattern = 0;
-	uint8_t * block = 0;
-
-	bool   matched = false;
-
-	if(text == 0 || length == 0 || match_begin == 0 || match_end == 0)
-		return false;
-
-	if(!matchcase)
-	{
-		if(!find_text_nocase(text, length, from, to, backwards, &found, &foundLength))
-			return false;
-
-		*match_begin = TextPos(found);
-		*match_end   = TextPos(found + foundLength);
-		return true;
-	}
-
-	rawCapacity = (size_t)length * 4;
-	if(rawCapacity < length || rawCapacity == 0)
-		return false;
-
-	pattern = new uint8_t[rawCapacity];
-	if(pattern == 0)
-		return false;
-
-	rawLength = rawCapacity;
-	copied = utf16_to_rawdata(text, length, pattern, &rawLength);
-
-	if(copied != length || rawLength == 0 || rawLength > (size_t)MAX_SEQUENCE_LENGTH)
-	{
-		delete[] pattern;
-		return false;
-	}
-
-	patternLength = (size_w)rawLength;
-	from = min_of(from, docLength);
-	to   = min_of(to, docLength);
-
-	if(from > to)      { size_w tmp = from; from = to; to = tmp; }
-	if(patternLength > to - from)
-	{
-		delete[] pattern;
-		return false;
-	}
-
-	blockLength = min_of(chunkSize + patternLength - 1, to - from);
-	block = new uint8_t[(size_t)blockLength];
-	if(block == 0)
-	{
-		delete[] pattern;
-		return false;
-	}
-
-	startLimit = to - patternLength + 1;
-	chunkStart = from;
-
-	if(backwards)
-	{
-		size_w chunkEnd = startLimit;
-
-		while(chunkEnd > from && !matched)
-		{
-			size_w candidates = min_of(chunkSize, chunkEnd - from);
-			chunkStart = chunkEnd - candidates;
-
-			size_w rendered = m_seq.render(chunkStart + m_nHeaderSize, block, candidates + patternLength - 1);
-			if(rendered < patternLength)
-				break;
-
-			while(candidates > 0)
-			{
-				candidates--;
-
-				if(candidates + patternLength <= rendered &&
-					(chunkStart + candidates) % unitSize == 0 &&
-					memcmp(block + candidates, pattern, (size_t)patternLength) == 0)
-				{
-					found = chunkStart + candidates;
-					matched = true;
-					break;
-				}
-			}
-
-			chunkEnd = chunkStart;
-		}
-	}
-	else
-	{
-		while(chunkStart < startLimit && !matched)
-		{
-			size_w candidates = min_of(chunkSize, startLimit - chunkStart);
-			size_w rendered = m_seq.render(chunkStart + m_nHeaderSize, block, candidates + patternLength - 1);
-
-			if(rendered < patternLength)
-				break;
-
-			for(size_w pos = 0; pos < candidates && pos + patternLength <= rendered; pos++)
-			{
-				if((chunkStart + pos) % unitSize == 0 &&
-					memcmp(block + pos, pattern, (size_t)patternLength) == 0)
-				{
-					found = chunkStart + pos;
-					matched = true;
-					break;
-				}
-			}
-
-			chunkStart += candidates;
-		}
-	}
-
-	if(matched)
-	{
-		*match_begin = TextPos(found);
-		*match_end   = TextPos(found + patternLength);
-	}
-
-	delete[] block;
-	delete[] pattern;
-	return matched;
-}
-
 TextReader TextDocument::text_from_range(TextPos from, TextPos to)
 {
-	TextPos begin = min_of(from, to);
-
-	return TextReader(begin.byte_offset, max_of(from, to) - begin, this);
+	return TextReader(this, min_of(from, to), max_of(from, to));
 }
 
 TextReader::TextReader()
-	: text_doc(0), off_bytes(0), len_bytes(0)
+	: m_doc(0)
 {
 }
 
-TextReader::TextReader(const TextReader &reader)
-	: text_doc(reader.text_doc), off_bytes(reader.off_bytes), len_bytes(reader.len_bytes)
+TextReader::TextReader(TextDocument *doc, TextPos from, TextPos to)
+	: m_doc(doc), m_pos(from), m_end(to)
 {
-}
-
-TextReader & TextReader::operator= (const TextReader &reader)
-{
-	text_doc  = reader.text_doc;
-	off_bytes = reader.off_bytes;
-	len_bytes = reader.len_bytes;
-	return *this;
 }
 
 uint32_t TextReader::read(textchar *buf, uint32_t buflen)
 {
-	if(text_doc)
-	{
-		// get text from the TextDocument at the specified byte-offset
-		size_w len = text_doc->decode_text(off_bytes, len_bytes, buf, &buflen);
+	size_w bytes;
 
-		// adjust the reader's internal position
-		off_bytes += len;
-		len_bytes -= len;
-
-		return buflen;
-	}
-	else
-	{
+	if(at_end())
 		return 0;
-	}
+
+	bytes = m_doc->decode_text(m_pos.byte_offset, m_end - m_pos, buf, &buflen);
+	m_pos = TextPos(m_pos.byte_offset + bytes);
+
+	return buflen;
 }
 
-TextReader::operator bool()
+TextPos TextReader::pos() const
 {
-	return text_doc ? true : false;
+	return m_pos;
 }
 
-TextReader::TextReader(size_w off, size_w len, TextDocument *td)
-	: text_doc(td), off_bytes(off), len_bytes(len)
+bool TextReader::at_end() const
 {
+	return m_doc == 0 || m_pos >= m_end;
 }
 
 //
@@ -898,81 +628,6 @@ size_w TextDocument::replace_raw(size_w offset_bytes, const textchar *text, uint
 	}
 
 	return rawlen;
-}
-
-//
-//	The number of bytes taken by up to *length_chars UTF-16 units of text from
-//	offset_bytes. Only whole characters are counted: a surrogate pair the count
-//	would split is left out. On return *length_chars holds the units counted.
-//
-size_w TextDocument::count_chars(size_w offset_bytes, size_w *length_chars)
-{
-	size_w rawLength = m_seq.size() - m_nHeaderSize;
-	size_w wanted = *length_chars;
-	size_w remaining = wanted;
-	size_w offset_start = offset_bytes;
-	uint32_t ch32;
-
-	switch(m_nFileFormat)
-	{
-	case NCP_ASCII:
-		return wanted;
-
-	case NCP_UTF16:
-	case NCP_UTF16BE:
-		offset_bytes += wanted * sizeof(UTF16);
-
-		// ending between the halves of a pair? leave the pair out
-		if(wanted > 0 && decode_char(offset_bytes - sizeof(UTF16), 2 * sizeof(UTF16), &ch32) == 2 * sizeof(UTF16))
-		{
-			offset_bytes -= sizeof(UTF16);
-			*length_chars = wanted - 1;
-		}
-
-		return offset_bytes - offset_start;
-
-	default:
-		break;
-	}
-
-	while(remaining && offset_bytes < rawLength)
-	{
-		textchar buf[0x100];
-		uint32_t charlen = (uint32_t)min_of(remaining, (size_w)0x100);
-		size_w   bytelen = decode_text(offset_bytes, rawLength - offset_bytes, buf, &charlen);
-
-		// nothing fits: the next character is a surrogate pair and one unit is left
-		if(bytelen == 0 || charlen == 0)
-			break;
-
-		remaining    -= charlen;
-		offset_bytes += bytelen;
-	}
-
-	*length_chars = wanted - remaining;
-	return offset_bytes - offset_start;
-}
-
-size_w TextDocument::count_code_units(size_w offset_bytes, size_w length_bytes)
-{
-	size_w chars = 0;
-	size_w rawLength = m_seq.size() - m_nHeaderSize;
-
-	while(length_bytes && offset_bytes < rawLength)
-	{
-		textchar buf[0x100];
-		uint32_t charlen = 0x100;
-		size_w bytelen = decode_text(offset_bytes, min_of(length_bytes, rawLength - offset_bytes), buf, &charlen);
-
-		if(bytelen == 0)
-			break;
-
-		chars += charlen;
-		offset_bytes += bytelen;
-		length_bytes -= bytelen;
-	}
-
-	return chars;
 }
 
 //

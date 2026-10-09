@@ -130,6 +130,7 @@
     <ClCompile Include="SequenceTests.cpp" />
     <ClCompile Include="..\src\TextView\TextDocument.cpp" />
     <ClCompile Include="..\src\TextView\TextDocumentCoord.cpp" />
+    <ClCompile Include="..\src\TextView\TextDocumentFind.cpp" />
     <ClCompile Include="..\src\TextView\sequence.cpp" />
     <ClCompile Include="..\src\TextView\sequence_buf.cpp" />
     <ClCompile Include="..\src\TextView\sequence_lines.cpp" />
