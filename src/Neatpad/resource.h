@@ -4,6 +4,7 @@
 //
 #define IDC_REPLACEALL                  3
 #define IDR_MENU1                       101
+#define IDR_MAINMENU                    101
 #define IDI_ICON1                       102
 #define IDR_ACCELERATOR1                103
 #define IDD_OPTIONS1                    104
@@ -25,11 +26,13 @@
 #define IDD_REPLACEPANE                 124
 #define IDD_GOTOPANE                    125
 #define IDR_MENU2                       126
+#define IDR_EDITCONTEXT                 126
 #define IDD_SEARCHBAR                   127
 #define IDB_BITMAP3                     128
 #define IDI_ICON4                       129
 #define IDB_BITMAP4                     130
 #define IDB_SEARCHBAR_BUTTONS           131
+#define IDD_GOTOLINE                    132
 #define IDC_COMBO1                      1000
 #define IDC_FONTLIST                    1000
 #define IDC_COMBO2                      1001
@@ -100,6 +103,9 @@
 #define IDC_SEARCH_OPTIONS              1055
 #define IDC_SEARCH_PREVIOUS             1056
 #define IDC_SEARCH_NEXT                 1057
+#define IDC_GOTO_LABEL                  1058
+#define IDC_GOTO_LINE                   1059
+#define IDC_GOTO_STATUS                 1060
 #define IDM_FILE_NEW                    40001
 #define IDM_FILE_OPEN                   40002
 #define IDM_FILE_EXIT                   40003
@@ -139,15 +145,16 @@
 #define ID_LINEENDINGS_ALWAYSSHOW       40051
 #define ID_LINEENDINGS_HIGHLIGHTMALFORMED 40052
 #define IDM_RECENT_PREVIOUS             40053
+#define IDM_EDIT_INDEXFILE              40054
 #define IDC_STATIC                      -1
 
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
-#define _APS_NEXT_RESOURCE_VALUE        132
-#define _APS_NEXT_COMMAND_VALUE         40054
-#define _APS_NEXT_CONTROL_VALUE         1058
+#define _APS_NEXT_RESOURCE_VALUE        134
+#define _APS_NEXT_COMMAND_VALUE         40055
+#define _APS_NEXT_CONTROL_VALUE         1061
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif

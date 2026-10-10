@@ -1209,6 +1209,34 @@ void sequence::index_lines(size_w offset, size_w length)
 }
 
 //
+//	sequence::index_next
+//
+//	Scan about the next length bytes past the exact prefix, then take the prefix as far
+//	as the scanned pages reach.
+//
+bool sequence::index_next(size_w length)
+{
+	size_w before;
+
+	update_line_prefix();
+
+	if(prefix_complete)
+		return false;
+
+	before = prefix_end;
+	index_range(prefix_end, length);
+	update_line_prefix();
+
+	return !prefix_complete && prefix_end > before;
+}
+
+size_w sequence::indexed_length() const
+{
+	update_line_prefix();
+	return prefix_complete ? sequence_length : prefix_end;
+}
+
+//
 //	sequence::next_line_from_offset
 //
 //  Find the start of the line after the one containing offset, scanning forward only as far as needed.

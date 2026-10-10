@@ -23,7 +23,7 @@ DWORD dwStatusBarStyles = WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLI
 						  ;
 
 
-#define MAX_STATUS_PARTS 5
+#define MAX_STATUS_PARTS 6
 
 // room left after the text of each pane
 #define STATUS_PANE_PADDING _T("MMM")
@@ -31,6 +31,10 @@ DWORD dwStatusBarStyles = WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLI
 // width of each pane, fitted to its text (the message pane takes whatever is left)
 static int g_nPaneWidth[MAX_STATUS_PARTS];
 static HFONT g_hStatusFont;
+
+// the text of each pane shown as a link (empty for the others), and its font
+static TCHAR g_szLinkText[MAX_STATUS_PARTS][64];
+static HFONT g_hLinkFont;
 
 HFONT StatusBarFont(void)
 {
@@ -63,8 +67,8 @@ int StatusBarMenuSelect(HWND hwnd, HWND hwndSB, WPARAM wParam, LPARAM lParam)
 
 //
 //	Lay out the panes: the cursor and document-statistics panes on the left, the
-//	line-format and encoding panes against the right edge, and the message pane
-//	in between. Must be called whenever the statusbar changes size, so call each
+//	indexing, line-format and encoding panes against the right edge, and the
+//	message pane in between. Must be called whenever the statusbar changes size, so call each
 //	time the main-window gets a WM_SIZE
 //
 void SetStatusBarParts(HWND hwndSB)
@@ -78,13 +82,15 @@ void SetStatusBarParts(HWND hwndSB)
 
 	// a window too narrow for every pane clips the ones on the right
 	right = max(r.right, g_nPaneWidth[STATUS_PART_CURSOR]   + g_nPaneWidth[STATUS_PART_DOCSTATS] +
-						 g_nPaneWidth[STATUS_PART_LINEFMT]  + g_nPaneWidth[STATUS_PART_ENCODING]);
+						 g_nPaneWidth[STATUS_PART_INDEX]    + g_nPaneWidth[STATUS_PART_LINEFMT]  +
+						 g_nPaneWidth[STATUS_PART_ENCODING]);
 
 	parts[STATUS_PART_CURSOR]   = g_nPaneWidth[STATUS_PART_CURSOR];
 	parts[STATUS_PART_DOCSTATS] = parts[STATUS_PART_CURSOR] + g_nPaneWidth[STATUS_PART_DOCSTATS];
 	parts[STATUS_PART_ENCODING] = right;
 	parts[STATUS_PART_LINEFMT]  = parts[STATUS_PART_ENCODING] - g_nPaneWidth[STATUS_PART_ENCODING];
-	parts[STATUS_PART_MESSAGE]  = parts[STATUS_PART_LINEFMT]  - g_nPaneWidth[STATUS_PART_LINEFMT];
+	parts[STATUS_PART_INDEX]    = parts[STATUS_PART_LINEFMT]  - g_nPaneWidth[STATUS_PART_LINEFMT];
+	parts[STATUS_PART_MESSAGE]  = parts[STATUS_PART_INDEX]    - g_nPaneWidth[STATUS_PART_INDEX];
 
 	// Tell the status bar to create the window parts.
     SendMessage(hwndSB, SB_SETPARTS, MAX_STATUS_PARTS, (LPARAM)parts);
@@ -152,6 +158,86 @@ void SetStatusBarText(HWND hwndSB, UINT nPart, UINT uStyle, TCHAR *fmt, ...)
 		g_nPaneWidth[nPart] = width;
 		SetStatusBarParts(hwndSB);
 	}
+}
+
+//
+//	Show a pane's text as a link: the parent draws it (DrawStatusBarLink), and it
+//	is clicked like any pane (NM_CLICK). No text hides the pane.
+//
+void SetStatusBarLink(HWND hwndSB, UINT nPart, TCHAR *text)
+{
+	int width;
+
+	if(nPart >= MAX_STATUS_PARTS)
+		return;
+
+	lstrcpyn(g_szLinkText[nPart], text, sizeof(g_szLinkText[nPart]) / sizeof(TCHAR));
+
+	// an owner-drawn pane keeps a pointer to its text, for WM_DRAWITEM
+	if(g_szLinkText[nPart][0])
+		SendMessage(hwndSB, SB_SETTEXT, (WPARAM)(nPart | SBT_OWNERDRAW), (LPARAM)g_szLinkText[nPart]);
+	else
+		SendMessage(hwndSB, SB_SETTEXT, (WPARAM)nPart, (LPARAM)_T(""));
+
+	width = StatusPaneWidth(hwndSB, nPart, g_szLinkText[nPart]);
+
+	if(width != g_nPaneWidth[nPart])
+	{
+		g_nPaneWidth[nPart] = width;
+		SetStatusBarParts(hwndSB);
+	}
+}
+
+//
+//	Draw a link pane, for the parent's WM_DRAWITEM: its text in the link colour,
+//	underlined, starting where the other panes' text does
+//
+BOOL DrawStatusBarLink(const DRAWITEMSTRUCT *dis)
+{
+	TCHAR	*text  = (TCHAR *)dis->itemData;
+	HFONT	 hFont = (HFONT)SendMessage(dis->hwndItem, WM_GETFONT, 0, 0);
+	HANDLE	 hOldFont;
+	RECT	 rect  = dis->rcItem;
+	LOGFONT	 lf;
+	SIZE	 space;
+
+	if(text == 0)
+		return FALSE;
+
+	if(g_hLinkFont == 0 && hFont && GetObject(hFont, sizeof(lf), &lf))
+	{
+		lf.lfUnderline = TRUE;
+		g_hLinkFont = CreateFontIndirect(&lf);
+	}
+
+	hOldFont = SelectObject(dis->hDC, g_hLinkFont ? g_hLinkFont : hFont);
+
+	GetTextExtentPoint32(dis->hDC, _T(" "), 1, &space);
+	rect.left += space.cx;
+
+	SetTextColor(dis->hDC, GetSysColor(COLOR_HOTLIGHT));
+	SetBkMode(dis->hDC, TRANSPARENT);
+	DrawText(dis->hDC, text, -1, &rect, DT_SINGLELINE | DT_VCENTER | DT_LEFT | DT_NOPREFIX);
+
+	SelectObject(dis->hDC, hOldFont);
+	return TRUE;
+}
+
+//
+//	Whether a point, in the statusbar's client coordinates, is on a link pane
+//
+BOOL StatusBarLinkAt(HWND hwndSB, POINT pt)
+{
+	RECT rect;
+	UINT i;
+
+	for(i = 0; i < MAX_STATUS_PARTS; i++)
+	{
+		if(g_szLinkText[i][0] && SendMessage(hwndSB, SB_GETRECT, i, (LPARAM)&rect) && PtInRect(&rect, pt))
+			return TRUE;
+	}
+
+	return FALSE;
 }
 
 //

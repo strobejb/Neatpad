@@ -52,6 +52,7 @@ LONG TextView::OpenFile(TCHAR *szFileName, int nEncoding)
 		UpdateMetrics();
 		ResetLineCache();
 		NotifyCursorChange();
+		NotifyIndexChange();
 		return TRUE;
 	}
 
@@ -78,6 +79,13 @@ LONG TextView::SaveFile(TCHAR *szFileName, UINT nEncoding, BOOL fBom, UINT nLine
 //
 LONG TextView::ClearFile()
 {
+	// whatever was being indexed has gone
+	if(m_fIndexing)
+	{
+		KillTimer(m_hWnd, INDEX_TIMER);
+		m_fIndexing = false;
+	}
+
 	if(m_pTextDoc)
 	{
 		m_pTextDoc->clear();
@@ -97,6 +105,113 @@ LONG TextView::ClearFile()
 
 	UpdateMetrics();
 	NotifyCursorChange();
+	NotifyIndexChange();
 
 	return TRUE;
+}
+
+// Indexing in the background: a megabyte at a time, for this long each tick
+static const size_w INDEX_CHUNK = 0x100000;
+static const int    INDEX_SLICE_MS = 15;
+
+//
+//	Start or stop indexing the rest of the document. It's done a slice at a
+//	time on a timer, so the window stays responsive meanwhile.
+//
+LONG TextView::IndexFile(BOOL fIndex)
+{
+	TVNINDEXINFO info;
+
+	FillIndexInfo(&info);
+
+	if(fIndex && !m_fIndexing && info.nPercent < 100)
+	{
+		m_fIndexing = SetTimer(m_hWnd, INDEX_TIMER, USER_TIMER_MINIMUM, 0) != 0;
+	}
+	else if(!fIndex && m_fIndexing)
+	{
+		KillTimer(m_hWnd, INDEX_TIMER);
+		m_fIndexing = false;
+	}
+
+	NotifyIndexChange();
+	return m_fIndexing == (fIndex != FALSE);
+}
+
+//
+//	Index for a few milliseconds, then show how far it's got: line numbers
+//	become exact as indexing passes them, and the line count nearer the truth
+//
+LONG TextView::OnIndexTimer()
+{
+	LARGE_INTEGER freq, start, now;
+	TVNINDEXINFO  info;
+	bool          more;
+
+	QueryPerformanceFrequency(&freq);
+	QueryPerformanceCounter(&start);
+
+	do
+	{
+		more = m_pTextDoc->index_next(INDEX_CHUNK);
+		QueryPerformanceCounter(&now);
+	}
+	while(more && (now.QuadPart - start.QuadPart) * 1000 < freq.QuadPart * INDEX_SLICE_MS);
+
+	// done, or no more can be read
+	if(!more)
+	{
+		KillTimer(m_hWnd, INDEX_TIMER);
+		m_fIndexing = false;
+	}
+
+	FillIndexInfo(&info);
+
+	if(info.nPercent != m_nIndexPercent || !m_fIndexing)
+	{
+		m_nLineCount = m_pTextDoc->linecount();
+
+		// the count is exact once done, and may need a wider margin
+		if(m_fIndexing)
+		{
+			SetupScrollbars();
+		}
+		else
+		{
+			UpdateMarginWidth();
+			UpdateMetrics();
+		}
+
+		NotifyCursorChange();
+		NotifyIndexChange();
+	}
+
+	return 0;
+}
+
+//
+//	How much of the document is indexed, from the top, and whether more is
+//	being indexed
+//
+VOID TextView::FillIndexInfo(TVNINDEXINFO *info)
+{
+	size_w length  = m_pTextDoc->byte_length();
+	size_w indexed = m_pTextDoc->indexed_length();
+
+	// under 100 until every byte is
+	info->nPercent   = indexed >= length ? 100 : (UINT)(indexed * 100 / length);
+	info->fIndexing  = m_fIndexing;
+	info->nLineCount = (unsigned __int64)m_pTextDoc->linecount();
+}
+
+//
+//	Tell the parent how far indexing has got
+//
+VOID TextView::NotifyIndexChange()
+{
+	TVNINDEXINFO info;
+
+	FillIndexInfo(&info);
+	m_nIndexPercent = info.nPercent;
+	NotifyParent(TVN_INDEX_CHANGE, (NMHDR *)&info);
 }

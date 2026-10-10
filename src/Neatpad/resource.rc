@@ -24,7 +24,7 @@ LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_UK
 // Menu
 //
 
-IDR_MENU1 MENU
+IDR_MAINMENU MENU
 BEGIN
     POPUP "&File"
     BEGIN
@@ -55,7 +55,7 @@ BEGIN
         MENUITEM "&Find...\tCtrl+F",            IDM_EDIT_FIND
         MENUITEM "Find &Next\tF3",              IDM_EDIT_FINDNEXT
         MENUITEM "&Replace...\tCtrl+H",         IDM_EDIT_REPLACE
-        MENUITEM "&Go To Line...\tCtrl+G",      IDM_EDIT_GOTO
+        MENUITEM "&Go to...\tCtrl+G",           IDM_EDIT_GOTO
         MENUITEM SEPARATOR
         MENUITEM "&Select All",                 IDM_EDIT_SELECTALL
     END
@@ -84,7 +84,7 @@ BEGIN
     END
 END
 
-IDR_MENU2 MENU
+IDR_EDITCONTEXT MENU
 BEGIN
     POPUP "Popup"
     BEGIN
@@ -351,6 +351,18 @@ BEGIN
     PUSHBUTTON      "&Close",IDCANCEL,241,24,64,14
 END
 
+IDD_GOTOLINE DIALOGEX 0, 0, 210, 78
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Goto Line"
+FONT 8, "MS Shell Dlg", 0, 0, 0x1
+BEGIN
+    LTEXT           "&Line number:",IDC_GOTO_LABEL,7,7,196,8
+    EDITTEXT        IDC_GOTO_LINE,7,18,196,14,ES_AUTOHSCROLL | ES_NUMBER
+    LTEXT           "",IDC_GOTO_STATUS,7,37,196,8
+    DEFPUSHBUTTON   "&Go to",IDOK,99,57,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,153,57,50,14
+END
+
 IDD_SEARCHBAR DIALOGEX 0, 0, 455, 28
 STYLE DS_SETFONT | DS_FIXEDSYS | DS_CONTROL | WS_CHILD | WS_CLIPCHILDREN
 EXSTYLE WS_EX_CONTROLPARENT
@@ -448,6 +460,10 @@ BEGIN
         BOTTOMMARGIN, 93
     END
 
+    IDD_GOTOLINE, DIALOG
+    BEGIN
+    END
+
     IDD_SEARCHBAR, DIALOG
     BEGIN
         RIGHTMARGIN, 383
@@ -534,6 +550,11 @@ BEGIN
     0
 END
 
+IDD_GOTOLINE AFX_DIALOG_LAYOUT
+BEGIN
+    0
+END
+
 
 /////////////////////////////////////////////////////////////////////////////
 //
@@ -559,6 +580,14 @@ END
 
 STRINGTABLE
 BEGIN
+    ID_LINEENDINGS_ALWAYSSHOW "Shows every line ending"
+    ID_LINEENDINGS_HIGHLIGHTMALFORMED 
+                            "Shows only the line endings that don't match the document's line format"
+    IDM_EDIT_INDEXFILE      "Counts the lines of the whole file, so every line number is exact"
+END
+
+STRINGTABLE
+BEGIN
     IDM_RECENT_CLEAR        "Clears the recent files list"
 END
 
@@ -573,13 +602,6 @@ BEGIN
     IDM_EDIT_SELECTALL      "Selects the entire document"
     IDM_VIEW_STATUSBAR      "Displays the status bar"
     IDM_VIEW_OPTIONS        "Changes program options"
-END
-
-STRINGTABLE
-BEGIN
-    ID_LINEENDINGS_ALWAYSSHOW "Shows every line ending"
-    ID_LINEENDINGS_HIGHLIGHTMALFORMED 
-                            "Shows only the line endings that don't match the document's line format"
 END
 
 #endif    // English (United Kingdom) resources

@@ -122,6 +122,12 @@ public:
 	// Build lazy line metadata for a touched sequence range.
 	void		index_lines(size_w offset, size_w length);
 
+	// Index about the next length bytes of the sequence, extending the
+	// exact prefix: false once there's no more to index, or it can't be read.
+	// indexed_length() is how much of the sequence the prefix covers.
+	bool		index_next(size_w length);
+	size_w		indexed_length() const;
+
 	// Physical line lookup. Offsets are sequence offsets; line numbers may be estimated while lazy.
 	bool		next_line_from_offset(size_w offset, size_w *line_begin) const;
 	bool		line_bounds_from_offset(size_w offset, size_w *line_begin, size_w *line_next);

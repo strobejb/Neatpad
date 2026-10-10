@@ -42,6 +42,9 @@
     <ClCompile Include="SearchBar.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="SearchGoto.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="Toolbars.c">
       <Filter>Source Files</Filter>
     </ClCompile>

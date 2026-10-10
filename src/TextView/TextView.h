@@ -68,6 +68,10 @@ COLORREF RealizeColour(COLORREF col);
 #define TXM_FINDTEXT			(TXM_BASE + 31)
 #define TXM_SAVEFILE			(TXM_BASE + 32)
 #define TXM_GETBOM				(TXM_BASE + 33)
+#define TXM_INDEXFILE			(TXM_BASE + 34)
+#define TXM_GETINDEXINFO		(TXM_BASE + 35)
+#define TXM_GOTOLINE			(TXM_BASE + 36)
+#define TXM_CANGOTOLINE			(TXM_BASE + 37)
 
 //
 //	TextView Notification Messages defined here - 
@@ -78,6 +82,7 @@ COLORREF RealizeColour(COLORREF col);
 #define TVN_SELECTION_CHANGE	(TVN_BASE + 1)
 #define TVN_EDITMODE_CHANGE		(TVN_BASE + 2)
 #define TVN_CHANGED				(TVN_BASE + 3)
+#define TVN_INDEX_CHANGE		(TVN_BASE + 4)
 
 //
 //	The caret position: sent with TVN_CURSOR_CHANGE, and filled by TXM_GETCURSORINFO.
@@ -93,6 +98,20 @@ typedef struct _TVNCURSORINFO
 	BOOL			 fLineNoKnown;
 	BOOL			 fOffsetKnown;
 } TVNCURSORINFO;
+
+//
+//	How far indexing has got: sent with TVN_INDEX_CHANGE, and filled by
+//	TXM_GETINDEXINFO. Line numbers are exact over the indexed part of the
+//	document, which starts at the top. Opening a file indexes its first 4 MB;
+//	TXM_INDEXFILE indexes the rest in the background, when asked.
+//
+typedef struct _TVNINDEXINFO
+{
+	NMHDR			 hdr;
+	UINT			 nPercent;			// of the document indexed: 100 once all of it is
+	BOOL			 fIndexing;			// indexing is running
+	unsigned __int64 nLineCount;		// exact once nPercent is 100, an estimate before
+} TVNINDEXINFO;
 
 typedef struct _TEXTVIEWSTATS
 {
@@ -268,6 +287,25 @@ typedef struct _TEXTVIEWFIND
 
 #define TextView_GetCursorInfo(hwndTV, info) \
 	((BOOL)SendMessage((hwndTV), TXM_GETCURSORINFO, 0, (LPARAM)(TVNCURSORINFO *)(info)))
+
+// Start (fIndex TRUE) or stop indexing the rest of the document in the background
+#define TextView_IndexFile(hwndTV, fIndex) \
+	SendMessage((hwndTV), TXM_INDEXFILE, (WPARAM)(BOOL)(fIndex), 0)
+
+#define TextView_GetIndexInfo(hwndTV, info) \
+	((BOOL)SendMessage((hwndTV), TXM_GETINDEXINFO, 0, (LPARAM)(TVNINDEXINFO *)(info)))
+
+//	Move the caret to the start of a line, counted from 0: TDR_OK, TDR_PENDING_INDEX
+//	for a line past the indexed part of the document (index further, then try
+//	again), or TDR_FAILED for one it doesn't have. TextView_CanGotoLine answers
+//	the same without moving. The line number travels in both wParam and lParam.
+#define TextView_GotoLine(hwndTV, nLineNo) \
+	((TEXT_RESULT)SendMessage((hwndTV), TXM_GOTOLINE, \
+		(WPARAM)(DWORD)(nLineNo), (LPARAM)(DWORD)((unsigned __int64)(nLineNo) >> 32)))
+
+#define TextView_CanGotoLine(hwndTV, nLineNo) \
+	((TEXT_RESULT)SendMessage((hwndTV), TXM_CANGOTOLINE, \
+		(WPARAM)(DWORD)(nLineNo), (LPARAM)(DWORD)((unsigned __int64)(nLineNo) >> 32)))
 
 #define TextView_FindText(hwndTV, find) \
 	((UINT)SendMessage((hwndTV), TXM_FINDTEXT, 0, (LPARAM)(TEXTVIEWFIND *)(find)))

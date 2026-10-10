@@ -22,6 +22,22 @@ bool TextDocument::linecount_known()
 	return byte_length() == 0 || m_seq.linecount_known();
 }
 
+bool TextDocument::index_next(size_w length)
+{
+	return m_seq.index_next(length);
+}
+
+//
+//	How much of the document is indexed, from the top: not counting a
+//	byte-order mark, the start of the sequence
+//
+size_w TextDocument::indexed_length()
+{
+	size_w indexed = m_seq.indexed_length();
+
+	return indexed > (size_w)m_nHeaderSize ? indexed - m_nHeaderSize : 0;
+}
+
 //
 //	The kinds of line break found in the exactly-counted part of the document
 //
@@ -215,39 +231,58 @@ bool TextDocument::coord_after_change(TextCoord *coord, const TextChange *change
 }
 
 //
-//	Return the line number of a position. Past the exactly counted part of a
-//	lazily indexed file the number is an estimate, and *exact is false.
+//	Return the line number of a position. Past the indexed part of a lazily
+//	opened file the number is an estimate, and pending.
 //
-size_w TextDocument::lineno_from_pos(TextPos pos, bool *exact)
+TEXT_RESULT TextDocument::lineno_from_pos(TextPos pos, size_w *lineno)
 {
 	size_w sequenceOffset;
-	size_w line = 0;
 
-	*exact = true;
+	*lineno = 0;
 
 	if(m_seq.size() <= (size_w)m_nHeaderSize)
-		return 0;
+		return TDR_OK;
 
 	sequenceOffset = pos.byte_offset + m_nHeaderSize;
 
-	if(!m_seq.lineno_from_offset(sequenceOffset, &line, 0))
-	{
-		*exact = false;
-		return 0;
-	}
+	if(!m_seq.lineno_from_offset(sequenceOffset, lineno, 0))
+		return TDR_FAILED;
 
-	*exact = m_seq.lineno_known_at(sequenceOffset);
-	return line;
+	return m_seq.lineno_known_at(sequenceOffset) ? TDR_OK : TDR_PENDING_INDEX;
 }
 
-bool TextDocument::charoffset_from_pos(TextPos pos, size_w *offset_chars)
+//
+//	The start of a line: exact or nothing, as Go To needs it, rather than the
+//	estimate that offset_from_lineno gives for a line far past the index
+//
+TEXT_RESULT TextDocument::coord_from_lineno(size_w lineno, TextCoord *coord)
 {
-	return charoffset_from_bytes(pos.byte_offset, offset_chars);
+	size_w offset;
+
+	if(coord == 0)
+		return TDR_FAILED;
+
+	// an empty document has one, empty, line
+	if(byte_length() == 0)
+		return lineno == 0 && coord_from_pos(TextPos(0), coord) ? TDR_OK : TDR_FAILED;
+
+	if(!m_seq.offset_from_lineno(lineno, &offset) || !m_seq.lineno_known(lineno))
+		return m_seq.linecount_known() ? TDR_FAILED : TDR_PENDING_INDEX;
+
+	// the first line starts at the top of the sequence, before any byte-order mark
+	offset = offset > (size_w)m_nHeaderSize ? offset - m_nHeaderSize : 0;
+
+	return coord_from_pos(TextPos(offset), coord) ? TDR_OK : TDR_FAILED;
 }
 
-bool TextDocument::charcount(size_w *chars)
+TEXT_RESULT TextDocument::charoffset_from_pos(TextPos pos, size_w *offset_chars)
 {
-	return charoffset_from_bytes(byte_length(), chars);
+	return charoffset_from_bytes(pos.byte_offset, offset_chars) ? TDR_OK : TDR_FAILED;
+}
+
+TEXT_RESULT TextDocument::charcount(size_w *chars)
+{
+	return charoffset_from_bytes(byte_length(), chars) ? TDR_OK : TDR_FAILED;
 }
 
 //

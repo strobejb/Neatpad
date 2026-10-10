@@ -372,8 +372,8 @@ void TextView::UpdateMarginWidth()
 int TextView::PaintMargin(HDC hdc, TextCoord *line, int xpos, int ypos)
 {
 	RECT	rect = { xpos, ypos, xpos + LeftMarginWidth(), ypos + m_nLineHeight };
-	bool	exact = false;
-	size_w	nLineNo = line ? m_pTextDoc->lineno_from_pos(*line, &exact) : 0;
+	size_w	nLineNo = 0;
+	bool	exact = line && m_pTextDoc->lineno_from_pos(*line, &nLineNo) == TDR_OK;
 
 	int		imgWidth;
 	int		imgHeight;

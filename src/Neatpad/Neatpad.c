@@ -233,7 +233,7 @@ static void FormatByteSize(TCHAR *buf, size_t cch, unsigned __int64 bytes)
 //
 //	A count with the user's thousands separator, e.g. 1,234,567
 //
-static void FormatCount(TCHAR *buf, int cch, unsigned __int64 value)
+void FormatCount(TCHAR *buf, int cch, unsigned __int64 value)
 {
 	TCHAR	  digits[32];
 	TCHAR	  sep[8];
@@ -356,6 +356,36 @@ void UpdateStatusBarCursorInfo(TVNCURSORINFO *ci)
 }
 
 //
+//	Show how far indexing has got: a link to start it, its progress as a link to
+//	stop it, or nothing once the whole file is indexed
+//
+static void UpdateStatusBarIndex(const TVNINDEXINFO *info)
+{
+	TCHAR text[32] = _T("");
+
+	if(g_hwndStatusbar == 0)
+		return;
+
+	if(info->fIndexing)
+		wsprintf(text, _T("Indexing %u%%"), info->nPercent);
+	else if(info->nPercent < 100)
+		lstrcpy(text, _T("Index file"));
+
+	SetStatusBarLink(g_hwndStatusbar, STATUS_PART_INDEX, text);
+}
+
+//
+//	Start indexing the rest of the file, or stop
+//
+static void ToggleIndexing(void)
+{
+	TVNINDEXINFO info;
+
+	if(TextView_GetIndexInfo(g_hwndTextView, &info))
+		TextView_IndexFile(g_hwndTextView, !info.fIndexing);
+}
+
+//
 //	About dialog-proc
 //
 LRESULT CALLBACK AboutDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
@@ -455,6 +485,8 @@ void ShowAboutDlg(HWND hwndParent)
 //
 UINT TextViewNotifyHandler(HWND hwnd, NMHDR *nmhdr)
 {
+	TVNINDEXINFO indexinfo;
+
 	switch(nmhdr->code)
 	{
 	// document has changed due to text input / undo / redo, update
@@ -473,6 +505,16 @@ UINT TextViewNotifyHandler(HWND hwnd, NMHDR *nmhdr)
 		}
 
 		UpdateStatusBarDocStats();
+
+		// an edit can change how much of the file is indexed
+		if(TextView_GetIndexInfo(g_hwndTextView, &indexinfo))
+			UpdateStatusBarIndex(&indexinfo);
+
+		break;
+
+	// indexing has started, got further, or stopped
+	case TVN_INDEX_CHANGE:
+		UpdateStatusBarIndex((TVNINDEXINFO *)nmhdr);
 		break;
 
 	// cursor position has changed, update the statusbar info
@@ -502,6 +544,12 @@ UINT NotifyHandler(HWND hwnd, NMHDR *nmhdr)
 	switch(nmhdr->code)
 	{
 	case NM_DBLCLK:
+		break;
+
+	// the statusbar's indexing pane
+	case NM_CLICK:
+		if(nmhdr->hwndFrom == g_hwndStatusbar && ((NMMOUSE *)nmhdr)->dwItemSpec == STATUS_PART_INDEX)
+			ToggleIndexing();
 		break;
 
 	default:
@@ -616,7 +664,11 @@ UINT CommandHandler(HWND hwnd, UINT nCtrlId, UINT nCtrlCode, HWND hwndFrom)
 		return 0;
 
 	case IDM_EDIT_GOTO:
-		ShowFindDlg(hwnd, GOTO_PAGE);
+		ShowGotoLineDlg(hwnd);
+		return 0;
+
+	case IDM_EDIT_INDEXFILE:
+		ToggleIndexing();
 		return 0;
 
 
@@ -679,6 +731,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 	RECT rect;
 	HDWP hdwp;
 	NMHDR *nmhdr;
+	TVNINDEXINFO indexinfo;
 
 	switch(msg)
 	{
@@ -689,7 +742,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		UpdateStatusBarFileInfo();
 
 		TextView_SetContextMenu(g_hwndTextView, GetSubMenu(LoadMenu(GetModuleHandle(0),
-			MAKEINTRESOURCE(IDR_MENU2)), 0));
+			MAKEINTRESOURCE(IDR_EDITCONTEXT)), 0));
 
 		// load the image list
 		hImgList = ImageList_LoadImage(
@@ -739,6 +792,14 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		//CheckMenuCommand((HMENU)wParam, IDM_VIEW_SEARCHBAR,		g_hwndSearchBar ? TRUE : FALSE);
 
 		EnableMenuCommand((HMENU)wParam, IDM_EDIT_UNDO,		TextView_CanUndo(g_hwndTextView));
+
+		// checked while indexing runs
+		if(TextView_GetIndexInfo(g_hwndTextView, &indexinfo))
+		{
+			EnableMenuCommand((HMENU)wParam, IDM_EDIT_INDEXFILE, indexinfo.nPercent < 100);
+			CheckMenuCommand((HMENU)wParam, IDM_EDIT_INDEXFILE, indexinfo.fIndexing);
+		}
+
 		EnableMenuCommand((HMENU)wParam, IDM_EDIT_REDO,		TextView_CanRedo(g_hwndTextView));
 		EnableMenuCommand((HMENU)wParam, IDM_EDIT_PASTE,	IsClipboardFormatAvailable(CF_TEXT));
 		EnableMenuCommand((HMENU)wParam, IDM_EDIT_COPY,		TextView_GetSelSize(g_hwndTextView) != 0);
@@ -776,6 +837,33 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
 	case WM_COMMAND:
 		return CommandHandler(hwnd, LOWORD(wParam), HIWORD(wParam), (HWND)lParam);
+
+	case WM_DRAWITEM:
+
+		// the statusbar's link panes
+		if(((DRAWITEMSTRUCT *)lParam)->hwndItem == g_hwndStatusbar)
+			return DrawStatusBarLink((DRAWITEMSTRUCT *)lParam);
+
+		break;
+
+	case WM_SETCURSOR:
+
+		// a hand over the statusbar's links
+		if((HWND)wParam == g_hwndStatusbar && LOWORD(lParam) == HTCLIENT)
+		{
+			POINT pt;
+
+			GetCursorPos(&pt);
+			ScreenToClient(g_hwndStatusbar, &pt);
+
+			if(StatusBarLinkAt(g_hwndStatusbar, pt))
+			{
+				SetCursor(LoadCursor(NULL, IDC_HAND));
+				return TRUE;
+			}
+		}
+
+		break;
 
 	case WM_SETFOCUS:
 		SetFocus(g_hwndTextView);
@@ -846,7 +934,7 @@ void InitMainWnd()
 	wcx.hInstance		= hInst;
 	wcx.hCursor			= LoadCursor (NULL, IDC_ARROW);
 	wcx.hbrBackground	= (HBRUSH)0;
-	wcx.lpszMenuName	= MAKEINTRESOURCE(IDR_MENU1);
+	wcx.lpszMenuName	= MAKEINTRESOURCE(IDR_MAINMENU);
 	wcx.lpszClassName	= g_szAppName;
 	wcx.hIcon			= LoadImage(hInst, MAKEINTRESOURCE(IDI_ICON1), IMAGE_ICON, 32, 32, LR_CREATEDIBSECTION);
 	wcx.hIconSm			= LoadImage(hInst, MAKEINTRESOURCE(IDI_ICON1), IMAGE_ICON, 16, 16, LR_CREATEDIBSECTION);

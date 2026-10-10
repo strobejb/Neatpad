@@ -144,6 +144,7 @@ bool TextDocument::init(const seqfilechar *filename)
 	m_nFileFormat = detect_file_format(&m_nHeaderSize);
 	m_fBom = m_nHeaderSize > 0;
 	m_seq.set_line_scan_mode(line_scan_mode_from_encoding(m_nFileFormat));
+	m_seq.index_lines(0, min_of(m_seq.size(), OPEN_INDEX_LENGTH));
 	return true;
 }
 
@@ -167,6 +168,7 @@ bool TextDocument::init(const seqfilechar *filename, TEXT_ENCODING encoding)
 		m_nHeaderSize = m_seq.size() >= bom->len && memcmp(header, bom->bom, bom->len) == 0 ? bom->len : 0;
 		m_fBom = m_nHeaderSize > 0;
 		m_seq.set_line_scan_mode(line_scan_mode_from_encoding(m_nFileFormat));
+		m_seq.index_lines(0, min_of(m_seq.size(), OPEN_INDEX_LENGTH));
 	}
 
 	return true;

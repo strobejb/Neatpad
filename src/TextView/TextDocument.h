@@ -190,6 +190,11 @@ public:
 	bool  coord_from_pos(TextPos pos, TextCoord *coord);
 	bool  coord_from_document_end(TextCoord *coord);
 
+	// The start of a line, counted from 0. A line past the indexed part of the
+	// document is TDR_PENDING_INDEX (one a little past it is indexed there and
+	// then), and one the document doesn't have TDR_FAILED.
+	TEXT_RESULT coord_from_lineno(size_w lineno, TextCoord *coord);
+
 	// The coordinate at a UTF-16 column of a line. A column part way through a
 	// character (between the halves of a surrogate pair) moves back to its start.
 	bool  coord_from_line_pos(const TextCoord *line, size_w column, TextCoord *coord);
@@ -200,12 +205,15 @@ public:
 	// change stays before any inserted text.
 	bool  coord_after_change(TextCoord *coord, const TextChange *change);
 
-	// Line numbers are a query, never stored in a coordinate. Returns an estimate when *exact is false.
-	size_w lineno_from_pos(TextPos pos, bool *exact);
+	// A position's line number, counted from 0: line numbers are a query, never
+	// stored in a coordinate. Past the indexed part of the document the answer
+	// is TDR_PENDING_INDEX, with an estimate - for drawing and scrolling.
+	TEXT_RESULT lineno_from_pos(TextPos pos, size_w *lineno);
 
 	// UTF-16 offset of a position from the start of the document. Only fixed-width
-	// encodings can answer without scanning the file; the others return false.
-	bool  charoffset_from_pos(TextPos pos, size_w *offset_chars);
+	// encodings can answer yet: UTF-8 and UTF-32 are TDR_FAILED until the index
+	// counts characters.
+	TEXT_RESULT charoffset_from_pos(TextPos pos, size_w *offset_chars);
 
 	// The line break ending a coordinate's line: TXL_CRLF, TXL_LF or TXL_CR, or 0 for a last line without one.
 	uint32_t linebreak_from_coord(const TextCoord *line);
@@ -229,6 +237,15 @@ public:
 	TEXT_ENCODING getformat();
 	size_w linecount();
 
+	//
+	//	Indexing. Line numbers are exact over the indexed part of the document,
+	//	which starts at the top: opening a file indexes its first 4 MB, and
+	//	index_next() indexes about the next length bytes, false once all of it is
+	//	indexed (or can't be read). indexed_length() is how much is, in bytes.
+	//
+	bool   index_next(size_w length);
+	size_w indexed_length();
+
 	// The kinds of line break found so far (TXL_CRLF, TXL_CR, TXL_LF bits). Covers the
 	// part of the document with exact line numbers, so all of it once it has been counted.
 	uint32_t linebreaks_seen();
@@ -236,8 +253,8 @@ public:
 	size_w byte_length();
 	size_w file_length();
 
-	// Length of the document in UTF-16 units, where that is cheap (as charoffset_from_pos).
-	bool  charcount(size_w *chars);
+	// Length of the document in UTF-16 units, as charoffset_from_pos.
+	TEXT_RESULT charcount(size_w *chars);
 
 private:
 
@@ -301,6 +318,10 @@ private:
 
 	// Raw byte storage.
 	sequence m_seq;
+
+	// Opening a file indexes this much of it, so most files' line numbers are
+	// exact at once. The rest of a larger file is indexed only when asked.
+	static const size_w OPEN_INDEX_LENGTH = 0x400000;
 
 	TEXT_ENCODING m_nFileFormat;
 	int    m_nHeaderSize;	// the byte-order mark the sequence starts with, if the file had one

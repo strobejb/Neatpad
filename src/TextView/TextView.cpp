@@ -101,6 +101,8 @@ TextView::TextView(HWND hwnd)
 	m_nSelectionMode	= SEL_NONE;
 	m_nEditMode			= MODE_INSERT;
 	m_nScrollTimer		= 0;
+	m_fIndexing			= false;
+	m_nIndexPercent		= 100;
 	m_fHideCaret		= false;
 	m_hUserMenu			= 0;
 	m_hImageList		= 0;
@@ -171,13 +173,13 @@ LRESULT TextView::NotifyParent(UINT nNotifyCode, NMHDR *optional)
 //
 VOID TextView::FillCursorInfo(TVNCURSORINFO *info)
 {
-	bool   exact = false;
+	size_w lineno = 0;
 	size_w offset_chars = 0;
 
-	info->nLineNo		= m_pTextDoc->lineno_from_pos(m_cursorPos, &exact);
-	info->fLineNoKnown	= exact;
+	info->fLineNoKnown	= m_pTextDoc->lineno_from_pos(m_cursorPos, &lineno) == TDR_OK;
+	info->nLineNo		= lineno;
 	info->nColumnNo		= m_cursorPos.column;
-	info->fOffsetKnown	= m_pTextDoc->charoffset_from_pos(m_cursorPos, &offset_chars);
+	info->fOffsetKnown	= m_pTextDoc->charoffset_from_pos(m_cursorPos, &offset_chars) == TDR_OK;
 	info->nOffset		= offset_chars;
 }
 
@@ -449,12 +451,35 @@ UINT TextView::FindText(TEXTVIEWFIND *find)
 }
 
 //
+//	Move the caret to the start of a line, if the line can be found exactly:
+//	one past the indexed part of the document is pending until indexing gets
+//	there. Without fMove, only say whether it can.
+//
+TEXT_RESULT TextView::GotoLine(size_w lineno, bool fMove)
+{
+	TextCoord   line;
+	TEXT_RESULT result = m_pTextDoc->coord_from_lineno(lineno, &line);
+
+	if(result == TDR_OK && fMove)
+	{
+		m_cursorPos = line;
+		m_selAnchor = line;
+		m_nSelectionType = SEL_NORMAL;
+
+		UpdateViewState(TRUE);
+		RefreshWindow();
+	}
+
+	return result;
+}
+
+//
 //	Public memberfunction 
 //
 LRESULT WINAPI TextView::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 {
 	size_w offset_chars;
-	bool  exact;
+	size_w lineno;
 
 	switch(msg)
 	{
@@ -617,10 +642,11 @@ LRESULT WINAPI TextView::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 
 	// only cheap for fixed-width encodings: -1 for the others
 	case TXM_GETCURPOS:
-		return m_pTextDoc->charoffset_from_pos(m_cursorPos, &offset_chars) ? ResultFromSize(offset_chars) : -1;
+		return m_pTextDoc->charoffset_from_pos(m_cursorPos, &offset_chars) == TDR_OK ? ResultFromSize(offset_chars) : -1;
 
 	case TXM_GETCURLINE:
-		return ResultFromSize(m_pTextDoc->lineno_from_pos(m_cursorPos, &exact));
+		m_pTextDoc->lineno_from_pos(m_cursorPos, &lineno);
+		return ResultFromSize(lineno);
 
 	case TXM_GETCURCOL:
 		return ResultFromSize(m_cursorPos.column);
@@ -629,8 +655,7 @@ LRESULT WINAPI TextView::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 		return m_nEditMode;
 
 	case TXM_GETCURLINEKNOWN:
-		m_pTextDoc->lineno_from_pos(m_cursorPos, &exact);
-		return exact;
+		return m_pTextDoc->lineno_from_pos(m_cursorPos, &lineno) == TDR_OK;
 
 	case TXM_GETDOCSTATS:
 	{
@@ -648,7 +673,7 @@ LRESULT WINAPI TextView::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 		stats->sel_char_count = 0;
 		stats->linebreaks_seen = m_pTextDoc->linebreaks_seen();
 
-		if(m_pTextDoc->charcount(&chars))
+		if(m_pTextDoc->charcount(&chars) == TDR_OK)
 		{
 			stats->char_count = (unsigned __int64)chars;
 			stats->char_count_known = TRUE;
@@ -660,8 +685,8 @@ LRESULT WINAPI TextView::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 			stats->sel_byte_count = (unsigned __int64)(selEnd - selStart);
 
 			if(stats->char_count_known &&
-				m_pTextDoc->charoffset_from_pos(selStart, &startChars) &&
-				m_pTextDoc->charoffset_from_pos(selEnd, &endChars))
+				m_pTextDoc->charoffset_from_pos(selStart, &startChars) == TDR_OK &&
+				m_pTextDoc->charoffset_from_pos(selEnd, &endChars) == TDR_OK)
 			{
 				stats->sel_char_count = (unsigned __int64)(endChars - startChars);
 			}
@@ -675,6 +700,20 @@ LRESULT WINAPI TextView::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 			return FALSE;
 
 		FillCursorInfo((TVNCURSORINFO *)lParam);
+		return TRUE;
+
+	case TXM_INDEXFILE:
+		return IndexFile((BOOL)wParam);
+
+	// the line number comes in two halves
+	case TXM_GOTOLINE: case TXM_CANGOTOLINE:
+		return GotoLine((size_w)(DWORD)wParam | ((size_w)(DWORD)lParam << 32), msg == TXM_GOTOLINE);
+
+	case TXM_GETINDEXINFO:
+		if(lParam == 0)
+			return FALSE;
+
+		FillIndexInfo((TVNINDEXINFO *)lParam);
 		return TRUE;
 
 	case TXM_FINDTEXT:

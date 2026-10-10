@@ -311,7 +311,7 @@ LONG TextView::OnMouseMove(UINT nFlags, int mx, int my)
 			if(m_nScrollTimer == 0)
 			{
 				m_nScrollCounter = 0;
-				m_nScrollTimer   = SetTimer(m_hWnd, 1, 30, 0);
+				m_nScrollTimer   = SetTimer(m_hWnd, SCROLL_TIMER, 30, 0);
 			}
 		}
 
@@ -391,6 +391,10 @@ LONG TextView::OnTimer(UINT_PTR nTimerId)
 	int	  dx = 0, dy = 0;	// scrolling vectors
 	RECT  rect;
 	POINT pt;
+
+	// indexing has a timer of its own
+	if(nTimerId == INDEX_TIMER)
+		return OnIndexTimer();
 	
 	// find client area, but make it an even no. of lines
 	GetClientRect(m_hWnd, &rect);

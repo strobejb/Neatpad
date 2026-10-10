@@ -15,6 +15,17 @@ typedef enum TEXT_ENCODING
 } TEXT_ENCODING;
 
 //
+//	The answer from a lookup that needs the document's index: only the indexed
+//	part of a document, from the top, has exact line numbers
+//
+typedef enum TEXT_RESULT
+{
+	TDR_OK = 0,					// answered exactly
+	TDR_PENDING_INDEX,			// past the indexed part: index further, then ask again
+	TDR_FAILED					// no answer: one the document doesn't have, or can't give
+} TEXT_RESULT;
+
+//
 //	Kinds of line break, as bits: one is a line format, several are the
 //	breaks a document has been seen to use
 //

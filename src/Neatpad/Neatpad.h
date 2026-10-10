@@ -147,14 +147,20 @@ HFONT StatusBarFont(void);
 void SetStatusBarParts(HWND hwndSB);
 int  StatusBarMenuSelect(HWND hwnd, HWND hwndSB, WPARAM wParam, LPARAM lParam);
 void SetStatusBarText(HWND hwndSB, UINT nPart, UINT uStyle, TCHAR *fmt, ...);
+void SetStatusBarLink(HWND hwndSB, UINT nPart, TCHAR *text);
+void FormatCount(TCHAR *buf, int cch, unsigned __int64 value);
+void ShowGotoLineDlg(HWND hwndMain);
+BOOL DrawStatusBarLink(const DRAWITEMSTRUCT *dis);
+BOOL StatusBarLinkAt(HWND hwndSB, POINT pt);
 void UpdateStatusBarFileInfo(void);
 
 #define STATUS_PART_CURSOR		0
 #define STATUS_PART_DOCSTATS	1
 #define STATUS_PART_MESSAGE		2
 #define STATUS_PART_EDITMODE	STATUS_PART_DOCSTATS
-#define STATUS_PART_LINEFMT		3
-#define STATUS_PART_ENCODING	4
+#define STATUS_PART_INDEX		3
+#define STATUS_PART_LINEFMT		4
+#define STATUS_PART_ENCODING	5
 
 #ifdef __cplusplus
 }

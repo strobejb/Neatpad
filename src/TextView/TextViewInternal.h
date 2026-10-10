@@ -6,6 +6,10 @@
 // Characters of a line that are laid out and drawn. A longer line stops being
 // drawn at this point (like VS Code's stopRenderingLineAfter).
 #define LINE_LAYOUT_LIMIT	10000
+
+// Timers: the mouse-selection scroll, and indexing in the background
+#define SCROLL_TIMER	1
+#define INDEX_TIMER		2
 #define LINENO_FMT  _T(" %I64u ")
 #define LINENO_PAD	 8
 
@@ -121,6 +125,12 @@ private:
 	LONG		OpenFile(TCHAR *szFileName, int nEncoding);	// -1 for its byte-order mark to say
 	LONG		SaveFile(TCHAR *szFileName, UINT nEncoding, BOOL fBom, UINT nLineBreak);
 	LONG		ClearFile();
+
+	LONG		IndexFile(BOOL fIndex);
+	LONG		OnIndexTimer();
+	TEXT_RESULT	GotoLine(size_w lineno, bool fMove);
+	VOID		FillIndexInfo(TVNINDEXINFO *info);
+	VOID		NotifyIndexChange();
 	void		ResetLineCache();
 
 	//
@@ -325,6 +335,8 @@ private:
 	// Runtime data
 	UINT_PTR	m_nScrollTimer;
 	int			m_nScrollCounter;
+	bool		m_fIndexing;		// the index timer is running
+	UINT		m_nIndexPercent;	// as the parent was last told
 	bool		m_fHideCaret;
 	//bool		m_fTransparent;
 	HIMAGELIST	m_hImageList;
