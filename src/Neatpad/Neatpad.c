@@ -285,8 +285,8 @@ static void UpdateStatusBarDocStats(void)
 	// edits and further line counting can turn up line endings of another kind
 	UpdateStatusBarLineFormat(stats.linebreaks_seen);
 
-	// with a selection, show how much of the document it covers. Only fixed-width
-	// encodings can count characters cheaply, so the others show bytes.
+	// with a selection, show how much of the document it covers. UTF-8 and UTF-32
+	// count characters once the file is indexed, and show bytes until then.
 	if(stats.sel_byte_count != 0)
 	{
 		if(stats.char_count_known)

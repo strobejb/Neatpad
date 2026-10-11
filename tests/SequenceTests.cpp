@@ -2315,40 +2315,41 @@ void textdocument_linebreaks_seen()
     }
 }
 
-void textdocument_charoffset_only_for_fixed_width()
+void textdocument_charoffset_in_each_encoding()
 {
-    const DocTestEncoding encodings[] = { DOC_ASCII, DOC_UTF8_BOM, DOC_UTF16LE_BOM, DOC_UTF16BE_BOM };
+    // a, a character of two UTF-16 units (U+1F600, or two ANSI letters), CRLF
+    // and b. starts are where a, the two-unit character, CR, LF and b start,
+    // and the end: 0, 1, 3, 4, 5 and 6 characters in.
+    struct { TEXT_ENCODING encoding; const char *bytes; size_t length; size_t starts[6]; } cases[] =
+    {
+        { NCP_ASCII,   "a\xe9\xe8\r\nb",                                                  6, { 0, 1, 3,  4,  5,  6 } },
+        { NCP_UTF8,    "a\xf0\x9f\x98\x80\r\nb",                                          8, { 0, 1, 5,  6,  7,  8 } },
+        { NCP_UTF8,    "\xef\xbb\xbf" "a\xf0\x9f\x98\x80\r\nb",                          11, { 0, 1, 5,  6,  7,  8 } },
+        { NCP_UTF16,   "\xff\xfe" "a\0\x3d\xd8\x00\xde\r\0\n\0b\0",                      14, { 0, 2, 6,  8, 10, 12 } },
+        { NCP_UTF16BE, "\xfe\xff" "\0a\xd8\x3d\xde\x00\0\r\0\n\0b",                      14, { 0, 2, 6,  8, 10, 12 } },
+        { NCP_UTF32,   "\xff\xfe\0\0" "a\0\0\0\x00\xf6\x01\x00\r\0\0\0\n\0\0\0b\0\0\0",   24, { 0, 4, 8, 12, 16, 20 } },
+        { NCP_UTF32BE, "\0\0\xfe\xff" "\0\0\0a\x00\x01\xf6\x00\0\0\0\r\0\0\0\n\0\0\0b",   24, { 0, 4, 8, 12, 16, 20 } },
+    };
+    const size_w chars[6] = { 0, 1, 3, 4, 5, 6 };
 
-    for(size_t i = 0; i < sizeof(encodings) / sizeof(encodings[0]); i++)
+    for(size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++)
     {
         TextDocument doc;
         TCHAR path[MAX_PATH];
-        TextCoord coord;
         size_w offset_chars = 0;
-        bool utf16 = encodings[i] == DOC_UTF16LE_BOM || encodings[i] == DOC_UTF16BE_BOM;
 
-        CHECK(write_textdocument_file("abc\r\nxyz", encodings[i], path));
+        CHECK(write_temp_file(cases[i].bytes, cases[i].length, path));
+        CHECK(doc.init(path, cases[i].encoding));
 
-        // ASCII here is ANSI, a byte a character, rather than the UTF-8 it would open as
-        CHECK(encodings[i] == DOC_ASCII ? doc.init(path, NCP_ASCII) : doc.init(path));
-
-        // the 'y', six characters in
-        CHECK(doc.coord_from_pos(TextPos(utf16 ? 12 : 6), &coord));
-
-        if(encodings[i] == DOC_UTF8_BOM)
+        for(size_t k = 0; k < 6; k++)
         {
-            CHECK(doc.charoffset_from_pos(coord, &offset_chars) == TDR_FAILED);
-            CHECK(doc.charcount(&offset_chars) == TDR_FAILED);
+            CHECK(doc.charoffset_from_pos(TextPos(cases[i].starts[k]), &offset_chars) == TDR_OK);
+            CHECK(offset_chars == chars[k]);
         }
-        else
-        {
-            CHECK(doc.charoffset_from_pos(coord, &offset_chars) == TDR_OK);
-            CHECK(offset_chars == 6);
 
-            // the whole document, without the BOM
-            CHECK(doc.charcount(&offset_chars) == TDR_OK);
-            CHECK(offset_chars == 8);
-        }
+        // the whole document, without a byte-order mark
+        CHECK(doc.charcount(&offset_chars) == TDR_OK);
+        CHECK(offset_chars == 6);
 
         doc.clear();
         DeleteFile(path);
@@ -4581,6 +4582,39 @@ void sequence_char_lookups_wait_for_the_index()
     DeleteFile(path);
 }
 
+void textdocument_char_results_wait_for_the_index()
+{
+    std::string text = utf8_text(static_cast<size_t>(TextDocumentLineIndexProbe::open_index_length()) + 2 * 1024 * 1024);
+    size_t near_end = text.size() - 10;
+    TextDocument doc;
+    TCHAR path[MAX_PATH];
+    size_w chars = 0;
+
+    CHECK(write_temp_file(text.data(), text.size(), path));
+    CHECK(doc.init(path));
+    CHECK(doc.getformat() == NCP_UTF8);
+
+    // opening indexes the first 4 MB: positions there answer, the rest wait
+    CHECK(doc.charcount(&chars) == TDR_PENDING_INDEX);
+    CHECK(doc.charoffset_from_pos(TextPos(1000), &chars) == TDR_OK);
+    CHECK(chars == utf8_chars(text, 1000));
+    CHECK(doc.charoffset_from_pos(TextPos(near_end), &chars) == TDR_PENDING_INDEX);
+
+    while(doc.index_next(0x100000))
+        ;
+
+    CHECK(doc.charcount(&chars) == TDR_OK);
+    CHECK(chars == utf8_chars(text, text.size()));
+    CHECK(doc.charoffset_from_pos(TextPos(near_end), &chars) == TDR_OK);
+    CHECK(chars == utf8_chars(text, near_end));
+
+    // a position past the end is no position at all
+    CHECK(doc.charoffset_from_pos(TextPos(text.size() + 1), &chars) == TDR_FAILED);
+
+    doc.clear();
+    DeleteFile(path);
+}
+
 void textdocument_detects_utf8_without_a_bom()
 {
     TextDocument doc;
@@ -5159,7 +5193,7 @@ const test_case tests[] =
     { "textdocument_only_cr_lf_end_lines", textdocument_only_cr_lf_end_lines },
     { "textdocument_linebreak_from_coord", textdocument_linebreak_from_coord },
     { "textdocument_linebreaks_seen", textdocument_linebreaks_seen },
-    { "textdocument_charoffset_only_for_fixed_width", textdocument_charoffset_only_for_fixed_width },
+    { "textdocument_charoffset_in_each_encoding", textdocument_charoffset_in_each_encoding },
     { "textdocument_coord_moves_by_local_lines", textdocument_coord_moves_by_local_lines },
     { "textdocument_coord_moves_by_local_utf8_lines", textdocument_coord_moves_by_local_utf8_lines },
     { "textdocument_coord_tracks_lazy_eof_after_newline_edits", textdocument_coord_tracks_lazy_eof_after_newline_edits },
@@ -5218,6 +5252,7 @@ const test_case tests[] =
     { "sequence_char_lookups_match_a_count_in_each_scan_mode", sequence_char_lookups_match_a_count_in_each_scan_mode },
     { "sequence_char_lookups_cross_pages", sequence_char_lookups_cross_pages },
     { "sequence_char_lookups_wait_for_the_index", sequence_char_lookups_wait_for_the_index },
+    { "textdocument_char_results_wait_for_the_index", textdocument_char_results_wait_for_the_index },
     { "textdocument_detects_utf8_without_a_bom", textdocument_detects_utf8_without_a_bom },
     { "textdocument_new_document_is_utf8", textdocument_new_document_is_utf8 },
     { "sequence_index_next_indexes_to_the_end", sequence_index_next_indexes_to_the_end },

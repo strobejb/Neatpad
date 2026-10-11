@@ -210,9 +210,9 @@ public:
 	// is TDR_PENDING_INDEX, with an estimate - for drawing and scrolling.
 	TEXT_RESULT lineno_from_pos(TextPos pos, size_w *lineno);
 
-	// UTF-16 offset of a position from the start of the document. Only fixed-width
-	// encodings can answer yet: UTF-8 and UTF-32 are TDR_FAILED until the index
-	// counts characters.
+	// UTF-16 offset of a position from the start of the document. UTF-8 and
+	// UTF-32 count it from the index, so past the indexed part of the document
+	// it is TDR_PENDING_INDEX; ASCII and UTF-16 always answer.
 	TEXT_RESULT charoffset_from_pos(TextPos pos, size_w *offset_chars);
 
 	// The line break ending a coordinate's line: TXL_CRLF, TXL_LF or TXL_CR, or 0 for a last line without one.
@@ -287,9 +287,9 @@ private:
 	//
 	//	UTF-16 / backing-byte conversion
 	//
-	size_w count_chars           (size_w offset_bytes, size_w *length_chars);
-	size_w count_code_units      (size_w offset_bytes, size_w  length_bytes);
-	bool   charoffset_from_bytes (size_w offset_bytes, size_w *offset_chars);
+	size_w      count_chars           (size_w offset_bytes, size_w *length_chars);
+	size_w      count_code_units      (size_w offset_bytes, size_w  length_bytes);
+	TEXT_RESULT charoffset_from_bytes (size_w offset_bytes, size_w *offset_chars);
 
 	size_t utf16_to_rawdata(const textchar *utf16str, size_t utf16len, uint8_t *rawdata, size_t *rawlen);
 	size_t rawdata_to_utf16(uint8_t *rawdata, size_t rawlen, textchar *utf16str, size_t *utf16len);

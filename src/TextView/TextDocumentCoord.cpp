@@ -277,36 +277,44 @@ TEXT_RESULT TextDocument::coord_from_lineno(size_w lineno, TextCoord *coord)
 
 TEXT_RESULT TextDocument::charoffset_from_pos(TextPos pos, size_w *offset_chars)
 {
-	return charoffset_from_bytes(pos.byte_offset, offset_chars) ? TDR_OK : TDR_FAILED;
+	return charoffset_from_bytes(pos.byte_offset, offset_chars);
 }
 
 TEXT_RESULT TextDocument::charcount(size_w *chars)
 {
-	return charoffset_from_bytes(byte_length(), chars) ? TDR_OK : TDR_FAILED;
+	return charoffset_from_bytes(byte_length(), chars);
 }
 
 //
-//	UTF-16 units before a byte offset. Only the fixed-width encodings can say
-//	without scanning the text in front of it.
+//	UTF-16 units before a byte offset. The fixed-width encodings work it out;
+//	UTF-8 and UTF-32 count it from the index, so past the indexed part of the
+//	document it is pending.
 //
-bool TextDocument::charoffset_from_bytes(size_w offset_bytes, size_w *offset_chars)
+TEXT_RESULT TextDocument::charoffset_from_bytes(size_w offset_bytes, size_w *offset_chars)
 {
+	size_w chars;
+
 	if(offset_chars == 0)
-		return false;
+		return TDR_FAILED;
 
 	switch(m_nFileFormat)
 	{
 	case NCP_ASCII:
 		*offset_chars = offset_bytes;
-		return true;
+		return TDR_OK;
 
 	case NCP_UTF16:
 	case NCP_UTF16BE:
 		*offset_chars = offset_bytes / sizeof(UTF16);
-		return true;
+		return TDR_OK;
 
 	default:
-		return false;
+		if(!m_seq.chars_from_offset(m_nHeaderSize + offset_bytes, &chars))
+			return m_seq.linecount_known() ? TDR_FAILED : TDR_PENDING_INDEX;
+
+		// the sequence counts a byte-order mark as one character, U+FEFF
+		*offset_chars = chars - (m_nHeaderSize > 0 ? 1 : 0);
+		return TDR_OK;
 	}
 }
 

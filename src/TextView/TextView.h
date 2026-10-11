@@ -86,8 +86,8 @@ COLORREF RealizeColour(COLORREF col);
 
 //
 //	The caret position: sent with TVN_CURSOR_CHANGE, and filled by TXM_GETCURSORINFO.
-//	The line number is an estimate past the counted part of a large file, and the
-//	document offset is only available for fixed-width encodings.
+//	The line number is an estimate past the counted part of a large file, and
+//	in UTF-8 and UTF-32 the document offset is only known over the counted part.
 //
 typedef struct _TVNCURSORINFO
 {
