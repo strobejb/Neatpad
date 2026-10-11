@@ -80,6 +80,7 @@ sequence::sequence ()
 	prefix_generation = 0;
 	prefix_end		  = 0;
 	prefix_breaks	  = 0;
+	prefix_chars	  = 0;
 	prefix_complete	  = false;
 
 	head			= new span(0, 0, 0);
@@ -272,6 +273,7 @@ void sequence::update_span_line_data(span *sptr)
 	unsigned long ch;
 
 	sptr->line_count = 0;
+	sptr->chars = 0;
 	sptr->line_count_known = 0;
 	sptr->starts_with_lf = 0;
 	sptr->ends_with_cr = 0;

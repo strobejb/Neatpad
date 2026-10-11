@@ -21,6 +21,9 @@
     <ClCompile Include="sequence_buf.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="sequence_chars.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="sequence_lines.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>

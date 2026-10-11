@@ -54,7 +54,7 @@ BEGIN
         MENUITEM SEPARATOR
         MENUITEM "&Find...\tCtrl+F",            IDM_EDIT_FIND
         MENUITEM "Find &Next\tF3",              IDM_EDIT_FINDNEXT
-        MENUITEM "&Replace...\tCtrl+H",         IDM_EDIT_REPLACE
+        MENUITEM "&Replace...\tCtrl+H",         IDM_EDIT_REPLACE, INACTIVE
         MENUITEM "&Go to...\tCtrl+G",           IDM_EDIT_GOTO
         MENUITEM SEPARATOR
         MENUITEM "&Select All",                 IDM_EDIT_SELECTALL

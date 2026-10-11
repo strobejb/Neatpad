@@ -114,6 +114,7 @@
     <ClCompile Include="SaveFile.cpp" />
     <ClCompile Include="sequence.cpp" />
     <ClCompile Include="sequence_buf.cpp" />
+    <ClCompile Include="sequence_chars.cpp" />
     <ClCompile Include="sequence_lines.cpp" />
     <ClCompile Include="TextDocument.cpp" />
     <ClCompile Include="TextDocumentCoord.cpp" />

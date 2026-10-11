@@ -134,6 +134,7 @@
     <ClCompile Include="..\src\TextView\SaveFile.cpp" />
     <ClCompile Include="..\src\TextView\sequence.cpp" />
     <ClCompile Include="..\src\TextView\sequence_buf.cpp" />
+    <ClCompile Include="..\src\TextView\sequence_chars.cpp" />
     <ClCompile Include="..\src\TextView\sequence_lines.cpp" />
     <ClCompile Include="..\src\TextView\Unicode.c" />
   </ItemGroup>

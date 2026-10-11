@@ -371,6 +371,33 @@ bool utf8_is_valid(const UTF8 *utf8str, size_t utf8len)
 }
 
 //
+//	utf8_count_utf16
+//
+//	How many UTF-16 units a UTF-8 stream decodes to, by counting lead bytes.
+//	Every byte but a trailing byte (10xxxxxx) starts a character, and a 4-byte
+//	lead (11110xxx) starts one from U+10000, which takes two units. Trailing
+//	bytes count nothing, so the counts of two stretches add up to the count of
+//	both, wherever the join cuts a character.
+//
+//	It is exact for valid UTF-8. A broken sequence can count differently from
+//	the U+FFFD utf8_to_utf16 makes of it: a stray trailing byte counts nothing,
+//	and a cut-off 4-byte sequence counts two.
+//
+//	utf8str		- [in]   buffer containing UTF-8 text
+//	utf8len		- [in]   number of code-units (bytes) available in buffer
+//
+size_t utf8_count_utf16(const UTF8 *utf8str, size_t utf8len)
+{
+	size_t units = 0;
+	size_t i;
+
+	for(i = 0; i < utf8len; i++)
+		units += ((utf8str[i] & 0xC0) != 0x80) + ((utf8str[i] & 0xF8) == 0xF0);
+
+	return units;
+}
+
+//
 //	utf16_to_utf32_prev
 //
 //	Converts the single codepoint that ends the specified UTF-16LE stream

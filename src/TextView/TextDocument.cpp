@@ -84,8 +84,10 @@ static sequence::line_scan_mode line_scan_mode_from_encoding(TEXT_ENCODING encod
 	case NCP_UTF32BE:
 		return sequence::line_scan_utf32be;
 
-	case NCP_ASCII:
 	case NCP_UTF8:
+		return sequence::line_scan_utf8;
+
+	case NCP_ASCII:
 	default:
 		return sequence::line_scan_bytes;
 	}

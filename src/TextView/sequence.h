@@ -133,7 +133,16 @@ public:
 	bool		line_bounds_from_offset(size_w offset, size_w *line_begin, size_w *line_next);
 	bool		offset_from_lineno(size_w lineno, size_w *line_begin) const;
 	bool		lineno_from_offset(size_w offset, size_w *lineno, size_w *line_begin) const;
-	
+
+	//
+	//	Character index (sequence_chars.cpp). A character is a UTF-16 unit, as
+	//	the scan mode's text decodes to. The lookups only answer inside the
+	//	indexed part, and are false past it.
+	//
+	size_w		indexed_chars() const;
+	bool		chars_from_offset(size_w offset, size_w *chars) const;
+	bool		offset_from_chars(size_w chars, size_w *offset) const;
+
 	//
 	// sequence manipulation 
 	//
@@ -226,11 +235,19 @@ private:
 
 	void			update_span_line_data(span* sptr);
 
+	//
+	//	Character index internals (sequence_chars.cpp)
+	//
+	static size_w	chars_in(const seqchar *raw, size_w length, line_scan_mode mode);
+	bool			count_chars_to(size_w limit, size_w target, size_w *stop_offset, size_w *stop_chars) const;
+	bool			scan_to_char(size_w offset, size_w chars, size_w target, size_w *result) const;
+
 	// Cached exact prefix: line numbers are exact for offsets <= prefix_end.
 	mutable unsigned long	line_generation;
 	mutable unsigned long	prefix_generation;
 	mutable size_w			prefix_end;
 	mutable size_w			prefix_breaks;
+	mutable size_w			prefix_chars;
 	mutable bool			prefix_complete;
 	mutable break_kinds		prefix_kinds;
 
@@ -308,6 +325,7 @@ enum sequence::action : int
 enum sequence::line_scan_mode : int
 {
 	line_scan_bytes,
+	line_scan_utf8,			// lines as bytes, characters by lead bytes
 	line_scan_utf16le,
 	line_scan_utf16be,
 	line_scan_utf32le,
@@ -335,6 +353,7 @@ public:
 			length(len),
 			buffer(buf),
 			line_count(0),
+			chars(0),
 			line_count_known(0),
 			starts_with_lf(0),
 			ends_with_cr(0)
@@ -353,13 +372,15 @@ private:
 	size_w  length;
 	int     buffer;
 
-	// Line breaks in this span's own bytes. It depends only on those bytes,
-	// so once known it stays valid until the span's range changes.
+	// Line breaks and UTF-16 units in this span's own bytes. They depend only on
+	// those bytes, so once known they stay valid until the span's range changes.
 	break_kinds kinds;				// known with line_count (it sits in padding before line_count)
-	size_w	line_count;
-	unsigned line_count_known : 1;
-	unsigned starts_with_lf : 1;
-	unsigned ends_with_cr   : 1;
+	size_w	    line_count;
+	size_w	    chars;
+
+	unsigned    line_count_known : 1;
+	unsigned    starts_with_lf   : 1;
+	unsigned    ends_with_cr     : 1;
 
 	int		id;
 };	
@@ -532,12 +553,14 @@ public:
 
 	//
 	//	Line counting (sequence_lines.cpp). Each LINE_PAGE_SIZE page caches its
-	//	break count once scanned. Buffer bytes never change, so a scanned page
-	//	stays valid; a modify buffer's last page is rescanned after it grows.
+	//	break and character counts once scanned. Buffer bytes never change, so a
+	//	scanned page stays valid; a modify buffer's last page is rescanned after
+	//	it grows.
 	//
 	struct line_range
 	{
 		size_w	 breaks;			// CR, LF and CRLF each count once
+		size_w	 chars;				// UTF-16 units
 		bool	 starts_with_lf;
 		bool	 ends_with_cr;
 		break_kinds kinds;
@@ -563,6 +586,7 @@ public:
 	struct line_page
 	{
 		size_w	 breaks;
+		size_w	 chars;
 		size_w	 scanned_length;	// bytes counted; the page is current when this equals its length
 		bool	 starts_with_lf;
 		bool	 ends_with_cr;

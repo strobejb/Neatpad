@@ -56,6 +56,11 @@ size_t	utf8_complete_length (const UTF8 *utf8str, size_t utf8len);
 bool	utf8_is_valid (const UTF8 *utf8str, size_t utf8len);
 
 //
+//	How many UTF-16 units a UTF-8 stream decodes to, counted by lead bytes
+//
+size_t	utf8_count_utf16 (const UTF8 *utf8str, size_t utf8len);
+
+//
 //	Conversions between UTF-16 and UTF-8 strings
 //
 size_t	utf8_to_utf16 (const UTF8  *utf8str,  size_t utf8len, UTF16 *utf16str, size_t *utf16len);
