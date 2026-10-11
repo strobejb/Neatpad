@@ -1,0 +1,29 @@
+name: Build and test
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CONFIGURATION: Release
+  PLATFORM: x64
+
+jobs:
+  build:
+    # Pinned: the projects use the v143 (VS 2022) toolset.
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: microsoft/setup-msbuild@v2
+
+      # Builds Neatpad and the tests
+      - name: Build
+        run: msbuild Neatpad.sln /m /p:Configuration=$env:CONFIGURATION /p:Platform=$env:PLATFORM
+
+      - name: Test
+        run: |
+          & "build/$env:PLATFORM/$env:CONFIGURATION/SequenceTests.exe"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }

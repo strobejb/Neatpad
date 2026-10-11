@@ -19,9 +19,6 @@ permissions:
 env:
   TAG: ${{ inputs.tag || github.ref_name }}
   CONFIGURATION: Release
-  # The solution only defines Win32. Switch to x64 once x64 configurations exist
-  # (and the code is 64-bit clean: SetWindowLong -> SetWindowLongPtr etc.).
-  PLATFORM: Win32
 
 jobs:
   release:
@@ -31,6 +28,17 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: refs/tags/${{ env.TAG }}
+
+      # Releases are 64-bit. Older tags predate the x64 configurations, so they
+      # can only build Win32.
+      - name: Choose platform
+        shell: bash
+        run: |
+          if grep -q "Release|x64" Neatpad.sln; then
+            echo "PLATFORM=x64" >> "$GITHUB_ENV"
+          else
+            echo "PLATFORM=Win32" >> "$GITHUB_ENV"
+          fi
 
       - name: Stamp version into resource.rc
         id: version
@@ -125,7 +133,16 @@ jobs:
       - uses: microsoft/setup-msbuild@v2
 
       - name: Build
-        run: msbuild Neatpad.sln /t:Neatpad /m /p:Configuration=${{ env.CONFIGURATION }} /p:Platform=${{ env.PLATFORM }}
+        run: msbuild Neatpad.sln /t:Neatpad /m /p:Configuration=$env:CONFIGURATION /p:Platform=$env:PLATFORM
+
+      # A release is only published if its tests pass. Older tags have none.
+      - name: Test
+        if: hashFiles('tests/SequenceTests.vcxproj') != ''
+        run: |
+          msbuild Neatpad.sln /t:SequenceTests /m /p:Configuration=$env:CONFIGURATION /p:Platform=$env:PLATFORM
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          & "build/$env:PLATFORM/$env:CONFIGURATION/SequenceTests.exe"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
 
       - name: Collect artifact
         shell: bash
@@ -133,7 +150,16 @@ jobs:
           ASSET: ${{ steps.version.outputs.asset }}
         run: |
           mkdir dist
-          cp "$CONFIGURATION/Neatpad.exe" "dist/$ASSET"
+          # Since the directory restructure, projects build to build/<Platform>/<Configuration>;
+          # older tags built to <Configuration>.
+          for exe in "build/$PLATFORM/$CONFIGURATION/Neatpad.exe" "$CONFIGURATION/Neatpad.exe"; do
+            if [ -f "$exe" ]; then
+              cp "$exe" "dist/$ASSET"
+              exit 0
+            fi
+          done
+          echo "Neatpad.exe not found"
+          exit 1
 
       - name: Publish release
         shell: bash
