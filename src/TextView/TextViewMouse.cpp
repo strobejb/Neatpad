@@ -670,32 +670,45 @@ VOID TextView::UpdateCaretXY(int xpos, TextCoord *coord)
 		SetCaretPos(xpos, row * m_nLineHeight);
 }
 
+//
+//	The x position of a coordinate across its line, before horizontal scrolling
+//	and the margin: to the trailing edge of the character before it, if asked.
+//	False if the line can't be laid out.
+//
+BOOL TextView::TextCoordToX(TextCoord *coord, BOOL fTrailing, int *x)
+{
+	size_w		off_chars = coord->column;
+	USPDATA	  * uspData;
+
+	*x = 0;
+
+	// locate the USPDATA for this line
+	if((uspData = GetUspData(NULL, coord)) == 0)
+		return FALSE;
+
+	// Provisional lazy offsets can disagree slightly; keep the caret
+	// position relative to the analyzed line instead of wrapping.
+	off_chars = min(off_chars, (size_w)uspData->stringLen);
+
+	if(fTrailing && off_chars > 0)
+		UspOffsetToX(uspData, (int)(off_chars - 1), TRUE, x);
+	else
+		UspOffsetToX(uspData, (int)off_chars, FALSE, x);
+
+	return TRUE;
+}
+
 VOID TextView::UpdateCaretCoord(TextCoord *coord, BOOL fTrailing, int *outx)
 {
 	int			xpos = 0;
-	size_w		off_chars;
-	USPDATA	  * uspData;
 
 	if(coord)
 	{
-		off_chars = coord->column;
 		m_cursorPos = *coord;
 
-		// locate the USPDATA for this line
-		if((uspData = GetUspData(NULL, coord)) != 0)
-		{	
-			// Provisional lazy offsets can disagree slightly; keep the caret
-			// position relative to the analyzed line instead of wrapping.
-			off_chars = min(off_chars, (size_w)uspData->stringLen);
-			
-			if(fTrailing && off_chars > 0)
-				UspOffsetToX(uspData, (int)(off_chars - 1), TRUE, &xpos);
-			else
-				UspOffsetToX(uspData, (int)off_chars, FALSE, &xpos);
-
-			// update caret position
+		// update caret position
+		if(TextCoordToX(coord, fTrailing, &xpos))
 			UpdateCaretXY(xpos, coord);
-		}
 	}
 	
 	if(outx)	  *outx = xpos;

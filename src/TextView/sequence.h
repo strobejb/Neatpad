@@ -559,10 +559,10 @@ public:
 	//
 	struct line_range
 	{
-		size_w	 breaks;			// CR, LF and CRLF each count once
-		size_w	 chars;				// UTF-16 units
-		bool	 starts_with_lf;
-		bool	 ends_with_cr;
+		size_w	 breaks = 0;		// CR, LF and CRLF each count once
+		size_w	 chars = 0;			// UTF-16 units
+		bool	 starts_with_lf = false;
+		bool	 ends_with_cr = false;
 		break_kinds kinds;
 	};
 
@@ -585,12 +585,12 @@ public:
 
 	struct line_page
 	{
-		size_w	 breaks;
-		size_w	 chars;
-		size_w	 scanned_length;	// bytes counted; the page is current when this equals its length
-		bool	 starts_with_lf;
-		bool	 ends_with_cr;
-		break_kinds kinds;			// fits in existing padding
+		size_w	 breaks = 0;
+		size_w	 chars = 0;
+		size_w	 scanned_length = 0;	// bytes counted; the page is current when this equals its length
+		bool	 starts_with_lf = false;
+		bool	 ends_with_cr = false;
+		break_kinds kinds;				// fits in existing padding
 	};
 
 	seqchar	*buffer;

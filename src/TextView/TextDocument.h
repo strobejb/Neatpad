@@ -91,8 +91,8 @@ struct TextCoord : TextPos
 struct TextChange
 {
 	TextPos at;
-	size_w  erased;
-	size_w  inserted;
+	size_w  erased = 0;
+	size_w  inserted = 0;
 };
 
 //
@@ -214,6 +214,10 @@ public:
 	// UTF-32 count it from the index, so past the indexed part of the document
 	// it is TDR_PENDING_INDEX; ASCII and UTF-16 always answer.
 	TEXT_RESULT charoffset_from_pos(TextPos pos, size_w *offset_chars);
+
+	// The coordinate of a UTF-16 offset, the other way: pending in the same
+	// places. One between the halves of a surrogate pair moves back to its start.
+	TEXT_RESULT coord_from_charoffset(size_w offset_chars, TextCoord *coord);
 
 	// The line break ending a coordinate's line: TXL_CRLF, TXL_LF or TXL_CR, or 0 for a last line without one.
 	uint32_t linebreak_from_coord(const TextCoord *line);

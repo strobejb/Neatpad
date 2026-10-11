@@ -72,6 +72,7 @@
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
+      <AdditionalDependencies>usp10.lib;uxtheme.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -86,6 +87,7 @@
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
+      <AdditionalDependencies>usp10.lib;uxtheme.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
     </Link>
@@ -108,6 +110,7 @@
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
+      <AdditionalDependencies>usp10.lib;uxtheme.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -122,6 +125,7 @@
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
+      <AdditionalDependencies>usp10.lib;uxtheme.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
     </Link>
@@ -137,6 +141,22 @@
     <ClCompile Include="..\src\TextView\sequence_chars.cpp" />
     <ClCompile Include="..\src\TextView\sequence_lines.cpp" />
     <ClCompile Include="..\src\TextView\Unicode.c" />
+    <ClCompile Include="..\src\TextView\TextView.cpp" />
+    <ClCompile Include="..\src\TextView\TextViewClipboard.cpp" />
+    <ClCompile Include="..\src\TextView\TextViewEdit.cpp" />
+    <ClCompile Include="..\src\TextView\TextViewFile.cpp" />
+    <ClCompile Include="..\src\TextView\TextViewFont.cpp" />
+    <ClCompile Include="..\src\TextView\TextViewKeyInput.cpp" />
+    <ClCompile Include="..\src\TextView\TextViewKeyNav.cpp" />
+    <ClCompile Include="..\src\TextView\TextViewMouse.cpp" />
+    <ClCompile Include="..\src\TextView\TextViewPaint.cpp" />
+    <ClCompile Include="..\src\TextView\TextViewScroll.cpp" />
+    <ClCompile Include="..\src\TextView\TextViewSyntax.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\src\UspLib\UspLib.vcxproj">
+      <Project>{5E7AC3D0-6E3B-4BF1-9DD6-B68A47376C83}</Project>
+    </ProjectReference>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\src\TextView\codepages.h" />

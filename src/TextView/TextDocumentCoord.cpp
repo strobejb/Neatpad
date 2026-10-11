@@ -286,6 +286,53 @@ TEXT_RESULT TextDocument::charcount(size_w *chars)
 }
 
 //
+//	The coordinate of a UTF-16 offset from the start of the document, counted
+//	as charoffset_from_pos counts it. An offset between the halves of a
+//	surrogate pair moves back to the start of its character.
+//
+TEXT_RESULT TextDocument::coord_from_charoffset(size_w offset_chars, TextCoord *coord)
+{
+	size_w   offset_bytes;
+	uint32_t ch;
+	uint32_t size;
+
+	// a character always takes at least a byte
+	if(coord == 0 || offset_chars > byte_length())
+		return TDR_FAILED;
+
+	switch(m_nFileFormat)
+	{
+	case NCP_ASCII:
+		offset_bytes = offset_chars;
+		break;
+
+	case NCP_UTF16:
+	case NCP_UTF16BE:
+		offset_bytes = offset_chars * sizeof(UTF16);
+
+		// after a high surrogate and before a low one: back to the high one
+		if(unit_before(offset_bytes, &ch, &size) && ch >= UNI_SUR_HIGH_START && ch <= UNI_SUR_HIGH_END &&
+		   unit_before(offset_bytes + sizeof(UTF16), &ch, &size) && ch >= UNI_SUR_LOW_START && ch <= UNI_SUR_LOW_END)
+			offset_bytes -= sizeof(UTF16);
+
+		break;
+
+	default:
+		// the sequence counts a byte-order mark as one character, U+FEFF
+		if(!m_seq.offset_from_chars(offset_chars + (m_nHeaderSize > 0 ? 1 : 0), &offset_bytes))
+			return m_seq.linecount_known() ? TDR_FAILED : TDR_PENDING_INDEX;
+
+		offset_bytes -= m_nHeaderSize;
+		break;
+	}
+
+	if(offset_bytes > byte_length())
+		return TDR_FAILED;
+
+	return coord_from_pos(TextPos(offset_bytes), coord) ? TDR_OK : TDR_FAILED;
+}
+
+//
 //	UTF-16 units before a byte offset. The fixed-width encodings work it out;
 //	UTF-8 and UTF-32 count it from the index, so past the indexed part of the
 //	document it is pending.

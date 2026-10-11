@@ -128,9 +128,21 @@ private:
 
 	LONG		IndexFile(BOOL fIndex);
 	LONG		OnIndexTimer();
+	VOID		IndexChanged();
 	TEXT_RESULT	GotoLine(size_w lineno, bool fMove);
 	VOID		FillIndexInfo(TVNINDEXINFO *info);
 	VOID		NotifyIndexChange();
+
+	//
+	//	Win32 EDIT control messages (TextViewEdit.cpp). They must answer, so
+	//	their lookups index as far as they need.
+	//
+	LRESULT		EditMessage(UINT msg, WPARAM wParam, LPARAM lParam);
+	TEXT_RESULT	IndexUntilKnown(const std::function<TEXT_RESULT()> &lookup);
+	bool		CharFromPos(const TextPos &pos, size_w *chars);
+	bool		PosFromChar(size_w chars, TextCoord *coord);
+	bool		LineFromPos(const TextPos &pos, size_w *lineno);
+	bool		LineStart(size_w lineno, TextCoord *coord);
 	void		ResetLineCache();
 
 	//
@@ -191,6 +203,7 @@ private:
 	//	Caret/Cursor positioning
 	//
 	BOOL		MouseCoordToTextCoord(int x, int y, TextCoord *coord, int *px);
+	BOOL		TextCoordToX(TextCoord *coord, BOOL fTrailing, int *x);
 	VOID		RepositionCaret();
 	//VOID		MoveCaret(int x, int y);
 	VOID		UpdateCaretXY(int x, TextCoord *coord);

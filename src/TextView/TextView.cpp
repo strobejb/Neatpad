@@ -458,7 +458,12 @@ UINT TextView::FindText(TEXTVIEWFIND *find)
 TEXT_RESULT TextView::GotoLine(size_w lineno, bool fMove)
 {
 	TextCoord   line;
+	size_w      before = m_pTextDoc->indexed_length();
 	TEXT_RESULT result = m_pTextDoc->coord_from_lineno(lineno, &line);
+
+	// a line a little past the indexed part is indexed there and then
+	if(m_pTextDoc->indexed_length() != before)
+		IndexChanged();
 
 	if(result == TDR_OK && fMove)
 	{
@@ -579,8 +584,14 @@ LRESULT WINAPI TextView::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 	case WM_CLEAR:
 		return OnClear();
 
-	case WM_GETTEXT:
-		return 0;
+	// the Win32 EDIT control messages (TextViewEdit.cpp)
+	case WM_GETTEXT:		case WM_GETTEXTLENGTH:	case EM_GETLINE:
+	case EM_GETLINECOUNT:	case EM_GETFIRSTVISIBLELINE:
+	case EM_GETSEL:			case EM_SETSEL:
+	case EM_LINEFROMCHAR:	case EM_LINEINDEX:		case EM_LINELENGTH:
+	case EM_POSFROMCHAR:	case EM_CHARFROMPOS:
+	case EM_REPLACESEL:		case EM_SCROLLCARET:	case EM_LINESCROLL:
+		return EditMessage(msg, wParam, lParam);
 
 	case WM_TIMER:
 		return OnTimer((UINT_PTR)wParam);
@@ -640,7 +651,7 @@ LRESULT WINAPI TextView::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 	case TXM_SETSELALL:
 		return SelectAll();
 
-	// only cheap for fixed-width encodings: -1 for the others
+	// -1 while the caret is past the indexed part of a UTF-8 or UTF-32 document
 	case TXM_GETCURPOS:
 		return m_pTextDoc->charoffset_from_pos(m_cursorPos, &offset_chars) == TDR_OK ? ResultFromSize(offset_chars) : -1;
 

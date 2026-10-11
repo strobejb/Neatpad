@@ -139,13 +139,11 @@ LONG TextView::IndexFile(BOOL fIndex)
 }
 
 //
-//	Index for a few milliseconds, then show how far it's got: line numbers
-//	become exact as indexing passes them, and the line count nearer the truth
+//	Index for a few milliseconds, then show how far it's got
 //
 LONG TextView::OnIndexTimer()
 {
 	LARGE_INTEGER freq, start, now;
-	TVNINDEXINFO  info;
 	bool          more;
 
 	QueryPerformanceFrequency(&freq);
@@ -164,6 +162,19 @@ LONG TextView::OnIndexTimer()
 		KillTimer(m_hWnd, INDEX_TIMER);
 		m_fIndexing = false;
 	}
+
+	IndexChanged();
+	return 0;
+}
+
+//
+//	Show how far indexing has got, after the timer or an edit message has
+//	indexed more: line numbers become exact as indexing passes them, and the
+//	line count nearer the truth
+//
+VOID TextView::IndexChanged()
+{
+	TVNINDEXINFO info;
 
 	FillIndexInfo(&info);
 
@@ -185,8 +196,6 @@ LONG TextView::OnIndexTimer()
 		NotifyCursorChange();
 		NotifyIndexChange();
 	}
-
-	return 0;
 }
 
 //
