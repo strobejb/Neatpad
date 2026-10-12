@@ -109,6 +109,7 @@
 #define IDC_GOTO_STATUS                 1060
 #define IDC_NOTIFY_TEXT                 1061
 #define IDC_NOTIFY_RELOAD               1062
+#define IDC_NOTIFY_TAIL                 1063
 #define IDM_FILE_NEW                    40001
 #define IDM_FILE_OPEN                   40002
 #define IDM_FILE_EXIT                   40003
@@ -165,7 +166,7 @@
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        135
 #define _APS_NEXT_COMMAND_VALUE         40063
-#define _APS_NEXT_CONTROL_VALUE         1063
+#define _APS_NEXT_CONTROL_VALUE         1064
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif

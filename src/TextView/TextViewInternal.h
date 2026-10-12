@@ -122,7 +122,9 @@ private:
 	//
 	//	Internal private functions
 	//
-	LONG		OpenFile(TCHAR *szFileName, int nEncoding);	// -1 for its byte-order mark to say
+	LONG		OpenFile(TCHAR *szFileName, int nEncoding, bool fReadOnly);	// -1 for its byte-order mark to say
+	LONG		TailFile(TCHAR *szFileName);
+	BOOL		UpdateTail();
 	LONG		SaveFile(TCHAR *szFileName, UINT nEncoding, BOOL fBom, UINT nLineBreak);
 	LONG		ClearFile();
 

@@ -96,9 +96,20 @@ public:
 
 	// A file shorter than in_memory_limit is read into memory and closed. A
 	// longer one is read from disk as it's needed, and nothing else can write
-	// it while it's open.
+	// it while it's open - unless another program has it open to write
+	// already. That one, and one opened readonly, is read from disk sharing it
+	// with the programs that write it, for them to append to: see grow().
 	bool		open(const seqfilechar *filename, bool readonly, size_w in_memory_limit = 0);
 	bool		clear();
+
+	// Whether the file is shared with programs that write it, as above
+	bool		read_only() const;
+
+	// Add what has been appended to a read-only file since it was opened, or
+	// last grew, to the end: not as an edit, so there's nothing to undo or
+	// save, and indexed, so an indexed sequence stays indexed. False if the
+	// file has got shorter (it's been rewritten), or the text has been edited.
+	bool		grow(size_w *added);
 
 	//
 	// initialize from an in-memory buffer
@@ -200,6 +211,7 @@ private:
 	//	Span-table management
 	//
 	void			deletefromsequence(span **sptr);
+	buffer_control *file_buffer() const;
 	span		*	spanfromindex(size_w index, size_w *spanindex) const;
 	span		*	alloc_span(size_w offset, size_w length, int buffer, span *next = 0, span *prev = 0);
 
@@ -551,6 +563,7 @@ public:
 	bool	init(size_t maxsize);
 	bool	init(const seqchar *buffer, size_w length);
 	bool	init_file(const seqfilechar *filename, bool readonly, size_w in_memory_limit);
+	bool	grow();
 	bool	append(const seqchar *buffer, size_t length, size_t *buffer_offset);
 	seqchar *getptr(size_w offset, size_w length);
 	void	clear();
@@ -558,8 +571,8 @@ public:
 	//
 	//	Line counting (sequence_lines.cpp). Each LINE_PAGE_SIZE page caches its
 	//	break and character counts once scanned. Buffer bytes never change, so a
-	//	scanned page stays valid; a modify buffer's last page is rescanned after
-	//	it grows.
+	//	scanned page stays valid; the last page of a modify buffer, or of a file
+	//	that grows, is rescanned after it grows.
 	//
 	struct line_range
 	{
@@ -613,6 +626,7 @@ public:
 
 private:
 	bool	alloc_line_pages(size_w size);
+	bool	extend_line_pages(size_w size);
 	void	free_line_pages();
 	void	reset_line_pages();
 	size_w	page_length(size_w page) const;

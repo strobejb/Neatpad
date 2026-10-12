@@ -103,6 +103,8 @@ void ShowFileFormat(HWND hwndMain);
 BOOL NeatpadSaveFile(HWND hwnd);
 BOOL NeatpadSaveFileAs(HWND hwnd);
 BOOL NeatpadReloadFile(HWND hwnd);
+BOOL NeatpadTailFile(HWND hwnd);
+BOOL NeatpadStopTail(HWND hwnd);
 BOOL QuerySaveChanges(HWND hwnd);
 void CheckFileChange(void);
 
@@ -148,6 +150,8 @@ UINT SearchBarFindPrevious(HWND hwndParent);
 //
 #define NOTIFY_CHANGED	1	// another program has changed the open file
 #define NOTIFY_DELETED	2	// or deleted it
+#define NOTIFY_READONLY	3	// or is writing it, so it opened read-only
+#define NOTIFY_TAILING	4	// the file is being followed as it grows
 
 HWND CreateNotifyBar(HWND hwndParent);
 void ShowNotifyBar(UINT nNotice);

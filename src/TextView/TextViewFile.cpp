@@ -17,14 +17,14 @@
 //
 //	
 //
-LONG TextView::OpenFile(TCHAR *szFileName, int nEncoding)
+LONG TextView::OpenFile(TCHAR *szFileName, int nEncoding, bool fReadOnly)
 {
 	bool opened;
 
 	ClearFile();
 
 	if(nEncoding < 0)
-		opened = m_pTextDoc->init(szFileName);
+		opened = m_pTextDoc->init(szFileName, fReadOnly);
 	else
 		opened = m_pTextDoc->init(szFileName, (TEXT_ENCODING)nEncoding);
 
@@ -42,6 +42,12 @@ LONG TextView::OpenFile(TCHAR *szFileName, int nEncoding)
 		m_nLineCount   = m_pTextDoc->linecount();
 
 		m_nHScrollPos  = 0;
+
+		// shared with a program writing it, the text is read-only; otherwise it isn't
+		if(m_pTextDoc->read_only())
+			m_nEditMode = MODE_READONLY;
+		else if(m_nEditMode == MODE_READONLY)
+			m_nEditMode = MODE_INSERT;
 
 		SetCursorCoord(&start);
 
@@ -71,7 +77,69 @@ LONG TextView::SaveFile(TCHAR *szFileName, UINT nEncoding, BOOL fBom, UINT nLine
 	if(!m_pTextDoc->save(szFileName, (TEXT_ENCODING)nEncoding, fBom != FALSE, nLineBreak))
 		return FALSE;
 
-	return fConvert ? OpenFile(szFileName, (int)nEncoding) : TRUE;
+	return fConvert ? OpenFile(szFileName, (int)nEncoding, false) : TRUE;
+}
+
+//
+//	Open a file to follow as another program appends to it: read-only, with
+//	the caret at the end, where UpdateTail adds what's appended
+//
+LONG TextView::TailFile(TCHAR *szFileName)
+{
+	if(!OpenFile(szFileName, -1, true))
+		return FALSE;
+
+	MoveFileEnd();
+	m_selAnchor = m_cursorPos;
+
+	UpdateCaretCoord(&m_cursorPos, TRUE, &m_nCaretPosX);
+	m_nAnchorPosX = m_nCaretPosX;
+	RepositionCaret();
+	NotifyCursorChange();
+	return TRUE;
+}
+
+//
+//	Add what has been appended to a followed file since it was opened, or last
+//	updated. A caret at the end stays there, keeping the end in view. FALSE if
+//	the file has got shorter: it's been rewritten, and needs opening again.
+//
+BOOL TextView::UpdateTail()
+{
+	size_w	   length = m_pTextDoc->byte_length();
+	bool	   atEnd  = m_cursorPos.byte_offset == length && m_selAnchor.byte_offset == length;
+	TextChange change;
+
+	if(!m_pTextDoc->grow(&change.inserted))
+		return FALSE;
+
+	if(change.inserted == 0)
+		return TRUE;
+
+	// it only grew at the end, so positions stay put, but the last line can be longer
+	change.at = TextPos(length);
+	AdjustCoordsForChange(&change);
+	m_pTextDoc->coord_from_pos(TextPos(m_cursorPos.byte_offset), &m_cursorPos);
+	m_pTextDoc->coord_from_pos(TextPos(m_selAnchor.byte_offset), &m_selAnchor);
+
+	ResetLineCache();
+	m_nLineCount = m_pTextDoc->linecount();
+
+	if(atEnd)
+	{
+		MoveFileEnd();
+		m_selAnchor = m_cursorPos;
+	}
+
+	UpdateMarginWidth();
+	SetupScrollbars();
+	UpdateCaretCoord(&m_cursorPos, TRUE, &m_nCaretPosX);
+	RepositionCaret();
+	RefreshWindow();
+
+	NotifyCursorChange();
+	NotifyParent(TVN_CHANGED);
+	return TRUE;
 }
 
 //

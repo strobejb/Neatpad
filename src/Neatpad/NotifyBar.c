@@ -1,9 +1,10 @@
 //
 //	Neatpad - Simple Text Editor application
 //
-//	The notification bar above the text, saying that another program has
-//	changed or deleted the open file. As high as the search bar, and laid out
-//	the same way: the message on the left, and its buttons on the right.
+//	The notification bar above the text, saying what another program has done
+//	to the open file, or that it's being followed as it grows. As high as the
+//	search bar, and laid out the same way: the message on the left, and its
+//	buttons on the right.
 //
 #define _CRT_SECURE_NO_DEPRECATE
 #define _WIN32_WINNT 0x501
@@ -35,6 +36,7 @@ static HIMAGELIST g_hCloseImages;
 static HBRUSH	  g_hBarBrush;
 static int		  g_nNotifyBarHeight;
 static int		  g_nTextLeft;			// where the dialog template puts the message
+static UINT		  g_nNotice;			// NOTIFY_*: what the bar says
 
 //
 //	Put a flat toolbar button with the search bar's close icon in place of the
@@ -79,28 +81,38 @@ static void PlaceControl(HWND hwndCtrl, int x, int width, int barHeight)
 }
 
 //
-//	The close button against the right edge, Reload before it, and the message
-//	in the room left, from where the dialog template starts it
+//	The close button against the right edge, then whichever of Tail and Reload
+//	the message offers, and the message in the room left, from where the dialog
+//	template starts it
 //
 static void NotifyBarLayout(HWND hwnd)
 {
-	HWND hwndReload = GetDlgItem(hwnd, IDC_NOTIFY_RELOAD);
-	RECT bar, close, reload;
-	int  x;
+	static const UINT buttons[] = { IDC_NOTIFY_TAIL, IDC_NOTIFY_RELOAD };
+	RECT   bar, rect;
+	int    x;
+	size_t i;
 
 	// sized as the dialog is made, before it has its controls
 	if(g_hwndCloseTB == 0)
 		return;
 
 	GetClientRect(hwnd, &bar);
-	GetWindowRect(g_hwndCloseTB, &close);
-	GetWindowRect(hwndReload, &reload);
+	GetWindowRect(g_hwndCloseTB, &rect);
 
-	x = bar.right - NOTIFYBAR_PADX - (close.right - close.left);
-	PlaceControl(g_hwndCloseTB, x, close.right - close.left, bar.bottom);
+	x = bar.right - NOTIFYBAR_PADX - (rect.right - rect.left);
+	PlaceControl(g_hwndCloseTB, x, rect.right - rect.left, bar.bottom);
 
-	x -= NOTIFYBAR_GAP + (reload.right - reload.left);
-	PlaceControl(hwndReload, x, reload.right - reload.left, bar.bottom);
+	for(i = 0; i < ARRAYSIZE(buttons); i++)
+	{
+		HWND hwndButton = GetDlgItem(hwnd, buttons[i]);
+
+		if(GetWindowLong(hwndButton, GWL_STYLE) & WS_VISIBLE)
+		{
+			GetWindowRect(hwndButton, &rect);
+			x -= NOTIFYBAR_GAP + (rect.right - rect.left);
+			PlaceControl(hwndButton, x, rect.right - rect.left, bar.bottom);
+		}
+	}
 
 	PlaceControl(GetDlgItem(hwnd, IDC_NOTIFY_TEXT), g_nTextLeft, max(0, x - NOTIFYBAR_GAP - g_nTextLeft), bar.bottom);
 }
@@ -137,11 +149,12 @@ static INT_PTR CALLBACK NotifyBarProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
 		MapWindowPoints(0, hwnd, (POINT *)&rect, 2);
 		g_nTextLeft = rect.left;
 
-		// the message and its button in the status bar's font, as the search bar's text is
+		// the message and its buttons in the status bar's font, as the search bar's text is
 		if(hFont)
 		{
 			SendDlgItemMessage(hwnd, IDC_NOTIFY_TEXT,	WM_SETFONT, (WPARAM)hFont, TRUE);
 			SendDlgItemMessage(hwnd, IDC_NOTIFY_RELOAD, WM_SETFONT, (WPARAM)hFont, TRUE);
+			SendDlgItemMessage(hwnd, IDC_NOTIFY_TAIL,	WM_SETFONT, (WPARAM)hFont, TRUE);
 		}
 
 		NotifyBarLayout(hwnd);
@@ -151,12 +164,25 @@ static INT_PTR CALLBACK NotifyBarProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
 		switch(LOWORD(wParam))
 		{
 		case IDC_NOTIFY_RELOAD:
-			HideNotifyBar();
 			NeatpadReloadFile(GetParent(hwnd));
 			return TRUE;
 
+		// Tail, which is Stop while the file is followed
+		case IDC_NOTIFY_TAIL:
+			if(g_nNotice == NOTIFY_TAILING)
+				NeatpadStopTail(GetParent(hwnd));
+			else
+				NeatpadTailFile(GetParent(hwnd));
+
+			return TRUE;
+
+		// closing the bar stops following the file, too
 		case IDCANCEL:
-			HideNotifyBar();
+			if(g_nNotice == NOTIFY_TAILING)
+				NeatpadStopTail(GetParent(hwnd));
+			else
+				HideNotifyBar();
+
 			return TRUE;
 		}
 		return FALSE;
@@ -216,15 +242,39 @@ HWND CreateNotifyBar(HWND hwndParent)
 }
 
 //
-//	Say what has happened to the open file: NOTIFY_CHANGED offers to reload it
+//	Say what has happened to the open file (NOTIFY_*), with the buttons for
+//	what can be done about it
 //
 void ShowNotifyBar(UINT nNotice)
 {
-	SetDlgItemText(g_hwndNotifyBar, IDC_NOTIFY_TEXT, nNotice == NOTIFY_CHANGED ?
-		_T("This file has been changed by another program.") :
-		_T("This file has been deleted or moved by another program."));
+	HWND hwndTail = GetDlgItem(g_hwndNotifyBar, IDC_NOTIFY_TAIL);
+
+	g_nNotice = nNotice;
+
+	switch(nNotice)
+	{
+	case NOTIFY_CHANGED:
+		SetDlgItemText(g_hwndNotifyBar, IDC_NOTIFY_TEXT, _T("This file has been changed by another program."));
+		break;
+
+	case NOTIFY_DELETED:
+		SetDlgItemText(g_hwndNotifyBar, IDC_NOTIFY_TEXT, _T("This file has been deleted or moved by another program."));
+		break;
+
+	case NOTIFY_READONLY:
+		SetDlgItemText(g_hwndNotifyBar, IDC_NOTIFY_TEXT, _T("Another program is writing this file, so it's open read-only."));
+		break;
+
+	case NOTIFY_TAILING:
+		SetDlgItemText(g_hwndNotifyBar, IDC_NOTIFY_TEXT, _T("Following the end of this file as it grows."));
+		break;
+	}
+
+	SetWindowText(hwndTail, nNotice == NOTIFY_TAILING ? _T("&Stop") : _T("&Tail"));
 
 	ShowWindow(GetDlgItem(g_hwndNotifyBar, IDC_NOTIFY_RELOAD), nNotice == NOTIFY_CHANGED ? SW_SHOW : SW_HIDE);
+	ShowWindow(hwndTail, nNotice != NOTIFY_DELETED ? SW_SHOW : SW_HIDE);
+	NotifyBarLayout(g_hwndNotifyBar);
 
 	if(!IsWindowVisible(g_hwndNotifyBar))
 	{

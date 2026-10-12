@@ -602,7 +602,13 @@ LRESULT WINAPI TextView::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 
 	//
 	case TXM_OPENFILE:
-		return OpenFile((TCHAR *)lParam, -1);
+		return OpenFile((TCHAR *)lParam, -1, false);
+
+	case TXM_TAILFILE:
+		return TailFile((TCHAR *)lParam);
+
+	case TXM_UPDATETAIL:
+		return UpdateTail();
 
 	case TXM_SAVEFILE:
 		return SaveFile((TCHAR *)lParam, LOBYTE(LOWORD(wParam)), HIWORD(wParam), HIBYTE(LOWORD(wParam)));

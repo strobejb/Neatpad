@@ -28,20 +28,30 @@ static BOOL g_fFirstTime = TRUE;
 static WIN32_FILE_ATTRIBUTE_DATA g_FileStamp;
 static BOOL g_fFileOnDisk;
 
+// Following the file as another program appends to it: it's read-only, and
+// CheckFileChange adds what's appended
+static BOOL g_fTailing;
+
 static void NoteFileStamp(TCHAR *szFileName)
 {
 	g_fFileOnDisk = GetFileAttributesEx(szFileName, GetFileExInfoStandard, &g_FileStamp);
 }
 
+static ULONGLONG FileSize(const WIN32_FILE_ATTRIBUTE_DATA *stamp)
+{
+	return ((ULONGLONG)stamp->nFileSizeHigh << 32) | stamp->nFileSizeLow;
+}
+
 static BOOL SameFileStamp(const WIN32_FILE_ATTRIBUTE_DATA *a, const WIN32_FILE_ATTRIBUTE_DATA *b)
 {
-	return a->nFileSizeHigh == b->nFileSizeHigh && a->nFileSizeLow == b->nFileSizeLow &&
-		   CompareFileTime(&a->ftLastWriteTime, &b->ftLastWriteTime) == 0;
+	return FileSize(a) == FileSize(b) && CompareFileTime(&a->ftLastWriteTime, &b->ftLastWriteTime) == 0;
 }
 
 //
 //	Called once a second: if another program has changed or deleted the open
-//	file since Neatpad last looked, say so in the notification bar
+//	file since Neatpad last looked, say so in the notification bar. A file
+//	being followed takes in what's been appended instead, until it's deleted
+//	or rewritten shorter.
 //
 void CheckFileChange(void)
 {
@@ -61,12 +71,19 @@ void CheckFileChange(void)
 	if(onDisk == g_fFileOnDisk && (!onDisk || SameFileStamp(&now, &g_FileStamp)))
 		return;
 
+	// are we tailing the file?
+	if(g_fTailing && onDisk && FileSize(&now) >= FileSize(&g_FileStamp) && TextView_UpdateTail(g_hwndTextView))
+	{
+		g_FileStamp = now;
+		return;
+	}
+
 	g_FileStamp   = now;
 	g_fFileOnDisk = onDisk;
+	g_fTailing    = FALSE;
 
 	ShowNotifyBar(onDisk ? NOTIFY_CHANGED : NOTIFY_DELETED);
 }
-
 
 //
 //	Hook procedure for the Open dialog, 
@@ -335,16 +352,30 @@ void ShowFileFormat(HWND hwndMain)
 //
 //	Open the specified file
 //
+//
+//	Show a file that's just been opened: its name in the title, its format in
+//	the statusbar, and the notification bar if another program is writing it
+//
+static void ShowOpenedFile(HWND hwndMain, TCHAR *szFileName, TCHAR *szFileTitle)
+{
+	SetWindowFileName(hwndMain, szFileTitle, FALSE);
+	g_fFileChanged = FALSE;
+	g_fTailing     = FALSE;
+
+	ShowFileFormat(hwndMain);
+	NoteFileStamp(szFileName);
+
+	if(TextView_GetEditMode(g_hwndTextView) == MODE_READONLY)
+		ShowNotifyBar(NOTIFY_READONLY);
+	else
+		HideNotifyBar();
+}
+
 BOOL DoOpenFile(HWND hwndMain, TCHAR *szFileName, TCHAR *szFileTitle)
 {
 	if(TextView_OpenFile(g_hwndTextView, szFileName))
 	{
-		SetWindowFileName(hwndMain, szFileTitle, FALSE);
-		g_fFileChanged   = FALSE;
-
-		ShowFileFormat(hwndMain);
-		NoteFileStamp(szFileName);
-		HideNotifyBar();
+		ShowOpenedFile(hwndMain, szFileName, szFileTitle);
 		AddRecentFile(szFileName);
 		return TRUE;
 	}
@@ -391,13 +422,14 @@ BOOL DoSaveFile(HWND hwndMain, TCHAR *szFileName, TCHAR *szFileTitle, const SAVE
 }
 
 //
-//	File > Save, as the file is now. An untitled file asks for a name first.
+//	File > Save, as the file is now. An untitled file asks for a name first, as
+//	does a read-only one: another program is writing it.
 //
 BOOL NeatpadSaveFile(HWND hwnd)
 {
 	SAVEOPTIONS options;
 
-	if(g_szFileTitle[0] == '\0')
+	if(g_szFileTitle[0] == '\0' || TextView_GetEditMode(g_hwndTextView) == MODE_READONLY)
 		return NeatpadSaveFileAs(hwnd);
 
 	CurrentSaveOptions(&options);
@@ -413,6 +445,7 @@ BOOL NeatpadSaveFileAs(HWND hwnd)
 	TCHAR szFileName[MAX_PATH];
 	TCHAR szFileTitle[MAX_PATH] = _T("");
 	SAVEOPTIONS options;
+	BOOL fReadOnly = TextView_GetEditMode(g_hwndTextView) == MODE_READONLY;
 
 	// File > New clears the title but leaves the old file name behind
 	lstrcpy(szFileName, g_szFileTitle[0] ? g_szFileName : _T(""));
@@ -433,19 +466,31 @@ BOOL NeatpadSaveFileAs(HWND hwnd)
 	lstrcpy(g_szFileName, szFileName);
 	lstrcpy(g_szFileTitle, szFileTitle);
 	AddRecentFile(g_szFileName);
+
+	// a read-only file saved as another is that file now, to edit as usual
+	if(fReadOnly)
+		DoOpenFile(hwnd, g_szFileName, g_szFileTitle);
+
 	return TRUE;
 }
 
 //
-//	Open the file again, as it is on disk now, with the caret back on its line.
-//	Unsaved changes would be lost, so ask first.
+//	Opening the file again loses unsaved changes: ask first
+//
+static BOOL DiscardChanges(HWND hwnd)
+{
+	return !TextView_GetModify(g_hwndTextView) ||
+		   MessageBox(hwnd, _T("Discard your unsaved changes?"), APP_TITLE, MB_YESNO | MB_ICONWARNING) == IDYES;
+}
+
+//
+//	Open the file again, as it is on disk now, with the caret back on its line
 //
 BOOL NeatpadReloadFile(HWND hwnd)
 {
 	TVNCURSORINFO ci;
 
-	if(TextView_GetModify(g_hwndTextView) &&
-	   MessageBox(hwnd, _T("Discard your changes and reload the file?"), APP_TITLE, MB_YESNO | MB_ICONWARNING) != IDYES)
+	if(!DiscardChanges(hwnd))
 		return FALSE;
 
 	TextView_GetCursorInfo(g_hwndTextView, &ci);
@@ -457,6 +502,37 @@ BOOL NeatpadReloadFile(HWND hwnd)
 		TextView_GotoLine(g_hwndTextView, ci.nLineNo);
 
 	return TRUE;
+}
+
+//
+//	Follow the file as another program appends to it: open it again, read-only,
+//	at its end, for CheckFileChange to add what's appended
+//
+BOOL NeatpadTailFile(HWND hwnd)
+{
+	if(!DiscardChanges(hwnd))
+		return FALSE;
+
+	if(!TextView_TailFile(g_hwndTextView, g_szFileName))
+	{
+		FmtErrorMsg(hwnd, MB_OK|MB_ICONWARNING, GetLastError(), _T("Error opening '%s'\r\n\r\n"), g_szFileName);
+		return FALSE;
+	}
+
+	ShowOpenedFile(hwnd, g_szFileName, g_szFileTitle);
+	g_fTailing = TRUE;
+	ShowNotifyBar(NOTIFY_TAILING);
+	return TRUE;
+}
+
+//
+//	Stop following the file, and open it as usual: editable, unless another
+//	program is still writing it
+//
+BOOL NeatpadStopTail(HWND hwnd)
+{
+	g_fTailing = FALSE;
+	return NeatpadReloadFile(hwnd);
 }
 
 //

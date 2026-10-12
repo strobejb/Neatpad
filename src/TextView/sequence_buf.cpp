@@ -138,11 +138,15 @@ static long long file_length_of(FILE *file)
 //
 //	Read a file shorter than in_memory_limit seqchars into memory, and close it,
 //	leaving others free to write it. A longer one is read from disk as it's
-//	needed, so it stays open, and no one else can write it until it's closed.
+//	needed, so it stays open, and no one else can write it until it's closed -
+//	unless another program has it open to write already. That one, and one
+//	opened read_only, is read from disk sharing it with the programs that write
+//	it: read-only, for them to append to (see grow).
 //
 bool sequence::buffer_control::init_file(const seqfilechar *filename, bool read_only, size_w in_memory_limit)
 {
 	FILE *file;
+	FILE *locked;
 	long long file_length;
 	bool read;
 
@@ -159,33 +163,35 @@ bool sequence::buffer_control::init_file(const seqfilechar *filename, bool read_
 	}
 
 	// short enough to read into memory (and to fit this build's address space)
-	if((size_w)file_length < in_memory_limit && (size_w)file_length <= (size_w)(size_t)-1)
+	if(!read_only && (size_w)file_length < in_memory_limit && (size_w)file_length <= (size_w)(size_t)-1)
 	{
 		read = init((size_t)file_length) && read_data(file, buffer, 0, file_length);
 		fclose(file);
 
 		length = maxsize;
-		readonly = read_only;
 		return read;
 	}
 
-	// open it again, so that no one can write it while it's read from
-	fclose(file);
+	// open it again, so that no one can write it while it's read from - if no
+	// one is writing it already
+	if(!read_only && (locked = seq_fopen_shared(filename, false)) != 0)
+	{
+		fclose(file);
+		file = locked;
+		file_length = file_length_of(file);
+	}
+	else
+	{
+		read_only = true;
+	}
 
-	if((file = seq_fopen_shared(filename, false)) == 0)
-		return false;
-
-	if((file_length = file_length_of(file)) < 0)
+	if(file_length < 0)
 	{
 		fclose(file);
 		return false;
 	}
 
-	// The file is only ever read. Writing changes back into it (quicksave) is
-	// not supported yet, so it is opened for reading whatever read_only says;
-	// read_only is kept to say whether that will be allowed.
 	readonly = read_only;
-
 	length = (size_w)file_length;
 	maxsize = length;
 	own_memory = true;
@@ -339,6 +345,51 @@ void sequence::buffer_control::free_line_pages()
 	line_page_count = 0;
 	scanned_bytes = 0;
 	scanned_breaks = 0;
+}
+
+//
+//	Make room for the line pages of a buffer grown to size, keeping those
+//	already counted
+//
+bool sequence::buffer_control::extend_line_pages(size_w size)
+{
+	size_w     count = size / LINE_PAGE_SIZE + (size % LINE_PAGE_SIZE ? 1 : 0);
+	line_page *pages;
+
+	if(count <= line_page_count)
+		return true;
+
+	if(count > (size_w)(size_t)-1 || (pages = new line_page[(size_t)count]) == 0)
+		return false;
+
+	for(size_w page = 0; page < line_page_count; page++)
+		pages[page] = line_pages[page];
+
+	delete[] line_pages;
+	line_pages      = pages;
+	line_page_count = count;
+	return true;
+}
+
+//
+//	Take in what another program has appended to the file since it was opened,
+//	or last grew. The pages counted so far stay counted; the last of them is
+//	counted again, now it's longer. False if the file has got shorter: it's
+//	been rewritten, not appended to.
+//
+bool sequence::buffer_control::grow()
+{
+	long long file_length;
+
+	if(fp == 0 || (file_length = file_length_of((FILE *)fp)) < 0 || (size_w)file_length < length)
+		return false;
+
+	if(!extend_line_pages((size_w)file_length))
+		return false;
+
+	length  = (size_w)file_length;
+	maxsize = length;
+	return true;
 }
 
 //

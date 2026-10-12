@@ -584,6 +584,117 @@ void sequence_reads_a_short_file_into_memory()
     DeleteFile(path);
 }
 
+// Line breaks in text: CR, LF and CRLF each count once
+size_w breaks_in(const std::string &text)
+{
+    size_w breaks = 0;
+
+    for(size_t i = 0; i < text.size(); i++)
+    {
+        if(text[i] == '\n' || (text[i] == '\r' && (i + 1 == text.size() || text[i + 1] != '\n')))
+            breaks++;
+    }
+
+    return breaks;
+}
+
+// Append to a file through a handle another program might hold
+bool append_to(HANDLE writer, const std::string &text)
+{
+    DWORD written = 0;
+
+    SetFilePointer(writer, 0, 0, FILE_END);
+    return WriteFile(writer, text.data(), (DWORD)text.size(), &written, 0) && written == text.size();
+}
+
+void sequence_grows_as_a_file_is_appended_to()
+{
+    sequence    seq;
+    TCHAR       path[MAX_PATH];
+    std::string text = utf8_text(12 * 5600) + "\r";
+    std::string more = "\nmore caf\xc3\xa9\r\n";
+    std::string pages = utf8_text(12 * 11000);
+    HANDLE      writer;
+    size_w      added = 0;
+
+    // a little over a line page, ending with a CR
+    CHECK(write_temp_file(text.data(), text.size(), path));
+    CHECK(seq.open(path, true));
+    CHECK(seq.read_only());
+
+    seq.set_line_scan_mode(sequence::line_scan_utf8);
+    seq.index_lines(0, seq.size());
+
+    writer = CreateFile(path, GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, 0, OPEN_EXISTING, 0, 0);
+    CHECK(writer != INVALID_HANDLE_VALUE);
+
+    // the CR it ended with, and the LF appended to it, are one line break
+    CHECK(append_to(writer, more));
+    text += more;
+
+    CHECK(seq.grow(&added) && added == more.size());
+    CHECK(render_content(seq) == text);
+    CHECK(seq.linecount_known());
+    CHECK(seq.linecount() == breaks_in(text) + 1);
+    CHECK(seq.indexed_chars() == utf8_chars(text, text.size()));
+
+    // more across two line pages
+    CHECK(append_to(writer, pages));
+    text += pages;
+
+    CHECK(seq.grow(&added) && added == pages.size());
+    CHECK(render_content(seq) == text);
+    CHECK(seq.linecount_known());
+    CHECK(seq.linecount() == breaks_in(text) + 1);
+    CHECK(seq.indexed_chars() == utf8_chars(text, text.size()));
+
+    // nothing more, nothing added
+    CHECK(seq.grow(&added) && added == 0);
+
+    // rewritten shorter, it's no longer the file it was
+    SetFilePointer(writer, 100, 0, FILE_BEGIN);
+    CHECK(SetEndOfFile(writer));
+    CHECK(!seq.grow(&added));
+
+    CloseHandle(writer);
+    seq.clear();
+    DeleteFile(path);
+}
+
+void sequence_opens_read_only_while_another_program_writes()
+{
+    sequence seq;
+    TCHAR    path[MAX_PATH];
+    HANDLE   writer;
+    size_w   added = 0;
+
+    CHECK(write_temp_file("log line\r\n", 10, path));
+
+    // with no one writing it, it's locked while it's read, and can't grow
+    CHECK(seq.open(path, false));
+    CHECK(!seq.read_only());
+    CHECK(!others_can_write(path));
+    CHECK(!seq.grow(&added));
+    seq.clear();
+
+    // a program keeping it open to append to
+    writer = CreateFile(path, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_DELETE, 0, OPEN_EXISTING, 0, 0);
+    CHECK(writer != INVALID_HANDLE_VALUE);
+
+    // opens it read-only, rather than not at all
+    CHECK(seq.open(path, false));
+    CHECK(seq.read_only());
+    CHECK(render_content(seq) == "log line\r\n");
+
+    // edited, it can't grow: the text isn't the file's any more
+    CHECK(insert_bytes(seq, 0, "x"));
+    CHECK(!seq.grow(&added));
+
+    seq.clear();
+    CloseHandle(writer);
+    DeleteFile(path);
+}
+
 // What render passes on, joined, and how many blocks it came in
 std::string render_blocks(const sequence &seq, size_w index, size_w length, size_t *blocks)
 {
@@ -668,6 +779,8 @@ const test_case tests[] =
     { "sequence_mark_saved_stops_typing_joining_the_saved_record", sequence_mark_saved_stops_typing_joining_the_saved_record },
     { "sequence_modified_treats_group_as_one_edit", sequence_modified_treats_group_as_one_edit },
     { "sequence_reads_a_short_file_into_memory", sequence_reads_a_short_file_into_memory },
+    { "sequence_grows_as_a_file_is_appended_to", sequence_grows_as_a_file_is_appended_to },
+    { "sequence_opens_read_only_while_another_program_writes", sequence_opens_read_only_while_another_program_writes },
     { "sequence_render_passes_a_block_per_span", sequence_render_passes_a_block_per_span },
 };
 }

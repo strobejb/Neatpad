@@ -136,11 +136,11 @@ static bool known_encoding(TEXT_ENCODING encoding)
 //
 //	Initialize the TextDocument with the specified file
 //
-bool TextDocument::init(const seqfilechar *filename)
+bool TextDocument::init(const seqfilechar *filename, bool read_only)
 {
 	clear();
 
-	if(!m_seq.open(filename, false, m_nInMemoryLimit))
+	if(!m_seq.open(filename, read_only, m_nInMemoryLimit))
 		return false;
 
 	// try to detect if this is an ascii/unicode/utf8 file
@@ -154,6 +154,16 @@ bool TextDocument::init(const seqfilechar *filename)
 void TextDocument::set_in_memory_limit(size_w bytes)
 {
 	m_nInMemoryLimit = bytes;
+}
+
+bool TextDocument::read_only() const
+{
+	return m_seq.read_only();
+}
+
+bool TextDocument::grow(size_w *added)
+{
+	return m_seq.grow(added);
 }
 
 //

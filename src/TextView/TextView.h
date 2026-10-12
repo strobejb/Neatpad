@@ -74,6 +74,8 @@ COLORREF RealizeColour(COLORREF col);
 #define TXM_CANGOTOLINE			(TXM_BASE + 37)
 #define TXM_CONVERTLINEBREAKS	(TXM_BASE + 38)
 #define TXM_SETINMEMORYLIMIT	(TXM_BASE + 39)
+#define TXM_TAILFILE			(TXM_BASE + 40)
+#define TXM_UPDATETAIL			(TXM_BASE + 41)
 
 //
 //	TextView Notification Messages defined here - 
@@ -189,8 +191,20 @@ typedef struct _TEXTVIEWFIND
 //
 //	TextView Message Macros defined here
 //
+//	A file another program is writing opens read-only: TextView_GetEditMode says
+//	MODE_READONLY.
 #define TextView_OpenFile(hwndTV, szFile)	\
 	SendMessage((hwndTV), TXM_OPENFILE, 0, (LPARAM)(TCHAR *)(szFile))
+
+//	Open a file to follow as another program appends to it: read-only, with the
+//	caret at the end. TextView_UpdateTail adds what has been appended since, and a
+//	caret at the end stays there. It's FALSE once the file has got shorter: it's
+//	been rewritten, and needs opening again.
+#define TextView_TailFile(hwndTV, szFile)	\
+	((BOOL)SendMessage((hwndTV), TXM_TAILFILE, 0, (LPARAM)(TCHAR *)(szFile)))
+
+#define TextView_UpdateTail(hwndTV)	\
+	((BOOL)SendMessage((hwndTV), TXM_UPDATETAIL, 0, 0))
 
 //	Save in nEncoding (NCP_*), with or without its byte-order mark, and with every
 //	line break made nLineBreak (TXL_CR, TXL_LF or TXL_CRLF; 0 keeps them).

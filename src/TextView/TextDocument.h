@@ -139,9 +139,16 @@ public:
 	//
 
 	// Load and reset the document: in the encoding its byte-order mark says
-	// (ASCII without one), or in the given encoding.
-	bool  init(const seqfilechar *filename);
+	// (ASCII without one), or in the given encoding. read_only shares the file
+	// with programs that write it, to follow one another program appends to
+	// (grow). A file another program is writing already is read-only anyway.
+	bool  init(const seqfilechar *filename, bool read_only = false);
 	bool  init(const seqfilechar *filename, TEXT_ENCODING encoding);
+	bool  read_only() const;
+
+	// Add what another program has appended to a read-only file. False if the
+	// file has been rewritten instead: it's shorter.
+	bool  grow(size_w *added);
 
 	// Files shorter than this many bytes are read into memory when loaded, and
 	// closed, so others can write them. Longer ones are read from disk as

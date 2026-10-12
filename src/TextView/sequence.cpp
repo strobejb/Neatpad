@@ -173,6 +173,64 @@ bool sequence::open(const seqfilechar *filename, bool readonly, size_w in_memory
 	return true;
 }
 
+//
+//	The buffer an open file is read from as it's needed: 0 for one read into
+//	memory, or none
+//
+sequence::buffer_control *sequence::file_buffer() const
+{
+	for(size_t i = 0; i < buffer_list.size(); i++)
+	{
+		if(buffer_list[i]->fp != 0)
+			return buffer_list[i];
+	}
+
+	return 0;
+}
+
+bool sequence::read_only() const
+{
+	buffer_control *bc = file_buffer();
+
+	return bc != 0 && bc->readonly;
+}
+
+//
+// sequence::grow
+//
+//	tell the sequence the underlying file buffer has changed size 
+//  i.e. a log file being appended to
+//
+bool sequence::grow(size_w *added)
+{
+	buffer_control *bc   = file_buffer();
+	span		   *last = tail->prev;
+	size_w			old_length;
+
+	*added = 0;
+
+	// unedited, the text is the file's one span
+	if(!read_only() || canundo() || canredo() || last == head || last->buffer != bc->id)
+		return false;
+
+	old_length = bc->length;
+
+	if(!bc->grow())
+		return false;
+
+	// update & index the newly added data
+	if((*added = bc->length - old_length) != 0)
+	{
+		last->length	+= *added;
+		sequence_length += *added;
+
+		update_span_line_data(last);
+		index_range(old_length, *added);
+	}
+
+	return true;
+}
+
 template <class type>
 void sequence::clear_vector (type &vectorobject)
 {
