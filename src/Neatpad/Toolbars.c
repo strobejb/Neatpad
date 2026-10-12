@@ -23,7 +23,7 @@ DWORD dwStatusBarStyles = WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLI
 						  ;
 
 
-#define MAX_STATUS_PARTS 6
+#define MAX_STATUS_PARTS 7
 
 // room left after the text of each pane
 #define STATUS_PANE_PADDING _T("MMM")
@@ -67,7 +67,7 @@ int StatusBarMenuSelect(HWND hwnd, HWND hwndSB, WPARAM wParam, LPARAM lParam)
 
 //
 //	Lay out the panes: the cursor and document-statistics panes on the left, the
-//	indexing, line-format and encoding panes against the right edge, and the
+//	indexing, zoom, line-format and encoding panes against the right edge, and the
 //	message pane in between. Must be called whenever the statusbar changes size, so call each
 //	time the main-window gets a WM_SIZE
 //
@@ -82,14 +82,15 @@ void SetStatusBarParts(HWND hwndSB)
 
 	// a window too narrow for every pane clips the ones on the right
 	right = max(r.right, g_nPaneWidth[STATUS_PART_CURSOR]   + g_nPaneWidth[STATUS_PART_DOCSTATS] +
-						 g_nPaneWidth[STATUS_PART_INDEX]    + g_nPaneWidth[STATUS_PART_LINEFMT]  +
-						 g_nPaneWidth[STATUS_PART_ENCODING]);
+						 g_nPaneWidth[STATUS_PART_INDEX]    + g_nPaneWidth[STATUS_PART_ZOOM]     +
+						 g_nPaneWidth[STATUS_PART_LINEFMT]  + g_nPaneWidth[STATUS_PART_ENCODING]);
 
 	parts[STATUS_PART_CURSOR]   = g_nPaneWidth[STATUS_PART_CURSOR];
 	parts[STATUS_PART_DOCSTATS] = parts[STATUS_PART_CURSOR] + g_nPaneWidth[STATUS_PART_DOCSTATS];
 	parts[STATUS_PART_ENCODING] = right;
 	parts[STATUS_PART_LINEFMT]  = parts[STATUS_PART_ENCODING] - g_nPaneWidth[STATUS_PART_ENCODING];
-	parts[STATUS_PART_INDEX]    = parts[STATUS_PART_LINEFMT]  - g_nPaneWidth[STATUS_PART_LINEFMT];
+	parts[STATUS_PART_ZOOM]     = parts[STATUS_PART_LINEFMT]  - g_nPaneWidth[STATUS_PART_LINEFMT];
+	parts[STATUS_PART_INDEX]    = parts[STATUS_PART_ZOOM]     - g_nPaneWidth[STATUS_PART_ZOOM];
 	parts[STATUS_PART_MESSAGE]  = parts[STATUS_PART_INDEX]    - g_nPaneWidth[STATUS_PART_INDEX];
 
 	// Tell the status bar to create the window parts.
@@ -275,6 +276,7 @@ HWND CreateStatusBar (HWND hwndParent)
 	SetStatusBarText(hwndSB, STATUS_PART_CURSOR,   0,  _T(" Ln %d, Col %d"), 1, 1);
 	SetStatusBarText(hwndSB, STATUS_PART_MESSAGE,  0,  _T(""));
 	SetStatusBarText(hwndSB, STATUS_PART_DOCSTATS, 0,  _T(""));
+	SetStatusBarText(hwndSB, STATUS_PART_ZOOM,     0,  _T(" 100%%"));
 	SetStatusBarText(hwndSB, STATUS_PART_LINEFMT,  0,  _T(" CRLF"));
 	SetStatusBarText(hwndSB, STATUS_PART_ENCODING, 0, _T(" ASCII"));
 

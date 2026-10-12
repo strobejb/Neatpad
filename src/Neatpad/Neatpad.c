@@ -32,6 +32,7 @@ HWND		g_hwndStatusbar;
 HWND		g_hwndSearchDlg;
 HWND		g_hwndSearchBar;
 HFONT		g_hFont;
+LONG		g_nZoom = 100;
 
 TCHAR		g_szFileName[MAX_PATH];
 TCHAR		g_szFileTitle[MAX_PATH];
@@ -410,6 +411,39 @@ static void ConvertLineEndings(HWND hwnd, UINT nLineBreak)
 	TextView_ConvertLineBreaks(g_hwndTextView, nLineBreak);
 }
 
+// Zooming steps by ZOOM_STEP percent, from ZOOM_MIN to ZOOM_MAX percent, as Notepad does
+#define ZOOM_STEP	10
+#define ZOOM_MIN	10
+#define ZOOM_MAX	500
+
+//
+//	Zoom the text to nZoom percent of its font size, as near as the limits allow
+//
+static void SetZoom(LONG nZoom)
+{
+	nZoom = max(ZOOM_MIN, min(nZoom, ZOOM_MAX));
+
+	if(nZoom != g_nZoom)
+	{
+		g_nZoom = nZoom;
+		ApplyFonts();
+		SetStatusBarText(g_hwndStatusbar, STATUS_PART_ZOOM, 0, _T(" %d%%"), g_nZoom);
+	}
+}
+
+//
+//	Zoom the text a step for each notch the wheel turned. A fine-grained wheel,
+//	or pinching a touchpad, turns less than a notch at a time, so the rest is kept.
+//
+static void ZoomByWheel(int nDelta)
+{
+	static int nRest;
+
+	nRest += nDelta;
+	SetZoom(g_nZoom + nRest / WHEEL_DELTA * ZOOM_STEP);
+	nRest %= WHEEL_DELTA;
+}
+
 //
 //	About dialog-proc
 //
@@ -737,6 +771,18 @@ UINT CommandHandler(HWND hwnd, UINT nCtrlId, UINT nCtrlCode, HWND hwndFrom)
 	case ID_LINEENDINGS_CONVERTTOMAC:
 		ConvertLineEndings(hwnd, TXL_CR);
 		return 0;
+
+	case ID_ZOOM_ZOOMIN:
+		SetZoom(g_nZoom + ZOOM_STEP);
+		return 0;
+
+	case ID_ZOOM_ZOOMOUT:
+		SetZoom(g_nZoom - ZOOM_STEP);
+		return 0;
+
+	case ID_ZOOM_RESTOREDEFAULTZOOM:
+		SetZoom(100);
+		return 0;
 		
 	/*case IDM_VIEW_STATUSBAR:
 		g_fShowStatusbar = !g_fShowStatusbar;
@@ -810,6 +856,13 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
 	case WM_DROPFILES:
 		HandleDropFiles(hwnd, (HDROP)wParam);
+		return 0;
+
+	// the TextView passes Ctrl+wheel up, to zoom
+	case WM_MOUSEWHEEL:
+		if(GET_KEYSTATE_WPARAM(wParam) & MK_CONTROL)
+			ZoomByWheel(GET_WHEEL_DELTA_WPARAM(wParam));
+
 		return 0;
 
 	case WM_DESTROY:

@@ -518,7 +518,11 @@ LRESULT WINAPI TextView::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 	case WM_CONTEXTMENU:
 		return OnContextMenu((HWND)wParam, (short)LOWORD(lParam), (short)HIWORD(lParam));
 
+	// Ctrl+wheel is left to DefWindowProc, which passes it to the parent to zoom
 	case WM_MOUSEWHEEL:
+		if(GET_KEYSTATE_WPARAM(wParam) & MK_CONTROL)
+			break;
+
 		return OnMouseWheel((short)HIWORD(wParam));
 
 	case WM_SETFOCUS:

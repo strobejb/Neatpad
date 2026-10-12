@@ -572,12 +572,46 @@ static void DeleteFallbackFonts()
 	}
 }
 
+//
+//	The text's font in the face given, at the font size zoomed to g_nZoom percent
+//
+static HFONT CreateTextFont(TCHAR *szFace)
+{
+	return CreateFont(MulDiv(PointsToLogical(g_nFontSize), g_nZoom, 100),
+					  0, 0, 0,
+					  g_fFontBold ? FW_BOLD : 0,
+					  0, 0, 0, DEFAULT_CHARSET, 0, 0,
+					  g_nFontSmoothing,
+					  0,
+					  szFace);
+}
+
 static void AddFallbackFont(int idx, TCHAR *faceName)
 {
-	g_hFallbackFonts[idx] = EasyCreateFont(g_nFontSize, g_fFontBold, g_nFontSmoothing, faceName);
+	g_hFallbackFonts[idx] = CreateTextFont(faceName);
 
 	if(g_hFallbackFonts[idx])
 		TextView_AddFontFallback(g_hwndTextView, 0, g_hFallbackFonts[idx]);
+}
+
+//
+//	Give the TextView its fonts, after the font or the zoom changes
+//
+void ApplyFonts()
+{
+	HFONT oldFont = g_hFont;
+
+	DeleteFallbackFonts();
+
+	g_hFont = CreateTextFont(g_szFontName);
+	SendMessage(g_hwndTextView, WM_SETFONT, (WPARAM)g_hFont, 0);
+
+	if(oldFont)
+		DeleteObject(oldFont);
+
+	AddFallbackFont(0, _T("Segoe UI"));
+	AddFallbackFont(1, _T("Nirmala UI"));
+	AddFallbackFont(2, _T("Leelawadee UI"));
 }
 
 void DeleteRuntimeFonts()
@@ -594,11 +628,6 @@ void DeleteRuntimeFonts()
 void ApplyRegSettings()
 {
 	int i;
-	HFONT oldFont = g_hFont;
-
-	DeleteFallbackFonts();
-
-	g_hFont = EasyCreateFont(g_nFontSize, g_fFontBold, g_nFontSmoothing, g_szFontName);
 
 	TextView_SetLineSpacing(g_hwndTextView, g_nPaddingAbove, g_nPaddingBelow);
 
@@ -611,15 +640,8 @@ void ApplyRegSettings()
 
 	TextView_SetCaretWidth(g_hwndTextView, 2);
 	TextView_SetLongLine(g_hwndTextView, g_nLongLineLimit);
-	
-	SendMessage(g_hwndTextView, WM_SETFONT, (WPARAM)g_hFont, 0);
 
-	if(oldFont)
-		DeleteObject(oldFont);
-
-	AddFallbackFont(0, _T("Segoe UI"));
-	AddFallbackFont(1, _T("Nirmala UI"));
-	AddFallbackFont(2, _T("Leelawadee UI"));
+	ApplyFonts();
 
 	for(i = 0; i < TXC_MAX_COLOURS; i++)
 	{

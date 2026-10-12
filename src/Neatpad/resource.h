@@ -150,6 +150,10 @@
 #define ID_LINEENDINGS_CONVERTTOWINDOWS 40056
 #define ID_LINEENDINGS_CONVERTTOLINUX   40057
 #define ID_LINEENDINGS_CONVERTTOMAC     40058
+#define ID_VIEW_ZOOM                    40059
+#define ID_ZOOM_ZOOMIN                  40060
+#define ID_ZOOM_ZOOMOUT                 40061
+#define ID_ZOOM_RESTOREDEFAULTZOOM      40062
 #define IDC_STATIC                      -1
 
 // Next default values for new objects
@@ -157,7 +161,7 @@
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        134
-#define _APS_NEXT_COMMAND_VALUE         40059
+#define _APS_NEXT_COMMAND_VALUE         40063
 #define _APS_NEXT_CONTROL_VALUE         1061
 #define _APS_NEXT_SYMED_VALUE           101
 #endif

@@ -48,6 +48,7 @@ extern COLORREF g_rgbCustColours[];
 extern HWND		g_hwndTextView;
 extern HWND		g_hwndMain;
 extern HFONT	g_hFont;
+extern LONG		g_nZoom;		// the text's zoom, in percent of the font size
 extern TCHAR	g_szFileName[];
 extern TCHAR	g_szFileTitle[];
 extern BOOL		g_fFileChanged;
@@ -65,6 +66,7 @@ HDC		ShowPrintDlg(HWND hwndParent);
 //
 void ShowOptions(HWND hwndParent);
 void ApplyRegSettings();
+void ApplyFonts();
 void LoadRegSettings();
 void SaveRegSettings();
 void DeleteRuntimeFonts();
@@ -159,8 +161,9 @@ void UpdateStatusBarFileInfo(void);
 #define STATUS_PART_MESSAGE		2
 #define STATUS_PART_EDITMODE	STATUS_PART_DOCSTATS
 #define STATUS_PART_INDEX		3
-#define STATUS_PART_LINEFMT		4
-#define STATUS_PART_ENCODING	5
+#define STATUS_PART_ZOOM		4
+#define STATUS_PART_LINEFMT		5
+#define STATUS_PART_ENCODING	6
 
 #ifdef __cplusplus
 }

@@ -61,13 +61,13 @@ BEGIN
     END
     POPUP "&View"
     BEGIN
-        POPUP "&Encoding"
+        POPUP "&Zoom"
         BEGIN
-            MENUITEM "&Ascii",                      IDM_VIEW_ASCII
-            MENUITEM "Unicode (UTF-&8)",            IDM_VIEW_UTF8
-            MENUITEM "&Unicode (UTF-16)",           IDM_VIEW_UTF16
-            MENUITEM "Unicode (UTF-16, &Big-Endian)", IDM_VIEW_UTF16BE
+            MENUITEM "Zoom &In\tCtrl+Plus",         ID_ZOOM_ZOOMIN
+            MENUITEM "Zoom &Out\tCtrl+Minus",       ID_ZOOM_ZOOMOUT
+            MENUITEM "&Restore default zoom\tCtrl+0", ID_ZOOM_RESTOREDEFAULTZOOM
         END
+        MENUITEM SEPARATOR
         POPUP "Line Endings"
         BEGIN
             MENUITEM "&Normalize",                  ID_LINEENDINGS_NORMALISE
@@ -187,6 +187,13 @@ BEGIN
     "R",            IDM_RECENT_PREVIOUS,    VIRTKEY, SHIFT, CONTROL, NOINVERT
     "V",            IDM_EDIT_PASTE,         VIRTKEY, CONTROL, NOINVERT
     "X",            IDM_EDIT_CUT,           VIRTKEY, CONTROL, NOINVERT
+    VK_OEM_PLUS,    ID_ZOOM_ZOOMIN,         VIRTKEY, CONTROL, NOINVERT
+    VK_OEM_PLUS,    ID_ZOOM_ZOOMIN,         VIRTKEY, SHIFT, CONTROL, NOINVERT
+    VK_ADD,         ID_ZOOM_ZOOMIN,         VIRTKEY, CONTROL, NOINVERT
+    VK_OEM_MINUS,   ID_ZOOM_ZOOMOUT,        VIRTKEY, CONTROL, NOINVERT
+    VK_SUBTRACT,    ID_ZOOM_ZOOMOUT,        VIRTKEY, CONTROL, NOINVERT
+    "0",            ID_ZOOM_RESTOREDEFAULTZOOM, VIRTKEY, CONTROL, NOINVERT
+    VK_NUMPAD0,     ID_ZOOM_RESTOREDEFAULTZOOM, VIRTKEY, CONTROL, NOINVERT
 END
 
 

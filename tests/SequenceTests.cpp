@@ -4647,10 +4647,11 @@ std::string encode_text(const wchar_t *text, TEXT_ENCODING encoding)
     return bytes;
 }
 
-// The last index notification a TextView sent its parent, and how many times
-// it has said its text changed
+// The last index notification a TextView sent its parent, how many times it
+// has said its text changed, and how many wheel turns it has passed up
 TVNINDEXINFO g_index_notified;
 int          g_changes_notified;
+int          g_wheels_passed_up;
 
 LRESULT CALLBACK HiddenParentProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
@@ -4659,6 +4660,9 @@ LRESULT CALLBACK HiddenParentProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPa
 
     if(msg == WM_NOTIFY && reinterpret_cast<NMHDR *>(lParam)->code == TVN_CHANGED)
         g_changes_notified++;
+
+    if(msg == WM_MOUSEWHEEL)
+        g_wheels_passed_up++;
 
     return DefWindowProc(hwnd, msg, wParam, lParam);
 }
@@ -5333,6 +5337,30 @@ void textview_enter_types_the_documents_line_break()
     }
 }
 
+void textview_passes_ctrl_wheel_to_its_parent()
+{
+    EditPair     pair;
+    std::wstring text;
+    int          wheels = g_wheels_passed_up;
+
+    for(int i = 0; i < 100; i++)
+        text += L"line\r\n";
+
+    CHECK(open_edit_pair(&pair, text.c_str(), NCP_UTF8));
+
+    // Ctrl+wheel goes to the parent, to zoom, and doesn't scroll
+    SendMessage(pair.view, WM_MOUSEWHEEL, MAKEWPARAM(MK_CONTROL, -WHEEL_DELTA), 0);
+    CHECK(g_wheels_passed_up == wheels + 1);
+    CHECK(SendMessage(pair.view, EM_GETFIRSTVISIBLELINE, 0, 0) == 0);
+
+    // the wheel alone scrolls, and stays with the TextView
+    SendMessage(pair.view, WM_MOUSEWHEEL, MAKEWPARAM(0, -WHEEL_DELTA), 0);
+    CHECK(g_wheels_passed_up == wheels + 1);
+    CHECK(SendMessage(pair.view, EM_GETFIRSTVISIBLELINE, 0, 0) > 0);
+
+    close_edit_pair(&pair);
+}
+
 void textdocument_detects_utf8_without_a_bom()
 {
     TextDocument doc;
@@ -5981,6 +6009,7 @@ const test_case tests[] =
     { "textdocument_replace_linebreaks_makes_them_one_kind", textdocument_replace_linebreaks_makes_them_one_kind },
     { "textview_converts_line_breaks", textview_converts_line_breaks },
     { "textview_enter_types_the_documents_line_break", textview_enter_types_the_documents_line_break },
+    { "textview_passes_ctrl_wheel_to_its_parent", textview_passes_ctrl_wheel_to_its_parent },
     { "textdocument_detects_utf8_without_a_bom", textdocument_detects_utf8_without_a_bom },
     { "textdocument_new_document_is_utf8", textdocument_new_document_is_utf8 },
     { "sequence_index_next_indexes_to_the_end", sequence_index_next_indexes_to_the_end },
