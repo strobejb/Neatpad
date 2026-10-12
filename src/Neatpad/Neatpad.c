@@ -385,6 +385,31 @@ static void ToggleIndexing(void)
 		TextView_IndexFile(g_hwndTextView, !info.fIndexing);
 }
 
+// Line endings are converted in place up to this size: in memory, as one undo
+// step. A larger file's are converted by Save As, which streams it to disk.
+#define CONVERT_IN_PLACE_LIMIT	(64 * 1024 * 1024)
+
+//
+//	Make every line ending in the selection, or the whole file, nLineBreak
+//
+static void ConvertLineEndings(HWND hwnd, UINT nLineBreak)
+{
+	TEXTVIEWDOCSTATS stats;
+
+	if(!TextView_GetDocStats(g_hwndTextView, &stats))
+		return;
+
+	if((stats.sel_byte_count ? stats.sel_byte_count : stats.byte_count) > CONVERT_IN_PLACE_LIMIT)
+	{
+		MessageBox(hwnd, _T("This file is too large to convert its line endings here.\r\n")
+						 _T("Choose the line endings in Save As instead."), APP_TITLE, MB_ICONINFORMATION);
+		NeatpadSaveFileAs(hwnd);
+		return;
+	}
+
+	TextView_ConvertLineBreaks(g_hwndTextView, nLineBreak);
+}
+
 //
 //	About dialog-proc
 //
@@ -694,6 +719,23 @@ UINT CommandHandler(HWND hwnd, UINT nCtrlId, UINT nCtrlCode, HWND hwndFrom)
 	case ID_LINEENDINGS_HIGHLIGHTMALFORMED:
 		g_fShowLineEndings = (nCtrlId == ID_LINEENDINGS_ALWAYSSHOW);
 		TextView_SetStyleBool(g_hwndTextView, TXS_SHOWLINEENDINGS, g_fShowLineEndings);
+		return 0;
+
+	// normalizing converts stray line endings to the file's own format
+	case ID_LINEENDINGS_NORMALISE:
+		ConvertLineEndings(hwnd, TextView_GetLineFormat(g_hwndTextView));
+		return 0;
+
+	case ID_LINEENDINGS_CONVERTTOWINDOWS:
+		ConvertLineEndings(hwnd, TXL_CRLF);
+		return 0;
+
+	case ID_LINEENDINGS_CONVERTTOLINUX:
+		ConvertLineEndings(hwnd, TXL_LF);
+		return 0;
+
+	case ID_LINEENDINGS_CONVERTTOMAC:
+		ConvertLineEndings(hwnd, TXL_CR);
 		return 0;
 		
 	/*case IDM_VIEW_STATUSBAR:

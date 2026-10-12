@@ -645,6 +645,9 @@ LRESULT WINAPI TextView::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 	case TXM_GETLINEFORMAT:
 		return m_nCRLFMode;
 
+	case TXM_CONVERTLINEBREAKS:
+		return ConvertLineBreaks((UINT)wParam);
+
 	case TXM_GETSELSIZE:
 		return ResultFromSize(SelectionSize());
 

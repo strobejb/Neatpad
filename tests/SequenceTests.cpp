@@ -4647,13 +4647,18 @@ std::string encode_text(const wchar_t *text, TEXT_ENCODING encoding)
     return bytes;
 }
 
-// The last index notification a TextView sent its parent
+// The last index notification a TextView sent its parent, and how many times
+// it has said its text changed
 TVNINDEXINFO g_index_notified;
+int          g_changes_notified;
 
 LRESULT CALLBACK HiddenParentProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
     if(msg == WM_NOTIFY && reinterpret_cast<NMHDR *>(lParam)->code == TVN_INDEX_CHANGE)
         g_index_notified = *reinterpret_cast<TVNINDEXINFO *>(lParam);
+
+    if(msg == WM_NOTIFY && reinterpret_cast<NMHDR *>(lParam)->code == TVN_CHANGED)
+        g_changes_notified++;
 
     return DefWindowProc(hwnd, msg, wParam, lParam);
 }
@@ -5149,6 +5154,183 @@ void textview_goto_line_reports_indexing()
 
     DestroyWindow(parent);
     DeleteFile(path);
+}
+
+// All of a document's text, as UTF-16
+std::wstring document_text(TextDocument &doc)
+{
+    std::wstring text;
+    TextReader   reader = doc.text_from_range(TextPos(0), TextPos(doc.byte_length()));
+    wchar_t      buf[256];
+    uint32_t     len;
+
+    while((len = reader.read(buf, 256)) != 0)
+        text.append(buf, len);
+
+    return text;
+}
+
+void textdocument_replace_linebreaks_makes_them_one_kind()
+{
+    // CRLF, LF, CR, and an LF then a CR, which is two line breaks
+    const wchar_t mixed[] = L"a\r\nb\nc\rd\n\re";
+    const TEXT_ENCODING encodings[] = { NCP_UTF8, NCP_UTF16, NCP_UTF32 };
+    struct { uint32_t linebreak; const wchar_t *expected; } cases[] =
+    {
+        { TXL_CRLF, L"a\r\nb\r\nc\r\nd\r\n\r\ne" },
+        { TXL_LF,   L"a\nb\nc\nd\n\ne" },
+        { TXL_CR,   L"a\rb\rc\rd\r\re" },
+    };
+
+    for(size_t e = 0; e < sizeof(encodings) / sizeof(encodings[0]); e++)
+    {
+        for(size_t c = 0; c < sizeof(cases) / sizeof(cases[0]); c++)
+        {
+            std::string  bytes = encode_text(mixed, encodings[e]);
+            TextDocument doc;
+            TextChange   change;
+            TCHAR        path[MAX_PATH];
+
+            CHECK(write_temp_file(bytes.data(), bytes.size(), path));
+            CHECK(doc.init(path, encodings[e]));
+
+            doc.replace_linebreaks(TextPos(0), TextPos(doc.byte_length()), cases[c].linebreak, &change);
+            CHECK(document_text(doc) == cases[c].expected);
+
+            // one undo step brings the mix back
+            CHECK(doc.undo(&change));
+            CHECK(document_text(doc) == mixed);
+
+            doc.clear();
+            DeleteFile(path);
+        }
+    }
+
+    // longer text goes into the document in pieces, and still undoes in one step
+    {
+        std::string  text;
+        TextDocument doc;
+        TextChange   change;
+        TCHAR        path[MAX_PATH];
+
+        for(int i = 0; i < 1000; i++)
+            text += "line\r\n";
+
+        CHECK(write_temp_file(text.data(), text.size(), path));
+        CHECK(doc.init(path, NCP_UTF8));
+
+        doc.replace_linebreaks(TextPos(0), TextPos(doc.byte_length()), TXL_LF, &change);
+        CHECK(doc.byte_length() == 5000);
+
+        CHECK(doc.undo(&change));
+        CHECK(doc.byte_length() == 6000);
+
+        doc.clear();
+        DeleteFile(path);
+    }
+
+    // part of the text converts just the line breaks inside it: "b\nc\r" here
+    {
+        TextDocument doc;
+        TCHAR        path[MAX_PATH];
+
+        CHECK(write_temp_file("a\r\nb\nc\rd", 8, path));
+        CHECK(doc.init(path, NCP_UTF8));
+
+        doc.replace_linebreaks(TextPos(3), TextPos(7), TXL_LF, 0);
+        CHECK(document_text(doc) == L"a\r\nb\nc\nd");
+
+        doc.clear();
+        DeleteFile(path);
+    }
+}
+
+void textview_converts_line_breaks()
+{
+    // CRLF from its first line, with an LF and a CR mixed in
+    const wchar_t mixed[] = L"one\r\ntwo\nthree\rfour\r\nfive";
+    EditPair pair;
+    DWORD    start = 0, end = 0;
+    int      changes;
+
+    CHECK(open_edit_pair(&pair, mixed, NCP_UTF8));
+    CHECK(TextView_GetLineFormat(pair.view) == TXL_CRLF);
+
+    // normalize the whole file with the caret on the line "four", at its 'u'
+    SendMessage(pair.view, EM_SETSEL, 17, 17);
+    changes = g_changes_notified;
+
+    CHECK(TextView_ConvertLineBreaks(pair.view, TXL_CRLF));
+    CHECK(window_text(pair.view) == L"one\r\ntwo\r\nthree\r\nfour\r\nfive");
+    CHECK(g_changes_notified > changes);
+
+    // the caret stays on its line and column, which are now two characters on
+    CHECK(SendMessage(pair.view, EM_LINEFROMCHAR, (WPARAM)-1, 0) == 3);
+    SendMessage(pair.view, EM_GETSEL, (WPARAM)&start, (LPARAM)&end);
+    CHECK(start == 19 && end == 19);
+
+    // one undo brings the mix back
+    SendMessage(pair.view, EM_UNDO, 0, 0);
+    CHECK(window_text(pair.view) == mixed);
+
+    // the whole file converted to UNIX takes that line format
+    SendMessage(pair.view, EM_SETSEL, 0, 0);
+    CHECK(TextView_ConvertLineBreaks(pair.view, TXL_LF));
+    CHECK(window_text(pair.view) == L"one\ntwo\nthree\nfour\nfive");
+    CHECK(TextView_GetLineFormat(pair.view) == TXL_LF);
+
+    // a selection, made right to left, converts only its own line breaks, stays
+    // selected as it grows, and leaves the format alone: "two\nthree\n" here
+    SendMessage(pair.view, EM_SETSEL, 14, 4);
+    CHECK(TextView_ConvertLineBreaks(pair.view, TXL_CRLF));
+    CHECK(window_text(pair.view) == L"one\ntwo\r\nthree\r\nfour\nfive");
+    CHECK(TextView_GetLineFormat(pair.view) == TXL_LF);
+    SendMessage(pair.view, EM_GETSEL, (WPARAM)&start, (LPARAM)&end);
+    CHECK(start == 4 && end == 16);
+
+    // a read-only view converts nothing
+    TextView_SetEditMode(pair.view, MODE_READONLY);
+    CHECK(!TextView_ConvertLineBreaks(pair.view, TXL_CR));
+    CHECK(window_text(pair.view) == L"one\ntwo\r\nthree\r\nfour\nfive");
+
+    // and a program's replacement says the text changed, as typing does
+    changes = g_changes_notified;
+    SendMessage(pair.view, EM_REPLACESEL, TRUE, (LPARAM)L"x");
+    CHECK(g_changes_notified > changes);
+
+    close_edit_pair(&pair);
+}
+
+void textview_enter_types_the_documents_line_break()
+{
+    struct { const wchar_t *text; const wchar_t *typed; } cases[] =
+    {
+        { L"a\r\nb", L"a\r\nb\r\n" },
+        { L"a\nb",   L"a\nb\n" },
+        { L"a\rb",   L"a\rb\r" },
+    };
+
+    for(size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++)
+    {
+        EditPair pair;
+        size_t   length = wcslen(cases[i].text);
+        int      changes;
+
+        CHECK(open_edit_pair(&pair, cases[i].text, NCP_UTF8));
+
+        // Enter at the end of the text, then undone in one step
+        SendMessage(pair.view, EM_SETSEL, length, length);
+        changes = g_changes_notified;
+
+        SendMessage(pair.view, WM_CHAR, '\r', 0);
+        CHECK(window_text(pair.view) == cases[i].typed);
+        CHECK(g_changes_notified > changes);
+
+        SendMessage(pair.view, EM_UNDO, 0, 0);
+        CHECK(window_text(pair.view) == cases[i].text);
+
+        close_edit_pair(&pair);
+    }
 }
 
 void textdocument_detects_utf8_without_a_bom()
@@ -5796,6 +5978,9 @@ const test_case tests[] =
     { "textview_edit_scrolling_matches_an_edit_control", textview_edit_scrolling_matches_an_edit_control },
     { "textview_edit_messages_index_as_they_need", textview_edit_messages_index_as_they_need },
     { "textview_goto_line_reports_indexing", textview_goto_line_reports_indexing },
+    { "textdocument_replace_linebreaks_makes_them_one_kind", textdocument_replace_linebreaks_makes_them_one_kind },
+    { "textview_converts_line_breaks", textview_converts_line_breaks },
+    { "textview_enter_types_the_documents_line_break", textview_enter_types_the_documents_line_break },
     { "textdocument_detects_utf8_without_a_bom", textdocument_detects_utf8_without_a_bom },
     { "textdocument_new_document_is_utf8", textdocument_new_document_is_utf8 },
     { "sequence_index_next_indexes_to_the_end", sequence_index_next_indexes_to_the_end },

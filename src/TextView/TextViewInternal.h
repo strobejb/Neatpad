@@ -241,6 +241,7 @@ private:
 	BOOL		ForwardDelete();
 	BOOL		BackDelete();
 	ULONG		EnterText(TCHAR *szText, ULONG nLength);
+	BOOL		ConvertLineBreaks(UINT nLineBreak);
 
 	//
 	//	Scrolling

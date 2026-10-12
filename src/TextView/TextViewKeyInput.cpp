@@ -252,17 +252,80 @@ LONG TextView::OnChar(UINT nChar, UINT nFlags)
 	if(nChar < 32 && nChar != '\t' && nChar != '\r' && nChar != '\n')
 		return 0;
 
-	// change CR into a CR/LF sequence
-	if(nChar == '\r')
-		PostMessage(m_hWnd, WM_CHAR, '\n', 1);
-
-	if(EnterText(&ch, 1))
+	// Enter types a line break in the document's line format: CRLF unless it's LF or CR
+	if(nChar == '\r' || nChar == '\n')
 	{
-		if(nChar == '\n')
-			m_pTextDoc->undo_group_break();
+		TCHAR  crlf[] = _T("\r\n");
+		TCHAR *brk    = m_nCRLFMode == TXL_LF ? crlf + 1 : crlf;
+		ULONG  len    = m_nCRLFMode == TXL_LF || m_nCRLFMode == TXL_CR ? 1 : 2;
 
-		NotifyParent(TVN_CHANGED);
+		if(EnterText(brk, len))
+		{
+			m_pTextDoc->undo_group_break();
+			NotifyParent(TVN_CHANGED);
+		}
+
+		return 0;
 	}
 
+	if(EnterText(&ch, 1))
+		NotifyParent(TVN_CHANGED);
+
 	return 0;
+}
+
+//
+//	Make every line break in the selection, or in the whole document if nothing
+//	is selected, nLineBreak (TXL_CRLF, TXL_LF or TXL_CR), as one undo step.
+//	Converting the whole document gives it that line format, too, and keeps the
+//	caret and the view on their lines: converting changes no line's number.
+//
+BOOL TextView::ConvertLineBreaks(UINT nLineBreak)
+{
+	TextCoord  start, end, line;
+	TextChange change;
+	size_w     caretLine = 0;
+	size_w     topLine   = 0;
+	size_w     column    = m_cursorPos.column;
+	bool       whole     = !GetSelection(&start, &end);
+
+	if(m_nEditMode == MODE_READONLY || (nLineBreak != TXL_CRLF && nLineBreak != TXL_LF && nLineBreak != TXL_CR))
+		return FALSE;
+
+	if(whole)
+	{
+		if(!LineFromPos(m_cursorPos, &caretLine) || !LineFromPos(m_scrollVPos, &topLine))
+			return FALSE;
+
+		m_pTextDoc->coord_from_pos(TextPos(0), &start);
+		m_pTextDoc->coord_from_document_end(&end);
+	}
+
+	m_pTextDoc->replace_linebreaks(start, end, nLineBreak, &change);
+	AdjustCoordsForChange(&change);
+	ResetLineCache();
+
+	if(whole)
+	{
+		m_nCRLFMode = nLineBreak;
+
+		if(LineStart(topLine, &line))
+			SetScrollCoord(&line);
+
+		if(LineStart(caretLine, &line))
+			m_pTextDoc->coord_from_line_pos(&line, column, &m_cursorPos);
+
+		m_selAnchor = m_cursorPos;
+	}
+	else
+	{
+		// the converted text stays selected
+		m_pTextDoc->coord_from_pos(change.at, &m_selAnchor);
+		m_pTextDoc->coord_from_pos(TextPos(change.at.byte_offset + change.inserted), &m_cursorPos);
+	}
+
+	RefreshWindow();
+	UpdateViewState(TRUE);
+	NotifyParent(TVN_CHANGED);
+	return TRUE;
 }

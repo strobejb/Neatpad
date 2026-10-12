@@ -182,6 +182,11 @@ public:
 	size_w	replace_text (TextPos from, TextPos to, const textchar *text, uint32_t length, TextChange *change);
 	size_w	erase_text   (TextPos from, TextPos to, TextChange *change);
 
+	// Make every line break in [from, to) linebreak - TXL_CR, TXL_LF or TXL_CRLF -
+	// as one edit that undoes in one step. The range's text is held in memory
+	// meanwhile, so it suits a selection or a document of modest size.
+	size_w	replace_linebreaks(TextPos from, TextPos to, uint32_t linebreak, TextChange *change);
+
 	//
 	//	Coordinates
 	//

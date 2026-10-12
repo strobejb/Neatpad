@@ -70,6 +70,12 @@ BEGIN
         END
         POPUP "Line Endings"
         BEGIN
+            MENUITEM "&Normalize",                  ID_LINEENDINGS_NORMALISE
+            MENUITEM SEPARATOR
+            MENUITEM "Convert to &Windows (CRLF)",  ID_LINEENDINGS_CONVERTTOWINDOWS
+            MENUITEM "Convert to &UNIX (LF)",       ID_LINEENDINGS_CONVERTTOLINUX
+            MENUITEM "Convert to &Mac (CR)",        ID_LINEENDINGS_CONVERTTOMAC
+            MENUITEM SEPARATOR
             MENUITEM "&Always show",                ID_LINEENDINGS_ALWAYSSHOW
             MENUITEM "Only &mismatched",            ID_LINEENDINGS_HIGHLIGHTMALFORMED, CHECKED
         END

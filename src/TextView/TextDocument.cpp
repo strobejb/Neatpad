@@ -746,6 +746,41 @@ bool TextDocument::write_converted(SaveFile &file, TEXT_ENCODING encoding, uint3
 }
 
 //
+//	Make every line break in a range the same, as one edit. Like a converting
+//	save, the text goes through UTF-16, as it's displayed.
+//
+size_w TextDocument::replace_linebreaks(TextPos from, TextPos to, uint32_t linebreak, TextChange *change)
+{
+	const uint32_t CHUNK = 0x4000;
+
+	std::vector<textchar> text(CHUNK);
+	std::vector<textchar> lines;
+	TextReader reader = text_from_range(from, to);
+	bool       after_cr = false;
+	size_w     inserted;
+
+	while(!reader.at_end())
+	{
+		size_t len = reader.read(&text[0], CHUNK);
+		size_t at  = lines.size();
+
+		// nothing read short of the end: the text can't be read
+		if(len == 0)
+			return 0;
+
+		// each line break can become two
+		lines.resize(at + len * 2);
+		lines.resize(at + convert_linebreaks(&text[0], len, linebreak, &lines[at], &after_cr));
+	}
+
+	undo_group_begin();
+	inserted = replace_text(from, to, lines.data(), (uint32_t)lines.size(), change);
+	undo_group_end();
+
+	return inserted;
+}
+
+//
 //	Insert UTF-16 text at specified uint8_t offset
 //
 //	returns number of BYTEs stored

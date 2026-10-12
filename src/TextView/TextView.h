@@ -72,6 +72,7 @@ COLORREF RealizeColour(COLORREF col);
 #define TXM_GETINDEXINFO		(TXM_BASE + 35)
 #define TXM_GOTOLINE			(TXM_BASE + 36)
 #define TXM_CANGOTOLINE			(TXM_BASE + 37)
+#define TXM_CONVERTLINEBREAKS	(TXM_BASE + 38)
 
 //
 //	TextView Notification Messages defined here - 
@@ -242,6 +243,13 @@ typedef struct _TEXTVIEWFIND
 
 #define TextView_GetLineFormat(hwndTV) \
 	((UINT)SendMessage((hwndTV), TXM_GETLINEFORMAT, 0, 0))
+
+//	Make every line break in the selection, or the whole document without one,
+//	TXL_CRLF, TXL_LF or TXL_CR, as one undo step. The whole document takes that
+//	line format too. Converting to TextView_GetLineFormat's own format
+//	normalizes: stray line breaks come to match the rest.
+#define TextView_ConvertLineBreaks(hwndTV, nLineBreak) \
+	((BOOL)SendMessage((hwndTV), TXM_CONVERTLINEBREAKS, (WPARAM)(nLineBreak), 0))
 
 #define TextView_Undo(hwndTV) \
 	SendMessage((hwndTV), TXM_UNDO, 0, 0)
