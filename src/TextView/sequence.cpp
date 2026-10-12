@@ -142,7 +142,7 @@ bool sequence::init (const seqchar *buffer, size_t length)
 //
 //	Initialize from an on-disk file
 //
-bool sequence::open(const seqfilechar *filename, bool readonly)
+bool sequence::open(const seqfilechar *filename, bool readonly, size_w in_memory_limit)
 {
 	clear();
 
@@ -153,7 +153,7 @@ bool sequence::open(const seqfilechar *filename, bool readonly)
 	if(bc)
 		bc->set_line_scan_mode(line_mode);
 
-	if(bc == 0 || !bc->init_file(filename, readonly))
+	if(bc == 0 || !bc->init_file(filename, readonly, in_memory_limit))
 	{
 		delete bc;
 		return false;

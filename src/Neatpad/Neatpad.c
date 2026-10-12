@@ -1187,6 +1187,9 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmdLine, int iShowC
 	// create the main window!
 	g_hwndMain = CreateMainWnd();
 
+	// before opening a file: the settings say how it's opened
+	ApplyRegSettings();
+
 	// open file specified on commmand line
 	if(pszCmdline && *pszCmdline)
 	{
@@ -1206,7 +1209,6 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmdLine, int iShowC
 		PostMessage(g_hwndMain, WM_COMMAND, IDM_FILE_NEW, 0);
 	}
 
-	ApplyRegSettings();
 	ShowWindow(g_hwndMain, iShowCmd);
 
 	//

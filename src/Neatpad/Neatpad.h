@@ -33,6 +33,7 @@ extern BOOL		g_fReplaceNotepad;
 extern BOOL		g_fShowStatusbar;
 extern BOOL		g_fSearchMatchCase;
 extern BOOL		g_fSearchWrap;
+extern LONG		g_nInMemoryLimit;
 
 extern LONG		g_nPaddingAbove;
 extern LONG		g_nPaddingBelow;

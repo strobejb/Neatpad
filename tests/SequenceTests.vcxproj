@@ -131,7 +131,13 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="SequenceTests.cpp" />
+    <ClCompile Include="main.cpp" />
+    <ClCompile Include="sequence_tests.cpp" />
+    <ClCompile Include="line_tests.cpp" />
+    <ClCompile Include="char_tests.cpp" />
+    <ClCompile Include="document_tests.cpp" />
+    <ClCompile Include="textview_tests.cpp" />
+    <ClCompile Include="test_helpers.cpp" />
     <ClCompile Include="..\src\TextView\TextDocument.cpp" />
     <ClCompile Include="..\src\TextView\TextDocumentCoord.cpp" />
     <ClCompile Include="..\src\TextView\TextDocumentFind.cpp" />
@@ -159,6 +165,7 @@
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="tests.h" />
     <ClInclude Include="..\src\TextView\codepages.h" />
     <ClInclude Include="..\src\TextView\SaveFile.h" />
     <ClInclude Include="..\src\TextView\sequence.h" />

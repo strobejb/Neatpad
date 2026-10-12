@@ -93,7 +93,11 @@ public:
 	// initialize with a file
 	//
 	bool		init();
-	bool		open(const seqfilechar *filename, bool readonly);
+
+	// A file shorter than in_memory_limit is read into memory and closed. A
+	// longer one is read from disk as it's needed, and nothing else can write
+	// it while it's open.
+	bool		open(const seqfilechar *filename, bool readonly, size_w in_memory_limit = 0);
 	bool		clear();
 
 	//
@@ -546,7 +550,7 @@ public:
 
 	bool	init(size_t maxsize);
 	bool	init(const seqchar *buffer, size_w length);
-	bool	init_file(const seqfilechar *filename, bool readonly);
+	bool	init_file(const seqfilechar *filename, bool readonly, size_w in_memory_limit);
 	bool	append(const seqchar *buffer, size_t length, size_t *buffer_offset);
 	seqchar *getptr(size_w offset, size_w length);
 	void	clear();

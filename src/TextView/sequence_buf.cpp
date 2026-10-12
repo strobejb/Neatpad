@@ -18,8 +18,8 @@
 #define seq_ftell(fp) ((long long)ftello(fp))
 #endif
 
-// Open a file to read, shared as the text read from it needs (at the end of the file)
-static FILE *seq_fopen_shared(const seqfilechar *filename);
+// Open a file to read, letting others write it or not (at the end of the file)
+static FILE *seq_fopen_shared(const seqfilechar *filename, bool others_write);
 
 sequence::buffer_control::buffer_control()
 {
@@ -122,36 +122,71 @@ static bool read_data(void *file, seqchar *buffer, size_w offset, size_w length)
 	return fread(buffer, 1, bytes, fp) == bytes;
 }
 
-bool sequence::buffer_control::init_file(const seqfilechar *filename, bool read_only)
+//
+//	The length of an open file in seqchars, or -1 if it can't be told
+//
+static long long file_length_of(FILE *file)
+{
+	long long bytes;
+
+	if(seq_fseek(file, 0, SEEK_END) != 0 || (bytes = seq_ftell(file)) < 0)
+		return -1;
+
+	return bytes / (long long)sizeof(seqchar);
+}
+
+//
+//	Read a file shorter than in_memory_limit seqchars into memory, and close it,
+//	leaving others free to write it. A longer one is read from disk as it's
+//	needed, so it stays open, and no one else can write it until it's closed.
+//
+bool sequence::buffer_control::init_file(const seqfilechar *filename, bool read_only, size_w in_memory_limit)
 {
 	FILE *file;
 	long long file_length;
+	bool read;
 
 	clear();
+
+	// open it, sharing it with any program writing it, to see how long it is
+	if((file = seq_fopen_shared(filename, true)) == 0)
+		return false;
+
+	if((file_length = file_length_of(file)) < 0)
+	{
+		fclose(file);
+		return false;
+	}
+
+	// short enough to read into memory (and to fit this build's address space)
+	if((size_w)file_length < in_memory_limit && (size_w)file_length <= (size_w)(size_t)-1)
+	{
+		read = init((size_t)file_length) && read_data(file, buffer, 0, file_length);
+		fclose(file);
+
+		length = maxsize;
+		readonly = read_only;
+		return read;
+	}
+
+	// open it again, so that no one can write it while it's read from
+	fclose(file);
+
+	if((file = seq_fopen_shared(filename, false)) == 0)
+		return false;
+
+	if((file_length = file_length_of(file)) < 0)
+	{
+		fclose(file);
+		return false;
+	}
 
 	// The file is only ever read. Writing changes back into it (quicksave) is
 	// not supported yet, so it is opened for reading whatever read_only says;
 	// read_only is kept to say whether that will be allowed.
 	readonly = read_only;
 
-	if((file = seq_fopen_shared(filename)) == 0)
-		return false;
-
-	if(seq_fseek(file, 0, SEEK_END) != 0)
-	{
-		fclose(file);
-		return false;
-	}
-
-	file_length = seq_ftell(file);
-
-	if(file_length < 0)
-	{
-		fclose(file);
-		return false;
-	}
-
-	length = (size_w)(file_length / sizeof(seqchar));
+	length = (size_w)file_length;
 	maxsize = length;
 	own_memory = true;
 	fp = file;
@@ -369,10 +404,10 @@ bool sequence::import_buffer(const seqchar *buf, size_t len, size_t *buffer_offs
 
 //
 //	Open a file to read, sharing it so that others can read it, and delete,
-//	rename or replace it, but not write to it: the text is read from it on
-//	demand, so its bytes must not change underneath. Being replaced while open
-//	is how a save swaps in its new file; this handle still reads the old one
-//	until it is closed.
+//	rename or replace it, and write to it if others_write says so. A file whose
+//	text is read from it on demand mustn't let them: its bytes must not change
+//	underneath. Being replaced while open is how a save swaps in its new file;
+//	this handle still reads the old one until it is closed.
 //
 #ifdef _WIN32
 
@@ -381,10 +416,12 @@ bool sequence::import_buffer(const seqchar *buf, size_t len, size_t *buffer_offs
 #include <io.h>
 #include <fcntl.h>
 
-static FILE *seq_fopen_shared(const seqfilechar *filename)
+static FILE *seq_fopen_shared(const seqfilechar *filename, bool others_write)
 {
+	DWORD  share = FILE_SHARE_READ | FILE_SHARE_DELETE | (others_write ? FILE_SHARE_WRITE : 0);
+
 	// the C runtime can't share delete, so open with CreateFile and wrap the handle
-	HANDLE h = CreateFileW(filename, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_DELETE, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
+	HANDLE h = CreateFileW(filename, GENERIC_READ, share, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
 	FILE  *fp;
 	int    fd;
 
@@ -408,7 +445,7 @@ static FILE *seq_fopen_shared(const seqfilechar *filename)
 
 // Other systems let an open file be renamed over or deleted anyway, and have
 // no way to stop others writing to it
-static FILE *seq_fopen_shared(const seqfilechar *filename)
+static FILE *seq_fopen_shared(const seqfilechar *filename, bool others_write)
 {
 	return fopen(filename, "rb");
 }

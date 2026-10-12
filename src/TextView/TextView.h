@@ -73,6 +73,7 @@ COLORREF RealizeColour(COLORREF col);
 #define TXM_GOTOLINE			(TXM_BASE + 36)
 #define TXM_CANGOTOLINE			(TXM_BASE + 37)
 #define TXM_CONVERTLINEBREAKS	(TXM_BASE + 38)
+#define TXM_SETINMEMORYLIMIT	(TXM_BASE + 39)
 
 //
 //	TextView Notification Messages defined here - 
@@ -250,6 +251,13 @@ typedef struct _TEXTVIEWFIND
 //	normalizes: stray line breaks come to match the rest.
 #define TextView_ConvertLineBreaks(hwndTV, nLineBreak) \
 	((BOOL)SendMessage((hwndTV), TXM_CONVERTLINEBREAKS, (WPARAM)(nLineBreak), 0))
+
+// Files opened from now on that are shorter than nBytes are read into memory and
+// closed, so others can write them. Longer ones are read from disk as they're
+// needed, and nothing else can write them while they're open. 0, to start
+// with, reads every file from disk.
+#define TextView_SetInMemoryLimit(hwndTV, nBytes) \
+	SendMessage((hwndTV), TXM_SETINMEMORYLIMIT, (WPARAM)(nBytes), 0)
 
 #define TextView_Undo(hwndTV) \
 	SendMessage((hwndTV), TXM_UNDO, 0, 0)

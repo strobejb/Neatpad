@@ -143,6 +143,12 @@ public:
 	bool  init(const seqfilechar *filename);
 	bool  init(const seqfilechar *filename, TEXT_ENCODING encoding);
 
+	// Files shorter than this many bytes are read into memory when loaded, and
+	// closed, so others can write them. Longer ones are read from disk as
+	// they're needed, and nothing else can write them while they're open. 0,
+	// to start with, reads every file from disk.
+	void  set_in_memory_limit(size_w bytes);
+
 	bool  clear();
 
 	// Write the document to a file, replacing any that is there, in encoding,
@@ -335,6 +341,7 @@ private:
 	TEXT_ENCODING m_nFileFormat;
 	int    m_nHeaderSize;	// the byte-order mark the sequence starts with, if the file had one
 	bool   m_fBom;			// whether the file has one now
+	size_w m_nInMemoryLimit;
 };
 
 //

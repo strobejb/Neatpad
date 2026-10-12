@@ -47,6 +47,7 @@ BOOL  g_fShowLineEndings;
 BOOL  g_fShowStatusbar;
 BOOL  g_fSearchMatchCase;
 BOOL  g_fSearchWrap;
+LONG  g_nInMemoryLimit;
 BOOL  g_fAddToExplorer		= 0;
 BOOL  g_fReplaceNotepad		= 0;
 
@@ -446,6 +447,10 @@ void LoadRegSettings()
 	GetSettingInt(hKey, _T("SearchMatchCase"), &g_fSearchMatchCase, FALSE);
 	GetSettingInt(hKey, _T("SearchWrap"), &g_fSearchWrap, TRUE);
 
+	// files under 16 MB are read into memory and released; larger ones are read
+	// from disk and locked while they're open. 0 reads every file from disk.
+	GetSettingInt(hKey, _T("InMemoryLimit"), &g_nInMemoryLimit, 16 * 1024 * 1024);
+
 	GetSettingInt(hKey, _T("AddExplorer"),	 &g_fAddToExplorer, FALSE);
 	GetSettingInt(hKey, _T("ReplaceNotepad"), &g_fReplaceNotepad, FALSE);
 	GetSettingInt(hKey, _T("ShowStatusbar"), &g_fShowStatusbar, TRUE);
@@ -520,6 +525,7 @@ void SaveRegSettings()
 	WriteSettingInt(hKey, _T("ShowLineEndings"), g_fShowLineEndings);
 	WriteSettingInt(hKey, _T("SearchMatchCase"), g_fSearchMatchCase);
 	WriteSettingInt(hKey, _T("SearchWrap"), g_fSearchWrap);
+	WriteSettingInt(hKey, _T("InMemoryLimit"), g_nInMemoryLimit);
 
 	WriteSettingInt(hKey, _T("AddExplorer"),  g_fAddToExplorer);
 	WriteSettingInt(hKey, _T("ReplaceNotepad"), g_fReplaceNotepad);
@@ -640,6 +646,7 @@ void ApplyRegSettings()
 
 	TextView_SetCaretWidth(g_hwndTextView, 2);
 	TextView_SetLongLine(g_hwndTextView, g_nLongLineLimit);
+	TextView_SetInMemoryLimit(g_hwndTextView, (DWORD)g_nInMemoryLimit);
 
 	ApplyFonts();
 

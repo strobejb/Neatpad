@@ -103,6 +103,7 @@ TextDocument::TextDocument()
 	m_nFileFormat		= NCP_UTF8;
 	m_nHeaderSize		= 0;
 	m_fBom				= false;
+	m_nInMemoryLimit	= 0;
 }
 
 //
@@ -139,7 +140,7 @@ bool TextDocument::init(const seqfilechar *filename)
 {
 	clear();
 
-	if(!m_seq.open(filename, false))
+	if(!m_seq.open(filename, false, m_nInMemoryLimit))
 		return false;
 
 	// try to detect if this is an ascii/unicode/utf8 file
@@ -148,6 +149,11 @@ bool TextDocument::init(const seqfilechar *filename)
 	m_seq.set_line_scan_mode(line_scan_mode_from_encoding(m_nFileFormat));
 	m_seq.index_lines(0, min_of(m_seq.size(), OPEN_INDEX_LENGTH));
 	return true;
+}
+
+void TextDocument::set_in_memory_limit(size_w bytes)
+{
+	m_nInMemoryLimit = bytes;
 }
 
 //
