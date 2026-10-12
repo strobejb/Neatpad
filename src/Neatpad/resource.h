@@ -33,6 +33,7 @@
 #define IDB_BITMAP4                     130
 #define IDB_SEARCHBAR_BUTTONS           131
 #define IDD_GOTOLINE                    132
+#define IDD_NOTIFYBAR                   134
 #define IDC_COMBO1                      1000
 #define IDC_FONTLIST                    1000
 #define IDC_COMBO2                      1001
@@ -106,6 +107,8 @@
 #define IDC_GOTO_LABEL                  1058
 #define IDC_GOTO_LINE                   1059
 #define IDC_GOTO_STATUS                 1060
+#define IDC_NOTIFY_TEXT                 1061
+#define IDC_NOTIFY_RELOAD               1062
 #define IDM_FILE_NEW                    40001
 #define IDM_FILE_OPEN                   40002
 #define IDM_FILE_EXIT                   40003
@@ -160,9 +163,9 @@
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
-#define _APS_NEXT_RESOURCE_VALUE        134
+#define _APS_NEXT_RESOURCE_VALUE        135
 #define _APS_NEXT_COMMAND_VALUE         40063
-#define _APS_NEXT_CONTROL_VALUE         1061
+#define _APS_NEXT_CONTROL_VALUE         1063
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif

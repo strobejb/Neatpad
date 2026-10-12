@@ -23,64 +23,48 @@
 
 static BOOL g_fFirstTime = TRUE;
 
-typedef struct 
+// The open file as it was when opened or saved, to tell when another program
+// changes it: its size and when it was written, if it was on disk
+static WIN32_FILE_ATTRIBUTE_DATA g_FileStamp;
+static BOOL g_fFileOnDisk;
+
+static void NoteFileStamp(TCHAR *szFileName)
 {
-	TCHAR	szFile[MAX_PATH];
-	HWND	hwndNotify;
-	HANDLE	hQuitEvent;
-	UINT	uMsg;
-} NOTIFY_DATA;
-
-DWORD WINAPI ChangeNotifyThread(NOTIFY_DATA *pnd)
-{
-	HANDLE hChange;
-	DWORD  dwResult;
-	TCHAR  szDirectory[MAX_PATH];
-
-	lstrcpy(szDirectory, pnd->szFile);
-
-	// get the directory name from filename
-	if(GetFileAttributes(szDirectory) != FILE_ATTRIBUTE_DIRECTORY)
-	{
-		TCHAR *slash = _tcsrchr(szDirectory, _T('\\'));
-		if(slash) *slash = '\0';
-	}
-	
-	// watch the specified directory for changes
-	hChange = FindFirstChangeNotification(szDirectory, FALSE, FILE_NOTIFY_CHANGE_LAST_WRITE);
-
-	do
-	{
-		HANDLE hEventList[2] = { hChange, pnd->hQuitEvent };
-		
-		if((dwResult = WaitForMultipleObjects(1, hEventList, FALSE, INFINITE)) == WAIT_OBJECT_0)
-		{
-			PostMessage(pnd->hwndNotify, pnd->uMsg, 0, (LPARAM)pnd);
-		}
-
-		FindNextChangeNotification(hChange);
-	} 
-	while(dwResult == WAIT_OBJECT_0);
-
-	// cleanup
-	FindCloseChangeNotification(hChange);
-	free(pnd);
-
-	return 0;
+	g_fFileOnDisk = GetFileAttributesEx(szFileName, GetFileExInfoStandard, &g_FileStamp);
 }
 
-BOOL NotifyFileChange(TCHAR *szPathName, HWND hwndNotify, HANDLE hQuitEvent)
+static BOOL SameFileStamp(const WIN32_FILE_ATTRIBUTE_DATA *a, const WIN32_FILE_ATTRIBUTE_DATA *b)
 {
-	NOTIFY_DATA *pnd = malloc(sizeof(NOTIFY_DATA));
+	return a->nFileSizeHigh == b->nFileSizeHigh && a->nFileSizeLow == b->nFileSizeLow &&
+		   CompareFileTime(&a->ftLastWriteTime, &b->ftLastWriteTime) == 0;
+}
 
-	pnd->hQuitEvent = 0;
-	pnd->hwndNotify = hwndNotify;
-	pnd->uMsg		= WM_USER;
-	lstrcpy(pnd->szFile, szPathName);
+//
+//	Called once a second: if another program has changed or deleted the open
+//	file since Neatpad last looked, say so in the notification bar
+//
+void CheckFileChange(void)
+{
+	WIN32_FILE_ATTRIBUTE_DATA now;
+	BOOL onDisk;
 
-	CreateThread(0, 0, ChangeNotifyThread, pnd, 0, 0);
+	// an untitled file isn't on disk
+	if(g_szFileTitle[0] == 0)
+		return;
 
-	return TRUE;
+	onDisk = GetFileAttributesEx(g_szFileName, GetFileExInfoStandard, &now);
+
+	// it's only deleted once it can't be found, not while it's out of reach for a moment
+	if(!onDisk && GetLastError() != ERROR_FILE_NOT_FOUND && GetLastError() != ERROR_PATH_NOT_FOUND)
+		return;
+
+	if(onDisk == g_fFileOnDisk && (!onDisk || SameFileStamp(&now, &g_FileStamp)))
+		return;
+
+	g_FileStamp   = now;
+	g_fFileOnDisk = onDisk;
+
+	ShowNotifyBar(onDisk ? NOTIFY_CHANGED : NOTIFY_DELETED);
 }
 
 
@@ -359,7 +343,8 @@ BOOL DoOpenFile(HWND hwndMain, TCHAR *szFileName, TCHAR *szFileTitle)
 		g_fFileChanged   = FALSE;
 
 		ShowFileFormat(hwndMain);
-		NotifyFileChange(szFileName, hwndMain, 0);
+		NoteFileStamp(szFileName);
+		HideNotifyBar();
 		AddRecentFile(szFileName);
 		return TRUE;
 	}
@@ -392,6 +377,10 @@ BOOL DoSaveFile(HWND hwndMain, TCHAR *szFileName, TCHAR *szFileTitle, const SAVE
 		SetWindowFileName(hwndMain, szFileTitle, FALSE);
 		g_fFileChanged = FALSE;
 		ShowFileFormat(hwndMain);
+
+		// what's on disk is now this text, whatever another program did before
+		NoteFileStamp(szFileName);
+		HideNotifyBar();
 		return TRUE;
 	}
 	else
@@ -444,6 +433,29 @@ BOOL NeatpadSaveFileAs(HWND hwnd)
 	lstrcpy(g_szFileName, szFileName);
 	lstrcpy(g_szFileTitle, szFileTitle);
 	AddRecentFile(g_szFileName);
+	return TRUE;
+}
+
+//
+//	Open the file again, as it is on disk now, with the caret back on its line.
+//	Unsaved changes would be lost, so ask first.
+//
+BOOL NeatpadReloadFile(HWND hwnd)
+{
+	TVNCURSORINFO ci;
+
+	if(TextView_GetModify(g_hwndTextView) &&
+	   MessageBox(hwnd, _T("Discard your changes and reload the file?"), APP_TITLE, MB_YESNO | MB_ICONWARNING) != IDYES)
+		return FALSE;
+
+	TextView_GetCursorInfo(g_hwndTextView, &ci);
+
+	if(!DoOpenFile(hwnd, g_szFileName, g_szFileTitle))
+		return FALSE;
+
+	if(ci.fLineNoKnown)
+		TextView_GotoLine(g_hwndTextView, ci.nLineNo);
+
 	return TRUE;
 }
 

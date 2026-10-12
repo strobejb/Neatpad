@@ -102,7 +102,9 @@ BOOL NeatpadOpenFile(HWND hwnd, TCHAR *szFile);
 void ShowFileFormat(HWND hwndMain);
 BOOL NeatpadSaveFile(HWND hwnd);
 BOOL NeatpadSaveFileAs(HWND hwnd);
+BOOL NeatpadReloadFile(HWND hwnd);
 BOOL QuerySaveChanges(HWND hwnd);
+void CheckFileChange(void);
 
 //
 //	NeatUtils.c functions
@@ -140,6 +142,18 @@ int  SearchBarHeight(void);
 BOOL SearchBarIsVisible(void);
 UINT SearchBarFindNext(HWND hwndParent);
 UINT SearchBarFindPrevious(HWND hwndParent);
+
+//
+//	NotifyBar.c functions
+//
+#define NOTIFY_CHANGED	1	// another program has changed the open file
+#define NOTIFY_DELETED	2	// or deleted it
+
+HWND CreateNotifyBar(HWND hwndParent);
+void ShowNotifyBar(UINT nNotice);
+void HideNotifyBar(void);
+int  NotifyBarHeight(void);
+BOOL NotifyBarIsVisible(void);
 
 
 //

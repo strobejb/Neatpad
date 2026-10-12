@@ -158,6 +158,7 @@
     <ClCompile Include="OptionsMisc.c" />
     <ClCompile Include="Printing.c" />
     <ClCompile Include="Search.c" />
+    <ClCompile Include="NotifyBar.c" />
     <ClCompile Include="SearchBar.c" />
     <ClCompile Include="SearchGoto.c" />
     <ClCompile Include="Toolbars.c" />

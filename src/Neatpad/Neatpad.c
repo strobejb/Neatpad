@@ -31,6 +31,7 @@ HWND		g_hwndTextView;
 HWND		g_hwndStatusbar;
 HWND		g_hwndSearchDlg;
 HWND		g_hwndSearchBar;
+HWND		g_hwndNotifyBar;
 HFONT		g_hFont;
 LONG		g_nZoom = 100;
 
@@ -386,6 +387,10 @@ static void ToggleIndexing(void)
 		TextView_IndexFile(g_hwndTextView, !info.fIndexing);
 }
 
+// How often to look for another program changing the open file
+#define FILE_CHECK_TIMER	1
+#define FILE_CHECK_MS		1000
+
 // Line endings are converted in place up to this size: in memory, as one undo
 // step. A larger file's are converted by Save As, which streams it to disk.
 #define CONVERT_IN_PLACE_LIMIT	(64 * 1024 * 1024)
@@ -643,6 +648,7 @@ UINT CommandHandler(HWND hwnd, UINT nCtrlId, UINT nCtrlCode, HWND hwndFrom)
 
 		g_szFileTitle[0] = '\0';
 		g_fFileChanged   = FALSE;
+		HideNotifyBar();
 		return 0;
 		
 	case IDM_FILE_OPEN:
@@ -814,7 +820,7 @@ UINT CommandHandler(HWND hwnd, UINT nCtrlId, UINT nCtrlCode, HWND hwndFrom)
 //
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
-	int width, height, heightsb, heightsrch;
+	int width, height, heightsb, heightsrch, top = 0;
 	HIMAGELIST hImgList;
 	RECT rect;
 	HDWP hdwp;
@@ -827,7 +833,10 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		g_hwndTextView  = CreateTextView(hwnd);
 		g_hwndStatusbar = CreateStatusBar(hwnd);
 		g_hwndSearchBar = CreateSearchBar(hwnd);
+		g_hwndNotifyBar = CreateNotifyBar(hwnd);
 		UpdateStatusBarFileInfo();
+
+		SetTimer(hwnd, FILE_CHECK_TIMER, FILE_CHECK_MS, 0);
 
 		TextView_SetContextMenu(g_hwndTextView, GetSubMenu(LoadMenu(GetModuleHandle(0),
 			MAKEINTRESOURCE(IDR_EDITCONTEXT)), 0));
@@ -904,18 +913,18 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
 		return 0;
 
-	//case WM_USER:
-	//	wsprintf(msgstr, _T("%s\n\nThis file has been modified outside of Neatpad.")
-	//					 _T("Do you wish to reload it?"), g_szFileName);
-	//	MessageBox(hwnd, msgstr, _T("Neatpad"), MB_ICONQUESTION|MB_YESNO);
-	//
-	//	return 0;
+	case WM_TIMER:
+		if(wParam == FILE_CHECK_TIMER)
+			CheckFileChange();
+
+		return 0;
 
 	case WM_ENABLE:
 
 		// keep the modeless find/replace dialog in the same enabled state as the main window
 		EnableWindow(g_hwndSearchDlg, (BOOL)wParam);
 		EnableWindow(g_hwndSearchBar, (BOOL)wParam);
+		EnableWindow(g_hwndNotifyBar, (BOOL)wParam);
 		return 0;
 
 	case WM_MENUSELECT:
@@ -975,7 +984,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
 	case WM_SIZE:
 
-		// resize the TextView, SearchBar and StatusBar to fit within the main window's client area
+		// resize the TextView, the bars above and below it, and the StatusBar to fit within the main window's client area
 		GetClientRect(hwnd, &rect);
 		width  = rect.right - rect.left;
 		height = rect.bottom - rect.top;
@@ -983,7 +992,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		GetWindowRect(g_hwndStatusbar, &rect);
 		heightsb = rect.bottom-rect.top;
 
-		hdwp = BeginDeferWindowPos(3);
+		hdwp = BeginDeferWindowPos(4);
 		
 		if(g_fShowStatusbar)
 		{
@@ -999,7 +1008,15 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			height -= heightsrch;
 		}
 
-		DeferWindowPos(hdwp, g_hwndTextView, 0,  0, 0, width, height, SWP_SHOWWINDOW);
+		// the notification bar across the top
+		if(NotifyBarIsVisible())
+		{
+			top = NotifyBarHeight();
+			DeferWindowPos(hdwp, g_hwndNotifyBar, 0, 0, 0, width, top, SWP_SHOWWINDOW);
+			height -= top;
+		}
+
+		DeferWindowPos(hdwp, g_hwndTextView, 0,  0, top, width, height, SWP_SHOWWINDOW);
 		//MoveWindow(g_hwndTextView, 0, 0, width, height, TRUE);
 
 		EndDeferWindowPos(hdwp);

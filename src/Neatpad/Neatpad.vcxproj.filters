@@ -39,6 +39,9 @@
     <ClCompile Include="Search.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="NotifyBar.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="SearchBar.c">
       <Filter>Source Files</Filter>
     </ClCompile>
