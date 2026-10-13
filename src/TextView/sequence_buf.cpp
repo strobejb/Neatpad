@@ -241,7 +241,10 @@ seqchar *sequence::buffer_control::getptr(size_w offset, size_w len)
 		buffer_view *bv = &viewlist[i];
 
 		if(bv->initialized && offset >= bv->offset && offset + len <= bv->offset + bv->length)
+		{
+			bv->last_read = ++view_reads;
 			return bv->buffer + (offset - bv->offset);
+		}
 	}
 
 	if(len > MEM_BLOCK_SIZE)
@@ -249,8 +252,8 @@ seqchar *sequence::buffer_control::getptr(size_w offset, size_w len)
 
 	buffer_view *bv = &viewlist[0];
 
-	// no existing view... find an unused view slot before we
-	// reuse slot 0
+	// no existing view... use an unused view slot, or else the one read from
+	// longest ago: one in use all along, such as the file's start, stays
 	for(i = 0; i < MAX_VIEWS; i++)
 	{
 		if(!viewlist[i].initialized)
@@ -258,7 +261,12 @@ seqchar *sequence::buffer_control::getptr(size_w offset, size_w len)
 			bv = &viewlist[i];
 			break;
 		}
+
+		if(viewlist[i].last_read < bv->last_read)
+			bv = &viewlist[i];
 	}
+
+	bv->last_read = ++view_reads;
 
 	if(!bv->initialized)
 	{

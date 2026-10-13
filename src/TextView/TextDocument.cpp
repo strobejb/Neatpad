@@ -874,6 +874,44 @@ size_w TextDocument::insert_text(TextPos at, const textchar *text, uint32_t leng
 }
 
 //
+//	Put replace in place of every match of text, as one edit that undoes in one
+//	step. The matches are all found first, then replaced from the last: the
+//	text before each one is then still in one piece, so the sequence finds it
+//	at once, however many matches there are.
+//
+size_w TextDocument::replace_all(const textchar *text, uint32_t length, bool matchcase, const textchar *replace, uint32_t replace_length)
+{
+	struct match { TextPos begin, end; };
+
+	std::vector<match> matches;
+	match found;
+	TextPos from;
+
+	while(find_text(text, length, from, TextPos(byte_length()), false, matchcase, &found.begin, &found.end))
+	{
+		matches.push_back(found);
+		from = found.end;
+	}
+
+	undo_group_begin();
+
+	// replacing with nothing is erasing
+	for(size_t i = matches.size(); i > 0; i--)
+	{
+		const match &m = matches[i - 1];
+
+		if(replace_length != 0)
+			replace_text(m.begin, m.end, replace, replace_length, 0);
+		else
+			erase_text(m.begin, m.end, 0);
+	}
+
+	undo_group_end();
+	undo_group_break();
+	return matches.size();
+}
+
+//
 //	Replace the text between two positions
 //
 size_w TextDocument::replace_text(TextPos from, TextPos to, const textchar *text, uint32_t length, TextChange *change)

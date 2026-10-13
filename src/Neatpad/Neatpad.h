@@ -139,6 +139,7 @@ HWND ShowFindDlg(HWND hwndParent, UINT nPage);
 //
 HWND CreateSearchBar(HWND hwndParent);
 HWND ShowSearchBar(HWND hwndParent);
+void ToggleSearchBar(HWND hwndParent, BOOL fReplace);
 void HideSearchBar(void);
 int  SearchBarHeight(void);
 BOOL SearchBarIsVisible(void);

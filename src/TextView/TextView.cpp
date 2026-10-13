@@ -451,6 +451,74 @@ UINT TextView::FindText(TEXTVIEWFIND *find)
 }
 
 //
+//	Put find->replace in place of the match the selection holds, as an undo step
+//	of its own, with the caret after it - or, with fAll, in place of every match
+//	in the document, as one undo step, keeping the caret and the view on their
+//	lines. Returns how many matches it replaced.
+//
+size_w TextView::ReplaceText(TEXTVIEWFIND *find, BOOL fAll)
+{
+	TextCoord  start, end, line;
+	TextPos    matchBegin, matchEnd;
+	TextChange change;
+	size_w     caretLine, topLine, count = 1;
+	size_w     column = m_cursorPos.column;
+
+	if(m_nEditMode == MODE_READONLY || find == 0 || find->text == 0 || find->length == 0)
+		return 0;
+
+	if(fAll)
+	{
+		if(!LineFromPos(m_cursorPos, &caretLine) || !LineFromPos(m_scrollVPos, &topLine))
+			return 0;
+
+		if((count = m_pTextDoc->replace_all(find->text, find->length, find->matchcase != FALSE, find->replace, find->replacelength)) == 0)
+			return 0;
+
+		ResetLineCache();
+
+		// the lines may be fewer now
+		if(!LineStart(topLine, &line))
+			m_pTextDoc->coord_from_pos(TextPos(0), &line);
+
+		SetScrollCoord(&line);
+
+		if(!LineStart(caretLine, &line) || !m_pTextDoc->coord_from_line_pos(&line, column, &m_cursorPos))
+			m_pTextDoc->coord_from_document_end(&m_cursorPos);
+	}
+	else
+	{
+		// the selection holds a match if a match spans it exactly
+		if(!GetSelection(&start, &end) ||
+		   !m_pTextDoc->find_text(find->text, find->length, start, end, false, find->matchcase != FALSE, &matchBegin, &matchEnd) ||
+		   matchBegin != start || matchEnd != end)
+			return 0;
+
+		// replacing with nothing is erasing
+		m_pTextDoc->undo_group_begin();
+
+		if(find->replacelength != 0)
+			m_pTextDoc->replace_text(start, end, find->replace, find->replacelength, &change);
+		else
+			m_pTextDoc->erase_text(start, end, &change);
+
+		m_pTextDoc->undo_group_end();
+		m_pTextDoc->undo_group_break();
+
+		AdjustCoordsForChange(&change);
+		m_pTextDoc->coord_from_pos(TextPos(change.at.byte_offset + change.inserted), &m_cursorPos);
+		ResetLineCache();
+	}
+
+	m_selAnchor = m_cursorPos;
+
+	RefreshWindow();
+	UpdateViewState(TRUE);
+	NotifyParent(TVN_CHANGED);
+	return count;
+}
+
+//
 //	Move the caret to the start of a line, if the line can be found exactly:
 //	one past the indexed part of the document is pending until indexing gets
 //	there. Without fMove, only say whether it can.
@@ -746,6 +814,9 @@ LRESULT WINAPI TextView::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 
 	case TXM_FINDTEXT:
 		return FindText((TEXTVIEWFIND *)lParam);
+
+	case TXM_REPLACETEXT:
+		return ResultFromSize(ReplaceText((TEXTVIEWFIND *)lParam, (BOOL)wParam));
 
 	case TXM_SETEDITMODE:
 	{

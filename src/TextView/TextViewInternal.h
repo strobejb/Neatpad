@@ -153,6 +153,7 @@ private:
 	size_w		SelectionSize();
 	ULONG		SelectAll();
 	UINT		FindText(TEXTVIEWFIND *find);
+	size_w		ReplaceText(TEXTVIEWFIND *find, BOOL fAll);
 	bool		GetSelection(TextCoord *start, TextCoord *end);
 	void		SelectionColumns(TextCoord *line, ULONG lineLen, ULONG *start, ULONG *end);
 

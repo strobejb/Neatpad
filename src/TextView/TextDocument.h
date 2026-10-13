@@ -200,6 +200,10 @@ public:
 	// meanwhile, so it suits a selection or a document of modest size.
 	size_w	replace_linebreaks(TextPos from, TextPos to, uint32_t linebreak, TextChange *change);
 
+	// Put replace in place of every match of text, as one edit that undoes in
+	// one step, and say how many matches it replaced.
+	size_w	replace_all(const textchar *text, uint32_t length, bool matchcase, const textchar *replace, uint32_t replace_length);
+
 	//
 	//	Coordinates
 	//

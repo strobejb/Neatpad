@@ -714,10 +714,7 @@ UINT CommandHandler(HWND hwnd, UINT nCtrlId, UINT nCtrlCode, HWND hwndFrom)
 		return 0;
 
 	case IDM_EDIT_FIND:
-		if(SearchBarIsVisible())
-			HideSearchBar();
-		else
-			ShowSearchBar(hwnd);
+		ToggleSearchBar(hwnd, FALSE);
 		return 0;
 
 	case IDM_EDIT_FINDNEXT:
@@ -725,7 +722,7 @@ UINT CommandHandler(HWND hwnd, UINT nCtrlId, UINT nCtrlCode, HWND hwndFrom)
 		return 0;
 		
 	case IDM_EDIT_REPLACE:
-		ShowFindDlg(hwnd, REPLACE_PAGE);
+		ToggleSearchBar(hwnd, TRUE);
 		return 0;
 
 	case IDM_EDIT_GOTO:

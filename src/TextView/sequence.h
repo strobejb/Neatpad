@@ -576,10 +576,10 @@ public:
 	//
 	struct line_range
 	{
-		size_w	 breaks = 0;		// CR, LF and CRLF each count once
-		size_w	 chars = 0;			// UTF-16 units
-		bool	 starts_with_lf = false;
-		bool	 ends_with_cr = false;
+		size_w	    breaks = 0;		// CR, LF and CRLF each count once
+		size_w	    chars = 0;			// UTF-16 units
+		bool	    starts_with_lf = false;
+		bool	    ends_with_cr = false;
 		break_kinds kinds;
 	};
 
@@ -594,34 +594,40 @@ public:
 	enum { MAX_VIEWS = 4 };
 	struct buffer_view
 	{
-		seqchar	*buffer;
-		size_w	 offset;
-		size_w	 length;
-		bool	 initialized;
+		seqchar	* buffer;
+		size_w	  offset;
+		size_w	  length;
+		bool	  initialized;
+		size_t    last_read = 0;	// view_reads when it was last read from
 	};
 
 	struct line_page
 	{
-		size_w	 breaks = 0;
-		size_w	 chars = 0;
-		size_w	 scanned_length = 0;	// bytes counted; the page is current when this equals its length
-		bool	 starts_with_lf = false;
-		bool	 ends_with_cr = false;
+		size_w	    breaks = 0;
+		size_w	    chars = 0;
+		size_w	    scanned_length = 0;	// bytes counted; the page is current when this equals its length
+		bool	    starts_with_lf = false;
+		bool	    ends_with_cr = false;
 		break_kinds kinds;				// fits in existing padding
 	};
 
-	seqchar	*buffer;
+	seqchar	  * buffer;
 	buffer_view viewlist[MAX_VIEWS];
-	line_page *line_pages;
-	size_w	 line_page_count;
-	size_w	 scanned_bytes;			// totals over scanned pages, used to estimate unscanned text
-	size_w	 scanned_breaks;
-	size_w	 length;
-	size_w	 maxsize;
-	void	*fp;
-	bool	 own_memory;
-	bool	 readonly;
-	int		 id;
+	size_t      view_reads = 0;	// how many times the views have been read from
+	
+	line_page * line_pages;
+	size_w	    line_page_count;
+	
+	size_w	    scanned_bytes;			// totals over scanned pages, used to estimate unscanned text
+	size_w	    scanned_breaks;
+	size_w	    length;
+	size_w	    maxsize;
+	
+	void	  * fp;
+	bool	    own_memory;
+	bool	    readonly;
+	int		    id;
+
 	line_scan_mode line_mode;
 
 private:

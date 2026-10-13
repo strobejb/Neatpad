@@ -1979,6 +1979,60 @@ void textdocument_save_keeps_the_files_other_streams()
     DeleteFile(path);
 }
 
+void textdocument_replaces_every_match_in_one_undo_step()
+{
+    TextDocument doc;
+    TCHAR        path[MAX_PATH];
+    TextChange   change;
+    std::string  lines;
+    std::wstring replaced;
+
+    // UTF-16, where a match's bytes aren't its characters
+    CHECK(write_textdocument_file("cat Cat CAT concat", DOC_UTF16LE_BOM, path));
+    CHECK(doc.init(path));
+
+    // every match, whatever its case
+    CHECK(doc.replace_all(L"cat", 3, false, L"dog", 3) == 4);
+    CHECK(read_document(doc) == L"dog dog dog condog");
+
+    // undone all at once
+    CHECK(doc.undo(&change));
+    CHECK(read_document(doc) == L"cat Cat CAT concat");
+    CHECK(!doc.can_undo());
+
+    // a replacement holding what it replaces isn't replaced again
+    CHECK(doc.replace_all(L"cat", 3, true, L"cats", 4) == 2);
+    CHECK(read_document(doc) == L"cats Cat CAT concats");
+
+    // replacing with nothing erases
+    CHECK(doc.replace_all(L"cats", 4, true, L"", 0) == 2);
+    CHECK(read_document(doc) == L" Cat CAT con");
+
+    // no match, no change
+    CHECK(doc.replace_all(L"dog", 3, true, L"x", 1) == 0);
+    CHECK(read_document(doc) == L" Cat CAT con");
+
+    doc.clear();
+    DeleteFile(path);
+
+    // many matches across line pages, each replaced in place
+    for(int i = 0; i < 50000; i++)
+    {
+        lines += "ab\n";
+        replaced += L"axyz\n";
+    }
+
+    CHECK(write_textdocument_file(lines.c_str(), DOC_ASCII, path));
+    CHECK(doc.init(path));
+
+    CHECK(doc.replace_all(L"b", 1, true, L"xyz", 3) == 50000);
+    CHECK(read_document(doc) == replaced);
+    CHECK(doc.linecount() == 50001);
+
+    doc.clear();
+    DeleteFile(path);
+}
+
 const test_case tests[] =
 {
     { "textdocument_edits_beyond_4gb", textdocument_edits_beyond_4gb },
@@ -2027,6 +2081,7 @@ const test_case tests[] =
     { "textdocument_save_keeps_a_crlf_split_between_reads_as_one", textdocument_save_keeps_a_crlf_split_between_reads_as_one },
     { "textdocument_init_in_a_given_encoding", textdocument_init_in_a_given_encoding },
     { "textdocument_replace_linebreaks_makes_them_one_kind", textdocument_replace_linebreaks_makes_them_one_kind },
+    { "textdocument_replaces_every_match_in_one_undo_step", textdocument_replaces_every_match_in_one_undo_step },
     { "textdocument_detects_utf8_without_a_bom", textdocument_detects_utf8_without_a_bom },
     { "textdocument_new_document_is_utf8", textdocument_new_document_is_utf8 },
     { "textdocument_ascii_turns_what_it_cant_hold_into_question_marks", textdocument_ascii_turns_what_it_cant_hold_into_question_marks },

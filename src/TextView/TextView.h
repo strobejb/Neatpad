@@ -76,6 +76,7 @@ COLORREF RealizeColour(COLORREF col);
 #define TXM_SETINMEMORYLIMIT	(TXM_BASE + 39)
 #define TXM_TAILFILE			(TXM_BASE + 40)
 #define TXM_UPDATETAIL			(TXM_BASE + 41)
+#define TXM_REPLACETEXT			(TXM_BASE + 42)
 
 //
 //	TextView Notification Messages defined here - 
@@ -138,6 +139,8 @@ typedef struct _TEXTVIEWFIND
 	BOOL backwards;
 	BOOL wrap;
 	BOOL matchcase;
+	TCHAR *replace;			// for TextView_Replace: what goes in place of a match
+	UINT replacelength;
 } TEXTVIEWFIND;
 
 //
@@ -205,6 +208,12 @@ typedef struct _TEXTVIEWFIND
 
 #define TextView_UpdateTail(hwndTV)	\
 	((BOOL)SendMessage((hwndTV), TXM_UPDATETAIL, 0, 0))
+
+//	Put find->replace in place of the match the selection holds - as
+//	TextView_FindText leaves it - with the caret after it. fAll replaces every
+//	match in the document instead, as one undo step. Returns how many it replaced.
+#define TextView_Replace(hwndTV, find, fAll)	\
+	((size_t)SendMessage((hwndTV), TXM_REPLACETEXT, (WPARAM)(fAll), (LPARAM)(TEXTVIEWFIND *)(find)))
 
 //	Save in nEncoding (NCP_*), with or without its byte-order mark, and with every
 //	line break made nLineBreak (TXL_CR, TXL_LF or TXL_CRLF; 0 keeps them).

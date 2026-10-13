@@ -1,7 +1,8 @@
 //
 //	Neatpad - Simple Text Editor application
 //
-//	Minimal search bar shown above the status bar.
+//	Minimal search bar shown above the status bar. Ctrl+H shows a replace box
+//	and its buttons in it too.
 //
 #define _CRT_SECURE_NO_DEPRECATE
 #define _WIN32_WINNT 0x501
@@ -15,6 +16,7 @@
 #include "resource.h"
 
 extern HWND g_hwndSearchBar;
+extern HWND g_hwndStatusbar;
 
 #define SEARCHBAR_PADX 8
 #define SEARCHBAR_PADY 8
@@ -34,8 +36,10 @@ static HWND g_hwndOptionsTB;
 static HWND g_hwndFindTB;
 static HWND g_hwndCloseTB;
 static HIMAGELIST g_hSearchImageList;
+static BOOL g_fReplacing;		// the replace box and its buttons are showing
 
 static UINT SearchBarFind(BOOL backwards);
+static void SearchBarReplace(BOOL fAll);
 static void ShowSearchOptionsMenu(HWND hwnd);
 
 enum
@@ -130,8 +134,10 @@ static void SetSearchEditPadding(HWND hwndEdit)
 	InvalidateRect(hwndEdit, 0, TRUE);
 }
 
+// "Search", or "Replace", in an empty box
 static void PaintSearchEditHint(HWND hwndEdit)
 {
+	TCHAR *hint = GetDlgCtrlID(hwndEdit) == IDC_SEARCH_REPLACEWITH ? _T("Replace") : _T("Search");
 	RECT rect;
 	HDC hdc;
 	HFONT hOldFont;
@@ -145,14 +151,24 @@ static void PaintSearchEditHint(HWND hwndEdit)
 	hOldFont = SelectObject(hdc, (HFONT)SendMessage(hwndEdit, WM_GETFONT, 0, 0));
 	SetBkMode(hdc, TRANSPARENT);
 	SetTextColor(hdc, GetSysColor(COLOR_GRAYTEXT));
-	DrawText(hdc, _T("Search"), -1, &rect, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+	DrawText(hdc, hint, -1, &rect, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
 	SelectObject(hdc, hOldFont);
 	ReleaseDC(hwndEdit, hdc);
+}
+
+static int ControlWidth(HWND hwndCtrl)
+{
+	RECT rect;
+
+	GetWindowRect(hwndCtrl, &rect);
+	return rect.right - rect.left;
 }
 
 static void SearchBarLayout(HWND hwnd)
 {
 	RECT rc;
+	HWND hwndReplace = GetDlgItem(hwnd, IDC_SEARCH_REPLACE);
+	HWND hwndReplaceAll = GetDlgItem(hwnd, IDC_SEARCH_REPLACEALL);
 	int width;
 	int height;
 	int x;
@@ -160,6 +176,7 @@ static void SearchBarLayout(HWND hwnd)
 	int controlHeight;
 	int editWidth;
 	int maxEditWidth;
+	int replaceButtons = 0;
 
 	GetClientRect(hwnd, &rc);
 	width = rc.right - rc.left;
@@ -172,7 +189,13 @@ static void SearchBarLayout(HWND hwnd)
 	MoveWindow(g_hwndOptionsTB, x, y, g_nSearchButtonWidth, controlHeight, TRUE);
 	x += g_nSearchButtonWidth + SEARCHBAR_GAP;
 
-	maxEditWidth = width - SEARCHBAR_PADX * 2 - g_nSearchButtonWidth * 4 - SEARCHBAR_GAP * 5;
+	// replacing, the replace box shares the room with the search box, and its buttons take some
+	if(g_fReplacing)
+		replaceButtons = ControlWidth(hwndReplace) + ControlWidth(hwndReplaceAll) + SEARCHBAR_GAP * 3;
+
+	maxEditWidth = width - SEARCHBAR_PADX * 2 - g_nSearchButtonWidth * 4 - SEARCHBAR_GAP * 5 - replaceButtons;
+	if(g_fReplacing)
+		maxEditWidth = (maxEditWidth - SEARCHBAR_GAP) / 2;
 	if(maxEditWidth < 40)
 		maxEditWidth = 40;
 
@@ -187,6 +210,21 @@ static void SearchBarLayout(HWND hwnd)
 	x += editWidth + SEARCHBAR_GAP;
 
 	MoveWindow(g_hwndFindTB, x, y, g_nSearchButtonWidth * 2, controlHeight, TRUE);
+	x += g_nSearchButtonWidth * 2 + SEARCHBAR_GAP;
+
+	if(g_fReplacing)
+	{
+		HWND hwndWith = GetDlgItem(hwnd, IDC_SEARCH_REPLACEWITH);
+
+		MoveWindow(hwndWith, x, y, editWidth, controlHeight, TRUE);
+		SetSearchEditPadding(hwndWith);
+		x += editWidth + SEARCHBAR_GAP;
+
+		MoveWindow(hwndReplace, x, y, ControlWidth(hwndReplace), controlHeight, TRUE);
+		x += ControlWidth(hwndReplace) + SEARCHBAR_GAP;
+
+		MoveWindow(hwndReplaceAll, x, y, ControlWidth(hwndReplaceAll), controlHeight, TRUE);
+	}
 
 	MoveWindow(g_hwndCloseTB, width - SEARCHBAR_PADX - g_nSearchButtonWidth, y, g_nSearchButtonWidth, controlHeight, TRUE);
 }
@@ -233,9 +271,14 @@ static LRESULT CALLBACK SearchEditProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 			HideSearchBar();
 			return 0;
 		}
+		// Enter in the replace box replaces; in the search box, it finds
 		if(wParam == VK_RETURN)
 		{
-			SearchBarFind(FALSE);
+			if(GetDlgCtrlID(hwnd) == IDC_SEARCH_REPLACEWITH)
+				SearchBarReplace(FALSE);
+			else
+				SearchBarFind(FALSE);
+
 			return 0;
 		}
 		break;
@@ -294,6 +337,22 @@ static LRESULT CALLBACK SearchEditProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 	return CallWindowProc(g_OldSearchEditProc, hwnd, msg, wParam, lParam);
 }
 
+//
+//	Show or hide the replace box and its buttons
+//
+static void SetReplacing(HWND hwnd, BOOL fReplacing)
+{
+	static const UINT controls[] = { IDC_SEARCH_REPLACEWITH, IDC_SEARCH_REPLACE, IDC_SEARCH_REPLACEALL };
+	size_t i;
+
+	g_fReplacing = fReplacing;
+
+	for(i = 0; i < ARRAYSIZE(controls); i++)
+		ShowWindow(GetDlgItem(hwnd, controls[i]), fReplacing ? SW_SHOW : SW_HIDE);
+
+	SearchBarLayout(hwnd);
+}
+
 static INT_PTR CALLBACK SearchBarProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
 	HWND hwndEdit;
@@ -330,17 +389,24 @@ static INT_PTR CALLBACK SearchBarProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
 
 		hwndEdit = GetDlgItem(hwnd, IDC_EDIT1);
 		hStatusFont = StatusBarFont();
-		if(hStatusFont)
-			SendMessage(hwndEdit, WM_SETFONT, (WPARAM)hStatusFont, TRUE);
-		else
-			SendMessage(hwndEdit, WM_SETFONT, (WPARAM)SendMessage(hwnd, WM_GETFONT, 0, 0), TRUE);
+		if(hStatusFont == 0)
+			hStatusFont = (HFONT)SendMessage(hwnd, WM_GETFONT, 0, 0);
+		SendMessage(hwndEdit, WM_SETFONT, (WPARAM)hStatusFont, TRUE);
 		SendMessage(hwndEdit, EM_SETCUEBANNER, 0, (LPARAM)_T("Search"));
 		SetSearchEditPadding(hwndEdit);
 
 		g_OldSearchEditProc = (WNDPROC)GetWindowLongPtr(hwndEdit, GWLP_WNDPROC);
 		SetWindowLongPtr(hwndEdit, GWLP_WNDPROC, (LONG_PTR)SearchEditProc);
 
-		SearchBarLayout(hwnd);
+		// the replace box works as the search box does (both are edit controls,
+		// so they share its window procedure), and its buttons wait for Ctrl+H
+		hwndEdit = GetDlgItem(hwnd, IDC_SEARCH_REPLACEWITH);
+		SendMessage(hwndEdit, WM_SETFONT, (WPARAM)hStatusFont, TRUE);
+		SetWindowLongPtr(hwndEdit, GWLP_WNDPROC, (LONG_PTR)SearchEditProc);
+		SendDlgItemMessage(hwnd, IDC_SEARCH_REPLACE,	WM_SETFONT, (WPARAM)hStatusFont, TRUE);
+		SendDlgItemMessage(hwnd, IDC_SEARCH_REPLACEALL, WM_SETFONT, (WPARAM)hStatusFont, TRUE);
+
+		SetReplacing(hwnd, FALSE);
 		return TRUE;
 
 	case WM_COMMAND:
@@ -356,6 +422,14 @@ static INT_PTR CALLBACK SearchBarProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
 
 		case IDC_SEARCH_NEXT:
 			SearchBarFind(FALSE);
+			return TRUE;
+
+		case IDC_SEARCH_REPLACE:
+			SearchBarReplace(FALSE);
+			return TRUE;
+
+		case IDC_SEARCH_REPLACEALL:
+			SearchBarReplace(TRUE);
 			return TRUE;
 
 		case IDCANCEL:
@@ -443,6 +517,22 @@ HWND ShowSearchBar(HWND hwndParent)
 	SendMessage(hwndEdit, EM_SETSEL, 0, -1);
 
 	return g_hwndSearchBar;
+}
+
+//
+//	Ctrl+F and Ctrl+H: show the search bar, without or with the replace box -
+//	or hide it, if it's showing that way already
+//
+void ToggleSearchBar(HWND hwndParent, BOOL fReplace)
+{
+	if(SearchBarIsVisible() && g_fReplacing == fReplace)
+	{
+		HideSearchBar();
+		return;
+	}
+
+	ShowSearchBar(hwndParent);
+	SetReplacing(g_hwndSearchBar, fReplace);
 }
 
 void HideSearchBar(void)
@@ -550,4 +640,47 @@ UINT SearchBarFindPrevious(HWND hwndParent)
 		ShowSearchBar(hwndParent);
 
 	return SearchBarFind(TRUE);
+}
+
+//
+//	Replace the match the search selected and select the next one, keeping the
+//	focus where it is - or, with fAll, replace every match, and say how many
+//
+static void SearchBarReplace(BOOL fAll)
+{
+	HWND hwndFocus = GetFocus();
+	TCHAR text[1024];
+	TCHAR with[1024];
+	TCHAR count[32];
+	TEXTVIEWFIND find;
+	size_t replaced;
+
+	GetDlgItemText(g_hwndSearchBar, IDC_EDIT1, text, ARRAYSIZE(text));
+	GetDlgItemText(g_hwndSearchBar, IDC_SEARCH_REPLACEWITH, with, ARRAYSIZE(with));
+
+	if(text[0] == 0)
+		return;
+
+	find.text = text;
+	find.length = lstrlen(text);
+	find.backwards = FALSE;
+	find.wrap = g_fSearchWrap;
+	find.matchcase = g_fSearchMatchCase;
+	find.replace = with;
+	find.replacelength = lstrlen(with);
+
+	replaced = TextView_Replace(g_hwndTextView, &find, fAll);
+
+	if(fAll)
+	{
+		if(replaced == 0)
+			MessageBeep(MB_ICONASTERISK);
+
+		FormatCount(count, ARRAYSIZE(count), replaced);
+		SetStatusBarText(g_hwndStatusbar, STATUS_PART_MESSAGE, 0, _T(" Replaced %s %s"), count, replaced == 1 ? _T("match") : _T("matches"));
+		return;
+	}
+
+	SearchBarFind(FALSE);
+	SetFocus(hwndFocus);
 }
