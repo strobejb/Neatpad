@@ -77,6 +77,7 @@ COLORREF RealizeColour(COLORREF col);
 #define TXM_TAILFILE			(TXM_BASE + 40)
 #define TXM_UPDATETAIL			(TXM_BASE + 41)
 #define TXM_REPLACETEXT			(TXM_BASE + 42)
+#define TXM_SHOWMATCHES			(TXM_BASE + 43)
 
 //
 //	TextView Notification Messages defined here - 
@@ -181,7 +182,9 @@ typedef struct _TEXTVIEWFIND
 #define TXC_LONGLINE			11			// long-line background
 #define TXC_CURRENTLINETEXT		12			// active line text
 #define TXC_CURRENTLINE			13			// active line background
-#define TXC_MAX_COLOURS			14			// keep this updated!
+#define TXC_SEARCHMATCHTEXT		14			// search match text, as TextView_ShowMatches shows them
+#define TXC_SEARCHMATCH			15			// search match background
+#define TXC_MAX_COLOURS			16			// keep this updated!
 
 #define SYSCOL(COLOR_IDX)					   ( 0x80000000 |                     COLOR_IDX  )
 #define MIXED_SYSCOL(COLOR_IDX1, COLOR_IDX2)   ( 0xC0000000 | (COLOR_IDX2 << 8) | COLOR_IDX1 )
@@ -214,6 +217,11 @@ typedef struct _TEXTVIEWFIND
 //	match in the document instead, as one undo step. Returns how many it replaced.
 #define TextView_Replace(hwndTV, find, fAll)	\
 	((size_t)SendMessage((hwndTV), TXM_REPLACETEXT, (WPARAM)(fAll), (LPARAM)(TEXTVIEWFIND *)(find)))
+
+//	Highlight every match of find->text (matching case if find->matchcase asks)
+//	wherever the text is shown, in the TXC_SEARCHMATCH colours - or none, for 0
+#define TextView_ShowMatches(hwndTV, find)	\
+	SendMessage((hwndTV), TXM_SHOWMATCHES, 0, (LPARAM)(TEXTVIEWFIND *)(find))
 
 //	Save in nEncoding (NCP_*), with or without its byte-order mark, and with every
 //	line break made nLineBreak (TXL_CR, TXL_LF or TXL_CRLF; 0 keeps them).

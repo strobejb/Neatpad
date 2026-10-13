@@ -14,6 +14,7 @@
 #include <tchar.h>
 #include "TextView.h"
 #include "TextViewInternal.h"
+#include "Unicode.h"
 
 void	PaintRect(HDC hdc, int x, int y, int width, int height, COLORREF fill);
 void	PaintRect(HDC hdc, RECT *rect, COLORREF fill);
@@ -546,6 +547,35 @@ int	TextView::ApplySelection(USPDATA *uspData, TextCoord *line, ULONG nTextLen)
 }
 
 //
+//	Colour each match of the text ShowMatches was given, left to right, as
+//	finding it would match it: unit for unit, or regardless of case
+//
+void TextView::HighlightMatches(TCHAR *szText, int nTextLen, ATTR *attr)
+{
+	int length = (int)m_sMatchText.size();
+	int i = 0;
+
+	while(length != 0 && i + length <= nTextLen)
+	{
+		bool match = m_fMatchCase ?
+			memcmp(szText + i, m_sMatchText.data(), length * sizeof(TCHAR)) == 0 :
+			utf16_equal_nocase((const UTF16 *)(szText + i), (const UTF16 *)m_sMatchText.data(), length);
+
+		if(!match)
+		{
+			i++;
+			continue;
+		}
+
+		for(int end = i + length; i < end; i++)
+		{
+			attr[i].fg = GetColour(TXC_SEARCHMATCHTEXT);
+			attr[i].bg = GetColour(TXC_SEARCHMATCH);
+		}
+	}
+}
+
+//
 //	Apply visual-styles to the text by returning colour and font
 //	information into the supplied TEXT_ATTR structure
 //
@@ -596,8 +626,9 @@ int TextView::ApplyTextAttributes(TextCoord *line, ULONG &nColumn, TCHAR *szText
 	//
 
 	//
-	//	TODO: 2. Apply bookmarks, line highlighting etc (override syntax colouring)
+	//	STEP 2. Highlight the search's matches (overriding syntax colouring)
 	//
+	HighlightMatches(szText, nTextLen, attr);
 
 	//
 	//	STEP 3:  Now apply text-selection (overrides everything else)

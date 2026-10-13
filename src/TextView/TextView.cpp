@@ -95,6 +95,8 @@ TextView::TextView(HWND hwnd)
 	m_rgbColourList[TXC_LONGLINE]		= SYSCOL(COLOR_3DFACE);
 	m_rgbColourList[TXC_CURRENTLINETEXT] = SYSCOL(COLOR_WINDOWTEXT);
 	m_rgbColourList[TXC_CURRENTLINE]	 = RGB(230,240,255);
+	m_rgbColourList[TXC_SEARCHMATCHTEXT] = SYSCOL(COLOR_WINDOWTEXT);
+	m_rgbColourList[TXC_SEARCHMATCH]	 = RGB(255,230,128);
 
 
 	// Runtime data
@@ -448,6 +450,27 @@ UINT TextView::FindText(TEXTVIEWFIND *find)
 	UpdateViewState(TRUE);
 	RefreshWindow();
 	return result;
+}
+
+//
+//	Highlight every match of find wherever the text is shown, or none, for 0.
+//	Lines are laid out again, to colour them.
+//
+LONG TextView::ShowMatches(TEXTVIEWFIND *find)
+{
+	if(find && find->text && find->length)
+	{
+		m_sMatchText.assign(find->text, find->length);
+		m_fMatchCase = find->matchcase;
+	}
+	else
+	{
+		m_sMatchText.clear();
+	}
+
+	ResetLineCache();
+	RefreshWindow();
+	return TRUE;
 }
 
 //
@@ -814,6 +837,9 @@ LRESULT WINAPI TextView::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 
 	case TXM_FINDTEXT:
 		return FindText((TEXTVIEWFIND *)lParam);
+
+	case TXM_SHOWMATCHES:
+		return ShowMatches((TEXTVIEWFIND *)lParam);
 
 	case TXM_REPLACETEXT:
 		return ResultFromSize(ReplaceText((TEXTVIEWFIND *)lParam, (BOOL)wParam));

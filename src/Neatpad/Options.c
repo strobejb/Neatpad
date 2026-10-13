@@ -473,6 +473,8 @@ void LoadRegSettings()
 	GetSettingInt(hColKey, _T("LongLine"),		&g_rgbColourList[TXC_LONGLINE],			g_rgbAutoColourList[TXC_LONGLINE]		);
 	GetSettingInt(hColKey, _T("CurlineText"),	&g_rgbColourList[TXC_CURRENTLINETEXT],	g_rgbAutoColourList[TXC_CURRENTLINETEXT]	);
 	GetSettingInt(hColKey, _T("Curline"),		&g_rgbColourList[TXC_CURRENTLINE],		g_rgbAutoColourList[TXC_CURRENTLINE]		);
+	GetSettingInt(hColKey, _T("SearchMatchText"), &g_rgbColourList[TXC_SEARCHMATCHTEXT],	g_rgbAutoColourList[TXC_SEARCHMATCHTEXT]	);
+	GetSettingInt(hColKey, _T("SearchMatch"),	&g_rgbColourList[TXC_SEARCHMATCH],		g_rgbAutoColourList[TXC_SEARCHMATCH]		);
 	
 	GetSettingBin(hColKey, _T("Custom"),		g_rgbCustColours, sizeof(g_rgbCustColours)); 
 
@@ -551,6 +553,8 @@ void SaveRegSettings()
 
 	WriteSettingInt(hColKey, _T("CurlineText"),	g_rgbColourList[TXC_CURRENTLINETEXT]); 
 	WriteSettingInt(hColKey, _T("Curline"),		g_rgbColourList[TXC_CURRENTLINE]); 
+	WriteSettingInt(hColKey, _T("SearchMatchText"), g_rgbColourList[TXC_SEARCHMATCHTEXT]);
+	WriteSettingInt(hColKey, _T("SearchMatch"),	g_rgbColourList[TXC_SEARCHMATCH]);
 
 
 	WriteSettingBin(hColKey, _T("Custom"),		g_rgbCustColours, sizeof(g_rgbCustColours)); 

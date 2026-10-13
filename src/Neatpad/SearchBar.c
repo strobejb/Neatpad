@@ -40,6 +40,7 @@ static BOOL g_fReplacing;		// the replace box and its buttons are showing
 
 static UINT SearchBarFind(BOOL backwards);
 static void SearchBarReplace(BOOL fAll);
+static void SearchBarShowMatches(void);
 static void ShowSearchOptionsMenu(HWND hwnd);
 
 enum
@@ -432,6 +433,13 @@ static INT_PTR CALLBACK SearchBarProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
 			SearchBarReplace(TRUE);
 			return TRUE;
 
+		// the matches of the text typed are highlighted as it's typed
+		case IDC_EDIT1:
+			if(HIWORD(wParam) == EN_CHANGE)
+				SearchBarShowMatches();
+
+			return TRUE;
+
 		case IDCANCEL:
 			HideSearchBar();
 			return TRUE;
@@ -511,6 +519,7 @@ HWND ShowSearchBar(HWND hwndParent)
 
 	ShowWindow(g_hwndSearchBar, SW_SHOW);
 	SendMessage(hwndParent, WM_SIZE, 0, 0);
+	SearchBarShowMatches();
 
 	hwndEdit = GetDlgItem(g_hwndSearchBar, IDC_EDIT1);
 	SetFocus(hwndEdit);
@@ -543,6 +552,7 @@ void HideSearchBar(void)
 
 		ShowWindow(g_hwndSearchBar, SW_HIDE);
 		SendMessage(hwndParent, WM_SIZE, 0, 0);
+		TextView_ShowMatches(g_hwndTextView, 0);
 		SetFocus(g_hwndTextView);
 	}
 }
@@ -586,6 +596,7 @@ static void ShowSearchOptionsMenu(HWND hwnd)
 	case IDM_SEARCH_MATCHCASE:
 		g_fSearchMatchCase = !g_fSearchMatchCase;
 		SaveRegSettings();
+		SearchBarShowMatches();
 		break;
 
 	case IDM_SEARCH_WRAP:
@@ -683,4 +694,22 @@ static void SearchBarReplace(BOOL fAll)
 
 	SearchBarFind(FALSE);
 	SetFocus(hwndFocus);
+}
+
+//
+//	Highlight every match of the search text in the document while the bar
+//	shows, as it's typed
+//
+static void SearchBarShowMatches(void)
+{
+	TCHAR text[1024];
+	TEXTVIEWFIND find = { 0 };
+
+	GetDlgItemText(g_hwndSearchBar, IDC_EDIT1, text, ARRAYSIZE(text));
+
+	find.text = text;
+	find.length = lstrlen(text);
+	find.matchcase = g_fSearchMatchCase;
+
+	TextView_ShowMatches(g_hwndTextView, find.length ? &find : 0);
 }

@@ -16,6 +16,7 @@
 #include <windows.h>
 #include <commctrl.h>
 #include <uxtheme.h>
+#include <string>
 
 /*HTHEME  (WINAPI * OpenThemeData_Proc)(HWND hwnd, LPCWSTR pszClassList);
 BOOL    (WINAPI * CloseThemeData_Proc)(HTHEME hTheme);
@@ -154,6 +155,8 @@ private:
 	ULONG		SelectAll();
 	UINT		FindText(TEXTVIEWFIND *find);
 	size_w		ReplaceText(TEXTVIEWFIND *find, BOOL fAll);
+	LONG		ShowMatches(TEXTVIEWFIND *find);
+	void		HighlightMatches(TCHAR *szText, int nTextLen, ATTR *attr);
 	bool		GetSelection(TextCoord *start, TextCoord *end);
 	void		SelectionColumns(TextCoord *line, ULONG lineLen, ULONG *start, ULONG *end);
 
@@ -348,6 +351,10 @@ private:
 	//RECT		m_rcBorder;
 
 	COLORREF	m_rgbColourList[TXC_MAX_COLOURS];
+
+	// The text ShowMatches highlights (none while empty), and whether its case matters
+	std::basic_string<TCHAR> m_sMatchText;
+	BOOL		m_fMatchCase = FALSE;
 
 	// Runtime data
 	UINT_PTR	m_nScrollTimer;
