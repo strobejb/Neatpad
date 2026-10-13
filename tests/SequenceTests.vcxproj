@@ -150,6 +150,7 @@
     <ClCompile Include="..\src\TextView\TextView.cpp" />
     <ClCompile Include="..\src\TextView\TextViewClipboard.cpp" />
     <ClCompile Include="..\src\TextView\TextViewEdit.cpp" />
+    <ClCompile Include="..\src\TextView\TextViewFilter.cpp" />
     <ClCompile Include="..\src\TextView\TextViewFile.cpp" />
     <ClCompile Include="..\src\TextView\TextViewFont.cpp" />
     <ClCompile Include="..\src\TextView\TextViewKeyInput.cpp" />

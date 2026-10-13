@@ -256,6 +256,13 @@ public:
 	// Find text within [from, to), from 'to' backwards if asked, and report where the match begins and ends.
 	bool  find_text(const textchar *text, uint32_t length, TextPos from, TextPos to, bool backwards, bool matchcase, TextPos *match_begin, TextPos *match_end);
 
+	// From 'from', a line's start, pass each line holding a match of text to
+	// found - once, however many it holds - with the start of the line after
+	// it. It goes on in whole lines to the end of the one 'bytes' on reaches,
+	// and returns where it stopped: the start of the next line, or the end.
+	TextPos filter_lines(const textchar *text, uint32_t length, bool matchcase, TextPos from, size_w bytes,
+						 const std::function<void(TextPos line_begin, TextPos line_next)> &found);
+
 	//
 	//	Document info
 	//  linecount() may be an estimate until the whole document has been counted.

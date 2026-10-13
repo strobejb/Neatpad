@@ -144,6 +144,29 @@ bool TextDocument::find_text_nocase(const textchar *text, uint32_t length, size_
 	return matched;
 }
 
+TextPos TextDocument::filter_lines(const textchar *text, uint32_t length, bool matchcase, TextPos from, size_w bytes,
+								   const std::function<void(TextPos line_begin, TextPos line_next)> &found)
+{
+	size_w    length_left = byte_length() - min_of(from.byte_offset, byte_length());
+	TextCoord last;
+	TextCoord line;
+	TextPos   begin;
+	TextPos   end;
+
+	// whole lines: to the end of the one 'bytes' on reaches
+	if(!coord_from_pos(TextPos(from.byte_offset + min_of(bytes, length_left)), &last))
+		return from;
+
+	while(from < last.line_next && find_text(text, length, from, last.line_next, false, matchcase, &begin, &end))
+	{
+		coord_from_pos(begin, &line);
+		found(line.line_begin, line.line_next);
+		from = line.line_next;
+	}
+
+	return last.line_next;
+}
+
 bool TextDocument::find_text(const textchar *text, uint32_t length, TextPos from_pos, TextPos to_pos, bool backwards, bool matchcase, TextPos *match_begin, TextPos *match_end)
 {
 	const size_w chunkSize = 0x10000;

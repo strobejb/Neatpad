@@ -59,6 +59,11 @@ LONG TextView::OpenFile(TCHAR *szFileName, int nEncoding, bool fReadOnly)
 		ResetLineCache();
 		NotifyCursorChange();
 		NotifyIndexChange();
+
+		// still filtering: the lines that match in this one
+		if(m_fFilter)
+			m_fFilter = StartFilter();
+
 		return TRUE;
 	}
 
@@ -72,9 +77,9 @@ LONG TextView::OpenFile(TCHAR *szFileName, int nEncoding, bool fReadOnly)
 //
 LONG TextView::SaveFile(TCHAR *szFileName, UINT nEncoding, BOOL fBom, UINT nLineBreak)
 {
-	BOOL fConvert = nEncoding != (UINT)m_pTextDoc->getformat() || nLineBreak != 0;
+	BOOL fConvert = nEncoding != (UINT)FileDoc()->getformat() || nLineBreak != 0;
 
-	if(!m_pTextDoc->save(szFileName, (TEXT_ENCODING)nEncoding, fBom != FALSE, nLineBreak))
+	if(!FileDoc()->save(szFileName, (TEXT_ENCODING)nEncoding, fBom != FALSE, nLineBreak))
 		return FALSE;
 
 	return fConvert ? OpenFile(szFileName, (int)nEncoding, false) : TRUE;
@@ -101,19 +106,24 @@ LONG TextView::TailFile(TCHAR *szFileName)
 
 //
 //	Add what has been appended to a followed file since it was opened, or last
-//	updated. A caret at the end stays there, keeping the end in view. FALSE if
-//	the file has got shorter: it's been rewritten, and needs opening again.
+//	updated - filtered, the lines of it that match. A caret at the end stays
+//	there, keeping the end in view. FALSE if the file has got shorter: it's
+//	been rewritten, and needs opening again.
 //
 BOOL TextView::UpdateTail()
 {
 	size_w	   length = m_pTextDoc->byte_length();
 	bool	   atEnd  = m_cursorPos.byte_offset == length && m_selAnchor.byte_offset == length;
 	TextChange change;
+	size_w	   added;
 
-	if(!m_pTextDoc->grow(&change.inserted))
+	if(!FileDoc()->grow(&added))
 		return FALSE;
 
-	if(change.inserted == 0)
+	if(m_pSourceDoc != 0 && FilterSlice())
+		SetTimer(m_hWnd, FILTER_TIMER, USER_TIMER_MINIMUM, 0);
+
+	if((change.inserted = m_pTextDoc->byte_length() - length) == 0)
 		return TRUE;
 
 	// it only grew at the end, so positions stay put, but the last line can be longer
@@ -147,6 +157,8 @@ BOOL TextView::UpdateTail()
 //
 LONG TextView::ClearFile()
 {
+	EndFilter(false);
+
 	// whatever was being indexed has gone
 	if(m_fIndexing)
 	{
@@ -219,7 +231,7 @@ LONG TextView::OnIndexTimer()
 
 	do
 	{
-		more = m_pTextDoc->index_next(INDEX_CHUNK);
+		more = FileDoc()->index_next(INDEX_CHUNK);
 		QueryPerformanceCounter(&now);
 	}
 	while(more && (now.QuadPart - start.QuadPart) * 1000 < freq.QuadPart * INDEX_SLICE_MS);
@@ -272,13 +284,13 @@ VOID TextView::IndexChanged()
 //
 VOID TextView::FillIndexInfo(TVNINDEXINFO *info)
 {
-	size_w length  = m_pTextDoc->byte_length();
-	size_w indexed = m_pTextDoc->indexed_length();
+	size_w length  = FileDoc()->byte_length();
+	size_w indexed = FileDoc()->indexed_length();
 
 	// under 100 until every byte is
 	info->nPercent   = indexed >= length ? 100 : (UINT)(indexed * 100 / length);
 	info->fIndexing  = m_fIndexing;
-	info->nLineCount = (unsigned __int64)m_pTextDoc->linecount();
+	info->nLineCount = (unsigned __int64)FileDoc()->linecount();
 }
 
 //

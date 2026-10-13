@@ -22,8 +22,10 @@ extern HWND g_hwndStatusbar;
 #define SEARCHBAR_PADY 8
 #define SEARCHBAR_EDIT_MINWIDTH 120
 #define SEARCHBAR_GAP 4
+#define SEARCHBAR_TOOLBAR_GAP 8
 #define SEARCHBAR_ICON_SIZE 32
 #define SEARCHBAR_EDIT_PADX 8
+#define SEARCHBAR_TEXT_BUTTON_PADX 10
 #define IDM_SEARCH_MATCHCASE 50000
 #define IDM_SEARCH_WRAP 50001
 
@@ -37,6 +39,7 @@ static HWND g_hwndFindTB;
 static HWND g_hwndCloseTB;
 static HIMAGELIST g_hSearchImageList;
 static BOOL g_fReplacing;		// the replace box and its buttons are showing
+static BOOL g_fFiltering;		// Filter mode: only the lines that match show
 
 static UINT SearchBarFind(BOOL backwards);
 static void SearchBarReplace(BOOL fAll);
@@ -49,6 +52,8 @@ enum
 	SEARCH_ICON_PREVIOUS,
 	SEARCH_ICON_NEXT,
 	SEARCH_ICON_CLOSE,
+	SEARCH_ICON_HIGHLIGHT,
+	SEARCH_ICON_FILTER,
 	SEARCH_ICON_COUNT
 };
 
@@ -65,19 +70,30 @@ static HIMAGELIST CreateSearchImageList(void)
 	return g_hSearchImageList;
 }
 
-static HWND CreateSearchToolbar(HWND hwndParent, UINT id, TBBUTTON *buttons, int buttonCount)
+static HWND CreateSearchToolbar(HWND hwndParent, UINT id, TBBUTTON *buttons, int buttonCount, BOOL fList)
 {
-	HWND hwndTB = CreateWindowEx(0, TOOLBARCLASSNAME, 0,
-		WS_CHILD | WS_VISIBLE | WS_TABSTOP | TBSTYLE_FLAT | TBSTYLE_TOOLTIPS |
-			CCS_NOPARENTALIGN | CCS_NORESIZE | CCS_NODIVIDER,
-		0, 0, 0, 0, hwndParent, (HMENU)(UINT_PTR)id, GetModuleHandle(0), 0);
+	DWORD style = WS_CHILD | WS_VISIBLE | WS_TABSTOP | TBSTYLE_FLAT | TBSTYLE_TOOLTIPS |
+		CCS_NOPARENTALIGN | CCS_NORESIZE | CCS_NODIVIDER;
+	HWND hwndTB;
+
+	if(fList)
+		style |= TBSTYLE_LIST;
+
+	hwndTB = CreateWindowEx(0, TOOLBARCLASSNAME, 0,
+		style, 0, 0, 0, 0, hwndParent, (HMENU)(UINT_PTR)id, GetModuleHandle(0), 0);
 
 	SendMessage(hwndTB, TB_BUTTONSTRUCTSIZE, sizeof(TBBUTTON), 0);
 	SendMessage(hwndTB, TB_SETIMAGELIST, 0, (LPARAM)CreateSearchImageList());
 	SendMessage(hwndTB, TB_SETBITMAPSIZE, 0, MAKELPARAM(SEARCHBAR_ICON_SIZE, SEARCHBAR_ICON_SIZE));
 	SendMessage(hwndTB, TB_SETBUTTONSIZE, 0, MAKELPARAM(g_nSearchButtonWidth, g_nSearchControlHeight));
+	if(fList)
+	{
+		SendMessage(hwndTB, TB_SETEXTENDEDSTYLE, 0, TBSTYLE_EX_MIXEDBUTTONS);
+		SendMessage(hwndTB, TB_SETMAXTEXTROWS, 1, 0);
+	}
 	SendMessage(hwndTB, TB_ADDBUTTONS, buttonCount, (LPARAM)buttons);
 	SendMessage(hwndTB, TB_AUTOSIZE, 0, 0);
+	SendMessage(hwndTB, TB_SETBUTTONSIZE, 0, MAKELPARAM(g_nSearchButtonWidth, g_nSearchControlHeight));
 
 	return hwndTB;
 }
@@ -135,6 +151,7 @@ static void SetSearchEditPadding(HWND hwndEdit)
 	InvalidateRect(hwndEdit, 0, TRUE);
 }
 
+
 // "Search", or "Replace", in an empty box
 static void PaintSearchEditHint(HWND hwndEdit)
 {
@@ -165,11 +182,47 @@ static int ControlWidth(HWND hwndCtrl)
 	return rect.right - rect.left;
 }
 
+// The width a toolbar's buttons take: to the right of its last one
+static int ToolbarWidth(HWND hwndTB)
+{
+	RECT rect = { 0 };
+
+	SendMessage(hwndTB, TB_GETITEMRECT, SendMessage(hwndTB, TB_BUTTONCOUNT, 0, 0) - 1, (LPARAM)&rect);
+	return rect.right;
+}
+
+static TCHAR *SearchModeText(UINT_PTR id)
+{
+	return id == IDC_SEARCH_FILTER ? _T("Filter") : _T("Highlight");
+}
+
+static void SetSearchModeButtonWidths(HWND hwndTB)
+{
+	static const UINT ids[] = { IDC_SEARCH_HIGHLIGHT, IDC_SEARCH_FILTER };
+	TBBUTTONINFO info = { sizeof(info), TBIF_SIZE };
+	HDC hdc = GetDC(hwndTB);
+	HFONT hFont = StatusBarFont() ? StatusBarFont() : (HFONT)GetStockObject(DEFAULT_GUI_FONT);
+	HGDIOBJ hOldFont = SelectObject(hdc, hFont);
+	SIZE size;
+	size_t i;
+
+	for(i = 0; i < ARRAYSIZE(ids); i++)
+	{
+		GetTextExtentPoint32(hdc, SearchModeText(ids[i]), lstrlen(SearchModeText(ids[i])), &size);
+		info.cx = (WORD)(SEARCHBAR_ICON_SIZE + size.cx + SEARCHBAR_TEXT_BUTTON_PADX * 2);
+		SendMessage(hwndTB, TB_SETBUTTONINFO, ids[i], (LPARAM)&info);
+	}
+
+	SelectObject(hdc, hOldFont);
+	ReleaseDC(hwndTB, hdc);
+}
+
 static void SearchBarLayout(HWND hwnd)
 {
 	RECT rc;
 	HWND hwndReplace = GetDlgItem(hwnd, IDC_SEARCH_REPLACE);
 	HWND hwndReplaceAll = GetDlgItem(hwnd, IDC_SEARCH_REPLACEALL);
+	int findWidth = ToolbarWidth(g_hwndFindTB);
 	int width;
 	int height;
 	int x;
@@ -194,7 +247,7 @@ static void SearchBarLayout(HWND hwnd)
 	if(g_fReplacing)
 		replaceButtons = ControlWidth(hwndReplace) + ControlWidth(hwndReplaceAll) + SEARCHBAR_GAP * 3;
 
-	maxEditWidth = width - SEARCHBAR_PADX * 2 - g_nSearchButtonWidth * 4 - SEARCHBAR_GAP * 5 - replaceButtons;
+	maxEditWidth = width - SEARCHBAR_PADX * 2 - g_nSearchButtonWidth * 2 - findWidth - SEARCHBAR_GAP * 5 - (SEARCHBAR_TOOLBAR_GAP - SEARCHBAR_GAP) * 2 - replaceButtons;
 	if(g_fReplacing)
 		maxEditWidth = (maxEditWidth - SEARCHBAR_GAP) / 2;
 	if(maxEditWidth < 40)
@@ -208,10 +261,10 @@ static void SearchBarLayout(HWND hwnd)
 
 	MoveWindow(GetDlgItem(hwnd, IDC_EDIT1), x, y, editWidth, controlHeight, TRUE);
 	SetSearchEditPadding(GetDlgItem(hwnd, IDC_EDIT1));
-	x += editWidth + SEARCHBAR_GAP;
+	x += editWidth + SEARCHBAR_TOOLBAR_GAP;
 
-	MoveWindow(g_hwndFindTB, x, y, g_nSearchButtonWidth * 2, controlHeight, TRUE);
-	x += g_nSearchButtonWidth * 2 + SEARCHBAR_GAP;
+	MoveWindow(g_hwndFindTB, x, y, findWidth, controlHeight, TRUE);
+	x += findWidth + SEARCHBAR_TOOLBAR_GAP;
 
 	if(g_fReplacing)
 	{
@@ -364,7 +417,9 @@ static INT_PTR CALLBACK SearchBarProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
 	TBBUTTON tbbFind[] =
 	{
 		{ SEARCH_ICON_PREVIOUS, IDC_SEARCH_PREVIOUS, TBSTATE_ENABLED, BTNS_BUTTON, { 0 }, 0, 0 },
-		{ SEARCH_ICON_NEXT, IDC_SEARCH_NEXT, TBSTATE_ENABLED, BTNS_BUTTON, { 0 }, 0, 0 }
+		{ SEARCH_ICON_NEXT, IDC_SEARCH_NEXT, TBSTATE_ENABLED, BTNS_BUTTON, { 0 }, 0, 0 },
+		{ SEARCH_ICON_HIGHLIGHT, IDC_SEARCH_HIGHLIGHT, TBSTATE_ENABLED | TBSTATE_CHECKED, BTNS_CHECKGROUP | BTNS_SHOWTEXT, { 0 }, 0, (INT_PTR)_T("Highlight") },
+		{ SEARCH_ICON_FILTER, IDC_SEARCH_FILTER, TBSTATE_ENABLED, BTNS_CHECKGROUP | BTNS_SHOWTEXT, { 0 }, 0, (INT_PTR)_T("Filter") }
 	};
 	TBBUTTON tbbClose[] =
 	{
@@ -384,16 +439,16 @@ static INT_PTR CALLBACK SearchBarProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
 		DestroyWindow(GetDlgItem(hwnd, IDC_SEARCH_NEXT));
 		DestroyWindow(GetDlgItem(hwnd, IDCANCEL));
 
-		g_hwndOptionsTB = CreateSearchToolbar(hwnd, IDC_SEARCH_OPTIONS, tbbOptions, 1);
-		g_hwndFindTB = CreateSearchToolbar(hwnd, IDC_SEARCH_PREVIOUS, tbbFind, 2);
-		g_hwndCloseTB = CreateSearchToolbar(hwnd, IDCANCEL, tbbClose, 1);
+		g_hwndOptionsTB = CreateSearchToolbar(hwnd, IDC_SEARCH_OPTIONS, tbbOptions, 1, FALSE);
+		g_hwndFindTB = CreateSearchToolbar(hwnd, IDC_SEARCH_PREVIOUS, tbbFind, 4, TRUE);
+		SetSearchModeButtonWidths(g_hwndFindTB);
+		g_hwndCloseTB = CreateSearchToolbar(hwnd, IDCANCEL, tbbClose, 1, FALSE);
 
 		hwndEdit = GetDlgItem(hwnd, IDC_EDIT1);
 		hStatusFont = StatusBarFont();
 		if(hStatusFont == 0)
 			hStatusFont = (HFONT)SendMessage(hwnd, WM_GETFONT, 0, 0);
 		SendMessage(hwndEdit, WM_SETFONT, (WPARAM)hStatusFont, TRUE);
-		SendMessage(hwndEdit, EM_SETCUEBANNER, 0, (LPARAM)_T("Search"));
 		SetSearchEditPadding(hwndEdit);
 
 		g_OldSearchEditProc = (WNDPROC)GetWindowLongPtr(hwndEdit, GWLP_WNDPROC);
@@ -403,6 +458,7 @@ static INT_PTR CALLBACK SearchBarProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
 		// so they share its window procedure), and its buttons wait for Ctrl+H
 		hwndEdit = GetDlgItem(hwnd, IDC_SEARCH_REPLACEWITH);
 		SendMessage(hwndEdit, WM_SETFONT, (WPARAM)hStatusFont, TRUE);
+		SetSearchEditPadding(hwndEdit);
 		SetWindowLongPtr(hwndEdit, GWLP_WNDPROC, (LONG_PTR)SearchEditProc);
 		SendDlgItemMessage(hwnd, IDC_SEARCH_REPLACE,	WM_SETFONT, (WPARAM)hStatusFont, TRUE);
 		SendDlgItemMessage(hwnd, IDC_SEARCH_REPLACEALL, WM_SETFONT, (WPARAM)hStatusFont, TRUE);
@@ -433,6 +489,15 @@ static INT_PTR CALLBACK SearchBarProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
 			SearchBarReplace(TRUE);
 			return TRUE;
 
+		// match display mode
+		case IDC_SEARCH_HIGHLIGHT:
+		case IDC_SEARCH_FILTER:
+			g_fFiltering = LOWORD(wParam) == IDC_SEARCH_FILTER;
+			SendMessage(g_hwndFindTB, TB_CHECKBUTTON, IDC_SEARCH_HIGHLIGHT, MAKELONG(!g_fFiltering, 0));
+			SendMessage(g_hwndFindTB, TB_CHECKBUTTON, IDC_SEARCH_FILTER, MAKELONG(g_fFiltering, 0));
+			SearchBarShowMatches();
+			return TRUE;
+
 		// the matches of the text typed are highlighted as it's typed
 		case IDC_EDIT1:
 			if(HIWORD(wParam) == EN_CHANGE)
@@ -461,6 +526,12 @@ static INT_PTR CALLBACK SearchBarProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
 				return TRUE;
 			case IDC_SEARCH_NEXT:
 				lstrcpyn(tip->pszText, _T("Find next"), tip->cchTextMax);
+				return TRUE;
+			case IDC_SEARCH_HIGHLIGHT:
+				lstrcpyn(tip->pszText, _T("Highlight every match"), tip->cchTextMax);
+				return TRUE;
+			case IDC_SEARCH_FILTER:
+				lstrcpyn(tip->pszText, _T("Show only the lines that match"), tip->cchTextMax);
 				return TRUE;
 			case IDCANCEL:
 				lstrcpyn(tip->pszText, _T("Close"), tip->cchTextMax);
@@ -552,7 +623,7 @@ void HideSearchBar(void)
 
 		ShowWindow(g_hwndSearchBar, SW_HIDE);
 		SendMessage(hwndParent, WM_SIZE, 0, 0);
-		TextView_ShowMatches(g_hwndTextView, 0);
+		TextView_ShowMatches(g_hwndTextView, 0, FALSE);
 		SetFocus(g_hwndTextView);
 	}
 }
@@ -698,7 +769,7 @@ static void SearchBarReplace(BOOL fAll)
 
 //
 //	Highlight every match of the search text in the document while the bar
-//	shows, as it's typed
+//	shows, as it's typed - or, in Filter mode, show only their lines
 //
 static void SearchBarShowMatches(void)
 {
@@ -711,5 +782,5 @@ static void SearchBarShowMatches(void)
 	find.length = lstrlen(text);
 	find.matchcase = g_fSearchMatchCase;
 
-	TextView_ShowMatches(g_hwndTextView, find.length ? &find : 0);
+	TextView_ShowMatches(g_hwndTextView, find.length ? &find : 0, g_fFiltering);
 }

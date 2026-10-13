@@ -572,6 +572,45 @@ void textview_converts_line_breaks()
     close_edit_pair(&pair);
 }
 
+void textview_filters_lines_and_goes_back_to_them()
+{
+    HWND         parent = create_hidden_parent();
+    HWND         view   = create_textview(parent);
+    TCHAR        path[MAX_PATH];
+    TCHAR        error[] = TEXT("error");
+    TEXTVIEWFIND find = { 0 };
+    const char   more[] = "\r\nerror three\r\n";
+    HANDLE       writer;
+    DWORD        written = 0;
+
+    // a log being followed, filtered for its errors
+    CHECK(write_textdocument_file("start\r\nerror one\r\nfine\r\nerror two\r\nlast", DOC_ASCII, path));
+    CHECK(TextView_TailFile(view, path));
+
+    find.text   = error;
+    find.length = 5;
+    TextView_ShowMatches(view, &find, TRUE);
+    CHECK(window_text(view) == L"error one\r\nerror two\r\n");
+
+    // what's appended, and matches, is added
+    writer = CreateFile(path, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, 0, OPEN_EXISTING, 0, 0);
+    CHECK(writer != INVALID_HANDLE_VALUE);
+    CHECK(WriteFile(writer, more, (DWORD)strlen(more), &written, 0));
+    CloseHandle(writer);
+
+    CHECK(TextView_UpdateTail(view));
+    CHECK(window_text(view) == L"error one\r\nerror two\r\nerror three\r\n");
+
+    // back to the whole file, on the line picked
+    SendMessage(view, EM_SETSEL, 11, 11);
+    TextView_ShowMatches(view, &find, FALSE);
+    CHECK(window_text(view) == L"start\r\nerror one\r\nfine\r\nerror two\r\nlast\r\nerror three\r\n");
+    CHECK(SendMessage(view, EM_LINEFROMCHAR, (WPARAM)-1, 0) == 3);
+
+    DestroyWindow(parent);
+    DeleteFile(path);
+}
+
 const test_case tests[] =
 {
     { "textview_edit_messages_match_an_edit_control", textview_edit_messages_match_an_edit_control },
@@ -582,6 +621,7 @@ const test_case tests[] =
     { "textview_edit_messages_index_as_they_need", textview_edit_messages_index_as_they_need },
     { "textview_goto_line_reports_indexing", textview_goto_line_reports_indexing },
     { "textview_converts_line_breaks", textview_converts_line_breaks },
+    { "textview_filters_lines_and_goes_back_to_them", textview_filters_lines_and_goes_back_to_them },
 };
 }
 

@@ -122,6 +122,7 @@
     <ClCompile Include="TextView.cpp" />
     <ClCompile Include="TextViewClipboard.cpp" />
     <ClCompile Include="TextViewEdit.cpp" />
+    <ClCompile Include="TextViewFilter.cpp" />
     <ClCompile Include="TextViewFile.cpp" />
     <ClCompile Include="TextViewFont.cpp" />
     <ClCompile Include="TextViewKeyInput.cpp" />

@@ -10,6 +10,7 @@
 // Timers: the mouse-selection scroll, and indexing in the background
 #define SCROLL_TIMER	1
 #define INDEX_TIMER		2
+#define FILTER_TIMER	3
 #define LINENO_FMT  _T(" %I64u ")
 #define LINENO_PAD	 8
 
@@ -17,6 +18,7 @@
 #include <commctrl.h>
 #include <uxtheme.h>
 #include <string>
+#include <vector>
 
 /*HTHEME  (WINAPI * OpenThemeData_Proc)(HWND hwnd, LPCWSTR pszClassList);
 BOOL    (WINAPI * CloseThemeData_Proc)(HTHEME hTheme);
@@ -155,8 +157,17 @@ private:
 	ULONG		SelectAll();
 	UINT		FindText(TEXTVIEWFIND *find);
 	size_w		ReplaceText(TEXTVIEWFIND *find, BOOL fAll);
-	LONG		ShowMatches(TEXTVIEWFIND *find);
+	LONG		ShowMatches(TEXTVIEWFIND *find, BOOL fFilter);
 	void		HighlightMatches(TCHAR *szText, int nTextLen, ATTR *attr);
+
+	// Filtering (TextViewFilter.cpp)
+	TextDocument *FileDoc() const;
+	bool		StartFilter();
+	void		EndFilter(bool fKeepPlace);
+	bool		FilterSlice();
+	void		WriteFilterLine(TextPos begin, TextPos next);
+	void		ShowFilteredLines();
+	LONG		OnFilterTimer();
 	bool		GetSelection(TextCoord *start, TextCoord *end);
 	void		SelectionColumns(TextCoord *line, ULONG lineLen, ULONG *start, ULONG *end);
 
@@ -355,6 +366,16 @@ private:
 	// The text ShowMatches highlights (none while empty), and whether its case matters
 	std::basic_string<TCHAR> m_sMatchText;
 	BOOL		m_fMatchCase = FALSE;
+
+	// Showing only the lines holding a match: they're written to a temp file
+	// as they're found, which m_pTextDoc shows, read-only, while m_pSourceDoc
+	// holds the whole document. Each line's start in it is kept, to go back to.
+	BOOL		m_fFilter = FALSE;
+	TextDocument *m_pSourceDoc = 0;
+	HANDLE		m_hFilterFile = INVALID_HANDLE_VALUE;
+	TextPos		m_filterFrom;					// how far through m_pSourceDoc filtering has got
+	std::vector<TextPos> m_filterOrigins;
+	UINT		m_nFilterEditMode = 0;			// the whole document's edit mode, meanwhile
 
 	// Runtime data
 	UINT_PTR	m_nScrollTimer;

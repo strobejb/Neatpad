@@ -395,6 +395,9 @@ LONG TextView::OnTimer(UINT_PTR nTimerId)
 	// indexing has a timer of its own
 	if(nTimerId == INDEX_TIMER)
 		return OnIndexTimer();
+
+	if(nTimerId == FILTER_TIMER)
+		return OnFilterTimer();
 	
 	// find client area, but make it an even no. of lines
 	GetClientRect(m_hWnd, &rect);

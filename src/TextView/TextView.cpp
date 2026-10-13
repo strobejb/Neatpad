@@ -140,6 +140,8 @@ TextView::TextView(HWND hwnd)
 //
 TextView::~TextView()
 {
+	EndFilter(false);
+
 	if(m_pTextDoc)
 		delete m_pTextDoc;
 
@@ -453,11 +455,15 @@ UINT TextView::FindText(TEXTVIEWFIND *find)
 }
 
 //
-//	Highlight every match of find wherever the text is shown, or none, for 0.
-//	Lines are laid out again, to colour them.
+//	Highlight every match of find wherever the text is shown, or none, for 0 -
+//	showing only the lines that hold one, with fFilter. Lines are laid out
+//	again, to colour them.
 //
-LONG TextView::ShowMatches(TEXTVIEWFIND *find)
+LONG TextView::ShowMatches(TEXTVIEWFIND *find, BOOL fFilter)
 {
+	// other matches, or none, start from the whole document again
+	EndFilter(true);
+
 	if(find && find->text && find->length)
 	{
 		m_sMatchText.assign(find->text, find->length);
@@ -467,6 +473,8 @@ LONG TextView::ShowMatches(TEXTVIEWFIND *find)
 	{
 		m_sMatchText.clear();
 	}
+
+	m_fFilter = fFilter && !m_sMatchText.empty() && StartFilter();
 
 	ResetLineCache();
 	RefreshWindow();
@@ -655,7 +663,7 @@ LRESULT WINAPI TextView::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 
 	// whether the text differs from its file, as an edit control reports it
 	case EM_GETMODIFY:
-		return m_pTextDoc->modified();
+		return FileDoc()->modified();
 
 	case WM_CHAR:
 		return OnChar((UINT)wParam, (UINT)lParam);
@@ -738,16 +746,16 @@ LRESULT WINAPI TextView::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 		return SetLineImage((ULONG)wParam, (ULONG)lParam);
 
 	case TXM_GETFORMAT:
-		return m_pTextDoc->getformat();
+		return FileDoc()->getformat();
 
 	case TXM_GETBOM:
-		return m_pTextDoc->has_bom();
+		return FileDoc()->has_bom();
 
 	case TXM_GETLINEFORMAT:
 		return m_nCRLFMode;
 
 	case TXM_SETINMEMORYLIMIT:
-		m_pTextDoc->set_in_memory_limit(wParam);
+		FileDoc()->set_in_memory_limit(wParam);
 		return 0;
 
 	case TXM_CONVERTLINEBREAKS:
@@ -770,8 +778,9 @@ LRESULT WINAPI TextView::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 	case TXM_GETCURCOL:
 		return ResultFromSize(m_cursorPos.column);
 
+	// filtered, the view is read-only, but the document may not be
 	case TXM_GETEDITMODE:
-		return m_nEditMode;
+		return m_pSourceDoc ? m_nFilterEditMode : m_nEditMode;
 
 	case TXM_GETCURLINEKNOWN:
 		return m_pTextDoc->lineno_from_pos(m_cursorPos, &lineno) == TDR_OK;
@@ -785,14 +794,14 @@ LRESULT WINAPI TextView::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 		if(stats == 0)
 			return FALSE;
 
-		stats->byte_count = (unsigned __int64)m_pTextDoc->file_length();
+		stats->byte_count = (unsigned __int64)FileDoc()->file_length();
 		stats->char_count = 0;
 		stats->char_count_known = FALSE;
 		stats->sel_byte_count = 0;
 		stats->sel_char_count = 0;
-		stats->linebreaks_seen = m_pTextDoc->linebreaks_seen();
+		stats->linebreaks_seen = FileDoc()->linebreaks_seen();
 
-		if(m_pTextDoc->charcount(&chars) == TDR_OK)
+		if(FileDoc()->charcount(&chars) == TDR_OK)
 		{
 			stats->char_count = (unsigned __int64)chars;
 			stats->char_count_known = TRUE;
@@ -839,7 +848,7 @@ LRESULT WINAPI TextView::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 		return FindText((TEXTVIEWFIND *)lParam);
 
 	case TXM_SHOWMATCHES:
-		return ShowMatches((TEXTVIEWFIND *)lParam);
+		return ShowMatches((TEXTVIEWFIND *)lParam, (BOOL)wParam);
 
 	case TXM_REPLACETEXT:
 		return ResultFromSize(ReplaceText((TEXTVIEWFIND *)lParam, (BOOL)wParam));

@@ -63,6 +63,9 @@
     <ClCompile Include="..\src\TextView\TextViewClipboard.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\src\TextView\TextViewFilter.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="..\src\TextView\TextViewEdit.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>

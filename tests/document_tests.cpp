@@ -2033,6 +2033,66 @@ void textdocument_replaces_every_match_in_one_undo_step()
     DeleteFile(path);
 }
 
+// The lines filter_lines finds, 'bytes' at a time, each followed by a |
+std::wstring filtered_lines(TextDocument &doc, const wchar_t *text, bool matchcase, size_w bytes)
+{
+    std::wstring lines;
+    TextPos      from;
+    TextPos      next;
+
+    while(from.byte_offset < doc.byte_length())
+    {
+        next = doc.filter_lines(text, (uint32_t)wcslen(text), matchcase, from, bytes, [&](TextPos begin, TextPos line_next)
+        {
+            TextReader reader = doc.text_from_range(begin, line_next);
+            wchar_t    buf[256];
+            uint32_t   len;
+
+            while((len = reader.read(buf, 256)) != 0)
+                lines.append(buf, len);
+
+            lines += L"|";
+        });
+
+        // it always gets further
+        CHECK(next > from);
+        if(!(next > from))
+            break;
+
+        from = next;
+    }
+
+    return lines;
+}
+
+void textdocument_filters_lines_holding_a_match()
+{
+    const DocTestEncoding encodings[] = { DOC_ASCII, DOC_UTF16LE_BOM };
+    const size_w          budgets[]   = { 1, 5, 13, 1000 };
+
+    for(size_t e = 0; e < sizeof(encodings) / sizeof(encodings[0]); e++)
+    {
+        TextDocument doc;
+        TCHAR        path[MAX_PATH];
+
+        // lines ending CRLF, LF and CR, one matching twice, and a last one without a break
+        CHECK(write_textdocument_file("alpha one\r\nbeta\r\nALPHA two\ngamma alpha alpha\rdelta\nend alpha", encodings[e], path));
+        CHECK(doc.init(path));
+
+        // each line found once, in whole, however the document is split up
+        for(size_t b = 0; b < sizeof(budgets) / sizeof(budgets[0]); b++)
+        {
+            CHECK(filtered_lines(doc, L"alpha", false, budgets[b]) == L"alpha one\r\n|ALPHA two\n|gamma alpha alpha\r|end alpha|");
+            CHECK(filtered_lines(doc, L"alpha", true, budgets[b]) == L"alpha one\r\n|gamma alpha alpha\r|end alpha|");
+        }
+
+        CHECK(filtered_lines(doc, L"zeta", false, 1000) == L"");
+
+        doc.clear();
+        DeleteFile(path);
+    }
+}
+
 const test_case tests[] =
 {
     { "textdocument_edits_beyond_4gb", textdocument_edits_beyond_4gb },
@@ -2082,6 +2142,7 @@ const test_case tests[] =
     { "textdocument_init_in_a_given_encoding", textdocument_init_in_a_given_encoding },
     { "textdocument_replace_linebreaks_makes_them_one_kind", textdocument_replace_linebreaks_makes_them_one_kind },
     { "textdocument_replaces_every_match_in_one_undo_step", textdocument_replaces_every_match_in_one_undo_step },
+    { "textdocument_filters_lines_holding_a_match", textdocument_filters_lines_holding_a_match },
     { "textdocument_detects_utf8_without_a_bom", textdocument_detects_utf8_without_a_bom },
     { "textdocument_new_document_is_utf8", textdocument_new_document_is_utf8 },
     { "textdocument_ascii_turns_what_it_cant_hold_into_question_marks", textdocument_ascii_turns_what_it_cant_hold_into_question_marks },

@@ -219,9 +219,13 @@ typedef struct _TEXTVIEWFIND
 	((size_t)SendMessage((hwndTV), TXM_REPLACETEXT, (WPARAM)(fAll), (LPARAM)(TEXTVIEWFIND *)(find)))
 
 //	Highlight every match of find->text (matching case if find->matchcase asks)
-//	wherever the text is shown, in the TXC_SEARCHMATCH colours - or none, for 0
-#define TextView_ShowMatches(hwndTV, find)	\
-	SendMessage((hwndTV), TXM_SHOWMATCHES, 0, (LPARAM)(TEXTVIEWFIND *)(find))
+//	wherever the text is shown, in the TXC_SEARCHMATCH colours - or none, for 0.
+//	fFilter shows only the lines holding a match, read-only, found in the
+//	background in a large document. Filtering stops with the caret on the line
+//	it was on, in the whole document. Meanwhile, TextView_GetEditMode, saving
+//	and the document's details are still the whole document's.
+#define TextView_ShowMatches(hwndTV, find, fFilter)	\
+	SendMessage((hwndTV), TXM_SHOWMATCHES, (WPARAM)(fFilter), (LPARAM)(TEXTVIEWFIND *)(find))
 
 //	Save in nEncoding (NCP_*), with or without its byte-order mark, and with every
 //	line break made nLineBreak (TXL_CR, TXL_LF or TXL_CRLF; 0 keeps them).
