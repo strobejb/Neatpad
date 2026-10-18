@@ -359,9 +359,9 @@ void TextView::UpdateMarginWidth()
 	HANDLE	hOldFont = SelectObject(hdc, m_uspFontList[0].hFont);
 
 	TCHAR	buf[32];
-	int len = wsprintf(buf, LINENO_FMT, (unsigned __int64)m_nLineCount);
+    int     len = wsprintf(buf, LINENO_FMT, (unsigned __int64)FileDoc()->linecount());
 
-	m_nLinenoWidth = TextWidth(hdc, buf, len);
+    m_nLinenoWidth = TextWidth(hdc, buf, len);
 
 	SelectObject(hdc, hOldFont);
 	ReleaseDC(m_hWnd, hdc);
@@ -398,22 +398,31 @@ int TextView::PaintMargin(HDC hdc, TextCoord *line, int xpos, int ypos)
 	if(CheckStyle(TXS_LINENUMBERS))
 	{
 		HANDLE hOldFont = SelectObject(hdc, m_uspFontList[0].hFont);
-		
-		int  len   = wsprintf(ach, LINENO_FMT, (unsigned __int64)(nLineNo + 1));
-		int	 width = TextWidth(hdc, ach, len);
 
-		// only draw line number if in-range and exact
-		if(!exact || nLineNo >= m_nLineCount)
-			len = 0;
+        size_w number = nLineNo;
+        bool   known  = exact && nLineNo < m_nLineCount;
 
-		rect.right  = rect.left + m_nLinenoWidth;
+        // Filtered rows retain their source offsets. Only the displayed number
+        // changes; line images and selection still use the filtered row.
+        if (m_pSourceDoc && known)
+        {
+            known = nLineNo < m_filterOrigins.size() &&
+                    m_pSourceDoc->lineno_from_pos(m_filterOrigins[(size_t)nLineNo], &number) == TDR_OK;
+        }
 
-		if(CheckStyle(TXS_SELMARGIN) && m_hImageList)
-		{
-			imgX = rect.right;
-			rect.right += imgWidth + 4;
-		}
-		else
+        // Leave pending source numbers and the filtered file's synthetic final
+        // empty line blank. Painting must not force the source to be indexed.
+        int len   = known ? wsprintf(ach, LINENO_FMT, (unsigned __int64)(number + 1)) : 0;
+        int width = TextWidth(hdc, ach, len);
+
+        rect.right = rect.left + m_nLinenoWidth;
+
+        if (CheckStyle(TXS_SELMARGIN) && m_hImageList)
+        {
+            imgX        = rect.right;
+            rect.right += imgWidth + 4;
+        }
+        else
 		{
 			rect.right += 20;
 		}

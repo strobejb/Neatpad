@@ -80,6 +80,8 @@ typedef struct
 //
 class TextView
 {
+    friend class TextViewMarginProbe; // Hidden-window gutter tests.
+
 public:
 
 	TextView(HWND hwnd);

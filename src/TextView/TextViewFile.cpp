@@ -127,13 +127,20 @@ BOOL TextView::UpdateTail()
 	if(!FileDoc()->grow(&added))
 		return FALSE;
 
-	if(m_pSourceDoc != 0 && FilterSlice())
-		SetTimer(m_hWnd, FILTER_TIMER, USER_TIMER_MINIMUM, 0);
+    if (m_pSourceDoc != 0)
+    {
+        if (FilterSlice())
+            SetTimer(m_hWnd, FILTER_TIMER, USER_TIMER_MINIMUM, 0);
 
-	if((change.inserted = m_pTextDoc->byte_length() - length) == 0)
-		return TRUE;
+        // A completed index may need extending for newly appended source lines.
+        if (added)
+            IndexFile(TRUE);
+    }
 
-	// it only grew at the end, so positions stay put, but the last line can be longer
+    if ((change.inserted = m_pTextDoc->byte_length() - length) == 0)
+        return TRUE;
+
+    // it only grew at the end, so positions stay put, but the last line can be longer
 	change.at = TextPos(length);
 	AdjustCoordsForChange(&change);
 	m_pTextDoc->coord_from_pos(TextPos(m_cursorPos.byte_offset), &m_cursorPos);
@@ -269,12 +276,13 @@ VOID TextView::IndexChanged()
 	{
 		m_nLineCount = m_pTextDoc->linecount();
 
-		// the count is exact once done, and may need a wider margin
-		if(m_fIndexing)
-		{
-			SetupScrollbars();
-		}
-		else
+        // Filtered source numbers also become exact as indexing advances.
+        // Refresh their margin while indexing, and the normal view once done.
+        if (m_fIndexing && !m_pSourceDoc)
+        {
+            SetupScrollbars();
+        }
+        else
 		{
 			UpdateMarginWidth();
 			UpdateMetrics();

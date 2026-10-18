@@ -5,6 +5,7 @@
 //
 #include "tests.h"
 #include "../src/TextView/sequence_state.h"
+#include "../src/TextView/TextViewInternal.h"
 #include <tchar.h>
 #include <shellapi.h>
 #include "../src/Neatpad/Neatpad.h"
@@ -41,6 +42,49 @@ void ShowRecoveredFile(HWND, const TCHAR *filename)
     lstrcpy(g_szFileTitle, title ? title + 1 : filename);
     ShowNotifyBar(filename[0] ? NOTIFY_RECOVERED : NOTIFY_RECOVERED_UNTITLED);
 }
+
+// Draw the actual gutter into a memory bitmap; controls are never shown.
+class TextViewMarginProbe
+{
+  public:
+    static std::vector<uint32_t> paint(HWND hwnd, size_w lineno)
+    {
+        TextView  *view   = (TextView *)GetWindowLongPtr(hwnd, 0);
+        int        width  = view->LeftMarginWidth();
+        int        height = view->m_nLineHeight;
+        BITMAPINFO info   = {};
+        void      *pixels = 0;
+
+        info.bmiHeader.biSize     = sizeof(BITMAPINFOHEADER);
+        info.bmiHeader.biWidth    = width;
+        info.bmiHeader.biHeight   = -height;
+        info.bmiHeader.biPlanes   = 1;
+        info.bmiHeader.biBitCount = 32;
+        HDC     dc                = CreateCompatibleDC(0);
+        HBITMAP bitmap            = CreateDIBSection(dc, &info, DIB_RGB_COLORS, &pixels, 0, 0);
+        CHECK(dc && bitmap && pixels);
+        if (!dc || !bitmap || !pixels)
+        {
+            DeleteObject(bitmap);
+            DeleteDC(dc);
+            return {};
+        }
+
+        HGDIOBJ   previous = SelectObject(dc, bitmap);
+        TextCoord line;
+        bool      haveLine = lineno != UINT64_MAX && view->m_pTextDoc->coord_from_lineno(lineno, &line) == TDR_OK;
+        CHECK(lineno == UINT64_MAX || haveLine);
+        memset(pixels, 0, width * height * sizeof(uint32_t));
+        view->PaintMargin(dc, haveLine ? &line : 0, 0, 0);
+        GdiFlush();
+        std::vector<uint32_t> result((uint32_t *)pixels, (uint32_t *)pixels + width * height);
+
+        SelectObject(dc, previous);
+        DeleteObject(bitmap);
+        DeleteDC(dc);
+        return result;
+    }
+};
 
 namespace
 {
@@ -619,10 +663,12 @@ void textview_filters_lines_and_goes_back_to_them()
     HWND         view   = create_textview(parent);
     TCHAR        path[MAX_PATH];
     TCHAR        error[] = TEXT("error");
-    TEXTVIEWFIND find = { 0 };
-    const char   more[] = "\r\nerror three\r\n";
+    TEXTVIEWFIND find    = {0};
+    const char   more[]  = "\r\nerror three\r\n";
     HANDLE       writer;
     DWORD        written = 0;
+
+    TextView_SetStyleBool(view, TXS_LINENUMBERS, TRUE);
 
     // a log being followed, filtered for its errors
     CHECK(write_textdocument_file("start\r\nerror one\r\nfine\r\nerror two\r\nlast", DOC_ASCII, path));
@@ -634,7 +680,8 @@ void textview_filters_lines_and_goes_back_to_them()
     CHECK(window_text(view) == L"error one\r\nerror two\r\n");
 
     // what's appended, and matches, is added
-    writer = CreateFile(path, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, 0, OPEN_EXISTING, 0, 0);
+    writer = CreateFile(path, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, 0,
+                        OPEN_EXISTING, 0, 0);
     CHECK(writer != INVALID_HANDLE_VALUE);
     CHECK(WriteFile(writer, more, (DWORD)strlen(more), &written, 0));
     CloseHandle(writer);
@@ -642,12 +689,112 @@ void textview_filters_lines_and_goes_back_to_them()
     CHECK(TextView_UpdateTail(view));
     CHECK(window_text(view) == L"error one\r\nerror two\r\nerror three\r\n");
 
+    HWND reference = create_textview(parent);
+    CHECK(TextView_OpenFile(reference, path));
+    TextView_SetStyleBool(reference, TXS_LINENUMBERS, TRUE);
+    CHECK(TextViewMarginProbe::paint(view, 0) == TextViewMarginProbe::paint(reference, 1));
+    CHECK(TextViewMarginProbe::paint(view, 1) == TextViewMarginProbe::paint(reference, 3));
+    CHECK(TextViewMarginProbe::paint(view, 2) == TextViewMarginProbe::paint(reference, 5));
+
     // back to the whole file, on the line picked
     SendMessage(view, EM_SETSEL, 11, 11);
     TextView_ShowMatches(view, &find, FALSE);
     CHECK(window_text(view) == L"start\r\nerror one\r\nfine\r\nerror two\r\nlast\r\nerror three\r\n");
     CHECK(SendMessage(view, EM_LINEFROMCHAR, (WPARAM)-1, 0) == 3);
 
+    DestroyWindow(parent);
+    DeleteFile(path);
+}
+
+void textview_filtered_gutter_uses_original_numbers()
+{
+    for (TEXT_ENCODING encoding : {NCP_UTF8, NCP_UTF16BE})
+    {
+        std::wstring text;
+
+        for (unsigned i = 0; i < 200; ++i)
+            text += i == 97 || i == 199 ? L"needle \x03bb\r\n" : L"skip\r\n";
+
+        EditPair pair = {};
+        CHECK(open_edit_pair(&pair, text.c_str(), encoding));
+        HWND reference = create_textview(pair.parent);
+        CHECK(TextView_OpenFile(reference, pair.path));
+        TextView_SetStyleBool(pair.view, TXS_LINENUMBERS, TRUE);
+        TextView_SetStyleBool(reference, TXS_LINENUMBERS, TRUE);
+
+        // Numbers follow the current document, including an unsaved extra line.
+        SendMessage(pair.view, EM_REPLACESEL, TRUE, (LPARAM)L"extra\r\n");
+        SendMessage(reference, EM_REPLACESEL, TRUE, (LPARAM)L"extra\r\n");
+        TCHAR        needle[] = TEXT("needle"), absent[] = TEXT("absent");
+        TEXTVIEWFIND find = {};
+        find.text         = needle;
+        find.length       = 6;
+        TextView_ShowMatches(pair.view, &find, TRUE);
+        CHECK(window_text(pair.view) == L"needle \x03bb\r\nneedle \x03bb\r\n");
+        CHECK(TextViewMarginProbe::paint(pair.view, 0) == TextViewMarginProbe::paint(reference, 98));
+        CHECK(TextViewMarginProbe::paint(pair.view, 1) == TextViewMarginProbe::paint(reference, 200));
+        CHECK(TextViewMarginProbe::paint(pair.view, 2) == TextViewMarginProbe::paint(pair.view, UINT64_MAX));
+
+        TextView_ShowMatches(pair.view, &find, FALSE);
+        CHECK(TextViewMarginProbe::paint(pair.view, 98) == TextViewMarginProbe::paint(reference, 98));
+        CHECK(window_text(pair.view) == L"extra\r\n" + text);
+
+        find.text = absent;
+        TextView_ShowMatches(pair.view, &find, TRUE);
+        CHECK(window_text(pair.view).empty());
+        CHECK(TextViewMarginProbe::paint(pair.view, 0) == TextViewMarginProbe::paint(pair.view, UINT64_MAX));
+        close_edit_pair(&pair);
+    }
+}
+
+void textview_filtered_gutter_waits_for_source_index()
+{
+    size_t      bytes = (size_t)TextDocumentLineIndexProbe::open_index_length() + 2 * 1024 * 1024;
+    std::string text(bytes, 'x');
+
+    for (size_t at = 127; at < text.size(); at += 128)
+        text[at] = '\n';
+    text += "needle\n";
+
+    HWND         parent = create_hidden_parent();
+    HWND         view   = create_textview(parent);
+    TCHAR        path[MAX_PATH], needle[] = TEXT("needle");
+    TEXTVIEWFIND find   = {};
+    TVNINDEXINFO before = {}, after = {};
+    CHECK(write_temp_file(text.data(), text.size(), path));
+    CHECK(TextView_OpenFile(view, path));
+    TextView_SetStyleBool(view, TXS_LINENUMBERS, TRUE);
+    find.text   = needle;
+    find.length = 6;
+    TextView_ShowMatches(view, &find, TRUE);
+    for (unsigned tick = 0; tick < 1000 && window_text(view).empty(); ++tick)
+        SendMessage(view, WM_TIMER, FILTER_TIMER, 0);
+    CHECK(window_text(view) == L"needle\n");
+    CHECK(TextView_GetIndexInfo(view, &before) && before.nPercent < 100 && before.fIndexing);
+
+    // A pending source number is blank; drawing it does not scan the source.
+    CHECK(TextViewMarginProbe::paint(view, 0) == TextViewMarginProbe::paint(view, UINT64_MAX));
+    CHECK(TextView_GetIndexInfo(view, &after) && after.nPercent == before.nPercent);
+
+    // Filtering must still respect the existing stop-indexing command.
+    CHECK(TextView_IndexFile(view, FALSE));
+    SendMessage(view, WM_TIMER, FILTER_TIMER, 0);
+    CHECK(TextView_GetIndexInfo(view, &after) && !after.fIndexing);
+    CHECK(TextView_IndexFile(view, TRUE));
+
+    for (unsigned tick = 0; tick < 1000 && after.nPercent < 100; ++tick)
+    {
+        SendMessage(view, WM_TIMER, INDEX_TIMER, 0);
+        CHECK(TextView_GetIndexInfo(view, &after));
+    }
+    CHECK(after.nPercent == 100 && !after.fIndexing);
+
+    // Compare the real pixels with the same line in an unfiltered control.
+    HWND reference = create_textview(parent);
+    CHECK(TextView_OpenFile(reference, path));
+    TextView_SetStyleBool(reference, TXS_LINENUMBERS, TRUE);
+    SendMessage(reference, EM_GETLINECOUNT, 0, 0);
+    CHECK(TextViewMarginProbe::paint(view, 0) == TextViewMarginProbe::paint(reference, bytes / 128));
     DestroyWindow(parent);
     DeleteFile(path);
 }
@@ -1027,6 +1174,8 @@ const test_case tests[] = {
     {"textview_goto_line_reports_indexing", textview_goto_line_reports_indexing},
     {"textview_converts_line_breaks", textview_converts_line_breaks},
     {"textview_filters_lines_and_goes_back_to_them", textview_filters_lines_and_goes_back_to_them},
+    {"textview_filtered_gutter_uses_original_numbers", textview_filtered_gutter_uses_original_numbers},
+    {"textview_filtered_gutter_waits_for_source_index", textview_filtered_gutter_waits_for_source_index},
 };
 }
 

@@ -80,7 +80,10 @@ bool TextView::StartFilter()
 		SetTimer(m_hWnd, FILTER_TIMER, USER_TIMER_MINIMUM, 0);
 
 	ShowFilteredLines();
-	return true;
+
+    // Source line numbers become available through the existing index timer.
+    IndexFile(TRUE);
+    return true;
 }
 
 //
@@ -160,7 +163,8 @@ bool TextView::FilterSlice()
 		  (now.QuadPart - start.QuadPart) * 1000 < freq.QuadPart * FILTER_SLICE_MS);
 
 	m_pTextDoc->grow(&added);
-	return m_filterFrom.byte_offset < m_pSourceDoc->byte_length();
+
+    return m_filterFrom.byte_offset < m_pSourceDoc->byte_length();
 }
 
 //
