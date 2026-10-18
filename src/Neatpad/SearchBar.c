@@ -11,6 +11,7 @@
 #include <windows.h>
 #include <tchar.h>
 #include <commctrl.h>
+#include <uxtheme.h>
 #include "..\TextView\TextView.h"
 #include "Neatpad.h"
 #include "resource.h"
@@ -23,10 +24,11 @@ extern HWND g_hwndStatusbar;
 #define SEARCHBAR_EDIT_MINWIDTH 120
 #define SEARCHBAR_GAP 4
 #define SEARCHBAR_TOOLBAR_GAP 8
+#define SEARCHBAR_MODE_GAP 16
 #define SEARCHBAR_FIND_GROUP_GAP 8
 #define SEARCHBAR_ICON_SIZE 32
+#define SEARCHBAR_MODE_PADDING 2
 #define SEARCHBAR_EDIT_PADX 8
-#define SEARCHBAR_TEXT_BUTTON_PADX 10
 #define IDM_SEARCH_MATCHCASE 50000
 #define IDM_SEARCH_WRAP 50001
 
@@ -47,6 +49,13 @@ static UINT SearchBarFind(BOOL backwards);
 static void SearchBarReplace(BOOL fAll);
 static void SearchBarShowMatches(void);
 static void ShowSearchOptionsMenu(HWND hwnd);
+static COLORREF SearchModeBlend(COLORREF a, COLORREF b, int amount);
+static void DrawSearchRoundedRect(HDC hdc, RECT rect, COLORREF fill, COLORREF border, int radius);
+
+static int SearchCornerRadius(void)
+{
+	return max(4, g_nSearchControlHeight / 6);
+}
 
 enum
 {
@@ -72,14 +81,12 @@ static HIMAGELIST CreateSearchImageList(void)
 	return g_hSearchImageList;
 }
 
-static HWND CreateSearchToolbar(HWND hwndParent, UINT id, TBBUTTON *buttons, int buttonCount, BOOL fList)
+static HWND CreateSearchToolbar(HWND hwndParent, UINT id, TBBUTTON *buttons, int buttonCount, BOOL fMode)
 {
 	DWORD style = WS_CHILD | WS_VISIBLE | WS_TABSTOP | TBSTYLE_FLAT | TBSTYLE_TOOLTIPS |
 		CCS_NOPARENTALIGN | CCS_NORESIZE | CCS_NODIVIDER;
 	HWND hwndTB;
-
-	if(fList)
-		style |= TBSTYLE_LIST;
+	int buttonWidth = fMode ? g_nSearchControlHeight : g_nSearchButtonWidth;
 
 	hwndTB = CreateWindowEx(0, TOOLBARCLASSNAME, 0,
 		style, 0, 0, 0, 0, hwndParent, (HMENU)(UINT_PTR)id, GetModuleHandle(0), 0);
@@ -87,15 +94,18 @@ static HWND CreateSearchToolbar(HWND hwndParent, UINT id, TBBUTTON *buttons, int
 	SendMessage(hwndTB, TB_BUTTONSTRUCTSIZE, sizeof(TBBUTTON), 0);
 	SendMessage(hwndTB, TB_SETIMAGELIST, 0, (LPARAM)CreateSearchImageList());
 	SendMessage(hwndTB, TB_SETBITMAPSIZE, 0, MAKELPARAM(SEARCHBAR_ICON_SIZE, SEARCHBAR_ICON_SIZE));
-	SendMessage(hwndTB, TB_SETBUTTONSIZE, 0, MAKELPARAM(g_nSearchButtonWidth, g_nSearchControlHeight));
-	if(fList)
+	SendMessage(hwndTB, TB_SETBUTTONSIZE, 0, MAKELPARAM(buttonWidth, g_nSearchControlHeight));
+	if(fMode)
 	{
+		// TBSTYLE_LIST keeps an image-derived item width when text is hidden.
+		// Use icon-only layout so the two native hit areas fit the pill exactly.
 		SendMessage(hwndTB, TB_SETEXTENDEDSTYLE, 0, TBSTYLE_EX_MIXEDBUTTONS);
-		SendMessage(hwndTB, TB_SETMAXTEXTROWS, 1, 0);
+		SendMessage(hwndTB, TB_SETMAXTEXTROWS, 0, 0);
+		SendMessage(hwndTB, TB_SETBUTTONWIDTH, 0, MAKELPARAM(g_nSearchControlHeight, g_nSearchControlHeight));
 	}
 	SendMessage(hwndTB, TB_ADDBUTTONS, buttonCount, (LPARAM)buttons);
 	SendMessage(hwndTB, TB_AUTOSIZE, 0, 0);
-	SendMessage(hwndTB, TB_SETBUTTONSIZE, 0, MAKELPARAM(g_nSearchButtonWidth, g_nSearchControlHeight));
+	SendMessage(hwndTB, TB_SETBUTTONSIZE, 0, MAKELPARAM(buttonWidth, g_nSearchControlHeight));
 
 	return hwndTB;
 }
@@ -153,27 +163,46 @@ static void SetSearchEditPadding(HWND hwndEdit)
 	InvalidateRect(hwndEdit, 0, TRUE);
 }
 
-
 // "Search", or "Replace", in an empty box
-static void PaintSearchEditHint(HWND hwndEdit)
+static void PaintSearchEdit(HWND hwndEdit, HDC hdc)
 {
 	TCHAR *hint = GetDlgCtrlID(hwndEdit) == IDC_SEARCH_REPLACEWITH ? _T("Replace") : _T("Search");
 	RECT rect;
-	HDC hdc;
 	HFONT hOldFont;
+	HRGN corners;
+	HRGN rounded;
+	COLORREF border = GetFocus() == hwndEdit ? GetSysColor(COLOR_HIGHLIGHT) :
+		SearchModeBlend(GetSysColor(COLOR_WINDOW), GetSysColor(COLOR_3DSHADOW), 65);
+	int saved = SaveDC(hdc);
 
-	if(GetWindowTextLength(hwndEdit) != 0)
-		return;
+	// The native edit fills its rectangular client area. Clear the pixels
+	// outside our rounded outline as well, including during WM_PRINTCLIENT.
+	GetClientRect(hwndEdit, &rect);
+	corners = CreateRectRgnIndirect(&rect);
+	rounded = CreateRoundRectRgn(rect.left, rect.top, rect.right, rect.bottom,
+		SearchCornerRadius() * 2, SearchCornerRadius() * 2);
+	CombineRgn(corners, corners, rounded, RGN_DIFF);
+	FillRgn(hdc, corners, GetSysColorBrush(COLOR_BTNFACE));
+	DeleteObject(rounded);
+	DeleteObject(corners);
 
-	SendMessage(hwndEdit, EM_GETRECT, 0, (LPARAM)&rect);
+	if(GetWindowTextLength(hwndEdit) == 0)
+	{
+		SendMessage(hwndEdit, EM_GETRECT, 0, (LPARAM)&rect);
+		hOldFont = SelectObject(hdc, (HFONT)SendMessage(hwndEdit, WM_GETFONT, 0, 0));
+		SetBkMode(hdc, TRANSPARENT);
+		SetTextColor(hdc, GetSysColor(COLOR_GRAYTEXT));
+		DrawText(hdc, hint, -1, &rect, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+		SelectObject(hdc, hOldFont);
+	}
 
-	hdc = GetDC(hwndEdit);
-	hOldFont = SelectObject(hdc, (HFONT)SendMessage(hwndEdit, WM_GETFONT, 0, 0));
-	SetBkMode(hdc, TRANSPARENT);
-	SetTextColor(hdc, GetSysColor(COLOR_GRAYTEXT));
-	DrawText(hdc, hint, -1, &rect, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
-	SelectObject(hdc, hOldFont);
-	ReleaseDC(hwndEdit, hdc);
+	GetClientRect(hwndEdit, &rect);
+	SelectObject(hdc, GetStockObject(NULL_BRUSH));
+	SelectObject(hdc, GetStockObject(DC_PEN));
+	SetDCPenColor(hdc, border);
+	RoundRect(hdc, rect.left, rect.top, rect.right, rect.bottom,
+		SearchCornerRadius() * 2, SearchCornerRadius() * 2);
+	RestoreDC(hdc, saved);
 }
 
 static int ControlWidth(HWND hwndCtrl)
@@ -193,41 +222,105 @@ static int ToolbarWidth(HWND hwndTB)
 	return rect.right;
 }
 
-static TCHAR *SearchModeText(UINT_PTR id)
+static int SearchModeButtonSize(void)
 {
-	return id == IDC_SEARCH_FILTER ? _T("Filter") : _T("Highlight");
+	return g_nSearchControlHeight - SEARCHBAR_MODE_PADDING * 2;
 }
 
-static void SetFindButtonWidths(HWND hwndTB)
+static void SetSearchButtonWidths(HWND hwndTB, int size)
 {
-	static const UINT ids[] = { IDC_SEARCH_PREVIOUS, IDC_SEARCH_NEXT };
 	TBBUTTONINFO info = { sizeof(info), TBIF_SIZE };
-	size_t i;
+	int count = (int)SendMessage(hwndTB, TB_BUTTONCOUNT, 0, 0);
+	TBBUTTON button;
+	int i;
 
-	info.cx = (WORD)g_nSearchControlHeight;
-	for(i = 0; i < ARRAYSIZE(ids); i++)
-		SendMessage(hwndTB, TB_SETBUTTONINFO, ids[i], (LPARAM)&info);
+	info.cx = (WORD)size;
+	for(i = 0; i < count; i++)
+		if(SendMessage(hwndTB, TB_GETBUTTON, i, (LPARAM)&button))
+			SendMessage(hwndTB, TB_SETBUTTONINFO, button.idCommand, (LPARAM)&info);
 }
 
-static void SetSearchModeButtonWidths(HWND hwndTB)
+// Keep the mode switch quiet: the same icons as Previous/Next, with
+// a neutral track and a raised segment for the checked mode. The native toolbar
+// still handles input, radio-group state, tooltips and accessibility.
+static COLORREF SearchModeBlend(COLORREF a, COLORREF b, int amount)
 {
-	static const UINT ids[] = { IDC_SEARCH_HIGHLIGHT, IDC_SEARCH_FILTER };
-	TBBUTTONINFO info = { sizeof(info), TBIF_SIZE };
-	HDC hdc = GetDC(hwndTB);
-	HFONT hFont = StatusBarFont() ? StatusBarFont() : (HFONT)GetStockObject(DEFAULT_GUI_FONT);
-	HGDIOBJ hOldFont = SelectObject(hdc, hFont);
-	SIZE size;
-	size_t i;
+	return RGB((GetRValue(a) * (100 - amount) + GetRValue(b) * amount) / 100,
+		(GetGValue(a) * (100 - amount) + GetGValue(b) * amount) / 100,
+		(GetBValue(a) * (100 - amount) + GetBValue(b) * amount) / 100);
+}
 
-	for(i = 0; i < ARRAYSIZE(ids); i++)
+static void DrawSearchRoundedRect(HDC hdc, RECT rect, COLORREF fill, COLORREF border, int radius)
+{
+	HGDIOBJ oldPen = SelectObject(hdc, GetStockObject(DC_PEN));
+	HGDIOBJ oldBrush = SelectObject(hdc, GetStockObject(DC_BRUSH));
+
+	SetDCPenColor(hdc, border);
+	SetDCBrushColor(hdc, fill);
+	RoundRect(hdc, rect.left, rect.top, rect.right, rect.bottom, radius * 2, radius * 2);
+	SelectObject(hdc, oldBrush);
+	SelectObject(hdc, oldPen);
+}
+
+static LRESULT DrawSearchModeToolbar(NMTBCUSTOMDRAW *draw)
+{
+	HIGHCONTRAST contrast = { sizeof(contrast) };
+	COLORREF face = GetSysColor(COLOR_BTNFACE);
+	COLORREF shadow = GetSysColor(COLOR_3DSHADOW);
+	COLORREF track = SearchModeBlend(face, shadow, 12);
+	RECT rect;
+	TBBUTTON button;
+	int index;
+	int saved;
+	int innerRadius = max(2, SearchCornerRadius() - SEARCHBAR_MODE_PADDING);
+
+	// Let Windows supply its accessible checked/hover colours in high contrast.
+	if(SystemParametersInfo(SPI_GETHIGHCONTRAST, sizeof(contrast), &contrast, 0) &&
+		(contrast.dwFlags & HCF_HIGHCONTRASTON))
+		return CDRF_DODEFAULT;
+
+	if(draw->nmcd.dwDrawStage == CDDS_PREPAINT)
 	{
-		GetTextExtentPoint32(hdc, SearchModeText(ids[i]), lstrlen(SearchModeText(ids[i])), &size);
-		info.cx = (WORD)(SEARCHBAR_ICON_SIZE + size.cx + SEARCHBAR_TEXT_BUTTON_PADX * 2);
-		SendMessage(hwndTB, TB_SETBUTTONINFO, ids[i], (LPARAM)&info);
+		GetClientRect(g_hwndModeTB, &rect);
+		FillRect(draw->nmcd.hdc, &rect, GetSysColorBrush(COLOR_BTNFACE));
+		DrawSearchRoundedRect(draw->nmcd.hdc, rect, track, track, SearchCornerRadius());
+		return CDRF_NOTIFYITEMDRAW;
 	}
 
-	SelectObject(hdc, hOldFont);
-	ReleaseDC(hwndTB, hdc);
+	if(draw->nmcd.dwDrawStage != CDDS_ITEMPREPAINT)
+		return CDRF_DODEFAULT;
+
+	index = (int)SendMessage(g_hwndModeTB, TB_COMMANDTOINDEX, draw->nmcd.dwItemSpec, 0);
+	if(!SendMessage(g_hwndModeTB, TB_GETBUTTON, index, (LPARAM)&button))
+		return CDRF_DODEFAULT;
+
+	saved = SaveDC(draw->nmcd.hdc);
+	rect = draw->nmcd.rc;
+	// Native toolbar items can be taller than their visible window because of
+	// the bitmap's padding. Base the segments on the edit-height track instead.
+	rect.left += (rect.right - rect.left - SearchModeButtonSize()) / 2;
+	rect.right = rect.left + SearchModeButtonSize();
+	rect.top = SEARCHBAR_MODE_PADDING;
+	rect.bottom = g_nSearchControlHeight - SEARCHBAR_MODE_PADDING;
+	if(draw->nmcd.uItemState & CDIS_SELECTED)
+		DrawSearchRoundedRect(draw->nmcd.hdc, rect, SearchModeBlend(track, shadow, 15), shadow, innerRadius);
+	else if(button.fsState & TBSTATE_CHECKED)
+		DrawSearchRoundedRect(draw->nmcd.hdc, rect, GetSysColor(COLOR_WINDOW), SearchModeBlend(face, shadow, 25), innerRadius);
+	else if(draw->nmcd.uItemState & CDIS_HOT)
+		DrawSearchRoundedRect(draw->nmcd.hdc, rect, face, face, innerRadius);
+
+	ImageList_Draw(g_hSearchImageList, button.iBitmap, draw->nmcd.hdc,
+		(rect.left + rect.right - SEARCHBAR_ICON_SIZE) / 2,
+		(g_nSearchControlHeight - SEARCHBAR_ICON_SIZE) / 2, ILD_TRANSPARENT);
+
+	if(GetFocus() == g_hwndModeTB && SendMessage(g_hwndModeTB, TB_GETHOTITEM, 0, 0) == index &&
+		!(SendMessage(g_hwndModeTB, WM_QUERYUISTATE, 0, 0) & UISF_HIDEFOCUS))
+	{
+		InflateRect(&rect, -3, -3);
+		DrawFocusRect(draw->nmcd.hdc, &rect);
+	}
+	RestoreDC(draw->nmcd.hdc, saved);
+	return CDRF_SKIPDEFAULT;
 }
 
 static void SearchBarLayout(HWND hwnd)
@@ -236,7 +329,7 @@ static void SearchBarLayout(HWND hwnd)
 	HWND hwndReplace = GetDlgItem(hwnd, IDC_SEARCH_REPLACE);
 	HWND hwndReplaceAll = GetDlgItem(hwnd, IDC_SEARCH_REPLACEALL);
 	int findWidth = ToolbarWidth(g_hwndFindTB);
-	int modeWidth = ToolbarWidth(g_hwndModeTB);
+	int modeWidth = g_nSearchControlHeight * 2;
 	int width;
 	int height;
 	int x;
@@ -261,7 +354,7 @@ static void SearchBarLayout(HWND hwnd)
 	if(g_fReplacing)
 		replaceButtons = ControlWidth(hwndReplace) + ControlWidth(hwndReplaceAll) + SEARCHBAR_GAP * 3;
 
-	maxEditWidth = width - SEARCHBAR_PADX * 2 - g_nSearchButtonWidth * 2 - findWidth - modeWidth - SEARCHBAR_GAP - SEARCHBAR_TOOLBAR_GAP * 2 - SEARCHBAR_FIND_GROUP_GAP - replaceButtons;
+	maxEditWidth = width - SEARCHBAR_PADX * 2 - g_nSearchButtonWidth * 2 - findWidth - modeWidth - SEARCHBAR_GAP - SEARCHBAR_TOOLBAR_GAP - SEARCHBAR_MODE_GAP - SEARCHBAR_FIND_GROUP_GAP - replaceButtons;
 	if(g_fReplacing)
 		maxEditWidth = (maxEditWidth - SEARCHBAR_GAP) / 2;
 	if(maxEditWidth < 40)
@@ -281,7 +374,7 @@ static void SearchBarLayout(HWND hwnd)
 	x += findWidth + SEARCHBAR_FIND_GROUP_GAP;
 
 	MoveWindow(g_hwndModeTB, x, y, modeWidth, controlHeight, TRUE);
-	x += modeWidth + SEARCHBAR_TOOLBAR_GAP;
+	x += modeWidth + SEARCHBAR_MODE_GAP;
 
 	if(g_fReplacing)
 	{
@@ -298,6 +391,10 @@ static void SearchBarLayout(HWND hwnd)
 	}
 
 	MoveWindow(g_hwndCloseTB, width - SEARCHBAR_PADX - g_nSearchButtonWidth, y, g_nSearchButtonWidth, controlHeight, TRUE);
+
+	// Moving an edit exposes parts of its old rectangular frame.
+	// Repaint the parent too so those pixels cannot remain beside the toggle.
+	RedrawWindow(hwnd, 0, 0, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN);
 }
 
 static void PaintSearchBar(HWND hwnd)
@@ -328,12 +425,28 @@ static LRESULT CALLBACK SearchEditProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 	SIZE_T i;
 	SIZE_T j;
 	HGLOBAL hmem;
+	HDC hdc;
+	int saved;
 
 	switch(msg)
 	{
 	case WM_PAINT:
 		retval = CallWindowProc(g_OldSearchEditProc, hwnd, msg, wParam, lParam);
-		PaintSearchEditHint(hwnd);
+		hdc = GetDC(hwnd);
+		PaintSearchEdit(hwnd, hdc);
+		ReleaseDC(hwnd, hdc);
+		return retval;
+
+	case WM_PRINTCLIENT:
+		saved = SaveDC((HDC)wParam);
+		retval = CallWindowProc(g_OldSearchEditProc, hwnd, msg, wParam, lParam);
+		RestoreDC((HDC)wParam, saved);
+		PaintSearchEdit(hwnd, (HDC)wParam);
+		return retval;
+
+	case WM_SIZE:
+		retval = CallWindowProc(g_OldSearchEditProc, hwnd, msg, wParam, lParam);
+		SetSearchEditPadding(hwnd);
 		return retval;
 
 	case WM_KEYDOWN:
@@ -408,6 +521,22 @@ static LRESULT CALLBACK SearchEditProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 	return CallWindowProc(g_OldSearchEditProc, hwnd, msg, wParam, lParam);
 }
 
+static void InitSearchEdit(HWND hwndEdit, HFONT font)
+{
+	if(!g_OldSearchEditProc)
+		g_OldSearchEditProc = (WNDPROC)GetWindowLongPtr(hwndEdit, GWLP_WNDPROC);
+	SetWindowLongPtr(hwndEdit, GWLP_WNDPROC, (LONG_PTR)SearchEditProc);
+
+	// Keep the native editor, replacing only its themed frame and corners.
+	SetWindowTheme(hwndEdit, L"", L"");
+	SetWindowLongPtr(hwndEdit, GWL_STYLE, GetWindowLongPtr(hwndEdit, GWL_STYLE) & ~WS_BORDER);
+	SetWindowLongPtr(hwndEdit, GWL_EXSTYLE, GetWindowLongPtr(hwndEdit, GWL_EXSTYLE) & ~WS_EX_CLIENTEDGE);
+	SetWindowPos(hwndEdit, 0, 0, 0, 0, 0,
+		SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+	SendMessage(hwndEdit, WM_SETFONT, (WPARAM)font, TRUE);
+	SetSearchEditPadding(hwndEdit);
+}
+
 //
 //	Show or hide the replace box and its buttons
 //
@@ -438,8 +567,8 @@ static INT_PTR CALLBACK SearchBarProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
 	};
 	TBBUTTON tbbMode[] =
 	{
-		{ SEARCH_ICON_HIGHLIGHT, IDC_SEARCH_HIGHLIGHT, TBSTATE_ENABLED | TBSTATE_CHECKED, BTNS_CHECKGROUP | BTNS_SHOWTEXT, { 0 }, 0, (INT_PTR)_T("Highlight") },
-		{ SEARCH_ICON_FILTER, IDC_SEARCH_FILTER, TBSTATE_ENABLED, BTNS_CHECKGROUP | BTNS_SHOWTEXT, { 0 }, 0, (INT_PTR)_T("Filter") }
+		{ SEARCH_ICON_HIGHLIGHT, IDC_SEARCH_HIGHLIGHT, TBSTATE_ENABLED | TBSTATE_CHECKED, BTNS_CHECKGROUP, { 0 }, 0, (INT_PTR)_T("Highlight") },
+		{ SEARCH_ICON_FILTER, IDC_SEARCH_FILTER, TBSTATE_ENABLED, BTNS_CHECKGROUP, { 0 }, 0, (INT_PTR)_T("Filter") }
 	};
 	TBBUTTON tbbClose[] =
 	{
@@ -461,27 +590,24 @@ static INT_PTR CALLBACK SearchBarProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
 
 		g_hwndOptionsTB = CreateSearchToolbar(hwnd, IDC_SEARCH_OPTIONS, tbbOptions, 1, FALSE);
 		g_hwndFindTB = CreateSearchToolbar(hwnd, IDC_SEARCH_PREVIOUS, tbbFind, 2, FALSE);
-		SetFindButtonWidths(g_hwndFindTB);
+		SetSearchButtonWidths(g_hwndFindTB, g_nSearchControlHeight);
 		g_hwndModeTB = CreateSearchToolbar(hwnd, IDC_SEARCH_HIGHLIGHT, tbbMode, 2, TRUE);
-		SetSearchModeButtonWidths(g_hwndModeTB);
+		SendMessage(g_hwndModeTB, TB_SETPADDING, 0, MAKELPARAM(SEARCHBAR_MODE_PADDING, SEARCHBAR_MODE_PADDING));
+		SendMessage(g_hwndModeTB, TB_SETBUTTONWIDTH, 0, MAKELPARAM(g_nSearchControlHeight, g_nSearchControlHeight));
+		SendMessage(g_hwndModeTB, TB_SETBUTTONSIZE, 0, MAKELPARAM(g_nSearchControlHeight, g_nSearchControlHeight));
+		SetSearchButtonWidths(g_hwndModeTB, g_nSearchControlHeight);
 		g_hwndCloseTB = CreateSearchToolbar(hwnd, IDCANCEL, tbbClose, 1, FALSE);
 
 		hwndEdit = GetDlgItem(hwnd, IDC_EDIT1);
 		hStatusFont = StatusBarFont();
 		if(hStatusFont == 0)
 			hStatusFont = (HFONT)SendMessage(hwnd, WM_GETFONT, 0, 0);
-		SendMessage(hwndEdit, WM_SETFONT, (WPARAM)hStatusFont, TRUE);
-		SetSearchEditPadding(hwndEdit);
-
-		g_OldSearchEditProc = (WNDPROC)GetWindowLongPtr(hwndEdit, GWLP_WNDPROC);
-		SetWindowLongPtr(hwndEdit, GWLP_WNDPROC, (LONG_PTR)SearchEditProc);
+		InitSearchEdit(hwndEdit, hStatusFont);
 
 		// the replace box works as the search box does (both are edit controls,
 		// so they share its window procedure), and its buttons wait for Ctrl+H
 		hwndEdit = GetDlgItem(hwnd, IDC_SEARCH_REPLACEWITH);
-		SendMessage(hwndEdit, WM_SETFONT, (WPARAM)hStatusFont, TRUE);
-		SetSearchEditPadding(hwndEdit);
-		SetWindowLongPtr(hwndEdit, GWLP_WNDPROC, (LONG_PTR)SearchEditProc);
+		InitSearchEdit(hwndEdit, hStatusFont);
 		SendDlgItemMessage(hwnd, IDC_SEARCH_REPLACE,	WM_SETFONT, (WPARAM)hStatusFont, TRUE);
 		SendDlgItemMessage(hwnd, IDC_SEARCH_REPLACEALL, WM_SETFONT, (WPARAM)hStatusFont, TRUE);
 
@@ -534,6 +660,12 @@ static INT_PTR CALLBACK SearchBarProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
 		return FALSE;
 
 	case WM_NOTIFY:
+		if(((NMHDR *)lParam)->hwndFrom == g_hwndModeTB && ((NMHDR *)lParam)->code == NM_CUSTOMDRAW)
+		{
+			SetWindowLongPtr(hwnd, DWLP_MSGRESULT, DrawSearchModeToolbar((NMTBCUSTOMDRAW *)lParam));
+			return TRUE;
+		}
+
 		if(((NMHDR *)lParam)->code == TBN_GETINFOTIP)
 		{
 			NMTBGETINFOTIP *tip = (NMTBGETINFOTIP *)lParam;
