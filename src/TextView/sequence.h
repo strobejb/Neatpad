@@ -32,6 +32,9 @@ const size_w MEM_BLOCK_SIZE = 0x40000;
 const size_w LINE_PAGE_SIZE = 0x10000;		// granularity of each buffer's cached line-break counts
 const size_w LINE_SCAN_AHEAD = 0x400000;	// how far offset_from_lineno() may scan past the exact prefix
 
+class state_writer;
+class state_reader;
+
 //
 //	sequence class!
 //
@@ -184,6 +187,11 @@ public:
 	// so undoing or redoing back to that point is unmodified again.
 	void		mark_saved();
 	bool		modified() const;
+
+    // Durable sequence checkpoints, including undo/redo. Only between groups;
+    // failed loads leave this sequence unchanged. See sequence_state.h.
+    bool save_state(state_writer &out) const;
+    bool load_state(state_reader &in);
 
 #ifdef DEBUG_SEQUENCE
 	// print out the sequence

@@ -1,0 +1,45 @@
+---
+BasedOnStyle: Microsoft
+
+# Classic brace style used by the project.
+BreakBeforeBraces: Allman
+
+# Match existing C++ pointer/reference spacing: const Foo &bar, Foo *ptr.
+DerivePointerAlignment: false
+PointerAlignment: Right
+
+# Avoid compact one-line control flow creeping into edited code.
+AllowShortBlocksOnASingleLine: Never
+AllowShortCaseLabelsOnASingleLine: false
+AllowShortEnumsOnASingleLine: false
+AllowShortFunctionsOnASingleLine: None
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLambdasOnASingleLine: None
+AllowShortLoopsOnASingleLine: false
+
+ColumnLimit: 120
+# Keep Neatpad's existing .gitattributes policy.
+LineEnding: CRLF
+
+# Keep intentional constant/member assignment blocks readable.
+AlignConsecutiveAssignments:
+  Enabled: true
+  AcrossEmptyLines: false
+  AcrossComments: true
+  AlignCompound: true
+  PadOperators: true
+
+AlignConsecutiveDeclarations:
+  Enabled: true
+  AcrossEmptyLines: false
+  AcrossComments: true
+
+AlignTrailingComments:
+  Kind: Always
+  OverEmptyLines: 0
+
+
+SeparateDefinitionBlocks: Always
+
+# Win32 headers in Neatpad require their existing include order.
+SortIncludes: Never

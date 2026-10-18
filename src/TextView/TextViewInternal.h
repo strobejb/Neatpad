@@ -130,8 +130,10 @@ private:
 	BOOL		UpdateTail();
 	LONG		SaveFile(TCHAR *szFileName, UINT nEncoding, BOOL fBom, UINT nLineBreak);
 	LONG		ClearFile();
+    BOOL        SaveState(TEXTVIEWRECOVERY *state);
+    BOOL        LoadState(TEXTVIEWRECOVERY *state);
 
-	LONG		IndexFile(BOOL fIndex);
+    LONG		IndexFile(BOOL fIndex);
 	LONG		OnIndexTimer();
 	VOID		IndexChanged();
 	TEXT_RESULT	GotoLine(size_w lineno, bool fMove);

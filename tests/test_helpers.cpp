@@ -248,6 +248,22 @@ std::string encode_text(const wchar_t *text, TEXT_ENCODING encoding)
         bytes.append(reinterpret_cast<const char *>(text), length * sizeof(wchar_t));
         break;
 
+    case NCP_UTF16BE:
+        bytes.assign("\xfe\xff", 2);
+        for (size_t i = 0; i < length; ++i)
+        {
+            bytes.push_back(static_cast<char>(text[i] >> 8));
+            bytes.push_back(static_cast<char>(text[i]));
+        }
+        break;
+
+    case NCP_UTF32BE:
+        bytes.assign("\0\0\xfe\xff", 4);
+        bytes.resize(4 + out);
+        utf16_to_utf32be(reinterpret_cast<const UTF16 *>(text), length, reinterpret_cast<UTF8 *>(&bytes[4]), &out);
+        bytes.resize(4 + out);
+        break;
+
     case NCP_UTF32:
         bytes.assign("\xff\xfe\0\0", 4);
         bytes.resize(4 + out);

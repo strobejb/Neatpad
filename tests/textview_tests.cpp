@@ -4,6 +4,43 @@
 //	never shown.
 //
 #include "tests.h"
+#include "../src/TextView/sequence_state.h"
+#include <tchar.h>
+#include <shellapi.h>
+#include "../src/Neatpad/Neatpad.h"
+
+// Minimal host for the real C recovery controller. Controls remain hidden,
+// and RECOVERY_TESTS routes all store I/O to a disposable test directory.
+HWND         g_hwndTextView, g_hwndMain;
+TCHAR        g_szFileName[MAX_PATH], g_szFileTitle[MAX_PATH];
+static TCHAR recovery_test_root[MAX_PATH];
+static UINT  recovery_notice;
+
+extern "C" BOOL RecoveryTestRoot(TCHAR *directory)
+{
+    if (!recovery_test_root[0])
+        return FALSE;
+    lstrcpy(directory, recovery_test_root);
+    return TRUE;
+}
+
+void ShowNotifyBar(UINT notice)
+{
+    recovery_notice = notice;
+}
+
+BOOL NeatpadReloadFile(HWND)
+{
+    return FALSE;
+}
+
+void ShowRecoveredFile(HWND, const TCHAR *filename)
+{
+    const TCHAR *title = _tcsrchr(filename, _T('\\'));
+    lstrcpy(g_szFileName, filename);
+    lstrcpy(g_szFileTitle, title ? title + 1 : filename);
+    ShowNotifyBar(filename[0] ? NOTIFY_RECOVERED : NOTIFY_RECOVERED_UNTITLED);
+}
 
 namespace
 {
@@ -18,7 +55,11 @@ LRESULT CALLBACK HiddenParentProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPa
         g_index_notified = *reinterpret_cast<TVNINDEXINFO *>(lParam);
 
     if(msg == WM_NOTIFY && reinterpret_cast<NMHDR *>(lParam)->code == TVN_CHANGED)
+    {
         g_changes_notified++;
+        if (reinterpret_cast<NMHDR *>(lParam)->hwndFrom == g_hwndTextView)
+            RecoveryChanged();
+    }
 
     return DefWindowProc(hwnd, msg, wParam, lParam);
 }
@@ -611,17 +652,381 @@ void textview_filters_lines_and_goes_back_to_them()
     DeleteFile(path);
 }
 
-const test_case tests[] =
+// Recovery tests use the same hidden controls as the other view tests.
+struct RecoveryStore
 {
-    { "textview_edit_messages_match_an_edit_control", textview_edit_messages_match_an_edit_control },
-    { "textview_edit_selection_covers_whole_characters", textview_edit_selection_covers_whole_characters },
-    { "textview_edit_positions_round_trip", textview_edit_positions_round_trip },
-    { "textview_edit_replacesel_matches_an_edit_control", textview_edit_replacesel_matches_an_edit_control },
-    { "textview_edit_scrolling_matches_an_edit_control", textview_edit_scrolling_matches_an_edit_control },
-    { "textview_edit_messages_index_as_they_need", textview_edit_messages_index_as_they_need },
-    { "textview_goto_line_reports_indexing", textview_goto_line_reports_indexing },
-    { "textview_converts_line_breaks", textview_converts_line_breaks },
-    { "textview_filters_lines_and_goes_back_to_them", textview_filters_lines_and_goes_back_to_them },
+    TCHAR path[MAX_PATH];
+
+    RecoveryStore()
+    {
+        CHECK(write_temp_file("", 0, path));
+        CHECK(DeleteFile(path));
+        CHECK(CreateDirectory(path, 0));
+    }
+
+    ~RecoveryStore()
+    {
+        TCHAR           pattern[MAX_PATH], file[MAX_PATH];
+        WIN32_FIND_DATA data;
+        wsprintf(pattern, TEXT("%s\\*"), path);
+        HANDLE find = FindFirstFile(pattern, &data);
+        if (find != INVALID_HANDLE_VALUE)
+        {
+            do
+            {
+                if (!(data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
+                {
+                    wsprintf(file, TEXT("%s\\%s"), path, data.cFileName);
+                    DeleteFile(file);
+                }
+            } while (FindNextFile(find, &data));
+            FindClose(find);
+        }
+        RemoveDirectory(path);
+    }
+};
+
+void textview_recovers_encoding_selection_and_both_histories()
+{
+    for (TEXT_ENCODING encoding : {NCP_UTF8, NCP_UTF16, NCP_UTF16BE, NCP_UTF32, NCP_UTF32BE})
+    {
+        RecoveryStore store;
+        EditPair      pair = {};
+        CHECK(open_edit_pair(&pair, L"one\r\ntwo \x03bb\r\nthree", encoding));
+        TextView_SetInMemoryLimit(pair.view, 1024 * 1024);
+        CHECK(TextView_OpenFile(pair.view, pair.path));
+        SendMessage(pair.view, EM_SETSEL, 0, 3);
+        SendMessage(pair.view, EM_REPLACESEL, TRUE, (LPARAM)L"first");
+        SendMessage(pair.view, EM_SETSEL, 0, 0);
+        SendMessage(pair.view, EM_REPLACESEL, TRUE, (LPARAM)L"extra");
+        TextView_Undo(pair.view);
+        CHECK(TextView_CanUndo(pair.view) && TextView_CanRedo(pair.view));
+        SendMessage(pair.view, EM_SETSEL, 9, 7);
+        TEXTVIEWRECOVERY state = {};
+        state.directory        = store.path;
+        lstrcpy(state.filename, pair.path);
+        CHECK(TextView_SaveState(pair.view, &state));
+        const std::wstring expected = window_text(pair.view);
+        DestroyWindow(pair.parent); // original sequence gone; original file remains the base
+
+        HWND parent = create_hidden_parent(), view = create_textview(parent);
+        state.filename[0] = 0;
+        CHECK(TextView_LoadState(view, &state));
+        CHECK(lstrcmp(state.filename, pair.path) == 0);
+        CHECK(window_text(view) == expected && TextView_GetModify(view));
+        CHECK(TextView_GetFormat(view) == encoding);
+        CHECK(TextView_GetBom(view) == (encoding != NCP_UTF8));
+        CHECK(TextView_CanUndo(view) && TextView_CanRedo(view));
+        DWORD start = 0, end = 0;
+        SendMessage(view, EM_GETSEL, (WPARAM)&start, (LPARAM)&end);
+        CHECK(start == 7 && end == 9);
+        TextView_Redo(view);
+        CHECK(window_text(view) == L"extra" + expected);
+        TextView_Undo(view);
+        CHECK(window_text(view) == expected);
+        TextView_Undo(view);
+        CHECK(window_text(view) == L"one\r\ntwo \x03bb\r\nthree");
+        CHECK(!TextView_GetModify(view));
+        TextView_Redo(view);
+        SendMessage(view, EM_SETSEL, 0, 0);
+        SendMessage(view, EM_REPLACESEL, TRUE, (LPARAM)L"new ");
+        CHECK(TextView_SaveState(view, &state)); // continuation seals a new buffer
+        DestroyWindow(parent);
+        parent = create_hidden_parent();
+        view   = create_textview(parent);
+        CHECK(TextView_LoadState(view, &state));
+        CHECK(window_text(view) == L"new " + expected);
+        if (encoding == NCP_UTF8)
+        {
+            // Save replaces the original, but its old bytes remain needed by undo.
+            state.preserveSources = TRUE;
+            CHECK(TextView_SaveState(view, &state));
+            state.preserveSources = FALSE;
+            CHECK(TextView_SaveFile(view, pair.path, encoding, FALSE, 0));
+            CHECK(!TextView_GetModify(view));
+            SendMessage(view, EM_SETSEL, 0, 0);
+            SendMessage(view, EM_REPLACESEL, TRUE, (LPARAM)L"after save ");
+            CHECK(TextView_SaveState(view, &state));
+            DestroyWindow(parent);
+            parent = create_hidden_parent();
+            view   = create_textview(parent);
+            CHECK(TextView_LoadState(view, &state));
+            CHECK(window_text(view) == L"after save new " + expected);
+            TextView_Undo(view);
+            CHECK(!TextView_GetModify(view));
+            TextView_Undo(view);
+            CHECK(window_text(view) == expected && TextView_GetModify(view));
+        }
+        DestroyWindow(parent);
+        CHECK(DeleteFile(pair.path));
+    }
+}
+
+void textview_failed_recovery_or_revert_keeps_the_open_document()
+{
+    RecoveryStore store;
+    HWND          parent = create_hidden_parent(), view = create_textview(parent);
+    TextView_Clear(view); // the app sends File > New before accepting input
+    SendMessage(view, EM_REPLACESEL, TRUE, (LPARAM)L"untitled changes");
+    TEXTVIEWRECOVERY state = {};
+    state.directory        = store.path;
+    CHECK(TextView_SaveState(view, &state));
+    TextView_Clear(view);
+    CHECK(TextView_LoadState(view, &state));
+    CHECK(!state.filename[0]);
+    CHECK(window_text(view) == L"untitled changes");
+    TCHAR missing[MAX_PATH];
+    wsprintf(missing, TEXT("%s\\missing.txt"), store.path);
+    CHECK(!TextView_OpenFile(view, missing));
+    CHECK(window_text(view) == L"untitled changes" && TextView_GetModify(view));
+
+    // A valid sequence with invalid document metadata must never replace it.
+    RecoveryStore invalid;
+    sequence      raw;
+    CHECK(raw.init());
+    CHECK(raw.insert(0, (const seqchar *)"bad", 3));
+    state_writer writer(invalid.path);
+    writer.set_context(std::vector<uint8_t>(56, 0));
+    CHECK(raw.save_state(writer));
+    state.directory = invalid.path;
+    lstrcpy(state.filename, TEXT("unchanged"));
+    CHECK(!TextView_LoadState(view, &state));
+    CHECK(lstrcmp(state.filename, TEXT("unchanged")) == 0);
+    CHECK(window_text(view) == L"untitled changes" && TextView_CanUndo(view));
+
+    // Transactional opening must carry the user's small-file memory setting
+    // into the new document, including after a recovery.
+    TCHAR small[MAX_PATH];
+    CHECK(write_temp_file("small", 5, small));
+    TextView_SetInMemoryLimit(view, 1024);
+    CHECK(TextView_OpenFile(view, small));
+    CHECK(TextView_OpenFile(view, small));
+    HANDLE writerHandle = CreateFile(small, GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, 0,
+                                     OPEN_EXISTING, 0, 0);
+    CHECK(writerHandle != INVALID_HANDLE_VALUE);
+    if (writerHandle != INVALID_HANDLE_VALUE)
+        CloseHandle(writerHandle);
+    DestroyWindow(parent);
+    CHECK(DeleteFile(small));
+}
+
+struct RecoveryHost
+{
+    RecoveryStore root;
+    HWND          parent, view;
+
+    RecoveryHost()
+    {
+        lstrcpy(recovery_test_root, root.path);
+        RecoveryReset();
+        Open();
+    }
+
+    void Open()
+    {
+        parent = create_hidden_parent();
+        view   = create_textview(parent);
+        CHECK(parent && view);
+        g_hwndMain      = parent;
+        g_hwndTextView  = view;
+        g_szFileName[0] = g_szFileTitle[0] = 0;
+        recovery_notice                    = 0;
+        TextView_Clear(view);
+    }
+
+    void Restart()
+    {
+        DestroyWindow(parent);
+        RecoveryShutdown();
+        g_hwndMain = g_hwndTextView = 0;
+        Open();
+    }
+
+    bool MarkerPath(TCHAR path[MAX_PATH], const TCHAR *marker)
+    {
+        TCHAR           pattern[MAX_PATH];
+        WIN32_FIND_DATA data;
+        wsprintf(pattern, TEXT("%s\\{*"), root.path);
+        HANDLE find = FindFirstFile(pattern, &data);
+        if (find == INVALID_HANDLE_VALUE)
+            return false;
+        wsprintf(path, TEXT("%s\\%s\\%s"), root.path, data.cFileName, marker);
+        FindClose(find);
+        return true;
+    }
+
+    ~RecoveryHost()
+    {
+        TextView_Clear(view);
+        RecoveryReset();
+        DestroyWindow(parent);
+        g_hwndMain = g_hwndTextView = 0;
+        recovery_test_root[0]       = 0;
+    }
+};
+
+void recovery_controller_keeps_the_final_edit_and_both_histories_on_exit()
+{
+    RecoveryHost host;
+    SendMessage(host.view, EM_REPLACESEL, TRUE, (LPARAM)L"first");
+    SendMessage(host.view, EM_SETSEL, 0, 0);
+    SendMessage(host.view, EM_REPLACESEL, TRUE, (LPARAM)L"second");
+    TextView_Undo(host.view);
+    CHECK(TextView_CanUndo(host.view) && TextView_CanRedo(host.view));
+    // No idle tick: exit must capture the most recent state immediately.
+    CHECK(RecoveryClose());
+    host.Restart();
+    CHECK(RecoveryRestore(host.parent));
+    CHECK(recovery_notice == NOTIFY_SESSION_RESTORED_UNTITLED);
+    CHECK(window_text(host.view) == L"first");
+    CHECK(TextView_GetModify(host.view));
+    CHECK(TextView_CanUndo(host.view) && TextView_CanRedo(host.view));
+    TextView_Redo(host.view);
+    CHECK(window_text(host.view) == L"secondfirst");
+    TCHAR marker[MAX_PATH];
+    CHECK(host.MarkerPath(marker, TEXT("session")));
+    CHECK(GetFileAttributes(marker) == INVALID_FILE_ATTRIBUTES); // claimed session is active now
+
+    // The same abandoned checkpoint without a graceful-exit marker is recovery.
+    CHECK(RecoveryClose());
+    CHECK(DeleteFile(marker));
+    host.Restart();
+    CHECK(RecoveryRestore(host.parent));
+    CHECK(recovery_notice == NOTIFY_RECOVERED_UNTITLED);
+    CHECK(window_text(host.view) == L"secondfirst");
+}
+
+void recovery_controller_failed_checkpoint_keeps_the_document_open()
+{
+    RecoveryHost host;
+    SendMessage(host.view, EM_REPLACESEL, TRUE, (LPARAM)L"keep these last edits");
+    TCHAR file[MAX_PATH];
+    CHECK(write_temp_file("not a directory", 15, file));
+    lstrcpy(recovery_test_root, file); // deterministic I/O failure, no permission changes
+    CHECK(!RecoveryClose());
+    CHECK(recovery_notice == NOTIFY_RECOVERY_WRITE_FAILED);
+    CHECK(IsWindow(host.view) && TextView_GetModify(host.view));
+    CHECK(window_text(host.view) == L"keep these last edits");
+    lstrcpy(recovery_test_root, host.root.path);
+    CHECK(DeleteFile(file));
+    CHECK(RecoveryClose());
+    host.Restart();
+    CHECK(RecoveryRestore(host.parent));
+    CHECK(window_text(host.view) == L"keep these last edits");
+}
+
+void recovery_controller_failed_exit_marker_can_be_retried()
+{
+    RecoveryHost host;
+    SendMessage(host.view, EM_REPLACESEL, TRUE, (LPARAM)L"last keystroke");
+    CHECK(RecoveryBeforeSave());
+    TCHAR marker[MAX_PATH];
+    CHECK(host.MarkerPath(marker, TEXT("session")));
+    HANDLE lock = CreateFile(marker, GENERIC_READ | GENERIC_WRITE, 0, 0, CREATE_ALWAYS, FILE_ATTRIBUTE_HIDDEN, 0);
+    CHECK(lock != INVALID_HANDLE_VALUE);
+    CHECK(!RecoveryClose());
+    CHECK(IsWindow(host.view) && window_text(host.view) == L"last keystroke");
+    CloseHandle(lock);
+    CHECK(DeleteFile(marker));
+    CHECK(RecoveryClose());
+    host.Restart();
+    CHECK(RecoveryRestore(host.parent));
+    CHECK(recovery_notice == NOTIFY_SESSION_RESTORED_UNTITLED);
+    CHECK(window_text(host.view) == L"last keystroke");
+}
+
+void recovery_controller_does_not_restore_saved_or_discarded_documents()
+{
+    RecoveryHost host;
+    CHECK(RecoveryClose());
+    host.Restart();
+    CHECK(!RecoveryRestore(host.parent));
+    SendMessage(host.view, EM_REPLACESEL, TRUE, (LPARAM)L"discard me");
+    CHECK(RecoveryBeforeSave());
+    TextView_Clear(host.view);
+    RecoveryReset(); // New after explicit Discard
+    CHECK(RecoveryClose());
+    host.Restart();
+    CHECK(!RecoveryRestore(host.parent));
+    CHECK(window_text(host.view).empty());
+}
+
+void recovery_controller_restores_named_work_without_saving_the_original()
+{
+    RecoveryHost host;
+    TCHAR        original[MAX_PATH];
+    CHECK(write_temp_file("original", 8, original));
+    CHECK(TextView_OpenFile(host.view, original));
+    lstrcpy(g_szFileName, original);
+    lstrcpy(g_szFileTitle, _tcsrchr(original, _T('\\')) + 1);
+    SendMessage(host.view, EM_SETSEL, 0, 0);
+    SendMessage(host.view, EM_REPLACESEL, TRUE, (LPARAM)L"unsaved ");
+    CHECK(RecoveryClose());
+    host.Restart();
+    CHECK(RecoveryRestore(host.parent));
+    CHECK(recovery_notice == NOTIFY_SESSION_RESTORED);
+    CHECK(lstrcmp(g_szFileName, original) == 0);
+    CHECK(window_text(host.view) == L"unsaved original");
+    HANDLE file      = CreateFile(original, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, 0,
+                                  OPEN_EXISTING, 0, 0);
+    char   bytes[32] = {};
+    DWORD  n         = 0;
+    CHECK(file != INVALID_HANDLE_VALUE);
+    CHECK(ReadFile(file, bytes, sizeof(bytes), &n, 0));
+    CloseHandle(file);
+    CHECK(n == 8 && memcmp(bytes, "original", 8) == 0);
+
+    CHECK(RecoveryBeforeSave());
+    CHECK(TextView_SaveFile(host.view, original, NCP_UTF8, FALSE, 0));
+    RecoverySaved();
+    CHECK(RecoveryClose());
+    host.Restart();
+    CHECK(!RecoveryRestore(host.parent));
+    CHECK(DeleteFile(original));
+}
+
+void recovery_controller_restores_multiple_sessions_newest_first()
+{
+    RecoveryHost host;
+    SendMessage(host.view, EM_REPLACESEL, TRUE, (LPARAM)L"older session");
+    CHECK(RecoveryClose());
+    host.Restart();
+    SendMessage(host.view, EM_REPLACESEL, TRUE, (LPARAM)L"newer session");
+    CHECK(RecoveryClose());
+    host.Restart();
+    CHECK(RecoveryRestore(host.parent));
+    CHECK(window_text(host.view) == L"newer session");
+    TextView_Clear(host.view);
+    RecoveryReset();
+    CHECK(RecoveryRestore(host.parent));
+    CHECK(window_text(host.view) == L"older session");
+}
+
+const test_case tests[] = {
+    {"recovery_controller_keeps_the_final_edit_and_both_histories_on_exit",
+     recovery_controller_keeps_the_final_edit_and_both_histories_on_exit},
+    {"recovery_controller_failed_checkpoint_keeps_the_document_open",
+     recovery_controller_failed_checkpoint_keeps_the_document_open},
+    {"recovery_controller_failed_exit_marker_can_be_retried", recovery_controller_failed_exit_marker_can_be_retried},
+    {"recovery_controller_does_not_restore_saved_or_discarded_documents",
+     recovery_controller_does_not_restore_saved_or_discarded_documents},
+    {"recovery_controller_restores_named_work_without_saving_the_original",
+     recovery_controller_restores_named_work_without_saving_the_original},
+    {"recovery_controller_restores_multiple_sessions_newest_first",
+     recovery_controller_restores_multiple_sessions_newest_first},
+    {"textview_recovers_encoding_selection_and_both_histories",
+     textview_recovers_encoding_selection_and_both_histories},
+    {"textview_failed_recovery_or_revert_keeps_the_open_document",
+     textview_failed_recovery_or_revert_keeps_the_open_document},
+    {"textview_edit_messages_match_an_edit_control", textview_edit_messages_match_an_edit_control},
+    {"textview_edit_selection_covers_whole_characters", textview_edit_selection_covers_whole_characters},
+    {"textview_edit_positions_round_trip", textview_edit_positions_round_trip},
+    {"textview_edit_replacesel_matches_an_edit_control", textview_edit_replacesel_matches_an_edit_control},
+    {"textview_edit_scrolling_matches_an_edit_control", textview_edit_scrolling_matches_an_edit_control},
+    {"textview_edit_messages_index_as_they_need", textview_edit_messages_index_as_they_need},
+    {"textview_goto_line_reports_indexing", textview_goto_line_reports_indexing},
+    {"textview_converts_line_breaks", textview_converts_line_breaks},
+    {"textview_filters_lines_and_goes_back_to_them", textview_filters_lines_and_goes_back_to_them},
 };
 }
 

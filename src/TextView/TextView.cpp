@@ -703,7 +703,12 @@ LRESULT WINAPI TextView::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 	case TXM_OPENFILE:
 		return OpenFile((TCHAR *)lParam, -1, false);
 
-	case TXM_TAILFILE:
+    case TXM_SAVESTATE:
+        return SaveState((TEXTVIEWRECOVERY *)lParam);
+    case TXM_LOADSTATE:
+        return LoadState((TEXTVIEWRECOVERY *)lParam);
+
+    case TXM_TAILFILE:
 		return TailFile((TCHAR *)lParam);
 
 	case TXM_UPDATETAIL:

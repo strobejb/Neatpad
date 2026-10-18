@@ -556,8 +556,9 @@ UINT TextViewNotifyHandler(HWND hwnd, NMHDR *nmhdr)
 	// document has changed due to text input / undo / redo, update
 	// the main window-title to show an asterisk next to the filename
 	case TVN_CHANGED:
+        RecoveryChanged();
 
-		if(g_szFileTitle[0])
+        if(g_szFileTitle[0])
 		{
 			BOOL fModified = TextView_GetModify(g_hwndTextView);
 
@@ -644,7 +645,8 @@ UINT CommandHandler(HWND hwnd, UINT nCtrlId, UINT nCtrlCode, HWND hwndFrom)
 		// reset to an empty file
 		SetWindowFileName(hwnd, _T("Untitled"), FALSE);
 		TextView_Clear(g_hwndTextView);
-		ShowFileFormat(hwnd);
+        RecoveryReset();
+        ShowFileFormat(hwnd);
 
 		g_szFileTitle[0] = '\0';
 		g_fFileChanged   = FALSE;
@@ -652,13 +654,14 @@ UINT CommandHandler(HWND hwnd, UINT nCtrlId, UINT nCtrlCode, HWND hwndFrom)
 		return 0;
 		
 	case IDM_FILE_OPEN:
-		
-		// get a filename to open
-		if(QuerySaveChanges(hwnd) && ShowOpenFileDlg(hwnd, g_szFileName, g_szFileTitle))
 		{
-			DoOpenFile(hwnd, g_szFileName, g_szFileTitle);
-		}
-		
+            TCHAR filename[MAX_PATH], title[MAX_PATH];
+            lstrcpy(filename, g_szFileName);
+            lstrcpy(title, g_szFileTitle);
+            // Commit the name only when the new document opens successfully.
+            if (QuerySaveChanges(hwnd) && ShowOpenFileDlg(hwnd, filename, title))
+                NeatpadOpenFile(hwnd, filename);
+        }
 		return 0;
 
 	case IDM_RECENT_PREVIOUS:
@@ -912,9 +915,12 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
 	case WM_TIMER:
 		if(wParam == FILE_CHECK_TIMER)
-			CheckFileChange();
+        {
+            CheckFileChange();
+            RecoveryTick();
+        }
 
-		return 0;
+        return 0;
 
 	case WM_ENABLE:
 
@@ -971,13 +977,15 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		return 0;
 
 	case WM_CLOSE:
-		
-		// does the file need saving?
-		if(!QuerySaveChanges(hwnd))
-			return 0;
+
+        // Keep unsaved work for next time. A failed checkpoint asks the user
+        // to save/discard/cancel instead of silently losing their last edits.
+        if (!RecoveryClose() && !QuerySaveChanges(hwnd))
+            return 0;
 
 		DestroyWindow(hwnd);
-		return 0;
+        RecoveryShutdown();
+        return 0;
 
 	case WM_SIZE:
 
@@ -1220,8 +1228,9 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmdLine, int iShowC
 	// automatically create new document if none specified
 	else
 	{
-		PostMessage(g_hwndMain, WM_COMMAND, IDM_FILE_NEW, 0);
-	}
+        SendMessage(g_hwndMain, WM_COMMAND, IDM_FILE_NEW, 0);
+        RecoveryRestore(g_hwndMain);
+    }
 
 	ShowWindow(g_hwndMain, iShowCmd);
 

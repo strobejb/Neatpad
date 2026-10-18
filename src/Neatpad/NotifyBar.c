@@ -164,8 +164,12 @@ static INT_PTR CALLBACK NotifyBarProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
 		switch(LOWORD(wParam))
 		{
 		case IDC_NOTIFY_RELOAD:
-			NeatpadReloadFile(GetParent(hwnd));
-			return TRUE;
+            if (g_nNotice == NOTIFY_RECOVERED || g_nNotice == NOTIFY_RECOVERED_UNTITLED ||
+                g_nNotice == NOTIFY_SESSION_RESTORED || g_nNotice == NOTIFY_SESSION_RESTORED_UNTITLED)
+                RecoveryRevert(GetParent(hwnd));
+            else
+                NeatpadReloadFile(GetParent(hwnd));
+            return TRUE;
 
 		// Tail, which is Stop while the file is followed
 		case IDC_NOTIFY_TAIL:
@@ -248,12 +252,36 @@ HWND CreateNotifyBar(HWND hwndParent)
 void ShowNotifyBar(UINT nNotice)
 {
 	HWND hwndTail = GetDlgItem(g_hwndNotifyBar, IDC_NOTIFY_TAIL);
+    HWND hwndReload = GetDlgItem(g_hwndNotifyBar, IDC_NOTIFY_RELOAD);
+    BOOL recovered  = nNotice == NOTIFY_RECOVERED || nNotice == NOTIFY_RECOVERED_UNTITLED ||
+                     nNotice == NOTIFY_SESSION_RESTORED || nNotice == NOTIFY_SESSION_RESTORED_UNTITLED;
 
-	g_nNotice = nNotice;
+    g_nNotice = nNotice;
 
 	switch(nNotice)
 	{
-	case NOTIFY_CHANGED:
+    case NOTIFY_SESSION_RESTORED:
+    case NOTIFY_SESSION_RESTORED_UNTITLED:
+        SetDlgItemText(g_hwndNotifyBar, IDC_NOTIFY_TEXT, _T("Previous session restored."));
+        break;
+    case NOTIFY_RECOVERED:
+        SetDlgItemText(g_hwndNotifyBar, IDC_NOTIFY_TEXT, _T("Unsaved changes have been recovered."));
+        break;
+    case NOTIFY_RECOVERED_UNTITLED:
+        SetDlgItemText(g_hwndNotifyBar, IDC_NOTIFY_TEXT, _T("An unsaved document has been recovered."));
+        break;
+    case NOTIFY_RECOVERY_WRITE_FAILED:
+        SetDlgItemText(g_hwndNotifyBar, IDC_NOTIFY_TEXT, _T("Unable to save recovery data. Please save your work."));
+        break;
+    case NOTIFY_RECOVERY_ORIGINAL_CHANGED:
+        SetDlgItemText(g_hwndNotifyBar, IDC_NOTIFY_TEXT,
+                       _T("The original file has changed or is unavailable. Recovery data has been kept."));
+        break;
+    case NOTIFY_RECOVERY_READ_FAILED:
+        SetDlgItemText(g_hwndNotifyBar, IDC_NOTIFY_TEXT,
+                       _T("Recovery data could not be opened. It has been kept for recovery."));
+        break;
+    case NOTIFY_CHANGED:
 		SetDlgItemText(g_hwndNotifyBar, IDC_NOTIFY_TEXT, _T("This file has been changed by another program."));
 		break;
 
@@ -272,9 +300,29 @@ void ShowNotifyBar(UINT nNotice)
 
 	SetWindowText(hwndTail, nNotice == NOTIFY_TAILING ? _T("&Stop") : _T("&Tail"));
 
-	ShowWindow(GetDlgItem(g_hwndNotifyBar, IDC_NOTIFY_RELOAD), nNotice == NOTIFY_CHANGED ? SW_SHOW : SW_HIDE);
-	ShowWindow(hwndTail, nNotice != NOTIFY_DELETED ? SW_SHOW : SW_HIDE);
-	NotifyBarLayout(g_hwndNotifyBar);
+    {
+        const TCHAR *label    = (nNotice == NOTIFY_RECOVERED || nNotice == NOTIFY_SESSION_RESTORED)
+                                    ? _T("&Revert to saved")
+                                : (nNotice == NOTIFY_RECOVERED_UNTITLED || nNotice == NOTIFY_SESSION_RESTORED_UNTITLED)
+                                    ? _T("&Discard document")
+                                    : _T("&Reload");
+        HDC          dc       = GetDC(hwndReload);
+        HFONT        previous = (HFONT)SelectObject(dc, (HFONT)SendMessage(hwndReload, WM_GETFONT, 0, 0));
+        SIZE         size;
+        RECT         button;
+        GetWindowRect(hwndReload, &button);
+        GetTextExtentPoint32(dc, label, lstrlen(label), &size);
+        SelectObject(dc, previous);
+        ReleaseDC(hwndReload, dc);
+        SetWindowText(hwndReload, label);
+        SetWindowPos(hwndReload, 0, 0, 0, size.cx + 24, button.bottom - button.top,
+                     SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+    }
+    ShowWindow(hwndReload, nNotice == NOTIFY_CHANGED || recovered ? SW_SHOW : SW_HIDE);
+    ShowWindow(hwndTail, nNotice == NOTIFY_CHANGED || nNotice == NOTIFY_READONLY || nNotice == NOTIFY_TAILING
+                             ? SW_SHOW
+                             : SW_HIDE);
+    NotifyBarLayout(g_hwndNotifyBar);
 
 	if(!IsWindowVisible(g_hwndNotifyBar))
 	{

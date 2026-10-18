@@ -107,6 +107,17 @@ BOOL NeatpadTailFile(HWND hwnd);
 BOOL NeatpadStopTail(HWND hwnd);
 BOOL QuerySaveChanges(HWND hwnd);
 void CheckFileChange(void);
+void ShowRecoveredFile(HWND hwnd, const TCHAR *filename);
+
+void RecoveryChanged(void);
+void RecoveryTick(void);
+void RecoveryReset(void);
+void RecoverySaved(void);
+BOOL RecoveryBeforeSave(void);
+BOOL RecoveryClose(void);
+void RecoveryShutdown(void);
+BOOL RecoveryRestore(HWND hwnd);
+void RecoveryRevert(HWND hwnd);
 
 //
 //	NeatUtils.c functions
@@ -153,28 +164,34 @@ UINT SearchBarFindPrevious(HWND hwndParent);
 #define NOTIFY_DELETED	2	// or deleted it
 #define NOTIFY_READONLY	3	// or is writing it, so it opened read-only
 #define NOTIFY_TAILING	4	// the file is being followed as it grows
+#define NOTIFY_RECOVERED 5
+#define NOTIFY_RECOVERED_UNTITLED 6
+#define NOTIFY_RECOVERY_WRITE_FAILED 7
+#define NOTIFY_RECOVERY_READ_FAILED 8
+#define NOTIFY_RECOVERY_ORIGINAL_CHANGED 9
+#define NOTIFY_SESSION_RESTORED 10
+#define NOTIFY_SESSION_RESTORED_UNTITLED 11
 
-HWND CreateNotifyBar(HWND hwndParent);
-void ShowNotifyBar(UINT nNotice);
-void HideNotifyBar(void);
-int  NotifyBarHeight(void);
-BOOL NotifyBarIsVisible(void);
+    HWND CreateNotifyBar(HWND hwndParent);
+    void ShowNotifyBar(UINT nNotice);
+    void HideNotifyBar(void);
+    int  NotifyBarHeight(void);
+    BOOL NotifyBarIsVisible(void);
 
-
-//
-//	Toolbars.c functions
-//
-HWND CreateStatusBar (HWND hwndParent);
-HFONT StatusBarFont(void);
-void SetStatusBarParts(HWND hwndSB);
-int  StatusBarMenuSelect(HWND hwnd, HWND hwndSB, WPARAM wParam, LPARAM lParam);
-void SetStatusBarText(HWND hwndSB, UINT nPart, UINT uStyle, TCHAR *fmt, ...);
-void SetStatusBarLink(HWND hwndSB, UINT nPart, TCHAR *text);
-void FormatCount(TCHAR *buf, int cch, unsigned __int64 value);
-void ShowGotoLineDlg(HWND hwndMain);
-BOOL DrawStatusBarLink(const DRAWITEMSTRUCT *dis);
-BOOL StatusBarLinkAt(HWND hwndSB, POINT pt);
-void UpdateStatusBarFileInfo(void);
+    //
+    //	Toolbars.c functions
+    //
+    HWND  CreateStatusBar(HWND hwndParent);
+    HFONT StatusBarFont(void);
+    void  SetStatusBarParts(HWND hwndSB);
+    int   StatusBarMenuSelect(HWND hwnd, HWND hwndSB, WPARAM wParam, LPARAM lParam);
+    void  SetStatusBarText(HWND hwndSB, UINT nPart, UINT uStyle, TCHAR *fmt, ...);
+    void  SetStatusBarLink(HWND hwndSB, UINT nPart, TCHAR *text);
+    void  FormatCount(TCHAR *buf, int cch, unsigned __int64 value);
+    void  ShowGotoLineDlg(HWND hwndMain);
+    BOOL  DrawStatusBarLink(const DRAWITEMSTRUCT *dis);
+    BOOL  StatusBarLinkAt(HWND hwndSB, POINT pt);
+    void  UpdateStatusBarFileInfo(void);
 
 #define STATUS_PART_CURSOR		0
 #define STATUS_PART_DOCSTATS	1

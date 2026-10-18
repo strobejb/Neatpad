@@ -10,6 +10,7 @@
 #include <string.h>
 #include "TextDocument.h"
 #include "SaveFile.h"
+#include "sequence_state.h"
 #include "Unicode.h"
 
 //
@@ -143,7 +144,8 @@ bool TextDocument::init(const seqfilechar *filename, bool read_only)
 	if(!m_seq.open(filename, read_only, m_nInMemoryLimit))
 		return false;
 
-	// try to detect if this is an ascii/unicode/utf8 file
+    m_recoverySource = filename;
+    // try to detect if this is an ascii/unicode/utf8 file
 	m_nFileFormat = detect_file_format(&m_nHeaderSize);
 	m_fBom = m_nHeaderSize > 0;
 	m_seq.set_line_scan_mode(line_scan_mode_from_encoding(m_nFileFormat));
@@ -238,6 +240,69 @@ bool TextDocument::has_bom()
 	return m_fBom;
 }
 
+// Prepend encoding/BOM metadata to the view metadata already attached to out.
+// The document header is four uint32_t values; supported targets are little-endian.
+bool TextDocument::save_state(state_writer &out) const
+{
+    try
+    {
+        const uint32_t       fields[]       = {(uint32_t)m_nFileFormat, (uint32_t)m_nHeaderSize, m_fBom ? 1U : 0U, 0};
+        std::vector<uint8_t> previous       = out.get_context();
+        auto                 previousSource = out.get_original_file();
+        std::vector<uint8_t> context(sizeof(fields));
+
+        memcpy(context.data(), fields, sizeof(fields));
+        context.insert(context.end(), previous.begin(), previous.end());
+        out.set_context(context);
+        out.set_original_file(m_recoverySource);
+
+        bool saved = m_seq.save_state(out);
+        out.set_context(previous);
+        out.set_original_file(previousSource);
+
+        return saved;
+    }
+    catch (...)
+    {
+        return false;
+    }
+}
+
+// Loaded into a new TextDocument by the view; it adopts the document only
+// after its encoding, state and view context have all been validated.
+bool TextDocument::load_state(state_reader &in)
+{
+    std::vector<uint8_t> context;
+    uint32_t             fields[4];
+
+    if (!in.read_context(context) || context.size() < sizeof(fields))
+        return false;
+
+    memcpy(fields, context.data(), sizeof(fields));
+
+    TEXT_ENCODING format = (TEXT_ENCODING)fields[0];
+
+    if (!known_encoding(format) || (fields[1] && fields[1] != bom_for(format)->len) || fields[2] > 1 || fields[3] ||
+        !m_seq.load_state(in))
+        return false;
+
+    if (fields[1] > m_seq.size())
+        return false;
+
+    if (fields[1])
+    {
+        seqchar header[4];
+        if (m_seq.render(0, header, fields[1]) != fields[1] || memcmp(header, bom_for(format)->bom, fields[1]))
+            return false;
+    }
+    m_nFileFormat = format;
+    m_nHeaderSize = (int)fields[1];
+    m_fBom        = fields[2] != 0;
+    m_seq.set_line_scan_mode(line_scan_mode_from_encoding(format));
+    m_seq.index_lines(0, min_of(m_seq.size(), MEM_BLOCK_SIZE));
+
+    return true;
+}
 
 //
 //	From the unicode.org FAQ:
@@ -290,8 +355,9 @@ bool TextDocument::clear()
 {
 	m_seq.clear();
 	m_seq.init();
+    m_recoverySource.clear();
 
-	// a new document is UTF-8, without a byte-order mark
+    // a new document is UTF-8, without a byte-order mark
 	m_nFileFormat = NCP_UTF8;
 	m_nHeaderSize = 0;
 	m_fBom		  = false;

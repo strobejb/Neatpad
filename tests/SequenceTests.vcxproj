@@ -72,7 +72,7 @@
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
-      <AdditionalDependencies>usp10.lib;uxtheme.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>usp10.lib;uxtheme.lib;ole32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -87,7 +87,7 @@
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
-      <AdditionalDependencies>usp10.lib;uxtheme.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>usp10.lib;uxtheme.lib;ole32.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
     </Link>
@@ -110,7 +110,7 @@
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
-      <AdditionalDependencies>usp10.lib;uxtheme.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>usp10.lib;uxtheme.lib;ole32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -125,7 +125,7 @@
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
-      <AdditionalDependencies>usp10.lib;uxtheme.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>usp10.lib;uxtheme.lib;ole32.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
     </Link>
@@ -137,12 +137,16 @@
     <ClCompile Include="char_tests.cpp" />
     <ClCompile Include="document_tests.cpp" />
     <ClCompile Include="textview_tests.cpp" />
+    <ClCompile Include="..\src\Neatpad\Recovery.c">
+      <PreprocessorDefinitions>RECOVERY_TESTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
     <ClCompile Include="test_helpers.cpp" />
     <ClCompile Include="..\src\TextView\TextDocument.cpp" />
     <ClCompile Include="..\src\TextView\TextDocumentCoord.cpp" />
     <ClCompile Include="..\src\TextView\TextDocumentFind.cpp" />
     <ClCompile Include="..\src\TextView\SaveFile.cpp" />
     <ClCompile Include="..\src\TextView\sequence.cpp" />
+    <ClCompile Include="..\src\TextView\sequence_state.cpp" />
     <ClCompile Include="..\src\TextView\sequence_buf.cpp" />
     <ClCompile Include="..\src\TextView\sequence_chars.cpp" />
     <ClCompile Include="..\src\TextView\sequence_lines.cpp" />
@@ -152,6 +156,7 @@
     <ClCompile Include="..\src\TextView\TextViewEdit.cpp" />
     <ClCompile Include="..\src\TextView\TextViewFilter.cpp" />
     <ClCompile Include="..\src\TextView\TextViewFile.cpp" />
+    <ClCompile Include="..\src\TextView\TextViewRecovery.cpp" />
     <ClCompile Include="..\src\TextView\TextViewFont.cpp" />
     <ClCompile Include="..\src\TextView\TextViewKeyInput.cpp" />
     <ClCompile Include="..\src\TextView\TextViewKeyNav.cpp" />
@@ -170,6 +175,7 @@
     <ClInclude Include="..\src\TextView\codepages.h" />
     <ClInclude Include="..\src\TextView\SaveFile.h" />
     <ClInclude Include="..\src\TextView\sequence.h" />
+    <ClInclude Include="..\src\TextView\sequence_state.h" />
     <ClInclude Include="..\src\TextView\TextDocument.h" />
     <ClInclude Include="..\src\TextView\TextView.h" />
     <ClInclude Include="..\src\TextView\Unicode.h" />

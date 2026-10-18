@@ -358,7 +358,8 @@ void ShowFileFormat(HWND hwndMain)
 //
 static void ShowOpenedFile(HWND hwndMain, TCHAR *szFileName, TCHAR *szFileTitle)
 {
-	SetWindowFileName(hwndMain, szFileTitle, FALSE);
+    RecoveryReset();
+    SetWindowFileName(hwndMain, szFileTitle, FALSE);
 	g_fFileChanged = FALSE;
 	g_fTailing     = FALSE;
 
@@ -369,6 +370,22 @@ static void ShowOpenedFile(HWND hwndMain, TCHAR *szFileName, TCHAR *szFileTitle)
 		ShowNotifyBar(NOTIFY_READONLY);
 	else
 		HideNotifyBar();
+}
+
+void ShowRecoveredFile(HWND hwnd, const TCHAR *filename)
+{
+    const TCHAR *title = _tcsrchr(filename, _T('\\'));
+
+    lstrcpyn(g_szFileName, filename, MAX_PATH);
+    lstrcpyn(g_szFileTitle, title ? title + 1 : filename, MAX_PATH);
+
+    g_fFileChanged = TRUE;
+    g_fTailing     = FALSE;
+
+    NoteFileStamp(g_szFileName);
+    SetWindowFileName(hwnd, g_szFileTitle[0] ? g_szFileTitle : _T("Untitled"), TRUE);
+    ShowFileFormat(hwnd);
+    ShowNotifyBar(g_szFileTitle[0] ? NOTIFY_RECOVERED : NOTIFY_RECOVERED_UNTITLED);
 }
 
 BOOL DoOpenFile(HWND hwndMain, TCHAR *szFileName, TCHAR *szFileTitle)
@@ -403,7 +420,10 @@ static void CurrentSaveOptions(SAVEOPTIONS *pOptions)
 //
 BOOL DoSaveFile(HWND hwndMain, TCHAR *szFileName, TCHAR *szFileTitle, const SAVEOPTIONS *pOptions)
 {
-	if(TextView_SaveFile(g_hwndTextView, szFileName, pOptions->nEncoding, pOptions->fBom, pOptions->nLineBreak))
+    BOOL converted  = pOptions->nEncoding != TextView_GetFormat(g_hwndTextView) || pOptions->nLineBreak != 0;
+    BOOL recoveryOK = converted || RecoveryBeforeSave();
+
+    if(TextView_SaveFile(g_hwndTextView, szFileName, pOptions->nEncoding, pOptions->fBom, pOptions->nLineBreak))
 	{
 		SetWindowFileName(hwndMain, szFileTitle, FALSE);
 		g_fFileChanged = FALSE;
@@ -412,7 +432,13 @@ BOOL DoSaveFile(HWND hwndMain, TCHAR *szFileName, TCHAR *szFileTitle, const SAVE
 		// what's on disk is now this text, whatever another program did before
 		NoteFileStamp(szFileName);
 		HideNotifyBar();
-		return TRUE;
+        if (converted)
+            RecoveryReset();
+        else
+            RecoverySaved();
+        if (!recoveryOK)
+            ShowNotifyBar(NOTIFY_RECOVERY_WRITE_FAILED);
+        return TRUE;
 	}
 	else
 	{

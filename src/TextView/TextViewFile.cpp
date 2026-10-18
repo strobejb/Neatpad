@@ -11,6 +11,7 @@
 
 #include <windows.h>
 #include <tchar.h>
+#include <memory>
 #include "TextView.h"
 #include "TextViewInternal.h"
 
@@ -20,17 +21,20 @@
 LONG TextView::OpenFile(TCHAR *szFileName, int nEncoding, bool fReadOnly)
 {
 	bool opened;
+    std::unique_ptr<TextDocument> document(new TextDocument);
+    document->set_in_memory_limit(FileDoc()->in_memory_limit());
 
-	ClearFile();
+    if(nEncoding < 0)
+        opened = document->init(szFileName, fReadOnly);
+    else
+        opened = document->init(szFileName, (TEXT_ENCODING)nEncoding);
 
-	if(nEncoding < 0)
-		opened = m_pTextDoc->init(szFileName, fReadOnly);
-	else
-		opened = m_pTextDoc->init(szFileName, (TEXT_ENCODING)nEncoding);
-
-	if(opened)
+    if(opened)
 	{
-		TextCoord start;
+        ClearFile();
+        delete m_pTextDoc;
+        m_pTextDoc = document.release();
+        TextCoord start;
 		ULONG linebreak;
 
 		// the first line's ending sets the line format
@@ -67,7 +71,10 @@ LONG TextView::OpenFile(TCHAR *szFileName, int nEncoding, bool fReadOnly)
 		return TRUE;
 	}
 
-	return FALSE;
+    DWORD error = GetLastError();
+    document.reset();
+    SetLastError(error);
+    return FALSE;
 }
 
 //

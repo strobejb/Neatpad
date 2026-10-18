@@ -18,6 +18,7 @@
     <ClCompile Include="sequence.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="sequence_state.cpp"><Filter>Source Files</Filter></ClCompile>
     <ClCompile Include="sequence_buf.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -98,5 +99,9 @@
     <ClInclude Include="Unicode.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="TextViewRecovery.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClInclude Include="sequence_state.h"><Filter>Header Files</Filter></ClInclude>
   </ItemGroup>
 </Project>

@@ -97,4 +97,7 @@
       <Filter>Resource Files</Filter>
     </Manifest>
   </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="Recovery.c"><Filter>Source Files</Filter></ClCompile>
+  </ItemGroup>
 </Project>

@@ -4,6 +4,7 @@
 #define NEATPAD_TEXTDOCUMENT_INCLUDED
 
 #include <stdint.h>
+#include <string>
 #include "codepages.h"
 #include "sequence.h"
 
@@ -154,9 +155,14 @@ public:
 	// closed, so others can write them. Longer ones are read from disk as
 	// they're needed, and nothing else can write them while they're open. 0,
 	// to start with, reads every file from disk.
-	void  set_in_memory_limit(size_w bytes);
+    void set_in_memory_limit(size_w bytes);
 
-	bool  clear();
+    size_w in_memory_limit() const
+    {
+        return m_nInMemoryLimit;
+    }
+
+    bool  clear();
 
 	// Write the document to a file, replacing any that is there, in encoding,
 	// with or without its byte-order mark (ASCII has none). linebreak - TXL_CR,
@@ -167,8 +173,10 @@ public:
 	// longer matches the document, which is left as it was: open the file again,
 	// in the encoding it was written in, to carry on editing it.
 	bool  save(const seqfilechar *filename, TEXT_ENCODING encoding, bool bom, uint32_t linebreak);
+    bool  save_state(state_writer &out) const;
+    bool  load_state(state_reader &in);
 
-	// Whether the file has a byte-order mark: as it was opened, then as last saved.
+    // Whether the file has a byte-order mark: as it was opened, then as last saved.
 	bool  has_bom();
 
 	//
@@ -360,6 +368,7 @@ private:
 	int    m_nHeaderSize;	// the byte-order mark the sequence starts with, if the file had one
 	bool   m_fBom;			// whether the file has one now
 	size_w m_nInMemoryLimit;
+    std::basic_string<seqfilechar> m_recoverySource;
 };
 
 //

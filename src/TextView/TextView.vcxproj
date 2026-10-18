@@ -113,6 +113,7 @@
   <ItemGroup>
     <ClCompile Include="SaveFile.cpp" />
     <ClCompile Include="sequence.cpp" />
+    <ClCompile Include="sequence_state.cpp" />
     <ClCompile Include="sequence_buf.cpp" />
     <ClCompile Include="sequence_chars.cpp" />
     <ClCompile Include="sequence_lines.cpp" />
@@ -124,6 +125,7 @@
     <ClCompile Include="TextViewEdit.cpp" />
     <ClCompile Include="TextViewFilter.cpp" />
     <ClCompile Include="TextViewFile.cpp" />
+    <ClCompile Include="TextViewRecovery.cpp" />
     <ClCompile Include="TextViewFont.cpp" />
     <ClCompile Include="TextViewKeyInput.cpp" />
     <ClCompile Include="TextViewKeyNav.cpp" />
@@ -137,6 +139,7 @@
     <ClInclude Include="codepages.h" />
     <ClInclude Include="SaveFile.h" />
     <ClInclude Include="sequence.h" />
+    <ClInclude Include="sequence_state.h" />
     <ClInclude Include="TextDocument.h" />
     <ClInclude Include="TextView.h" />
     <ClInclude Include="TextViewInternal.h" />

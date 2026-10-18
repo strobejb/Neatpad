@@ -3,9 +3,477 @@
 //	redo, and reading files into a sequence
 //
 #include "tests.h"
+#include <tchar.h>
+#include "../src/TextView/sequence_state.h"
 
 namespace
 {
+struct checkpoint_store
+{
+    TCHAR dir[MAX_PATH];
+
+    checkpoint_store()
+    {
+        CHECK(write_temp_file("", 0, dir));
+        CHECK(DeleteFile(dir));
+        CHECK(CreateDirectory(dir, 0));
+    }
+
+    ~checkpoint_store()
+    {
+        TCHAR           pattern[MAX_PATH], name[MAX_PATH];
+        WIN32_FIND_DATA data;
+        wsprintf(pattern, _T("%s\\*"), dir);
+        HANDLE find = FindFirstFile(pattern, &data);
+        if (find != INVALID_HANDLE_VALUE)
+        {
+            do
+            {
+                if (!(data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
+                {
+                    wsprintf(name, _T("%s\\%s"), dir, data.cFileName);
+                    DeleteFile(name);
+                }
+            } while (FindNextFile(find, &data));
+            FindClose(find);
+        }
+        RemoveDirectory(dir);
+    }
+};
+
+void checkpoint_preserves_both_stacks_groups_and_saved_state()
+{
+    checkpoint_store store;
+    sequence         seq, copy;
+    init(seq, "one\r\ntwo\nthree");
+    seq.set_line_scan_mode(sequence::line_scan_utf8);
+    seq.group();
+    CHECK(insert_bytes(seq, 0, "start\n"));
+    CHECK(replace_bytes(seq, 6, "ONE", 3));
+    seq.ungroup();
+    seq.mark_saved();
+    CHECK(seq.erase(0, 6));
+    seq.breakopt();
+    CHECK(insert_bytes(seq, seq.size(), "\nend"));
+    CHECK(seq.undo());
+    state_writer writer(store.dir);
+    CHECK(seq.save_state(writer));
+    state_reader reader(store.dir);
+    init(copy, "replace me");
+    CHECK(copy.load_state(reader));
+    CHECK(render_content(copy) == render_content(seq));
+    CHECK(copy.modified() == seq.modified());
+    CHECK(copy.canundo() && copy.canredo());
+    while (seq.canundo())
+    {
+        CHECK(seq.undo());
+        CHECK(copy.undo());
+        CHECK(render_content(copy) == render_content(seq));
+        CHECK(copy.modified() == seq.modified());
+        size_w a, b, c, x, y, z;
+        seq.event_change(&a, &b, &c);
+        copy.event_change(&x, &y, &z);
+        CHECK(a == x && b == y && c == z);
+    }
+    CHECK(!copy.canundo());
+    while (seq.canredo())
+    {
+        CHECK(seq.redo());
+        CHECK(copy.redo());
+        CHECK(render_content(copy) == render_content(seq));
+        CHECK(copy.modified() == seq.modified());
+    }
+    CHECK(!copy.canredo());
+    copy.breakopt();
+    seq.breakopt();
+    CHECK(insert_bytes(copy, 0, "new"));
+    CHECK(insert_bytes(seq, 0, "new"));
+    CHECK(copy.undo());
+    CHECK(seq.undo());
+    CHECK(render_content(copy) == render_content(seq));
+}
+
+void checkpoint_references_original_and_retains_it_before_save()
+{
+    checkpoint_store store;
+    TCHAR            file[MAX_PATH];
+    std::string      text = utf8_text((size_t)MEM_BLOCK_SIZE * 5);
+    CHECK(write_temp_file(text.data(), text.size(), file));
+    sequence seq, copy;
+    CHECK(seq.open(file, false));
+    seq.set_line_scan_mode(sequence::line_scan_utf8);
+    CHECK(insert_bytes(seq, 25, "extra\r\n"));
+    state_writer writer(store.dir);
+    CHECK(seq.save_state(writer));
+    TCHAR base[MAX_PATH];
+    wsprintf(base, TEXT("%s\\buffer-1.bin"), store.dir);
+    CHECK(GetFileAttributes(base) == INVALID_FILE_ATTRIBUTES); // original was referenced
+    // Simulate an uncommitted leftover: hard-link creation cannot replace it,
+    // so retention exercises the copy fallback before publishing the new path.
+    wsprintf(base, TEXT("%s\\base-1.bin"), store.dir);
+    FILE *leftover = 0;
+    _wfopen_s(&leftover, base, L"wb");
+    CHECK(leftover != 0);
+    if (leftover)
+    {
+        fwrite("leftover", 1, 8, leftover);
+        fclose(leftover);
+    }
+    CHECK(writer.preserve_sources()); // ordinary Save must keep the old base for undo
+    CHECK(seq.save_state(writer));
+    seq.clear();
+    CHECK(DeleteFile(file));
+    state_reader reader(store.dir);
+    CHECK(copy.load_state(reader));
+    CHECK(copy.size() == text.size() + 7);
+    while (copy.index_next(MEM_BLOCK_SIZE))
+    {
+    }
+    CHECK(copy.linecount_known());
+    CHECK(copy.undo());
+    CHECK(render_content(copy) == text);
+    CHECK(copy.redo());
+    CHECK(copy.modified());
+    CHECK(copy.save_state(writer));
+}
+
+void checkpoint_rejects_groups_and_bad_data_without_changing_destination()
+{
+    checkpoint_store store;
+    sequence         seq, copy;
+    init(seq, "base");
+    init(copy, "untouched");
+    state_writer writer(store.dir);
+    state_reader reader(store.dir);
+    CHECK(seq.save_state(writer));
+    seq.group();
+    CHECK(insert_bytes(seq, 0, "group"));
+    CHECK(!seq.save_state(writer));
+    seq.ungroup();
+    CHECK(copy.load_state(reader));
+    expect_content(copy, "base");
+    copy.clear();
+    CHECK(seq.save_state(writer));
+    // Interrupt a later append: extra uncommitted buffer bytes are ignored.
+    TCHAR path[MAX_PATH];
+    wsprintf(path, _T("%s\\buffer-0.bin"), store.dir);
+    FILE *fp = 0;
+    _wfopen_s(&fp, path, L"ab");
+    CHECK(fp != 0);
+    if (fp)
+    {
+        fwrite("uncommitted", 1, 11, fp);
+        fclose(fp);
+    }
+    CHECK(copy.load_state(reader));
+    CHECK(render_content(copy) == render_content(seq));
+    copy.clear();
+    init(copy, "untouched");
+    wsprintf(path, _T("%s\\state.bin"), store.dir);
+    _wfopen_s(&fp, path, L"r+b");
+    CHECK(fp != 0);
+    if (fp)
+    {
+        fseek(fp, 40, SEEK_SET);
+        int ch = fgetc(fp);
+        fseek(fp, 40, SEEK_SET);
+        fputc(ch ^ 0x80, fp);
+        fclose(fp);
+    }
+    CHECK(!copy.load_state(reader));
+    expect_content(copy, "untouched");
+}
+
+void checkpoint_large_original_writes_only_modified_bytes()
+{
+    checkpoint_store store;
+    TCHAR            original[MAX_PATH];
+    if (!write_sparse_file("head\n", "tail", 8ULL * 1024 * 1024 * 1024, original))
+        return;
+    sequence seq;
+    CHECK(seq.open(original, false));
+    CHECK(insert_bytes(seq, 2, "edit"));
+    state_writer writer(store.dir);
+    CHECK(seq.save_state(writer));
+    TCHAR pattern[MAX_PATH];
+    wsprintf(pattern, TEXT("%s\\*"), store.dir);
+    WIN32_FIND_DATA data;
+    ULONGLONG       total = 0;
+    HANDLE          find  = FindFirstFile(pattern, &data);
+    if (find != INVALID_HANDLE_VALUE)
+    {
+        do
+        {
+            if (!(data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
+                total += ((ULONGLONG)data.nFileSizeHigh << 32) | data.nFileSizeLow;
+        } while (FindNextFile(find, &data));
+        FindClose(find);
+    }
+    CHECK(total < 4096); // includes the entire manifest and all persisted buffers
+    seq.clear();
+    CHECK(DeleteFile(original));
+}
+
+void checkpoint_rejects_changed_or_missing_original_without_replacing_destination()
+{
+    for (int kind = 0; kind < 5; ++kind)
+    {
+        checkpoint_store store;
+        TCHAR            original[MAX_PATH];
+        CHECK(write_temp_file("abcdef", 6, original));
+        sequence seq, copy;
+        CHECK(seq.open(original, false));
+        CHECK(insert_bytes(seq, 2, "edit"));
+        state_writer writer(store.dir);
+        CHECK(seq.save_state(writer));
+        state_reader reader(store.dir);
+        CHECK(copy.load_state(reader));
+        expect_content(copy, "abeditcdef");
+        copy.clear();
+        seq.clear();
+        WIN32_FILE_ATTRIBUTE_DATA before;
+        CHECK(GetFileAttributesEx(original, GetFileExInfoStandard, &before));
+        if (kind == 0)
+            CHECK(DeleteFile(original));
+        else
+        {
+            if (kind == 4)
+            {
+                SaveFile replacement;
+                CHECK(replacement.open(original));
+                CHECK(replacement.write("abcdef", 6));
+                CHECK(replacement.commit());
+            }
+            HANDLE file = CreateFile(original, GENERIC_WRITE | FILE_WRITE_ATTRIBUTES,
+                                     FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, 0, OPEN_EXISTING, 0, 0);
+            CHECK(file != INVALID_HANDLE_VALUE);
+            if (kind == 1)
+            {
+                SetFilePointer(file, 0, 0, FILE_END);
+                DWORD n;
+                CHECK(WriteFile(file, "!", 1, &n, 0));
+            }
+            FILETIME created = before.ftCreationTime, written = before.ftLastWriteTime;
+            if (kind == 2)
+                ++written.dwLowDateTime;
+            if (kind == 3)
+                ++created.dwLowDateTime;
+            CHECK(SetFileTime(file, &created, 0, &written));
+            CloseHandle(file);
+        }
+        init(copy, "keep this");
+        CHECK(!copy.load_state(reader));
+        CHECK(reader.original_unavailable());
+        expect_content(copy, "keep this");
+        CHECK(!copy.canundo() && !copy.modified());
+        if (kind != 0)
+            CHECK(DeleteFile(original));
+    }
+}
+
+void checkpoint_publish_failure_preserves_previous_commit_and_context()
+{
+    checkpoint_store store;
+    sequence         seq, copy;
+    init(seq, "base");
+    CHECK(insert_bytes(seq, 4, " one"));
+    seq.breakopt();
+    state_writer writer(store.dir);
+    writer.set_context({1, 2, 3});
+    CHECK(seq.save_state(writer));
+    state_reader         pinned(store.dir);
+    std::vector<uint8_t> context;
+    CHECK(pinned.read_context(context));
+    CHECK(context == std::vector<uint8_t>({1, 2, 3}));
+    CHECK(insert_bytes(seq, seq.size(), " two"));
+    seq.breakopt();
+    writer.set_context({4, 5});
+    TCHAR manifest[MAX_PATH];
+    wsprintf(manifest, TEXT("%s\\state.bin"), store.dir);
+    HANDLE lock = CreateFile(manifest, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
+    CHECK(lock != INVALID_HANDLE_VALUE);
+    CHECK(!seq.save_state(writer)); // backing append succeeds; manifest replacement fails
+    CloseHandle(lock);
+    state_reader previous(store.dir);
+    CHECK(copy.load_state(previous));
+    expect_content(copy, "base one");
+    CHECK(copy.undo());
+    expect_content(copy, "base");
+    copy.clear();
+    CHECK(seq.save_state(writer));
+    CHECK(pinned.read_context(context));
+    CHECK(context == std::vector<uint8_t>({1, 2, 3}));
+    CHECK(copy.load_state(pinned));
+    expect_content(copy, "base one");
+    copy.clear();
+    state_reader latest(store.dir);
+    CHECK(latest.read_context(context));
+    CHECK(context == std::vector<uint8_t>({4, 5}));
+    CHECK(copy.load_state(latest));
+    expect_content(copy, "base one two");
+    CHECK(copy.undo());
+    expect_content(copy, "base one");
+}
+
+void checkpoint_roundtrips_mixed_history()
+{
+    checkpoint_store store;
+    sequence         seq;
+    init(seq, "abcdef\r\nxyz");
+    unsigned     random = 8147;
+    state_writer writer(store.dir);
+    state_reader reader(store.dir);
+    for (int i = 0; i < 120; ++i)
+    {
+        random    = random * 1664525U + 1013904223U;
+        size_w at = random % (seq.size() + 1);
+        seq.breakopt();
+        switch (i % 6)
+        {
+        case 0:
+            CHECK(insert_bytes(seq, at, "insert"));
+            break;
+        case 1:
+            if (at < seq.size())
+                CHECK(seq.erase(at, 1));
+            break;
+        case 2:
+            CHECK(replace_bytes(seq, at, "xy", at < seq.size() ? 1 : 0));
+            break;
+        case 3:
+            if (seq.canundo())
+                CHECK(seq.undo());
+            break;
+        case 4:
+            if (seq.canredo())
+                CHECK(seq.redo());
+            break;
+        case 5:
+            seq.mark_saved();
+            break;
+        }
+        CHECK(seq.save_state(writer));
+        sequence copy;
+        CHECK(copy.load_state(reader));
+        CHECK(render_content(copy) == render_content(seq));
+        CHECK(copy.modified() == seq.modified());
+        // Explore every state reachable from this checkpoint.
+        std::vector<std::string> states;
+        while (copy.canundo())
+        {
+            CHECK(copy.undo());
+            states.push_back(render_content(copy));
+        }
+        while (copy.canredo())
+            CHECK(copy.redo());
+    }
+}
+
+void checkpoint_preserves_unicode_indexes_and_empty_sequences()
+{
+    for (TEXT_ENCODING encoding : {NCP_UTF8, NCP_UTF16, NCP_UTF16BE, NCP_UTF32, NCP_UTF32BE})
+    {
+        checkpoint_store store;
+        sequence         seq, copy;
+        std::string      text = encode_text(L"first\r\n\x00e9\x20ac\nlast", encoding);
+        CHECK(seq.init((const seqchar *)text.data(), text.size()));
+        sequence::line_scan_mode mode = encoding == NCP_UTF8      ? sequence::line_scan_utf8
+                                        : encoding == NCP_UTF16   ? sequence::line_scan_utf16le
+                                        : encoding == NCP_UTF16BE ? sequence::line_scan_utf16be
+                                        : encoding == NCP_UTF32   ? sequence::line_scan_utf32le
+                                                                  : sequence::line_scan_utf32be;
+        seq.set_line_scan_mode(mode);
+        state_writer writer(store.dir);
+        state_reader reader(store.dir);
+        CHECK(seq.save_state(writer));
+        CHECK(copy.load_state(reader));
+        while (copy.index_next(MEM_BLOCK_SIZE))
+        {
+        }
+        CHECK(copy.linecount() == seq.linecount());
+        CHECK(copy.indexed_chars() == seq.indexed_chars());
+        for (size_w line = 0; line < seq.linecount(); ++line)
+        {
+            size_w a, b;
+            CHECK(seq.offset_from_lineno(line, &a));
+            CHECK(copy.offset_from_lineno(line, &b));
+            CHECK(a == b);
+        }
+    }
+    checkpoint_store store;
+    sequence         seq, copy;
+    state_writer     writer(store.dir);
+    state_reader     reader(store.dir);
+    CHECK(seq.save_state(writer));
+    CHECK(copy.load_state(reader));
+    CHECK(copy.size() == 0 && !copy.modified() && !copy.canundo() && !copy.canredo());
+    CHECK(insert_bytes(copy, 0, "after restore"));
+    CHECK(copy.undo());
+    CHECK(copy.size() == 0);
+}
+
+void checkpoint_rejects_truncation_and_invalid_graph_with_valid_checksum()
+{
+    checkpoint_store store;
+    sequence         seq, copy;
+    init(seq, "abc");
+    init(copy, "keep this");
+    CHECK(insert_bytes(seq, 1, "xyz"));
+    state_writer writer(store.dir);
+    state_reader reader(store.dir);
+    CHECK(seq.save_state(writer));
+    TCHAR name[MAX_PATH];
+    wsprintf(name, _T("%s\\state.bin"), store.dir);
+    FILE *fp = 0;
+    _wfopen_s(&fp, name, L"rb");
+    CHECK(fp != 0);
+    if (!fp)
+        return;
+    fseek(fp, 0, SEEK_END);
+    long size = ftell(fp);
+    rewind(fp);
+    std::vector<uint8_t> bytes((size_t)size);
+    CHECK(fread(bytes.data(), 1, bytes.size(), fp) == bytes.size());
+    fclose(fp);
+    for (size_t length = 0; length < bytes.size(); length += 7)
+    {
+        _wfopen_s(&fp, name, L"wb");
+        CHECK(fp != 0);
+        if (!fp)
+            return;
+        CHECK(fwrite(bytes.data(), 1, length, fp) == length);
+        fclose(fp);
+        CHECK(!copy.load_state(reader));
+        expect_content(copy, "keep this");
+    }
+    // Make the head point to itself and repair the CRC: graph validation,
+    // rather than the checksum alone, must reject this checkpoint.
+    uint64_t buffer_count = 0;
+    for (int i = 0; i < 8; ++i)
+        buffer_count |= (uint64_t)bytes[64 + i] << (i * 8);
+    size_t next = 32 + 64 + (size_t)buffer_count * 64 + 40;
+    for (int i = 0; i < 8; ++i)
+        bytes[next + i] = i == 0 ? 1 : 0;
+    uint32_t crc = ~0U;
+    for (size_t i = 32; i < bytes.size(); ++i)
+    {
+        crc ^= bytes[i];
+        for (int b = 0; b < 8; ++b)
+            crc = (crc >> 1) ^ (0xedb88320U & (0U - (crc & 1)));
+    }
+    crc = ~crc;
+    for (int i = 0; i < 4; ++i)
+        bytes[24 + i] = (uint8_t)(crc >> (i * 8));
+    _wfopen_s(&fp, name, L"wb");
+    CHECK(fp != 0);
+    if (!fp)
+        return;
+    CHECK(fwrite(bytes.data(), 1, bytes.size(), fp) == bytes.size());
+    fclose(fp);
+    CHECK(!copy.load_state(reader));
+    expect_content(copy, "keep this");
+}
+
 void insert_at_beginning()
 {
     sequence seq;
@@ -740,48 +1208,64 @@ void sequence_render_passes_a_block_per_span()
     CHECK(calls == 2);
 }
 
-const test_case tests[] =
-{
-    { "insert_at_beginning", insert_at_beginning },
-    { "insert_at_end", insert_at_end },
-    { "insert_on_span_boundary", insert_on_span_boundary },
-    { "insert_in_middle_of_span", insert_in_middle_of_span },
-    { "delete_starts_on_span_boundary", delete_starts_on_span_boundary },
-    { "delete_ends_on_span_boundary", delete_ends_on_span_boundary },
-    { "delete_entire_file_with_multiple_spans", delete_entire_file_with_multiple_spans },
-    { "delete_starts_and_stops_within_single_span", delete_starts_and_stops_within_single_span },
-    { "delete_across_multiple_spans", delete_across_multiple_spans },
-    { "replace_at_beginning", replace_at_beginning },
-    { "replace_at_end", replace_at_end },
-    { "replace_on_span_boundary", replace_on_span_boundary },
-    { "replace_in_middle_of_span", replace_in_middle_of_span },
-    { "replace_across_multiple_spans", replace_across_multiple_spans },
-    { "consecutive_insert_undo_coalesces", consecutive_insert_undo_coalesces },
-    { "breakopt_prevents_insert_coalescing", breakopt_prevents_insert_coalescing },
-    { "forward_delete_undo_coalesces", forward_delete_undo_coalesces },
-    { "backward_delete_undo_coalesces", backward_delete_undo_coalesces },
-    { "replace_overrun_clamps_to_end", replace_overrun_clamps_to_end },
-    { "replace_shorter_than_erased", replace_shorter_than_erased },
-    { "replace_longer_than_erased", replace_longer_than_erased },
-    { "undo_redo_insert_middle_split", undo_redo_insert_middle_split },
-    { "undo_redo_delete_within_split_span", undo_redo_delete_within_split_span },
-    { "undo_redo_replace_across_spans", undo_redo_replace_across_spans },
-    { "grouped_operations_undo_redo_together", grouped_operations_undo_redo_together },
-    { "nested_group_survives_inner_replace", nested_group_survives_inner_replace },
-    { "undo_redo_reports_changed_range", undo_redo_reports_changed_range },
-    { "redo_invalidated_by_new_edit", redo_invalidated_by_new_edit },
-    { "invalid_operations_do_not_modify_content", invalid_operations_do_not_modify_content },
-    { "render_past_end_returns_available_bytes", render_past_end_returns_available_bytes },
-    { "open_file_renders_file_backed_content", open_file_renders_file_backed_content },
-    { "open_file_renders_across_view_boundary", open_file_renders_across_view_boundary },
-    { "open_file_larger_than_4gb", open_file_larger_than_4gb },
-    { "sequence_modified_follows_undo_history", sequence_modified_follows_undo_history },
-    { "sequence_mark_saved_stops_typing_joining_the_saved_record", sequence_mark_saved_stops_typing_joining_the_saved_record },
-    { "sequence_modified_treats_group_as_one_edit", sequence_modified_treats_group_as_one_edit },
-    { "sequence_reads_a_short_file_into_memory", sequence_reads_a_short_file_into_memory },
-    { "sequence_grows_as_a_file_is_appended_to", sequence_grows_as_a_file_is_appended_to },
-    { "sequence_opens_read_only_while_another_program_writes", sequence_opens_read_only_while_another_program_writes },
-    { "sequence_render_passes_a_block_per_span", sequence_render_passes_a_block_per_span },
+const test_case tests[] = {
+    {"checkpoint_large_original_writes_only_modified_bytes", checkpoint_large_original_writes_only_modified_bytes},
+    {"checkpoint_rejects_changed_or_missing_original_without_replacing_destination",
+     checkpoint_rejects_changed_or_missing_original_without_replacing_destination},
+    {"checkpoint_publish_failure_preserves_previous_commit_and_context",
+     checkpoint_publish_failure_preserves_previous_commit_and_context},
+    {"checkpoint_preserves_both_stacks_groups_and_saved_state",
+     checkpoint_preserves_both_stacks_groups_and_saved_state},
+    {"checkpoint_references_original_and_retains_it_before_save",
+     checkpoint_references_original_and_retains_it_before_save},
+    {"checkpoint_rejects_groups_and_bad_data_without_changing_destination",
+     checkpoint_rejects_groups_and_bad_data_without_changing_destination},
+    {"checkpoint_roundtrips_mixed_history", checkpoint_roundtrips_mixed_history},
+    {"checkpoint_preserves_unicode_indexes_and_empty_sequences",
+     checkpoint_preserves_unicode_indexes_and_empty_sequences},
+    {"checkpoint_rejects_truncation_and_invalid_graph_with_valid_checksum",
+     checkpoint_rejects_truncation_and_invalid_graph_with_valid_checksum},
+    {"insert_at_beginning", insert_at_beginning},
+    {"insert_at_end", insert_at_end},
+    {"insert_on_span_boundary", insert_on_span_boundary},
+    {"insert_in_middle_of_span", insert_in_middle_of_span},
+    {"delete_starts_on_span_boundary", delete_starts_on_span_boundary},
+    {"delete_ends_on_span_boundary", delete_ends_on_span_boundary},
+    {"delete_entire_file_with_multiple_spans", delete_entire_file_with_multiple_spans},
+    {"delete_starts_and_stops_within_single_span", delete_starts_and_stops_within_single_span},
+    {"delete_across_multiple_spans", delete_across_multiple_spans},
+    {"replace_at_beginning", replace_at_beginning},
+    {"replace_at_end", replace_at_end},
+    {"replace_on_span_boundary", replace_on_span_boundary},
+    {"replace_in_middle_of_span", replace_in_middle_of_span},
+    {"replace_across_multiple_spans", replace_across_multiple_spans},
+    {"consecutive_insert_undo_coalesces", consecutive_insert_undo_coalesces},
+    {"breakopt_prevents_insert_coalescing", breakopt_prevents_insert_coalescing},
+    {"forward_delete_undo_coalesces", forward_delete_undo_coalesces},
+    {"backward_delete_undo_coalesces", backward_delete_undo_coalesces},
+    {"replace_overrun_clamps_to_end", replace_overrun_clamps_to_end},
+    {"replace_shorter_than_erased", replace_shorter_than_erased},
+    {"replace_longer_than_erased", replace_longer_than_erased},
+    {"undo_redo_insert_middle_split", undo_redo_insert_middle_split},
+    {"undo_redo_delete_within_split_span", undo_redo_delete_within_split_span},
+    {"undo_redo_replace_across_spans", undo_redo_replace_across_spans},
+    {"grouped_operations_undo_redo_together", grouped_operations_undo_redo_together},
+    {"nested_group_survives_inner_replace", nested_group_survives_inner_replace},
+    {"undo_redo_reports_changed_range", undo_redo_reports_changed_range},
+    {"redo_invalidated_by_new_edit", redo_invalidated_by_new_edit},
+    {"invalid_operations_do_not_modify_content", invalid_operations_do_not_modify_content},
+    {"render_past_end_returns_available_bytes", render_past_end_returns_available_bytes},
+    {"open_file_renders_file_backed_content", open_file_renders_file_backed_content},
+    {"open_file_renders_across_view_boundary", open_file_renders_across_view_boundary},
+    {"open_file_larger_than_4gb", open_file_larger_than_4gb},
+    {"sequence_modified_follows_undo_history", sequence_modified_follows_undo_history},
+    {"sequence_mark_saved_stops_typing_joining_the_saved_record",
+     sequence_mark_saved_stops_typing_joining_the_saved_record},
+    {"sequence_modified_treats_group_as_one_edit", sequence_modified_treats_group_as_one_edit},
+    {"sequence_reads_a_short_file_into_memory", sequence_reads_a_short_file_into_memory},
+    {"sequence_grows_as_a_file_is_appended_to", sequence_grows_as_a_file_is_appended_to},
+    {"sequence_opens_read_only_while_another_program_writes", sequence_opens_read_only_while_another_program_writes},
+    {"sequence_render_passes_a_block_per_span", sequence_render_passes_a_block_per_span},
 };
 }
 

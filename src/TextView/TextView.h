@@ -78,6 +78,21 @@ COLORREF RealizeColour(COLORREF col);
 #define TXM_UPDATETAIL			(TXM_BASE + 41)
 #define TXM_REPLACETEXT			(TXM_BASE + 42)
 #define TXM_SHOWMATCHES			(TXM_BASE + 43)
+#define TXM_SAVESTATE (TXM_BASE + 44)
+#define TXM_LOADSTATE (TXM_BASE + 45)
+
+    typedef struct _TEXTVIEWRECOVERY
+    {
+        const TCHAR *directory;
+        TCHAR        filename[MAX_PATH];  // input on save, output on successful restore
+        BOOL         originalUnavailable; // failed restore: original changed or cannot be opened
+        BOOL         preserveSources;     // save input: retain bases before replacing originals
+    } TEXTVIEWRECOVERY;
+
+#define TextView_SaveState(hwndTV, state)                                                                              \
+    ((BOOL)SendMessage((hwndTV), TXM_SAVESTATE, 0, (LPARAM)(TEXTVIEWRECOVERY *)(state)))
+#define TextView_LoadState(hwndTV, state)                                                                              \
+    ((BOOL)SendMessage((hwndTV), TXM_LOADSTATE, 0, (LPARAM)(TEXTVIEWRECOVERY *)(state)))
 
 //
 //	TextView Notification Messages defined here - 

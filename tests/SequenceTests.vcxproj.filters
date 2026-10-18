@@ -36,6 +36,7 @@
     <ClCompile Include="..\src\TextView\sequence.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\src\TextView\sequence_state.cpp"><Filter>Source Files</Filter></ClCompile>
     <ClCompile Include="..\src\TextView\sequence_buf.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -116,5 +117,12 @@
     <ClInclude Include="..\src\TextView\Unicode.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\src\TextView\TextViewRecovery.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClInclude Include="..\src\TextView\sequence_state.h"><Filter>Header Files</Filter></ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\src\Neatpad\Recovery.c"><Filter>Source Files</Filter></ClCompile>
   </ItemGroup>
 </Project>
