@@ -20,15 +20,15 @@
 //	Import the specified text into the TextView at the current
 //	cursor position, replacing any text-selection in the process
 //
-ULONG TextView::EnterText(TCHAR *szText, ULONG nLength)
+ULONG TextView::EnterText(TCHAR *szText, ULONG nLength, bool forceInsert)
 {
 	TextCoord	selStart;
 	TextCoord	selEnd;
 	BOOL		fReplaceSelection = GetSelection(&selStart, &selEnd);
 	TextChange	change;
 
-	switch(m_nEditMode)
-	{
+    switch (forceInsert && m_nEditMode == MODE_OVERWRITE ? MODE_INSERT : m_nEditMode)
+    {
 	case MODE_READONLY:
 		return 0;
 
@@ -245,33 +245,110 @@ BOOL TextView::CanRedo()
 	return m_pTextDoc->can_redo() ? TRUE : FALSE;
 }
 
+// Changing tab stops changes layout, but never the document's characters.
+UINT TextView::SetTabWidth(UINT width)
+{
+    UINT previous = (UINT)m_nTabWidthChars;
+
+    m_nTabWidthChars = (int)max(1U, min(width, (UINT)TV_MAX_TAB_WIDTH));
+    if ((UINT)m_nTabWidthChars != previous)
+    {
+        m_nLongestLine = 0;
+        ResetLineCache();
+        UpdateViewState(TRUE);
+        RefreshWindow();
+    }
+
+    return previous;
+}
+
+// TextCoord columns count UTF-16 units. Expand existing tabs while counting the
+// prefix so a typed Tab still reaches the correct tab stop after earlier tabs.
+static size_w TabColumn(TextDocument *document, const TextCoord &at, UINT width)
+{
+    TextReader reader = document->text_from_range(at.line_begin, at);
+    TCHAR      buffer[128];
+    uint32_t   length;
+    size_w     column = 0;
+
+    while ((length = reader.read(buffer, ARRAYSIZE(buffer))) != 0)
+    {
+        for (uint32_t i = 0; i < length; ++i)
+            column += buffer[i] == '\t' ? width - column % width : 1;
+    }
+
+    return column;
+}
+
 LONG TextView::OnChar(UINT nChar, UINT nFlags)
 {
-	WCHAR ch = (WCHAR)nChar;
+    WCHAR ch = (WCHAR)nChar;
 
-	if(nChar < 32 && nChar != '\t' && nChar != '\r' && nChar != '\n')
-		return 0;
+    if (m_nEditMode == MODE_READONLY || (nChar < 32 && nChar != '\t' && nChar != '\r' && nChar != '\n'))
+        return 0;
 
-	// Enter types a line break in the document's line format: CRLF unless it's LF or CR
-	if(nChar == '\r' || nChar == '\n')
-	{
-		TCHAR  crlf[] = _T("\r\n");
-		TCHAR *brk    = m_nCRLFMode == TXL_LF ? crlf + 1 : crlf;
-		ULONG  len    = m_nCRLFMode == TXL_LF || m_nCRLFMode == TXL_CR ? 1 : 2;
+    if (nChar == '\t' && CheckStyle(TXS_INSERTSPACES))
+    {
+        TextCoord start, end;
+        GetSelection(&start, &end);
+        UINT                     width  = (UINT)m_nTabWidthChars;
+        size_w                   column = TabColumn(m_pTextDoc, start, width);
+        std::basic_string<TCHAR> spaces(width - column % width, _T(' '));
 
-		if(EnterText(brk, len))
-		{
-			m_pTextDoc->undo_group_break();
-			NotifyParent(TVN_CHANGED);
-		}
+        if (EnterText(&spaces[0], (ULONG)spaces.size()))
+            NotifyParent(TVN_CHANGED);
+        return 0;
+    }
 
-		return 0;
-	}
+    // Enter inserts a line break in the document's format, followed by any
+    // leading whitespace before the selection's start. Treat it as one edit.
+    if (nChar == '\r' || nChar == '\n')
+    {
+        TCHAR                    crlf[] = _T("\r\n");
+        TCHAR                   *brk    = m_nCRLFMode == TXL_LF ? crlf + 1 : crlf;
+        ULONG                    length = m_nCRLFMode == TXL_LF || m_nCRLFMode == TXL_CR ? 1 : 2;
+        std::basic_string<TCHAR> text(brk, length);
 
-	if(EnterText(&ch, 1))
-		NotifyParent(TVN_CHANGED);
+        if (CheckStyle(TXS_AUTOINDENT))
+        {
+            TextCoord start, end;
+            GetSelection(&start, &end);
+            TextReader reader = m_pTextDoc->text_from_range(start.line_begin, start);
+            TCHAR      buffer[128];
+            uint32_t   read;
+            bool       leading = true;
 
-	return 0;
+            while (leading && (read = reader.read(buffer, ARRAYSIZE(buffer))) != 0)
+            {
+                for (uint32_t i = 0; i < read; ++i)
+                {
+                    if (buffer[i] == '\t' && CheckStyle(TXS_INSERTSPACES))
+                        text.append(m_nTabWidthChars - (text.size() - length) % m_nTabWidthChars, _T(' '));
+                    else if (buffer[i] == ' ' || buffer[i] == '\t')
+                        text.push_back(buffer[i]);
+                    else
+                    {
+                        leading = false;
+                        break;
+                    }
+                }
+            }
+        }
+
+        m_pTextDoc->undo_group_break();
+        if (EnterText(&text[0], (ULONG)text.size(), true))
+        {
+            m_pTextDoc->undo_group_break();
+            NotifyParent(TVN_CHANGED);
+        }
+
+        return 0;
+    }
+
+    if (EnterText(&ch, 1))
+        NotifyParent(TVN_CHANGED);
+
+    return 0;
 }
 
 //

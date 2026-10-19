@@ -929,6 +929,173 @@ void textview_filter_context_follows_new_surrounding_lines()
     DeleteFile(path);
 }
 
+void textview_tab_width_changes_layout_without_changing_text()
+{
+    EditPair pair = {};
+    CHECK(open_edit_pair(&pair, L"a\tX", NCP_UTF8));
+    int four = LOWORD(SendMessage(pair.view, EM_POSFROMCHAR, 2, 0));
+    CHECK(TextView_SetTabWidth(pair.view, 8) == 4);
+    int eight = LOWORD(SendMessage(pair.view, EM_POSFROMCHAR, 2, 0));
+    CHECK(eight > four);
+    CHECK(TextView_SetTabWidth(pair.view, 2) == 8);
+    CHECK(LOWORD(SendMessage(pair.view, EM_POSFROMCHAR, 2, 0)) < four);
+    CHECK(TextView_SetTabWidth(pair.view, 0) == 2);
+    CHECK(TextView_SetTabWidth(pair.view, UINT_MAX) == 1);
+    CHECK(TextView_SetTabWidth(pair.view, 4) == TV_MAX_TAB_WIDTH);
+    CHECK(window_text(pair.view) == L"a\tX");
+    CHECK(!TextView_GetModify(pair.view));
+    close_edit_pair(&pair);
+}
+
+void textview_tab_inserts_spaces_to_the_next_stop()
+{
+    for (TEXT_ENCODING encoding : {NCP_UTF8, NCP_UTF16BE, NCP_UTF32})
+    {
+        struct TabCase
+        {
+            const wchar_t *before;
+            int            start, end;
+            const wchar_t *after;
+        };
+
+        const TabCase cases[] = {
+            {L"ab", 1, 1, L"a   b"},
+            {L" \tXYZ", 2, 2, L" \t    XYZ"},
+            {L" \tXYZ", 4, 2, L" \t    Z"},
+            {L"\x03bb\tX", 2, 2, L"\x03bb\t    X"},
+            {L"\xd83d\xde00X", 2, 2, L"\xd83d\xde00  X"},
+        };
+        for (const TabCase &item : cases)
+        {
+            EditPair pair = {};
+            CHECK(open_edit_pair(&pair, item.before, encoding));
+            TextView_SetStyleBool(pair.view, TXS_INSERTSPACES, TRUE);
+            SendMessage(pair.view, EM_SETSEL, item.start, item.end);
+            SendMessage(pair.view, WM_CHAR, '\t', 0);
+            CHECK(window_text(pair.view) == item.after);
+            CHECK(TextView_Undo(pair.view));
+            CHECK(window_text(pair.view) == item.before);
+            CHECK(TextView_Redo(pair.view));
+            CHECK(window_text(pair.view) == item.after);
+            close_edit_pair(&pair);
+        }
+    }
+
+    EditPair pair = {};
+    CHECK(open_edit_pair(&pair, L"a\tX", NCP_UTF8));
+    TextView_SetTabWidth(pair.view, 3);
+    TextView_SetStyleBool(pair.view, TXS_INSERTSPACES, TRUE);
+    SendMessage(pair.view, EM_SETSEL, 3, 3);
+    SendMessage(pair.view, WM_CHAR, '\t', 0);
+    CHECK(window_text(pair.view) == L"a\tX  ");
+    TextView_SetStyleBool(pair.view, TXS_INSERTSPACES, FALSE);
+    SendMessage(pair.view, WM_CHAR, '\t', 0);
+    CHECK(window_text(pair.view) == L"a\tX  \t");
+    close_edit_pair(&pair);
+}
+
+void textview_auto_indent_preserves_line_format_and_undo()
+{
+    for (TEXT_ENCODING encoding : {NCP_UTF8, NCP_UTF16, NCP_UTF16BE, NCP_UTF32, NCP_UTF32BE})
+    {
+        for (const wchar_t *linebreak : {L"\r\n", L"\n", L"\r"})
+        {
+            for (BOOL spaces : {FALSE, TRUE})
+            {
+                std::wstring before = std::wstring(L"head") + linebreak + L"\t  \x03bb";
+                EditPair     pair   = {};
+                CHECK(open_edit_pair(&pair, before.c_str(), encoding));
+                TextView_SetStyleBool(pair.view, TXS_AUTOINDENT, TRUE);
+                TextView_SetStyleBool(pair.view, TXS_INSERTSPACES, spaces);
+                SendMessage(pair.view, EM_SETSEL, before.size(), before.size());
+                SendMessage(pair.view, WM_CHAR, 'x', 0);
+                SendMessage(pair.view, WM_CHAR, '\r', 0);
+                std::wstring expected = before + L"x" + linebreak + (spaces ? L"      " : L"\t  ");
+                CHECK(window_text(pair.view) == expected);
+                CHECK(TextView_Undo(pair.view));
+                CHECK(window_text(pair.view) == before + L"x");
+                CHECK(TextView_Redo(pair.view));
+                CHECK(window_text(pair.view) == expected);
+                close_edit_pair(&pair);
+            }
+        }
+    }
+}
+
+void textview_auto_indent_uses_the_selection_start_and_can_be_disabled()
+{
+    struct IndentCase
+    {
+        const wchar_t *before;
+        int            start, end;
+        const wchar_t *after;
+    };
+
+    const IndentCase cases[] = {
+        {L"    body", 2, 2, L"  \r\n    body"},
+        {L"\talpha\r\n  beta", 5, 2, L"\ta\r\n    a\r\n  beta"},
+        {L"plain", 5, 5, L"plain\r\n"},
+    };
+    for (const IndentCase &item : cases)
+    {
+        EditPair pair = {};
+        CHECK(open_edit_pair(&pair, item.before, NCP_UTF8));
+        TextView_SetStyleBool(pair.view, TXS_AUTOINDENT, TRUE);
+        TextView_SetStyleBool(pair.view, TXS_INSERTSPACES, TRUE);
+        SendMessage(pair.view, EM_SETSEL, item.start, item.end);
+        SendMessage(pair.view, WM_CHAR, '\r', 0);
+        CHECK(window_text(pair.view) == item.after);
+        CHECK(TextView_Undo(pair.view));
+        CHECK(window_text(pair.view) == item.before);
+        close_edit_pair(&pair);
+    }
+
+    EditPair pair = {};
+    CHECK(open_edit_pair(&pair, L"  body", NCP_UTF8));
+    TextView_SetStyleBool(pair.view, TXS_AUTOINDENT, FALSE);
+    SendMessage(pair.view, EM_SETSEL, 6, 6);
+    SendMessage(pair.view, WM_CHAR, '\r', 0);
+    CHECK(window_text(pair.view) == L"  body\r\n");
+    close_edit_pair(&pair);
+
+    // Leading whitespace can span multiple TextReader blocks.
+    std::wstring longIndent(300, L' ');
+    std::wstring before = longIndent + L"x";
+    CHECK(open_edit_pair(&pair, before.c_str(), NCP_UTF8));
+    TextView_SetStyleBool(pair.view, TXS_AUTOINDENT, TRUE);
+    SendMessage(pair.view, EM_SETSEL, before.size(), before.size());
+    SendMessage(pair.view, WM_CHAR, '\r', 0);
+    CHECK(window_text(pair.view) == before + L"\r\n" + longIndent);
+    close_edit_pair(&pair);
+}
+
+void textview_tab_and_auto_indent_respect_edit_modes()
+{
+    EditPair pair = {};
+    CHECK(open_edit_pair(&pair, L"  abcd", NCP_UTF8));
+    TextView_SetStyleBool(pair.view, TXS_AUTOINDENT, TRUE);
+    TextView_SetStyleBool(pair.view, TXS_INSERTSPACES, TRUE);
+    TextView_SetEditMode(pair.view, MODE_READONLY);
+    int changes = g_changes_notified;
+    SendMessage(pair.view, WM_CHAR, '\t', 0);
+    SendMessage(pair.view, WM_CHAR, '\r', 0);
+    CHECK(window_text(pair.view) == L"  abcd");
+    CHECK(g_changes_notified == changes && !TextView_GetModify(pair.view));
+
+    // Enter splits the line without overwriting the following text.
+    TextView_SetEditMode(pair.view, MODE_OVERWRITE);
+    SendMessage(pair.view, EM_SETSEL, 4, 4);
+    SendMessage(pair.view, WM_CHAR, '\r', 0);
+    CHECK(window_text(pair.view) == L"  ab\r\n  cd");
+    CHECK(TextView_GetEditMode(pair.view) == MODE_OVERWRITE);
+    CHECK(TextView_Undo(pair.view));
+    CHECK(window_text(pair.view) == L"  abcd");
+    SendMessage(pair.view, EM_SETSEL, 1, 1);
+    SendMessage(pair.view, WM_CHAR, '\t', 0);
+    CHECK(window_text(pair.view) == L"    cd");
+    close_edit_pair(&pair);
+}
+
 // Recovery tests use the same hidden controls as the other view tests.
 struct RecoveryStore
 {
@@ -1280,6 +1447,14 @@ void recovery_controller_restores_multiple_sessions_newest_first()
 }
 
 const test_case tests[] = {
+    {"textview_tab_width_changes_layout_without_changing_text",
+     textview_tab_width_changes_layout_without_changing_text},
+    {"textview_tab_inserts_spaces_to_the_next_stop", textview_tab_inserts_spaces_to_the_next_stop},
+    {"textview_auto_indent_preserves_line_format_and_undo", textview_auto_indent_preserves_line_format_and_undo},
+    {"textview_auto_indent_uses_the_selection_start_and_can_be_disabled",
+     textview_auto_indent_uses_the_selection_start_and_can_be_disabled},
+    {"textview_tab_and_auto_indent_respect_edit_modes", textview_tab_and_auto_indent_respect_edit_modes},
+
     {"recovery_controller_keeps_the_final_edit_and_both_histories_on_exit",
      recovery_controller_keeps_the_final_edit_and_both_histories_on_exit},
     {"recovery_controller_failed_checkpoint_keeps_the_document_open",

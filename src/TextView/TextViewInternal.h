@@ -219,7 +219,8 @@ private:
 	int			LeftMarginWidth();
 	void		UpdateMarginWidth();
 	int			SetCaretWidth(int nWidth);
-	BOOL		SetImageList(HIMAGELIST hImgList);
+    UINT        SetTabWidth(UINT width);
+    BOOL		SetImageList(HIMAGELIST hImgList);
 	int			SetLineImage(ULONG nLineNo, ULONG nImageIdx);
 	LINEINFO *	GetLineInfo(ULONG nLineNo);
 
@@ -264,8 +265,8 @@ private:
 	BOOL		CanRedo();
 	BOOL		ForwardDelete();
 	BOOL		BackDelete();
-	ULONG		EnterText(TCHAR *szText, ULONG nLength);
-	BOOL		ConvertLineBreaks(UINT nLineBreak);
+    ULONG       EnterText(TCHAR *szText, ULONG nLength, bool forceInsert = false);
+    BOOL		ConvertLineBreaks(UINT nLineBreak);
 
 	//
 	//	Scrolling

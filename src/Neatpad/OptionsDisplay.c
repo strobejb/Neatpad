@@ -40,6 +40,12 @@ INT_PTR CALLBACK DisplayOptionsDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 
 		CheckDlgButton(hwnd, IDC_HIGHLIGHTCURLINE, g_nHLCurLine);
 
+        SetDlgItemInt(hwnd, IDC_TABWIDTH, g_nTabWidth, FALSE);
+        SendDlgItemMessage(hwnd, IDC_SPIN1, UDM_SETRANGE32, 1, TV_MAX_TAB_WIDTH);
+        SendDlgItemMessage(hwnd, IDC_TABWIDTH, EM_LIMITTEXT, 2, 0);
+        CheckDlgButton(hwnd, IDC_INSERTSPACES, g_fInsertSpaces);
+        CheckDlgButton(hwnd, IDC_AUTOINDENT, g_fAutoIndent);
+
         SetDlgItemInt(hwnd, IDC_FILTERCONTEXT, g_nFilterContext, FALSE);
         SendDlgItemMessage(hwnd, IDC_FILTERCONTEXTSPIN, UDM_SETRANGE32, 0, TV_MAX_FILTER_CONTEXT);
         SendDlgItemMessage(hwnd, IDC_FILTERCONTEXT, EM_LIMITTEXT, 3, 0);
@@ -66,6 +72,19 @@ INT_PTR CALLBACK DisplayOptionsDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
                 SetWindowLongPtr(hwnd, DWLP_MSGRESULT, PSNRET_INVALID_NOCHANGEPAGE);
                 return TRUE;
             }
+            UINT width = GetDlgItemInt(hwnd, IDC_TABWIDTH, &valid, FALSE);
+
+            if (!valid || width < 1 || width > TV_MAX_TAB_WIDTH)
+            {
+                MessageBox(hwnd, _T("Enter a tab width between 1 and 32."), _T("Tab width"), MB_OK | MB_ICONWARNING);
+                SetFocus(GetDlgItem(hwnd, IDC_TABWIDTH));
+                SetWindowLongPtr(hwnd, DWLP_MSGRESULT, PSNRET_INVALID_NOCHANGEPAGE);
+                return TRUE;
+            }
+
+            g_nTabWidth      = (LONG)width;
+            g_fInsertSpaces  = IsDlgButtonChecked(hwnd, IDC_INSERTSPACES);
+            g_fAutoIndent    = IsDlgButtonChecked(hwnd, IDC_AUTOINDENT);
             g_nFilterContext = (LONG)context;
 
             g_fLineNumbers	 = IsDlgButtonChecked(hwnd, IDC_LINENOS);

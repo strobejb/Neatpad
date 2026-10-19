@@ -82,6 +82,8 @@ COLORREF RealizeColour(COLORREF col);
 #define TXM_LOADSTATE (TXM_BASE + 45)
 #define TXM_SETFILTERCONTEXT (TXM_BASE + 46)
 #define TV_MAX_FILTER_CONTEXT 100
+#define TXM_SETTABWIDTH (TXM_BASE + 47)
+#define TV_MAX_TAB_WIDTH 32
 
     typedef struct _TEXTVIEWRECOVERY
     {
@@ -171,6 +173,8 @@ typedef struct _TEXTVIEWFIND
 #define TXS_LONGLINES			8
 #define TXS_HIGHLIGHTCURLINE	16
 #define TXS_SHOWLINEENDINGS		32		// show every line ending, not just those that don't match the line format
+#define TXS_INSERTSPACES 64             // typing Tab inserts spaces to the next tab stop
+#define TXS_AUTOINDENT 128              // Enter continues the current line's leading whitespace
 
 //
 //	End-of-line mode: the TXL_ line break kinds come from codepages.h,
@@ -212,6 +216,9 @@ typedef struct _TEXTVIEWFIND
 
 //
 //	TextView Message Macros defined here
+// Tab-stop width in columns (1..32, default 4); returns the previous width.
+#define TextView_SetTabWidth(hwndTV, width) ((UINT)SendMessage((hwndTV), TXM_SETTABWIDTH, (WPARAM)(UINT)(width), 0))
+
 // Lines before and after each filtered match (default 2, 0 for matches only).
 // Clamps to TV_MAX_FILTER_CONTEXT; returns the previous count.
 #define TextView_SetFilterContext(hwndTV, lines)                                                                       \

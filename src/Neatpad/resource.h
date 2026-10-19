@@ -117,6 +117,9 @@
 #define IDC_SEARCH_FILTER               1068
 #define IDC_FILTERCONTEXT 1069
 #define IDC_FILTERCONTEXTSPIN 1070
+#define IDC_TABWIDTH                    1071
+#define IDC_INSERTSPACES                1072
+#define IDC_AUTOINDENT                  1073
 #define IDM_FILE_NEW                    40001
 #define IDM_FILE_OPEN                   40002
 #define IDM_FILE_EXIT                   40003
@@ -173,7 +176,7 @@
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        135
 #define _APS_NEXT_COMMAND_VALUE         40063
-#define _APS_NEXT_CONTROL_VALUE 1071
+#define _APS_NEXT_CONTROL_VALUE 1074
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif

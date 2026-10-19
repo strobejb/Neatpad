@@ -759,6 +759,9 @@ LRESULT WINAPI TextView::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 	case TXM_GETLINEFORMAT:
 		return m_nCRLFMode;
 
+    case TXM_SETTABWIDTH:
+        return SetTabWidth((UINT)wParam);
+
     case TXM_SETFILTERCONTEXT:
         return SetFilterContext((UINT)wParam);
 

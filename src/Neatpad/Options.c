@@ -48,6 +48,9 @@ BOOL  g_fShowStatusbar;
 BOOL  g_fSearchMatchCase;
 BOOL  g_fSearchWrap;
 LONG  g_nFilterContext = 2;
+LONG  g_nTabWidth      = 4;
+BOOL  g_fInsertSpaces  = TRUE;
+BOOL  g_fAutoIndent    = TRUE;
 LONG  g_nInMemoryLimit;
 BOOL  g_fAddToExplorer		= 0;
 BOOL  g_fReplaceNotepad		= 0;
@@ -447,6 +450,12 @@ void LoadRegSettings()
 	GetSettingInt(hKey, _T("ShowLineEndings"), &g_fShowLineEndings, FALSE);
 	GetSettingInt(hKey, _T("SearchMatchCase"), &g_fSearchMatchCase, FALSE);
 	GetSettingInt(hKey, _T("SearchWrap"), &g_fSearchWrap, TRUE);
+    GetSettingInt(hKey, _T("TabWidth"), &g_nTabWidth, 4);
+    if (g_nTabWidth < 1 || g_nTabWidth > TV_MAX_TAB_WIDTH)
+        g_nTabWidth = 4;
+    GetSettingInt(hKey, _T("InsertSpaces"), &g_fInsertSpaces, TRUE);
+    GetSettingInt(hKey, _T("AutoIndent"), &g_fAutoIndent, TRUE);
+
     GetSettingInt(hKey, _T("FilterContext"), &g_nFilterContext, 2);
     if (g_nFilterContext < 0 || g_nFilterContext > TV_MAX_FILTER_CONTEXT)
         g_nFilterContext = 2;
@@ -531,6 +540,9 @@ void SaveRegSettings()
 	WriteSettingInt(hKey, _T("ShowLineEndings"), g_fShowLineEndings);
 	WriteSettingInt(hKey, _T("SearchMatchCase"), g_fSearchMatchCase);
 	WriteSettingInt(hKey, _T("SearchWrap"), g_fSearchWrap);
+    WriteSettingInt(hKey, _T("TabWidth"), g_nTabWidth);
+    WriteSettingInt(hKey, _T("InsertSpaces"), g_fInsertSpaces);
+    WriteSettingInt(hKey, _T("AutoIndent"), g_fAutoIndent);
     WriteSettingInt(hKey, _T("FilterContext"), g_nFilterContext);
     WriteSettingInt(hKey, _T("InMemoryLimit"), g_nInMemoryLimit);
 
@@ -657,6 +669,9 @@ void ApplyRegSettings()
 	TextView_SetLongLine(g_hwndTextView, g_nLongLineLimit);
 	TextView_SetInMemoryLimit(g_hwndTextView, (DWORD)g_nInMemoryLimit);
     TextView_SetFilterContext(g_hwndTextView, (UINT)g_nFilterContext);
+    TextView_SetTabWidth(g_hwndTextView, (UINT)g_nTabWidth);
+    TextView_SetStyleBool(g_hwndTextView, TXS_INSERTSPACES, g_fInsertSpaces);
+    TextView_SetStyleBool(g_hwndTextView, TXS_AUTOINDENT, g_fAutoIndent);
 
     ApplyFonts();
 
