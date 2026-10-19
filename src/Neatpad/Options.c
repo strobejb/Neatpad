@@ -11,32 +11,25 @@
 #include <tchar.h>
 #include <commctrl.h>
 #include <shellapi.h>
+#include <shlobj.h>
 #include "resource.h"
 #include "Neatpad.h"
 #include "..\TextView\TextView.h"
 
 #pragma comment(lib, "comctl32.lib")
 
-#define CONTEXT_CMD_LOC _T("*\\shell\\Open with Neatpad\\command")
-#define CONTEXT_APP_LOC _T("*\\shell\\Open with Neatpad")
-
-#define IMAGEFILE_XOPT _T("Software\\Microsoft\\Windows NT\\CurrentVersion")\
-					   _T("\\Image File Execution Options\\Notepad.exe")
-
-
+#define CONTEXT_APP_LOC _T("Software\\Classes\\*\\shell\\Open with Neatpad")
+#define CONTEXT_CMD_LOC CONTEXT_APP_LOC _T("\\command")
 
 INT_PTR CALLBACK FontOptionsDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 INT_PTR CALLBACK MiscOptionsDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 INT_PTR CALLBACK DisplayOptionsDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 LONG  g_nFontSize;
+LONG  g_nLineSpacing;
 BOOL  g_fFontBold;
 TCHAR g_szFontName[LF_FACESIZE];
-LONG  g_nFontSmoothing;
 
-LONG  g_nPaddingAbove;
-LONG  g_nPaddingBelow;
-LONG  g_fPaddingFlags;
 BOOL  g_fLineNumbers;
 BOOL  g_fLongLines;
 BOOL  g_fSelMargin;
@@ -52,8 +45,8 @@ LONG  g_nTabWidth      = 4;
 BOOL  g_fInsertSpaces  = TRUE;
 BOOL  g_fAutoIndent    = TRUE;
 LONG  g_nInMemoryLimit;
-BOOL  g_fAddToExplorer		= 0;
-BOOL  g_fReplaceNotepad		= 0;
+
+C_ASSERT(TXC_MAX_COLOURS == ARRAYSIZE(((OPTIONS *)0)->rgbColourList));
 
 COLORREF g_rgbColourList[TXC_MAX_COLOURS];
 COLORREF g_rgbCustColours[16];
@@ -365,64 +358,81 @@ BOOL OpenPreviousFile(HWND hwnd)
 //
 //	Add or remove Neatpad from the Explorer context-menu
 //
-BOOL SetExplorerContextMenu(BOOL fAddToMenu)
+BOOL IsExplorerContextMenuEnabled(void)
 {
-	HRESULT hr;
+    HKEY  key;
+    TCHAR path[MAX_PATH];
+    TCHAR expected[MAX_PATH + 8];
+    TCHAR command[MAX_PATH + 8];
+    DWORD size = sizeof(command);
+    DWORD type;
+    LONG  status;
 
-	if(fAddToMenu)
-	{
-		TCHAR szAppPath[MAX_PATH];
-		TCHAR szDefaultStr[MAX_PATH];
+    if (RegOpenKeyEx(HKEY_CURRENT_USER, CONTEXT_CMD_LOC, 0, KEY_QUERY_VALUE, &key) != ERROR_SUCCESS)
+    {
+        return FALSE;
+    }
 
-		GetModuleFileName(0, szAppPath, MAX_PATH);
+    status = RegQueryValueEx(key, NULL, NULL, &type, (BYTE *)command, &size);
+    RegCloseKey(key);
+    if (status != ERROR_SUCCESS || type != REG_SZ || size < sizeof(TCHAR) || size > sizeof(command))
+    {
+        return FALSE;
+    }
 
-		wsprintf(szDefaultStr, _T("\"%s\" \"%%1\""), szAppPath);
+    command[ARRAYSIZE(command) - 1] = 0;
+    if (!GetModuleFileName(NULL, path, ARRAYSIZE(path)))
+    {
+        return FALSE;
+    }
 
-		hr = RegSetValue(HKEY_CLASSES_ROOT, CONTEXT_CMD_LOC, REG_SZ, szDefaultStr, lstrlen(szDefaultStr) * sizeof(TCHAR));
-	}
-	else
-	{
-		hr = RegDeleteKey(HKEY_CLASSES_ROOT, CONTEXT_CMD_LOC);
-
-		if(hr == ERROR_SUCCESS)
-			hr = RegDeleteKey(HKEY_CLASSES_ROOT, CONTEXT_APP_LOC);
-	}
-
-	return (hr == ERROR_SUCCESS) ? TRUE : FALSE;
+    wsprintf(expected, _T("\"%s\" \"%%1\""), path);
+    return lstrcmpi(command, expected) == 0;
 }
 
-//
-//	Replace/Restore Notepad (with Neatpad) as the default text editor, by
-//  manipulating the Image-File-Execution-Options debugger setting for NOTEPAD.EXE
-//
-BOOL SetImageFileExecutionOptions(BOOL fReplaceWithCurrentApp)
+BOOL SetExplorerContextMenu(BOOL enabled)
 {
-	HKEY	hKey;
-	HRESULT hr;
-	TCHAR	szPath[MAX_PATH];
+    HKEY  key;
+    TCHAR path[MAX_PATH];
+    TCHAR command[MAX_PATH + 8];
+    LONG  status;
 
-	// create an 'ImageFileExecutionOptions' entry for the standard Notepad app
-	hr = RegCreateKeyEx(HKEY_LOCAL_MACHINE, IMAGEFILE_XOPT, 0, 0, 0, KEY_WRITE, 0, &hKey, 0);
+    if (enabled)
+    {
+        if (!GetModuleFileName(NULL, path, ARRAYSIZE(path)))
+        {
+            return FALSE;
+        }
 
-	if(hr != ERROR_SUCCESS)
-		return FALSE;
+        wsprintf(command, _T("\"%s\" \"%%1\""), path);
+        status = RegCreateKeyEx(HKEY_CURRENT_USER, CONTEXT_CMD_LOC, 0, NULL, 0, KEY_SET_VALUE, NULL, &key, NULL);
+        if (status == ERROR_SUCCESS)
+        {
+            status = RegSetValueEx(key, NULL, 0, REG_SZ, (const BYTE *)command, (lstrlen(command) + 1) * sizeof(TCHAR));
+            RegCloseKey(key);
+        }
+    }
+    else
+    {
+        status = RegDeleteKey(HKEY_CURRENT_USER, CONTEXT_CMD_LOC);
+        if (status == ERROR_SUCCESS || status == ERROR_FILE_NOT_FOUND)
+        {
+            status = RegDeleteKey(HKEY_CURRENT_USER, CONTEXT_APP_LOC);
+        }
+        if (status == ERROR_FILE_NOT_FOUND)
+        {
+            status = ERROR_SUCCESS;
+        }
+    }
 
-	// get path of current exe
-	GetModuleFileName(0, szPath+1, MAX_PATH);
+    if (status != ERROR_SUCCESS)
+    {
+        SetLastError(status);
+        return FALSE;
+    }
 
-	// enclose it in double-quotes
-	szPath[0] = '\"';
-	lstrcat(szPath, _T("\""));
-	lstrcat(szPath, _T(" -ifeo"));
-
-	// set the 'debugger' key so that whenever notepad.exe is executed, neatpad runs instead
-	if(fReplaceWithCurrentApp)
-		WriteSettingStr(hKey, _T("Debugger"), szPath);
-	else
-		RegDeleteValue(hKey, _T("Debugger"));
-		
-	RegCloseKey(hKey);
-	return TRUE;
+    SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, NULL, NULL);
+    return TRUE;
 }
 
 void LoadRegSettings()
@@ -435,13 +445,23 @@ void LoadRegSettings()
 	GetSettingInt(hKey, _T("FontSize"),		&g_nFontSize, 10);
 	GetSettingInt(hKey, _T("FontBold"),		&g_fFontBold, FALSE);
 	GetSettingStr(hKey, _T("FontName"),		g_szFontName, LF_FACESIZE, _T("Courier New"));
-	GetSettingInt(hKey, _T("FontSmooth"),	&g_nFontSmoothing, DEFAULT_QUALITY);
 
-	GetSettingInt(hKey, _T("PaddingAbove"), &g_nPaddingAbove, 0);
-	GetSettingInt(hKey, _T("PaddingBelow"), &g_nPaddingBelow, 1);
-	GetSettingInt(hKey, _T("PaddingFlags"), &g_fPaddingFlags, COURIERNEW|LUCIDACONS);
+    // Migrate the old separate values, keeping their total extra space.
+    {
+        LONG above, below;
 
-	GetSettingInt(hKey, _T("SelMargin"),	 &g_fSelMargin, TRUE);
+        GetSettingInt(hKey, _T("PaddingAbove"), &above, 0);
+        GetSettingInt(hKey, _T("PaddingBelow"), &below, 1);
+        above = max(0, min(above, MAX_LINE_SPACING));
+        below = max(0, min(below, MAX_LINE_SPACING));
+        GetSettingInt(hKey, _T("LineSpacing"), &g_nLineSpacing, min(above + below, MAX_LINE_SPACING));
+        if (g_nLineSpacing < 0 || g_nLineSpacing > MAX_LINE_SPACING)
+        {
+            g_nLineSpacing = 1;
+        }
+    }
+
+    GetSettingInt(hKey, _T("SelMargin"),	 &g_fSelMargin, TRUE);
 	GetSettingInt(hKey, _T("LineNumbers"),   &g_fLineNumbers, FALSE);
 	GetSettingInt(hKey, _T("LongLines"),	 &g_fLongLines, TRUE);
 	GetSettingInt(hKey, _T("LongLineLimit"), &g_nLongLineLimit, 80);
@@ -464,8 +484,6 @@ void LoadRegSettings()
 	// from disk and locked while they're open. 0 reads every file from disk.
 	GetSettingInt(hKey, _T("InMemoryLimit"), &g_nInMemoryLimit, 16 * 1024 * 1024);
 
-	GetSettingInt(hKey, _T("AddExplorer"),	 &g_fAddToExplorer, FALSE);
-	GetSettingInt(hKey, _T("ReplaceNotepad"), &g_fReplaceNotepad, FALSE);
 	GetSettingInt(hKey, _T("ShowStatusbar"), &g_fShowStatusbar, TRUE);
 	LoadRecentFiles(hKey);
 	
@@ -495,26 +513,6 @@ void LoadRegSettings()
 	RegCloseKey(hKey);
 }
 
-void LoadRegSysSettings()
-{
-	HKEY hKey;
-
-	RegCreateKeyEx(HKEY_CURRENT_USER, REGLOC, 0, 0, 0, KEY_READ, 0, &hKey, 0);
-	GetSettingInt(hKey, _T("AddExplorer"),	 &g_fAddToExplorer, FALSE);
-	GetSettingInt(hKey, _T("ReplaceNotepad"), &g_fReplaceNotepad, FALSE);
-	RegCloseKey(hKey);
-}
-
-void SaveRegSysSettings()
-{
-	HKEY hKey;
-
-	RegCreateKeyEx(HKEY_CURRENT_USER, REGLOC, 0, 0, 0, KEY_WRITE, 0, &hKey, 0);
-	WriteSettingInt(hKey, _T("AddExplorer"),	g_fAddToExplorer);
-	WriteSettingInt(hKey, _T("ReplaceNotepad"), g_fReplaceNotepad);
-	RegCloseKey(hKey);
-}
-
 void SaveRegSettings()
 {
 	HKEY hKey, hColKey;
@@ -525,13 +523,9 @@ void SaveRegSettings()
 	WriteSettingInt(hKey, _T("FontSize"),	g_nFontSize);
 	WriteSettingInt(hKey, _T("FontBold"),	g_fFontBold);
 	WriteSettingStr(hKey, _T("FontName"),	g_szFontName);
-	WriteSettingInt(hKey, _T("FontSmooth"),	g_nFontSmoothing);
+    WriteSettingInt(hKey, _T("LineSpacing"), g_nLineSpacing);
 
-	WriteSettingInt(hKey, _T("PaddingAbove"), g_nPaddingAbove);
-	WriteSettingInt(hKey, _T("PaddingBelow"), g_nPaddingBelow);
-	WriteSettingInt(hKey, _T("PaddingFlags"), g_fPaddingFlags);
-
-	WriteSettingInt(hKey, _T("SelMargin"),	  g_fSelMargin);
+    WriteSettingInt(hKey, _T("SelMargin"),	  g_fSelMargin);
 	WriteSettingInt(hKey, _T("LineNumbers"),  g_fLineNumbers);
 	WriteSettingInt(hKey, _T("LongLines"),	  g_fLongLines);
 	WriteSettingInt(hKey, _T("SaveOnExit"),	  g_fSaveOnExit);
@@ -546,8 +540,6 @@ void SaveRegSettings()
     WriteSettingInt(hKey, _T("FilterContext"), g_nFilterContext);
     WriteSettingInt(hKey, _T("InMemoryLimit"), g_nInMemoryLimit);
 
-	WriteSettingInt(hKey, _T("AddExplorer"),  g_fAddToExplorer);
-	WriteSettingInt(hKey, _T("ReplaceNotepad"), g_fReplaceNotepad);
 	WriteSettingInt(hKey, _T("ShowStatusbar"), g_fShowStatusbar);
 	SaveRecentFiles(hKey);
 	
@@ -604,13 +596,8 @@ static void DeleteFallbackFonts()
 //
 static HFONT CreateTextFont(TCHAR *szFace)
 {
-	return CreateFont(MulDiv(PointsToLogical(g_nFontSize), g_nZoom, 100),
-					  0, 0, 0,
-					  g_fFontBold ? FW_BOLD : 0,
-					  0, 0, 0, DEFAULT_CHARSET, 0, 0,
-					  g_nFontSmoothing,
-					  0,
-					  szFace);
+    return CreateFont(MulDiv(PointsToLogical(g_nFontSize), g_nZoom, 100), 0, 0, 0, g_fFontBold ? FW_BOLD : 0, 0, 0, 0,
+                      DEFAULT_CHARSET, 0, 0, DEFAULT_QUALITY, 0, szFace);
 }
 
 static void AddFallbackFont(int idx, TCHAR *faceName)
@@ -656,9 +643,10 @@ void ApplyRegSettings()
 {
 	int i;
 
-	TextView_SetLineSpacing(g_hwndTextView, g_nPaddingAbove, g_nPaddingBelow);
+    // Split extra pixels evenly; an odd pixel belongs below the text.
+    TextView_SetLineSpacing(g_hwndTextView, g_nLineSpacing / 2, (g_nLineSpacing + 1) / 2);
 
-	TextView_SetStyleBool(g_hwndTextView, TXS_SELMARGIN,	g_fSelMargin);
+    TextView_SetStyleBool(g_hwndTextView, TXS_SELMARGIN,	g_fSelMargin);
 	TextView_SetStyleBool(g_hwndTextView, TXS_LINENUMBERS,	g_fLineNumbers);
 	TextView_SetStyleBool(g_hwndTextView, TXS_LONGLINES,	g_fLongLines);
 
@@ -680,57 +668,88 @@ void ApplyRegSettings()
 		TextView_SetColor(g_hwndTextView, i, g_rgbColourList[i]);
 	}
 
-	//
-	//	System-wide options require Administrator access. On Vista we
-	//	need to elevate using the UAC prompt. Only do this if the settings have actually
-	//	changed
-	//
-	//SetExplorerContextMenu(g_fAddToExplorerContextMenu);
-	//SetImageFileExecutionOptions(g_fReplaceNotepad);
 }
 
 void ShowOptions(HWND hwndParent)
 {
-	PROPSHEETHEADER psh    = {   sizeof(psh)   };
-	PROPSHEETPAGE   psp[3] = {  { sizeof(psp[0]) },  
-								{ sizeof(psp[1]) }, 
-								{ sizeof(psp[2]) }, 
-							};
+    PROPSHEETHEADER psh    = {sizeof(psh)};
+    PROPSHEETPAGE   psp[3] = {
+        {sizeof(psp[0])},
+        {sizeof(psp[1])},
+        {sizeof(psp[2])},
+    };
 
-	CoInitialize(0);
-	
-	// configure property sheet
-	psh.dwFlags			= PSH_PROPSHEETPAGE;
-	psh.hwndParent		= hwndParent;
-	psh.nPages			= sizeof(psp) / sizeof(psp[0]);
-	psh.ppsp			= psp;
-	psh.pszCaption		= _T("Options");
+    OPTIONS options;
 
-	// configure property sheet page(1)
-	psp[0].dwFlags		= PSP_USETITLE;
-	psp[0].hInstance	= g_hResourceModule;//GetModuleHandle(0);
-	psp[0].pfnDlgProc	= FontOptionsDlgProc;
-	psp[0].pszTemplate	= MAKEINTRESOURCE(IDD_FONT);
-	psp[0].pszTitle		= _T("Font");
+    options.nFontSize             = g_nFontSize;
+    options.fFontBold             = g_fFontBold;
+    options.nLineSpacing          = g_nLineSpacing;
+    options.fLineNumbers          = g_fLineNumbers;
+    options.fLongLines            = g_fLongLines;
+    options.fSelMargin            = g_fSelMargin;
+    options.nLongLineLimit        = g_nLongLineLimit;
+    options.fHighlightCurrentLine = g_nHLCurLine;
+    options.nTabWidth             = g_nTabWidth;
+    options.fInsertSpaces         = g_fInsertSpaces;
+    options.fAutoIndent           = g_fAutoIndent;
+    options.nFilterContext        = g_nFilterContext;
+    memcpy(options.szFontName, g_szFontName, sizeof(options.szFontName));
+    memcpy(options.rgbColourList, g_rgbColourList, sizeof(options.rgbColourList));
+    memcpy(options.rgbCustColours, g_rgbCustColours, sizeof(options.rgbCustColours));
 
-	// configure property sheet page(2)
-	psp[1].dwFlags		= PSP_USETITLE;
-	psp[1].hInstance	= g_hResourceModule;//GetModuleHandle(0);
-	psp[1].pfnDlgProc	= DisplayOptionsDlgProc;
-	psp[1].pszTemplate	= MAKEINTRESOURCE(IDD_DISPLAY);
-	psp[1].pszTitle		= _T("Display");
+    CoInitialize(0);
 
-	// configure property sheet page(3)
-	psp[2].dwFlags		= PSP_USETITLE;
-	psp[2].hInstance	= g_hResourceModule;//GetModuleHandle(0);
-	psp[2].pfnDlgProc	= MiscOptionsDlgProc;
-	psp[2].pszTemplate	= MAKEINTRESOURCE(IDD_OPTIONS);
-	psp[2].pszTitle		= _T("Settings");
+    // configure property sheet
+    psh.dwFlags    = PSH_PROPSHEETPAGE | PSH_NOAPPLYNOW;
+    psh.hwndParent = hwndParent;
+    psh.nPages     = sizeof(psp) / sizeof(psp[0]);
+    psh.ppsp       = psp;
+    psh.pszCaption = _T("Options");
 
-	if(PropertySheet(&psh))
-	{
-		ApplyRegSettings();		
-	}
+    // configure property sheet page(1)
+    psp[0].lParam      = (LPARAM)&options;
+    psp[0].dwFlags     = PSP_USETITLE;
+    psp[0].hInstance   = g_hResourceModule; // GetModuleHandle(0);
+    psp[0].pfnDlgProc  = FontOptionsDlgProc;
+    psp[0].pszTemplate = MAKEINTRESOURCE(IDD_FONT);
+    psp[0].pszTitle    = _T("Appearance");
 
-	CoUninitialize();
+    // configure property sheet page(2)
+    psp[1].lParam      = (LPARAM)&options;
+    psp[1].dwFlags     = PSP_USETITLE;
+    psp[1].hInstance   = g_hResourceModule; // GetModuleHandle(0);
+    psp[1].pfnDlgProc  = DisplayOptionsDlgProc;
+    psp[1].pszTemplate = MAKEINTRESOURCE(IDD_DISPLAY);
+    psp[1].pszTitle    = _T("Display");
+
+    // configure property sheet page(3)
+    psp[2].lParam      = (LPARAM)&options;
+    psp[2].dwFlags     = PSP_USETITLE;
+    psp[2].hInstance   = g_hResourceModule; // GetModuleHandle(0);
+    psp[2].pfnDlgProc  = MiscOptionsDlgProc;
+    psp[2].pszTemplate = MAKEINTRESOURCE(IDD_OPTIONS);
+    psp[2].pszTitle    = _T("Settings");
+
+    if (PropertySheet(&psh) > 0)
+    {
+        g_nFontSize      = options.nFontSize;
+        g_fFontBold      = options.fFontBold;
+        g_nLineSpacing   = options.nLineSpacing;
+        g_fLineNumbers   = options.fLineNumbers;
+        g_fLongLines     = options.fLongLines;
+        g_fSelMargin     = options.fSelMargin;
+        g_nLongLineLimit = options.nLongLineLimit;
+        g_nHLCurLine     = options.fHighlightCurrentLine;
+        g_nTabWidth      = options.nTabWidth;
+        g_fInsertSpaces  = options.fInsertSpaces;
+        g_fAutoIndent    = options.fAutoIndent;
+        g_nFilterContext = options.nFilterContext;
+        memcpy(g_szFontName, options.szFontName, sizeof(options.szFontName));
+        memcpy(g_rgbColourList, options.rgbColourList, sizeof(options.rgbColourList));
+        memcpy(g_rgbCustColours, options.rgbCustColours, sizeof(options.rgbCustColours));
+
+        ApplyRegSettings();
+    }
+
+    CoUninitialize();
 }

@@ -21,24 +21,25 @@
 //
 INT_PTR CALLBACK DisplayOptionsDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
-	PSHNOTIFY *pshn;
+    PSHNOTIFY *pshn;
 
-	switch(msg)
-	{
-	case WM_INITDIALOG:
+    switch (msg)
+    {
+    case WM_INITDIALOG:
 
-		SendDlgItemMessage(hwnd, IDC_LONGLINEMODE, CB_ADDSTRING, 0, (LPARAM)_T("No Highlighting"));
-		SendDlgItemMessage(hwnd, IDC_LONGLINEMODE, CB_ADDSTRING, 0, (LPARAM)_T("Highlight long lines"));
+        SetWindowLongPtr(hwnd, DWLP_USER, ((PROPSHEETPAGE *)lParam)->lParam);
+        CheckDlgButton(hwnd, IDC_LONGLINES, g_fLongLines);
+        SendDlgItemMessage(hwnd, IDC_SPIN3, UDM_SETRANGE32, 1, 10000);
+        SendDlgItemMessage(hwnd, IDC_LONGLINELIM, EM_LIMITTEXT, 5, 0);
+        EnableDlgItem(hwnd, IDC_SPIN3, g_fLongLines);
 
-		SendDlgItemMessage(hwnd, IDC_LONGLINEMODE, CB_SETCURSEL, g_fLongLines, 0);
+        SetDlgItemInt(hwnd, IDC_LONGLINELIM, g_nLongLineLimit, FALSE);
+        EnableDlgItem(hwnd, IDC_LONGLINELIM, g_fLongLines);
 
-		SetDlgItemInt(hwnd, IDC_LONGLINELIM, g_nLongLineLimit, FALSE);
-		EnableDlgItem(hwnd, IDC_LONGLINELIM, g_fLongLines);
+        CheckDlgButton(hwnd, IDC_LINENOS, g_fLineNumbers);
+        CheckDlgButton(hwnd, IDC_SELMARGIN, g_fSelMargin);
 
-		CheckDlgButton(hwnd, IDC_LINENOS,   g_fLineNumbers);
-		CheckDlgButton(hwnd, IDC_SELMARGIN, g_fSelMargin);
-
-		CheckDlgButton(hwnd, IDC_HIGHLIGHTCURLINE, g_nHLCurLine);
+        CheckDlgButton(hwnd, IDC_HIGHLIGHTCURLINE, g_nHLCurLine);
 
         SetDlgItemInt(hwnd, IDC_TABWIDTH, g_nTabWidth, FALSE);
         SendDlgItemMessage(hwnd, IDC_SPIN1, UDM_SETRANGE32, 1, TV_MAX_TAB_WIDTH);
@@ -52,17 +53,18 @@ INT_PTR CALLBACK DisplayOptionsDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 
         return TRUE;
 
-	case WM_CLOSE:
-		return TRUE;
+    case WM_CLOSE:
+        return TRUE;
 
-	case WM_NOTIFY:
+    case WM_NOTIFY:
 
-		pshn = (PSHNOTIFY *)lParam;
-		
-		if(pshn->hdr.code == PSN_APPLY)
-		{
-            BOOL valid;
-            UINT context = GetDlgItemInt(hwnd, IDC_FILTERCONTEXT, &valid, FALSE);
+        pshn = (PSHNOTIFY *)lParam;
+
+        if (pshn->hdr.code == PSN_APPLY)
+        {
+            OPTIONS *options = (OPTIONS *)GetWindowLongPtr(hwnd, DWLP_USER);
+            BOOL     valid;
+            UINT     context = GetDlgItemInt(hwnd, IDC_FILTERCONTEXT, &valid, FALSE);
 
             if (!valid || context > TV_MAX_FILTER_CONTEXT)
             {
@@ -82,42 +84,56 @@ INT_PTR CALLBACK DisplayOptionsDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
                 return TRUE;
             }
 
-            g_nTabWidth      = (LONG)width;
-            g_fInsertSpaces  = IsDlgButtonChecked(hwnd, IDC_INSERTSPACES);
-            g_fAutoIndent    = IsDlgButtonChecked(hwnd, IDC_AUTOINDENT);
-            g_nFilterContext = (LONG)context;
+            BOOL highlight = IsDlgButtonChecked(hwnd, IDC_LONGLINES) == BST_CHECKED;
+            UINT limit     = GetDlgItemInt(hwnd, IDC_LONGLINELIM, &valid, FALSE);
 
-            g_fLineNumbers	 = IsDlgButtonChecked(hwnd, IDC_LINENOS);
-			g_fSelMargin	 = IsDlgButtonChecked(hwnd, IDC_SELMARGIN);
-			g_fLongLines	 = (BOOL)SendDlgItemMessage(hwnd, IDC_LONGLINEMODE, CB_GETCURSEL, 0, 0);
-			g_nLongLineLimit = GetDlgItemInt(hwnd, IDC_LONGLINELIM, 0, FALSE);
-			g_nHLCurLine	 = IsDlgButtonChecked(hwnd, IDC_HIGHLIGHTCURLINE);
+            if (highlight && (!valid || limit < 1 || limit > 10000))
+            {
+                MessageBox(hwnd, _T("Enter a column between 1 and 10000."), _T("Long lines"), MB_OK | MB_ICONWARNING);
+                SetFocus(GetDlgItem(hwnd, IDC_LONGLINELIM));
+                SetWindowLongPtr(hwnd, DWLP_MSGRESULT, PSNRET_INVALID_NOCHANGEPAGE);
+                return TRUE;
+            }
 
-			return TRUE;
-		}
+            options->nTabWidth      = (LONG)width;
+            options->fInsertSpaces  = IsDlgButtonChecked(hwnd, IDC_INSERTSPACES);
+            options->fAutoIndent    = IsDlgButtonChecked(hwnd, IDC_AUTOINDENT);
+            options->nFilterContext = (LONG)context;
+            options->fLineNumbers   = IsDlgButtonChecked(hwnd, IDC_LINENOS);
+            options->fSelMargin     = IsDlgButtonChecked(hwnd, IDC_SELMARGIN);
+            options->fLongLines     = highlight;
+            if (valid && limit >= 1 && limit <= 10000)
+            {
+                options->nLongLineLimit = (int)limit;
+            }
+            options->fHighlightCurrentLine = IsDlgButtonChecked(hwnd, IDC_HIGHLIGHTCURLINE);
+            SetWindowLongPtr(hwnd, DWLP_MSGRESULT, PSNRET_NOERROR);
 
-		return FALSE;
+            return TRUE;
+        }
 
-	case WM_COMMAND:
+        return FALSE;
 
-		switch(LOWORD(wParam))
-		{
-		case IDC_LONGLINEMODE:
-			
-			if(HIWORD(wParam) == CBN_SELCHANGE)
-			{
-				int idx = (int)SendDlgItemMessage(hwnd, IDC_LONGLINEMODE, CB_GETCURSEL, 0, 0);
-				EnableDlgItem(hwnd, IDC_LONGLINELIM, idx);
-			}
+    case WM_COMMAND:
 
-			return TRUE;
+        switch (LOWORD(wParam))
+        {
+        case IDC_LONGLINES:
+            if (HIWORD(wParam) == BN_CLICKED)
+            {
+                BOOL enabled = IsDlgButtonChecked(hwnd, IDC_LONGLINES) == BST_CHECKED;
 
-		case IDCANCEL:
-			return TRUE;
-		}
+                EnableDlgItem(hwnd, IDC_LONGLINELIM, enabled);
+                EnableDlgItem(hwnd, IDC_SPIN3, enabled);
+            }
+            return TRUE;
 
-		return FALSE;
-	}
+        case IDCANCEL:
+            return TRUE;
+        }
 
-	return FALSE;
+        return FALSE;
+    }
+
+    return FALSE;
 }

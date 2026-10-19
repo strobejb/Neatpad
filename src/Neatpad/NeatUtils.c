@@ -15,9 +15,6 @@
 #include <uxtheme.h>
 #include "neatpad.h"
 
-#define WINPOS_FILESPEC _T("%s:Neatpad.Settings")
-
-typedef HMONITOR (WINAPI * MFR_PROC)(LPCRECT, DWORD);
 
 BOOL CheckMenuCommand(HMENU hMenu, int nCommandId, BOOL fChecked)
 {
@@ -66,124 +63,82 @@ BOOL EnableDlgItem(HWND hDlg, UINT nCommandId, BOOL fEnable)
 	return EnableWindow(GetDlgItem(hDlg, nCommandId), fEnable);
 }
 
-//
-//	Ensure that the specified window is on a visible monitor
-//
-void ForceVisibleDisplay(HWND hwnd)
+// Remember one app position, without adding metadata to edited files.
+void SaveWindowPosition(HWND hwnd)
 {
-	RECT		rect;
-	HMODULE		hUser32;
-	MFR_PROC	pMonitorFromRect;
+    WINDOWPLACEMENT placement = {sizeof(placement)};
+    HKEY            key;
 
-	GetWindowRect(hwnd, &rect);
+    if (!GetWindowPlacement(hwnd, &placement))
+    {
+        return;
+    }
 
-	hUser32 = GetModuleHandle(_T("USER32.DLL"));
-	
-	pMonitorFromRect = (MFR_PROC)GetProcAddress(hUser32, "MonitorFromRect");
+    if (IsIconic(hwnd))
+    {
+        placement.showCmd = (placement.flags & WPF_RESTORETOMAXIMIZED) ? SW_SHOWMAXIMIZED : SW_SHOWNORMAL;
+    }
+    placement.flags = 0;
 
-	if(pMonitorFromRect != 0)
-	{
-		if(NULL == pMonitorFromRect(&rect, MONITOR_DEFAULTTONULL))
-		{
-			// force window onto primary display if it is not visible
-			rect.left %= GetSystemMetrics(SM_CXSCREEN);
-			rect.top  %= GetSystemMetrics(SM_CYSCREEN);
-
-			SetWindowPos(hwnd, 0, rect.left, rect.top, 0, 0, SWP_NOACTIVATE|SWP_NOZORDER|SWP_NOSIZE);
-		}
-	}
+    if (RegCreateKeyEx(HKEY_CURRENT_USER, REGLOC, 0, NULL, 0, KEY_SET_VALUE, NULL, &key, NULL) == ERROR_SUCCESS)
+    {
+        RegSetValueEx(key, _T("WindowPlacement"), 0, REG_BINARY, (const BYTE *)&placement, sizeof(placement));
+        RegCloseKey(key);
+    }
 }
 
-//
-//	Save window-position for the specified file
-//
-BOOL SaveFileData(TCHAR *szPath, HWND hwnd)
+int RestoreWindowPosition(HWND hwnd, int showCmd)
 {
-	WINDOWPLACEMENT wp = { sizeof(wp) };
+    WINDOWPLACEMENT placement;
+    MONITORINFO     monitorInfo = {sizeof(monitorInfo)};
+    HMONITOR        monitor;
+    HKEY            key;
+    DWORD           size = sizeof(placement);
+    DWORD           type;
+    LONG            status;
+    int             savedShowCmd;
 
-	TCHAR		szStream[MAX_PATH];
-	HANDLE		hFile;
-	DWORD		len;
-	BOOL		restoretime = FALSE;
-	FILETIME	ctm, atm, wtm;
+    if (RegOpenKeyEx(HKEY_CURRENT_USER, REGLOC, 0, KEY_QUERY_VALUE, &key) != ERROR_SUCCESS)
+    {
+        return showCmd;
+    }
 
-	if(szPath == 0 || szPath[0] == 0)
-		return FALSE;
+    status = RegQueryValueEx(key, _T("WindowPlacement"), NULL, &type, (BYTE *)&placement, &size);
+    RegCloseKey(key);
+    if (status != ERROR_SUCCESS || type != REG_BINARY || size != sizeof(placement) ||
+        placement.length != sizeof(placement) || placement.rcNormalPosition.right <= placement.rcNormalPosition.left ||
+        placement.rcNormalPosition.bottom <= placement.rcNormalPosition.top)
+    {
+        return showCmd;
+    }
 
-	wsprintf(szStream, WINPOS_FILESPEC, szPath);
+    // A disconnected monitor must not leave the restored window off screen.
+    monitor = MonitorFromRect(&placement.rcNormalPosition, MONITOR_DEFAULTTONULL);
+    if (!monitor)
+    {
+        monitor = MonitorFromRect(&placement.rcNormalPosition, MONITOR_DEFAULTTONEAREST);
+        if (GetMonitorInfo(monitor, &monitorInfo))
+        {
+            LONG width  = min(placement.rcNormalPosition.right - placement.rcNormalPosition.left,
+                              monitorInfo.rcWork.right - monitorInfo.rcWork.left);
+            LONG height = min(placement.rcNormalPosition.bottom - placement.rcNormalPosition.top,
+                              monitorInfo.rcWork.bottom - monitorInfo.rcWork.top);
 
-	if(!GetWindowPlacement(hwnd, &wp))
-		return FALSE;
+            SetRect(&placement.rcNormalPosition, monitorInfo.rcWork.left, monitorInfo.rcWork.top,
+                    monitorInfo.rcWork.left + width, monitorInfo.rcWork.top + height);
+        }
+    }
 
-	//
-	//	Get the file time-stamp. Try the stream first - if that doesn't exist 
-	//	get the time from the 'base' file
-	//
-	if((hFile = CreateFile(szStream, GENERIC_READ, 0, 0, OPEN_EXISTING, 0, 0)) != INVALID_HANDLE_VALUE ||
-	   (hFile = CreateFile(szPath,   GENERIC_READ, 0, 0, OPEN_EXISTING, 0, 0)) != INVALID_HANDLE_VALUE)
-	{
-		if(GetFileTime(hFile, &ctm, &atm, &wtm))
-			restoretime = TRUE;
+    savedShowCmd      = placement.showCmd == SW_SHOWMAXIMIZED ? SW_SHOWMAXIMIZED : SW_SHOWNORMAL;
+    placement.flags   = 0;
+    placement.showCmd = SW_HIDE;
+    if (!SetWindowPlacement(hwnd, &placement))
+    {
+        return showCmd;
+    }
 
-		CloseHandle(hFile);
-	}
-
-	//
-	//	Now open the stream for writing
-	//
-	if((hFile = CreateFile(szStream, GENERIC_WRITE, 0, 0, OPEN_ALWAYS, 0, 0)) == INVALID_HANDLE_VALUE)
-		return FALSE;
-
-	WriteFile(hFile, &wp, sizeof(wp), &len, 0);
-	
-	//
-	//	Restore timestamp if necessary
-	//
-	if(restoretime == TRUE)
-		SetFileTime(hFile, &ctm, &atm, &wtm);
-
-	CloseHandle(hFile);
-
-	return TRUE;
-}
-
-//
-//	Restore the last window-position for the specified file
-//
-BOOL LoadFileData(TCHAR *szPath, HWND hwnd)
-{
-	WINDOWPLACEMENT wp = { sizeof(wp) };
-
-	TCHAR		szStream[MAX_PATH];
-	HANDLE		hFile;
-	DWORD		len;
-
-	if(szPath == 0 || szPath[0] == 0)
-		return FALSE;
-
-	wsprintf(szStream, WINPOS_FILESPEC, szPath);
-
-	//
-	//	Can only set the window-position if the alternate-data-stream exists
-	//
-	if((hFile = CreateFile(szStream, GENERIC_READ, 0, 0, OPEN_EXISTING, 0, 0)) == INVALID_HANDLE_VALUE)
-		return FALSE;
-
-	if(!ReadFile(hFile, &wp, sizeof(wp), &len, 0))
-		return FALSE;
-
-	//
-	//	Only set the window-position if we read a valid WINDOWPLACEMENT structure!!
-	//
-	if(len == sizeof(wp) && wp.length == sizeof(wp))
-	{
-		wp.flags = SW_HIDE;
-		SetWindowPlacement(hwnd, &wp);
-		ForceVisibleDisplay(hwnd);
-	}
-
-	CloseHandle(hFile);
-	return TRUE;
+    // Honour an explicit launch request to start minimized or maximized.
+    return showCmd == SW_SHOWNORMAL || showCmd == SW_SHOWDEFAULT ? savedShowCmd : showCmd;
 }
 
 //

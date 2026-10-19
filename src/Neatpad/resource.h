@@ -14,7 +14,6 @@
 #define IDD_DIALOG1                     107
 #define IDD_FONT                        107
 #define IDD_DIALOG2                     108
-#define IDD_FONTEXTRA                   112
 #define IDD_DISPLAY                     113
 #define IDD_ABOUT                       114
 #define IDB_BITMAP1                     115
@@ -59,14 +58,11 @@
 #define IDC_FGCOLCOMBO                  1016
 #define IDC_DEFAULTS                    1017
 #define IDC_BOLD                        1018
-#define IDC_PADDINGA                    1019
-#define IDC_PADDINGB                    1020
-#define IDC_ADVANCED                    1021
+#define IDC_LINESPACING 1019
 #define IDC_CHECK2                      1022
 #define IDC_CHECK3                      1023
 #define IDC_ADDCONTEXT                  1023
 #define IDC_CHECK4                      1024
-#define IDC_REPLACENOTEPAD              1024
 #define IDC_PROGRESS1                   1025
 #define IDC_CHECK10                     1025
 #define IDC_RADIO1                      1026
@@ -86,11 +82,9 @@
 #define IDC_LINENOSFIRST                1040
 #define IDC_LINENOS                     1041
 #define IDC_SELMARGIN                   1042
-#define IDC_LONGLINEMODE                1043
+#define IDC_LONGLINES 1043
 #define IDC_SELMARGIN2                  1044
 #define IDC_HIGHLIGHTCURLINE            1044
-#define IDC_MEMWINPOS                   1044
-#define IDC_MEMWINPOSFILE               1045
 #define IDC_HEADER1                     1046
 #define IDC_ABOUT_APPNAME               1047
 #define IDC_ABOUT_URL                   1048
@@ -100,7 +94,6 @@
 #define IDC_LINEFMTLIST                 1051
 #define IDC_FIND                        1052
 #define IDC_REPLACE                     1053
-#define IDC_SHIELD                      1054
 #define IDC_SEARCH_OPTIONS              1055
 #define IDC_SEARCH_PREVIOUS             1056
 #define IDC_SEARCH_NEXT                 1057

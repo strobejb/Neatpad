@@ -591,9 +591,6 @@ BOOL NeatpadOpenFile(HWND hwnd, TCHAR *szFile)
 	lstrcpy(szOldFileName, g_szFileName);
 	lstrcpy(szOldFileTitle, g_szFileTitle);
 
-	// save current file's position!
-	SaveFileData(g_szFileName, hwnd);
-
 	_tcscpy(g_szFileName, szFile);
 
 	name = _tcsrchr(g_szFileName, '\\');

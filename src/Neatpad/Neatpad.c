@@ -875,8 +875,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		return 0;
 
 	case WM_DESTROY:
-		SaveFileData(g_szFileName, hwnd);
-		PostQuitMessage(0);
+        SaveWindowPosition(hwnd);
+        PostQuitMessage(0);
 		DeleteRuntimeFonts();
 		return 0;
 
@@ -1078,16 +1078,6 @@ HWND CreateMainWnd()
 				NULL);					// creation parameters
 }
 
-TCHAR **GetArgvCommandLine(int *argc)
-{
-#ifdef UNICODE
-	return CommandLineToArgvW(GetCommandLineW(), argc);
-#else
-	*argc = __argc;
-	return __argv;
-#endif
-}
-
 TCHAR * GetArg(TCHAR *ptr, TCHAR *buf, int len)
 {
 	int i  = 0;
@@ -1142,8 +1132,6 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmdLine, int iShowC
 {
 	MSG			msg;
 	HACCEL		hAccel;
-	TCHAR		**argv;
-	int			argc;
 	//TCHAR		*pszCmdlineFile = 0;
 	TCHAR		arg[MAX_PATH];
 
@@ -1151,21 +1139,15 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmdLine, int iShowC
 	// get the first commandline argument
 	//
 	TCHAR *pszCmdline = GetArg(GetCommandLineW(), arg, MAX_PATH);
-	argv = GetArgvCommandLine(&argc);
 
 	// check if we have any options
 	if(pszCmdline && *pszCmdline == '-')
 	{
 		pszCmdline = GetArg(pszCmdline, arg, MAX_PATH);
 
-		// do the user-account-control thing
-		if(lstrcmpi(arg, _T("-uac")) == 0)
-		{
-			//return 0;
-		}
-		// image-file-execute-options
-		else if(lstrcmpi(arg, _T("-ifeo")) == 0)
-		{
+        // image-file-execute-options
+        if (lstrcmpi(arg, _T("-ifeo")) == 0)
+        {
 			// skip notepad.exe
 			pszCmdline = GetArg(pszCmdline, arg, MAX_PATH);
 		}
@@ -1175,25 +1157,6 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmdLine, int iShowC
 		}
 	}
 
-
-	// has a prior instance elevated us to admin in order to 
-	// modify some system-wide settings in the registry?
-	if(argv && argc == 4 && lstrcmpi(argv[1], _T("-uac")) == 0)
-	{
-		g_fAddToExplorer	= _ttoi(argv[2]);
-		g_fReplaceNotepad	= _ttoi(argv[3]);
-
-		if(SetExplorerContextMenu(g_fAddToExplorer) &&
-			SetImageFileExecutionOptions(g_fReplaceNotepad))
-		{
-			SaveRegSysSettings();
-			return 0;
-		}
-		else
-		{
-			return ERROR_ACCESS_DENIED;
-		}
-	}
 
 	// default to the built-in resources
 	g_hResourceModule = hInst;
@@ -1223,7 +1186,6 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmdLine, int iShowC
 		}
 
 		NeatpadOpenFile(g_hwndMain, pszCmdline);
-		LoadFileData(pszCmdline, g_hwndMain);
 	}
 	// automatically create new document if none specified
 	else
@@ -1232,7 +1194,8 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmdLine, int iShowC
         RecoveryRestore(g_hwndMain);
     }
 
-	ShowWindow(g_hwndMain, iShowCmd);
+    iShowCmd = RestoreWindowPosition(g_hwndMain, iShowCmd);
+    ShowWindow(g_hwndMain, iShowCmd);
 
 	//
 	// load keyboard accelerator table

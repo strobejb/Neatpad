@@ -20,7 +20,6 @@ extern "C" {
 extern LONG		g_nFontSize;
 extern BOOL		g_fFontBold;
 extern TCHAR	g_szFontName[];
-extern LONG		g_nFontSmoothing;
 extern BOOL		g_fLineNumbers;
 extern BOOL		g_fLongLines;
 extern BOOL		g_fSelMargin;
@@ -28,8 +27,6 @@ extern BOOL		g_fSaveOnExit;
 extern int		g_nLongLineLimit;
 extern BOOL		g_nHLCurLine;
 extern BOOL		g_fShowLineEndings;
-extern BOOL		g_fAddToExplorer;
-extern BOOL		g_fReplaceNotepad;
 extern BOOL		g_fShowStatusbar;
 extern BOOL		g_fSearchMatchCase;
 extern BOOL		g_fSearchWrap;
@@ -39,15 +36,32 @@ extern BOOL     g_fInsertSpaces;
 extern BOOL     g_fAutoIndent;
 extern LONG		g_nInMemoryLimit;
 
-extern LONG		g_nPaddingAbove;
-extern LONG		g_nPaddingBelow;
-extern LONG		g_fPaddingFlags;
 extern COLORREF g_rgbColourList[];
 extern COLORREF g_rgbCustColours[];
 
+#define MAX_LINE_SPACING 40
 
-#define COURIERNEW	1
-#define LUCIDACONS	2
+extern LONG g_nLineSpacing;
+
+// Edits stay local to the dialog until all pages accept OK.
+typedef struct
+{
+    LONG     nFontSize;
+    BOOL     fFontBold;
+    TCHAR    szFontName[LF_FACESIZE];
+    LONG     nLineSpacing;
+    COLORREF rgbColourList[16];
+    COLORREF rgbCustColours[16];
+    BOOL     fLineNumbers;
+    BOOL     fLongLines;
+    BOOL     fSelMargin;
+    int      nLongLineLimit;
+    BOOL     fHighlightCurrentLine;
+    LONG     nTabWidth;
+    BOOL     fInsertSpaces;
+    BOOL     fAutoIndent;
+    LONG     nFilterContext;
+} OPTIONS;
 
 //	Global runtime variables
 extern HWND		g_hwndTextView;
@@ -75,16 +89,13 @@ void ApplyFonts();
 void LoadRegSettings();
 void SaveRegSettings();
 void DeleteRuntimeFonts();
-void LoadRegSysSettings();
-void SaveRegSysSettings();
 void AddRecentFile(TCHAR *szFileName);
 BOOL OpenRecentFile(HWND hwnd, UINT nCommandId);
 BOOL OpenPreviousFile(HWND hwnd);
 void ClearRecentFiles();
 void UpdateRecentMenu(HMENU hMenu);
 BOOL SetExplorerContextMenu(BOOL fAddToMenu);
-BOOL SetImageFileExecutionOptions(BOOL fReplaceWithCurrentApp);
-
+BOOL IsExplorerContextMenuEnabled(void);
 
 //
 //	OpenSave.c functions
@@ -127,8 +138,8 @@ void RecoveryRevert(HWND hwnd);
 //	NeatUtils.c functions
 //
 BOOL ResolveShortcut(TCHAR *pszShortcut, TCHAR *pszFilePath, int nPathLen);
-BOOL SaveFileData(TCHAR *szPath, HWND hwnd);
-BOOL LoadFileData(TCHAR *szPath, HWND hwnd);
+void SaveWindowPosition(HWND hwnd);
+int  RestoreWindowPosition(HWND hwnd, int showCmd);
 
 BOOL CheckMenuCommand(HMENU hMenu, int nCommandId, BOOL fChecked);
 BOOL EnableMenuCommand(HMENU hmenu, int nCommandId, BOOL fEnable);

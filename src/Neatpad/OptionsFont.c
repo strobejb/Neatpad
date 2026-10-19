@@ -19,9 +19,6 @@
 #include "resource.h"
 
 
-#ifndef CLEARTYPE_QUALITY
-#define CLEARTYPE_QUALITY 5
-#endif
 #include <uxtheme.h>
 #include <vssym32.h>
 
@@ -38,7 +35,7 @@ static int	 g_nFontHeight;
 static COLORREF g_crPreviewFG;
 static COLORREF g_crPreviewBG;
 static COLORREF g_rgbTempColourList[TXC_MAX_COLOURS];
-static LONG		g_tempFontSmoothing;
+static COLORREF g_rgbTempCustColours[16];
 
 COLORREF g_rgbAutoColourList[TXC_MAX_COLOURS] = 
 {
@@ -578,12 +575,9 @@ void UpdatePreviewPane(HWND hwnd)
 	if(g_hPreviewFont != 0)
 		DeleteObject(g_hPreviewFont);
 
-	g_hPreviewFont = EasyCreateFont(size, 
-								IsDlgButtonChecked(hwnd, IDC_BOLD),
-								g_tempFontSmoothing,
-								szFaceName);
+    g_hPreviewFont = EasyCreateFont(size, IsDlgButtonChecked(hwnd, IDC_BOLD), DEFAULT_QUALITY, szFaceName);
 
-	idx  = (int)SendDlgItemMessage(hwnd, IDC_ITEMLIST, LB_GETCURSEL, 0, 0);
+    idx  = (int)SendDlgItemMessage(hwnd, IDC_ITEMLIST, LB_GETCURSEL, 0, 0);
 	data = (DWORD)SendDlgItemMessage(hwnd, IDC_ITEMLIST, LB_GETITEMDATA, idx, 0);
 
 
@@ -693,8 +687,9 @@ BOOL InitFontOptionsDlg(HWND hwnd)
 
 	// make a temporary copy of the current colour settings
 	memcpy(g_rgbTempColourList, g_rgbColourList, sizeof(COLORREF) * TXC_MAX_COLOURS);
+    memcpy(g_rgbTempCustColours, g_rgbCustColours, sizeof(g_rgbTempCustColours));
 
-	//
+    //
 	//	Load the TrueType icon for the font-list
 	//
 	g_hIcon2 = LoadImage(GetModuleHandle(0), MAKEINTRESOURCE(IDI_ICON2), IMAGE_ICON, 16, 16, 0);
@@ -717,11 +712,10 @@ BOOL InitFontOptionsDlg(HWND hwnd)
 	SetComboItemHeight(GetDlgItem(hwnd, IDC_FGCOLCOMBO), 14);
 	SetComboItemHeight(GetDlgItem(hwnd, IDC_BGCOLCOMBO), 14);
 	SetComboItemHeight(GetDlgItem(hwnd, IDC_FONTLIST), 16);
-	
-	g_tempFontSmoothing = g_nFontSmoothing;
-	g_hPreviewFont = EasyCreateFont(g_nFontSize, g_fFontBold, g_tempFontSmoothing, g_szFontName);
 
-	// Create the list of fonts
+    g_hPreviewFont = EasyCreateFont(g_nFontSize, g_fFontBold, DEFAULT_QUALITY, g_szFontName);
+
+    // Create the list of fonts
 	FillFontComboList(GetDlgItem(hwnd, IDC_FONTLIST));
 
 	// Update the font-size-list
@@ -761,11 +755,12 @@ BOOL InitFontOptionsDlg(HWND hwnd)
 	
 	SendDlgItemMessage(hwnd, IDC_FGCOLCOMBO, CB_SETCURSEL, 1, 0);
 	SendDlgItemMessage(hwnd, IDC_BGCOLCOMBO, CB_SETCURSEL, 0, 0);
-	
-	SendDlgItemMessage(hwnd, IDC_SPIN1, UDM_SETRANGE, 0, MAKELONG(10,0));
-	SendDlgItemMessage(hwnd, IDC_SPIN2, UDM_SETRANGE, 0, MAKELONG(10,0));
 
-	//
+    SendDlgItemMessage(hwnd, IDC_SPIN1, UDM_SETRANGE32, 0, MAX_LINE_SPACING);
+    SendDlgItemMessage(hwnd, IDC_LINESPACING, EM_LIMITTEXT, 2, 0);
+    SendDlgItemMessage(hwnd, IDC_SIZELIST, CB_LIMITTEXT, 3, 0);
+
+    //
 	//	Select
 	//
 	_stprintf(ach, _T("%d"), g_nFontSize);
@@ -773,75 +768,13 @@ BOOL InitFontOptionsDlg(HWND hwnd)
 	SendDlgItemMessage(hwnd, IDC_SIZELIST, CB_SELECTSTRING, -1, (LPARAM)ach);
 	SendDlgItemMessage(hwnd, IDC_FONTLIST, CB_SELECTSTRING, -1, (LPARAM)g_szFontName);
 
-	SetDlgItemInt(hwnd, IDC_PADDINGA, g_nPaddingAbove, 0);
-	SetDlgItemInt(hwnd, IDC_PADDINGB, g_nPaddingBelow, 0);
+    SetDlgItemInt(hwnd, IDC_LINESPACING, g_nLineSpacing, FALSE);
 
-	if((g_fPaddingFlags & COURIERNEW) && lstrcmpi(g_szFontName, _T("Courier New")) == 0)
-	{
-		SetDlgItemInt(hwnd, IDC_PADDINGA, g_nPaddingAbove, 0);
-		SetDlgItemInt(hwnd, IDC_PADDINGB, g_nPaddingBelow, 1);
-	}
-
-	if((g_fPaddingFlags & LUCIDACONS) && lstrcmpi(g_szFontName, _T("Lucida Console")) == 0)
-	{
-		//SetDlgItemInt(hwnd, IDC_PADDINGA, g_nPaddingAbove, 2);
-		//SetDlgItemInt(hwnd, IDC_PADDINGB, g_nPaddingBelow, 1);
-		//SendDlgItemMessage(hwnd, IDC_
-	}
-
-	CheckDlgButton(hwnd, IDC_BOLD,    g_fFontBold);
+    CheckDlgButton(hwnd, IDC_BOLD,    g_fFontBold);
 
 	UpdatePreviewPane(hwnd);
 
 	return TRUE;
-}
-
-INT_PTR CALLBACK AdvancedDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
-{
-	char lookup[] = 
-	{ 
-		1,		// DEFAULT_QUALITY
-		1,		// ??
-		1,		// ??
-		0,		// NONANTIALIASED_QUALITY
-		2,		// ANTIALIASED_QUALITY
-		3,		// CLEARTYPE_QUALITY 
-	};
-
-	switch(msg)
-	{
-	case WM_INITDIALOG:
-		
-		AddComboStringWithData(hwnd, IDC_COMBO1, _T("None"),		NONANTIALIASED_QUALITY);
-		AddComboStringWithData(hwnd, IDC_COMBO1, _T("Default"),		DEFAULT_QUALITY);
-		AddComboStringWithData(hwnd, IDC_COMBO1, _T("Antialiased"), ANTIALIASED_QUALITY);
-		AddComboStringWithData(hwnd, IDC_COMBO1, _T("ClearType"),	CLEARTYPE_QUALITY);
-
-		SendDlgItemMessage(hwnd, IDC_COMBO1, CB_SETCURSEL, lookup[g_tempFontSmoothing], 0);
-
-		return TRUE;
-
-	case WM_CLOSE:
-		EndDialog(hwnd, FALSE);
-		return TRUE;
-
-	case WM_COMMAND:
-		switch(LOWORD(wParam))
-		{
-		case IDCANCEL:
-			EndDialog(hwnd, FALSE);
-			return TRUE;
-
-		case IDOK:
-			g_tempFontSmoothing = GetCurrentComboData(hwnd, IDC_COMBO1);
-			EndDialog(hwnd, TRUE);
-			return TRUE;
-		}
-
-		return FALSE;
-	}
-
-	return FALSE;
 }
 
 //BOOL FontOptions(HWND hwnd, WPARAM wParam, 
@@ -855,7 +788,8 @@ INT_PTR CALLBACK FontOptionsDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
 	switch(msg)
 	{
 	case WM_INITDIALOG:
-		CenterWindow(GetParent(hwnd));
+        SetWindowLongPtr(hwnd, DWLP_USER, ((PROPSHEETPAGE *)lParam)->lParam);
+        CenterWindow(GetParent(hwnd));
 		return InitFontOptionsDlg(hwnd);
 
 	case MSG_UPDATE_PREVIEW:
@@ -897,19 +831,38 @@ INT_PTR CALLBACK FontOptionsDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
 		}		
 		else if(pshn->hdr.code == PSN_APPLY)
 		{
-			g_nFontSize = GetDlgItemInt(hwnd, IDC_SIZELIST, 0, 0);
-			g_fFontBold = IsDlgButtonChecked(hwnd, IDC_BOLD);
+            OPTIONS *options = (OPTIONS *)GetWindowLongPtr(hwnd, DWLP_USER);
+            BOOL     valid;
+            UINT     size = GetDlgItemInt(hwnd, IDC_SIZELIST, &valid, FALSE);
 
-			GetDlgItemText(hwnd, IDC_FONTLIST, g_szFontName, LF_FACESIZE);	
+            if (!valid || size < 1 || size > 200)
+            {
+                MessageBox(hwnd, _T("Enter a font size between 1 and 200."), _T("Font size"), MB_OK | MB_ICONWARNING);
+                SetFocus(GetDlgItem(hwnd, IDC_SIZELIST));
+                SetWindowLongPtr(hwnd, DWLP_MSGRESULT, PSNRET_INVALID_NOCHANGEPAGE);
+                return TRUE;
+            }
 
-			g_nPaddingAbove = GetDlgItemInt(hwnd, IDC_PADDINGA, 0, 0);
-			g_nPaddingBelow = GetDlgItemInt(hwnd, IDC_PADDINGB, 0, 0);
+            UINT spacing = GetDlgItemInt(hwnd, IDC_LINESPACING, &valid, FALSE);
 
-			memcpy(g_rgbColourList, g_rgbTempColourList, sizeof(COLORREF) * TXC_MAX_COLOURS);
+            if (!valid || spacing > MAX_LINE_SPACING)
+            {
+                MessageBox(hwnd, _T("Enter extra line spacing between 0 and 40 pixels."), _T("Line spacing"),
+                           MB_OK | MB_ICONWARNING);
+                SetFocus(GetDlgItem(hwnd, IDC_LINESPACING));
+                SetWindowLongPtr(hwnd, DWLP_MSGRESULT, PSNRET_INVALID_NOCHANGEPAGE);
+                return TRUE;
+            }
 
-			g_nFontSmoothing = g_tempFontSmoothing;
-			
-			return TRUE;
+            options->nFontSize    = (LONG)size;
+            options->fFontBold    = IsDlgButtonChecked(hwnd, IDC_BOLD);
+            options->nLineSpacing = (LONG)spacing;
+            GetDlgItemText(hwnd, IDC_FONTLIST, options->szFontName, LF_FACESIZE);
+            memcpy(options->rgbColourList, g_rgbTempColourList, sizeof(g_rgbTempColourList));
+            memcpy(options->rgbCustColours, g_rgbTempCustColours, sizeof(g_rgbTempCustColours));
+            SetWindowLongPtr(hwnd, DWLP_MSGRESULT, PSNRET_NOERROR);
+
+            return TRUE;
 		}
 
 		return FALSE;
@@ -918,14 +871,6 @@ INT_PTR CALLBACK FontOptionsDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
 
 		switch(LOWORD(wParam))
 		{
-		case IDC_ADVANCED:
-	
-			if(DialogBoxParam(g_hResourceModule, MAKEINTRESOURCE(IDD_FONTEXTRA), hwnd, AdvancedDlgProc, 0))
-			{
-				UpdatePreviewPane(hwnd);
-			}
-
-			return TRUE;
 
 		case IDCANCEL:
 			return TRUE;
@@ -993,9 +938,9 @@ INT_PTR CALLBACK FontOptionsDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
 
 				if(idx >= 0)
 					col = REALIZE_SYSCOL(g_rgbTempColourList[idx]);
-				
-				if(PickColour(hwnd, &col, g_rgbCustColours))
-				{
+
+                if (PickColour(hwnd, &col, g_rgbTempCustColours))
+                {
 					g_rgbTempColourList[idx] = col;
 					SelectColorInList(hwnd, IDC_FGCOLCOMBO, (short)idx);
 					UpdatePreviewPane(hwnd);
@@ -1010,9 +955,9 @@ INT_PTR CALLBACK FontOptionsDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
 				
 				if(idx >= 0)
 					col = REALIZE_SYSCOL(g_rgbTempColourList[idx]);
-				
-				if(PickColour(hwnd, &col, g_rgbCustColours))
-				{
+
+                if (PickColour(hwnd, &col, g_rgbTempCustColours))
+                {
 					g_rgbTempColourList[idx] = col;
 					SelectColorInList(hwnd, IDC_BGCOLCOMBO, (short)idx);
 					UpdatePreviewPane(hwnd);
