@@ -6,6 +6,64 @@
 #include <tchar.h>
 #include "../src/TextView/sequence_state.h"
 
+// Inspect buffer ownership without adding a public sequence API for tests.
+class SequenceBufferProbe
+{
+  public:
+    static size_t buffer_count(const sequence &seq)
+    {
+        return seq.buffer_list.size();
+    }
+
+    static int current_modify(const sequence &seq)
+    {
+        return seq.modifybuffer_id;
+    }
+
+    static size_w buffer_length(const sequence &seq, size_t id)
+    {
+        return seq.buffer_list[id]->length;
+    }
+
+    static std::string buffer_text(sequence &seq, size_t id)
+    {
+        sequence::buffer_control *buffer = seq.buffer_list[id];
+
+        if (!buffer->length)
+            return {};
+
+        return std::string(reinterpret_cast<const char *>(buffer->getptr(0, buffer->length)),
+                           static_cast<size_t>(buffer->length));
+    }
+
+    static std::vector<int> span_buffers(const sequence &seq)
+    {
+        std::vector<int> buffers;
+
+        for (sequence::span *span = seq.head->next; span != seq.tail; span = span->next)
+        {
+            if (span->length)
+                buffers.push_back(span->buffer);
+        }
+        return buffers;
+    }
+
+    // Reproduce the old init(buffer) layout before any history exists: empty
+    // modify buffer 0, initial data in full buffer 1, still selected for edits.
+    static void use_legacy_layout(sequence &seq)
+    {
+        std::swap(seq.buffer_list[0], seq.buffer_list[1]);
+        seq.buffer_list[0]->id = 0;
+        seq.buffer_list[1]->id = 1;
+
+        for (sequence::span *span = seq.head->next; span != seq.tail; span = span->next)
+            span->buffer = 1;
+
+        seq.modifybuffer_id  = 1;
+        seq.modifybuffer_pos = 0;
+    }
+};
+
 namespace
 {
 struct checkpoint_store
@@ -40,6 +98,141 @@ struct checkpoint_store
         RemoveDirectory(dir);
     }
 };
+
+void sequence_initial_and_modify_buffers_are_separate()
+{
+    sequence seq;
+
+    CHECK(seq.init());
+    CHECK(SequenceBufferProbe::buffer_count(seq) == 2);
+    CHECK(SequenceBufferProbe::current_modify(seq) == 1);
+    CHECK(SequenceBufferProbe::buffer_length(seq, 0) == 0);
+    CHECK(insert_bytes(seq, 0, "typed"));
+    CHECK(SequenceBufferProbe::span_buffers(seq) == std::vector<int>({1}));
+    CHECK(SequenceBufferProbe::buffer_length(seq, 0) == 0);
+
+    // Reinitializing a used sequence also removes its buffers and history.
+    CHECK(seq.init());
+    CHECK(seq.size() == 0 && !seq.canundo() && !seq.canredo() && !seq.modified());
+    CHECK(SequenceBufferProbe::buffer_count(seq) == 2);
+    CHECK(SequenceBufferProbe::current_modify(seq) == 1);
+
+    init(seq, "abcdef");
+    CHECK(SequenceBufferProbe::span_buffers(seq) == std::vector<int>({0}));
+    CHECK(SequenceBufferProbe::buffer_text(seq, 0) == "abcdef");
+    CHECK(SequenceBufferProbe::current_modify(seq) == 1);
+    CHECK(insert_bytes(seq, 2, "XY"));
+    CHECK(SequenceBufferProbe::span_buffers(seq) == std::vector<int>({0, 1, 0}));
+    CHECK(SequenceBufferProbe::buffer_text(seq, 0) == "abcdef");
+    CHECK(seq.undo());
+    expect_content(seq, "abcdef");
+    CHECK(SequenceBufferProbe::span_buffers(seq) == std::vector<int>({0}));
+    CHECK(seq.redo());
+    expect_content(seq, "abXYcdef");
+    CHECK(SequenceBufferProbe::span_buffers(seq) == std::vector<int>({0, 1, 0}));
+}
+
+void sequence_modify_buffers_roll_over_without_changing_initial_data()
+{
+    sequence    seq;
+    std::string typed(0x10000, 'x');
+
+    init(seq, "abc");
+    CHECK(seq.insert(seq.size(), reinterpret_cast<const seqchar *>(typed.data()), typed.size()));
+    CHECK(SequenceBufferProbe::current_modify(seq) == 1);
+    CHECK(SequenceBufferProbe::span_buffers(seq) == std::vector<int>({0, 1}));
+    CHECK(insert_bytes(seq, seq.size(), "y"));
+    CHECK(SequenceBufferProbe::buffer_count(seq) == 3);
+    CHECK(SequenceBufferProbe::current_modify(seq) == 2);
+    CHECK(SequenceBufferProbe::span_buffers(seq) == std::vector<int>({0, 1, 2}));
+    CHECK(SequenceBufferProbe::buffer_text(seq, 0) == "abc");
+    CHECK(SequenceBufferProbe::buffer_text(seq, 1) == typed);
+
+    // Buffer rollover must break coalescing: the two insertions undo separately.
+    CHECK(seq.undo());
+    CHECK(SequenceBufferProbe::span_buffers(seq) == std::vector<int>({0, 1}));
+    CHECK(seq.undo());
+    expect_content(seq, "abc");
+    CHECK(SequenceBufferProbe::span_buffers(seq) == std::vector<int>({0}));
+    CHECK(seq.redo());
+    CHECK(seq.redo());
+    CHECK(render_content(seq) == "abc" + typed + "y");
+    CHECK(SequenceBufferProbe::span_buffers(seq) == std::vector<int>({0, 1, 2}));
+    CHECK(SequenceBufferProbe::buffer_text(seq, 0) == "abc");
+}
+
+void sequence_file_initial_buffer_is_zero()
+{
+    TCHAR       file[MAX_PATH];
+    const char *text = "first\nlast";
+
+    CHECK(write_temp_file(text, strlen(text), file));
+    for (size_w in_memory_limit : {size_w(0), size_w(64)})
+    {
+        sequence seq;
+
+        CHECK(seq.open(file, false, in_memory_limit));
+        CHECK(SequenceBufferProbe::buffer_count(seq) == 2);
+        CHECK(SequenceBufferProbe::current_modify(seq) == 1);
+        CHECK(SequenceBufferProbe::span_buffers(seq) == std::vector<int>({0}));
+        CHECK(SequenceBufferProbe::buffer_text(seq, 0) == text);
+        CHECK(insert_bytes(seq, 6, "new "));
+        CHECK(SequenceBufferProbe::span_buffers(seq) == std::vector<int>({0, 1, 0}));
+        CHECK(SequenceBufferProbe::buffer_text(seq, 0) == text);
+        CHECK(seq.undo());
+        CHECK(SequenceBufferProbe::span_buffers(seq) == std::vector<int>({0}));
+        CHECK(seq.redo());
+        expect_content(seq, "first\nnew last");
+        CHECK(SequenceBufferProbe::span_buffers(seq) == std::vector<int>({0, 1, 0}));
+    }
+    CHECK(DeleteFile(file));
+}
+
+void checkpoint_preserves_buffer_origins_and_legacy_ids()
+{
+    for (bool legacy : {false, true})
+    {
+        checkpoint_store store;
+        sequence         seq, copy, latest;
+        int              initial = legacy ? 1 : 0;
+
+        init(seq, "abc");
+        if (legacy)
+            SequenceBufferProbe::use_legacy_layout(seq);
+
+        CHECK(insert_bytes(seq, 1, "XY"));
+        CHECK(SequenceBufferProbe::span_buffers(seq) == std::vector<int>({initial, legacy ? 2 : 1, initial}));
+
+        state_writer writer(store.dir);
+        state_reader reader(store.dir);
+        size_t       previous_count = SequenceBufferProbe::buffer_count(seq);
+
+        CHECK(seq.save_state(writer));
+        CHECK(copy.load_state(reader));
+        CHECK(SequenceBufferProbe::buffer_count(copy) == previous_count + 1);
+        CHECK(SequenceBufferProbe::current_modify(copy) == static_cast<int>(previous_count));
+        CHECK(SequenceBufferProbe::span_buffers(copy) == SequenceBufferProbe::span_buffers(seq));
+        CHECK(SequenceBufferProbe::buffer_text(copy, initial) == "abc");
+        CHECK(insert_bytes(copy, copy.size(), "!"));
+        CHECK(SequenceBufferProbe::buffer_length(copy, previous_count) == 1);
+        CHECK(SequenceBufferProbe::buffer_text(copy, initial) == "abc");
+        CHECK(copy.undo());
+        CHECK(SequenceBufferProbe::span_buffers(copy) == SequenceBufferProbe::span_buffers(seq));
+        CHECK(copy.redo());
+        expect_content(copy, "aXYbc!");
+        CHECK(copy.save_state(writer));
+        CHECK(latest.load_state(reader));
+        CHECK(SequenceBufferProbe::span_buffers(latest) == SequenceBufferProbe::span_buffers(copy));
+        CHECK(SequenceBufferProbe::buffer_text(latest, initial) == "abc");
+        CHECK(latest.undo());
+        CHECK(latest.undo());
+        expect_content(latest, "abc");
+        CHECK(SequenceBufferProbe::span_buffers(latest) == std::vector<int>({initial}));
+        CHECK(latest.redo());
+        CHECK(latest.redo());
+        expect_content(latest, "aXYbc!");
+    }
+}
 
 void checkpoint_preserves_both_stacks_groups_and_saved_state()
 {
@@ -106,11 +299,11 @@ void checkpoint_references_original_and_retains_it_before_save()
     state_writer writer(store.dir);
     CHECK(seq.save_state(writer));
     TCHAR base[MAX_PATH];
-    wsprintf(base, TEXT("%s\\buffer-1.bin"), store.dir);
+    wsprintf(base, TEXT("%s\\buffer-0.bin"), store.dir);
     CHECK(GetFileAttributes(base) == INVALID_FILE_ATTRIBUTES); // original was referenced
     // Simulate an uncommitted leftover: hard-link creation cannot replace it,
     // so retention exercises the copy fallback before publishing the new path.
-    wsprintf(base, TEXT("%s\\base-1.bin"), store.dir);
+    wsprintf(base, TEXT("%s\\base-0.bin"), store.dir);
     FILE *leftover = 0;
     _wfopen_s(&leftover, base, L"wb");
     CHECK(leftover != 0);
@@ -407,6 +600,9 @@ void checkpoint_preserves_unicode_indexes_and_empty_sequences()
     CHECK(seq.save_state(writer));
     CHECK(copy.load_state(reader));
     CHECK(copy.size() == 0 && !copy.modified() && !copy.canundo() && !copy.canredo());
+    CHECK(SequenceBufferProbe::buffer_count(copy) == 2);
+    CHECK(SequenceBufferProbe::current_modify(copy) == 1);
+    CHECK(SequenceBufferProbe::buffer_length(copy, 0) == 0);
     CHECK(insert_bytes(copy, 0, "after restore"));
     CHECK(copy.undo());
     CHECK(copy.size() == 0);
@@ -1209,6 +1405,11 @@ void sequence_render_passes_a_block_per_span()
 }
 
 const test_case tests[] = {
+    {"sequence_initial_and_modify_buffers_are_separate", sequence_initial_and_modify_buffers_are_separate},
+    {"sequence_modify_buffers_roll_over_without_changing_initial_data",
+     sequence_modify_buffers_roll_over_without_changing_initial_data},
+    {"sequence_file_initial_buffer_is_zero", sequence_file_initial_buffer_is_zero},
+    {"checkpoint_preserves_buffer_origins_and_legacy_ids", checkpoint_preserves_buffer_origins_and_legacy_ids},
     {"checkpoint_large_original_writes_only_modified_bytes", checkpoint_large_original_writes_only_modified_bytes},
     {"checkpoint_rejects_changed_or_missing_original_without_replacing_destination",
      checkpoint_rejects_changed_or_missing_original_without_replacing_destination},

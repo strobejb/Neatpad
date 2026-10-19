@@ -728,7 +728,7 @@ bool sequence::save_state(state_writer &out) const
                 if (r.length != b->length || !source_valid(r))
                     return false;
             }
-            else if (i >= old.buffers.size() && (b->fp || (i == 1 && !out.original_file.empty())))
+            else if (i >= old.buffers.size() && (b->fp || (i == 0 && !out.original_file.empty())))
             {
                 file_ptr original(b->fp ? 0 : open_file(out.original_file, "rb"));
                 FILE    *fp = b->fp ? (FILE *)b->fp : original.get();
@@ -847,7 +847,7 @@ bool sequence::load_state(state_reader &in)
             return false;
         sequence restored;
         restored.line_mode = (line_scan_mode)s.mode;
-        restored.buffer_list.reserve(s.buffers.size() + 1);
+        restored.buffer_list.reserve(s.buffers.size() + 2);
         for (size_t i = 0; i < s.buffers.size(); ++i)
         {
             std::unique_ptr<buffer_control> b(new buffer_control);
@@ -877,6 +877,13 @@ bool sequence::load_state(state_reader &in)
             b->id                  = (int)i;
             restored.buffer_list.push_back(b.get());
             b.release();
+        }
+
+        // A checkpoint of a cleared sequence may have no buffers at all.
+        // Reserve its empty initial buffer before allocating the edit buffer.
+        if (restored.buffer_list.empty() && !restored.alloc_buffer(0))
+        {
+            return false;
         }
 
         std::unique_ptr<buffer_control> fresh(new buffer_control);

@@ -102,41 +102,48 @@ sequence::~sequence ()
 	delete tail;
 }
 
-bool sequence::init ()
+bool sequence::init()
 {
-	sequence_length = 0;
+    clear();
 
-	if(!alloc_modifybuffer(0x10000))
-		return false;
+    // Buffer 0 is always the initial data; append-only edit buffers start at 1.
+    if (!alloc_buffer(0) || !alloc_modifybuffer(0x10000))
+    {
+        return false;
+    }
 
-	record_action(action_invalid, 0);
-	group_id		= 0;
-	group_refcount	= 0;
-	saved_group		= 0;
-	can_quicksave	= false;
-	change_offset	= 0;
-	change_erased	= 0;
-	change_inserted = 0;
+    record_action(action_invalid, 0);
+    group_id        = 0;
+    group_refcount  = 0;
+    saved_group     = 0;
+    can_quicksave   = false;
+    change_offset   = 0;
+    change_erased   = 0;
+    change_inserted = 0;
 
-	return true;
+    return true;
 }
 
 bool sequence::init (const seqchar *buffer, size_t length)
 {
-	clear();
+    if (!init())
+    {
+        return false;
+    }
 
-	if(!init())
-		return false;
+    buffer_control *bc = buffer_list[0];
 
-	buffer_control *bc = alloc_modifybuffer(length);
-	bc->append(buffer, length, 0);
+    if (!bc->init(buffer, length))
+    {
+        return false;
+    }
 
-	span *sptr = alloc_span(0, length, bc->id, tail, head);
-	head->next = sptr;
-	tail->prev = sptr;
+    span *sptr = alloc_span(0, length, bc->id, tail, head);
 
-	sequence_length = length;
-	return true;
+    head->next      = sptr;
+    tail->prev      = sptr;
+    sequence_length = length;
+    return true;
 }
 
 //
@@ -144,33 +151,27 @@ bool sequence::init (const seqchar *buffer, size_t length)
 //
 bool sequence::open(const seqfilechar *filename, bool readonly, size_w in_memory_limit)
 {
-	clear();
+    if (!init())
+    {
+        return false;
+    }
 
-	if(!init())
-		return false;
+    buffer_control *bc = buffer_list[0];
 
-	buffer_control *bc = new buffer_control;
-	if(bc)
-		bc->set_line_scan_mode(line_mode);
+    if (!bc->init_file(filename, readonly, in_memory_limit))
+    {
+        return false;
+    }
 
-	if(bc == 0 || !bc->init_file(filename, readonly, in_memory_limit))
-	{
-		delete bc;
-		return false;
-	}
+    span *sptr = alloc_span(0, bc->length, bc->id, tail, head);
 
-	bc->id = (int)buffer_list.size();
-	buffer_list.push_back(bc);
+    head->next      = sptr;
+    tail->prev      = sptr;
+    sequence_length = bc->length;
 
-	span *sptr = alloc_span(0, bc->length, bc->id, tail, head);
-	head->next = sptr;
-	tail->prev = sptr;
-
-	sequence_length = bc->length;
-
-	// Count the first block up front so small files have exact line numbers immediately.
-	index_range(0, seq_min(sequence_length, MEM_BLOCK_SIZE));
-	return true;
+    // Count the first block up front so small files have exact line numbers immediately.
+    index_range(0, seq_min(sequence_length, MEM_BLOCK_SIZE));
+    return true;
 }
 
 //

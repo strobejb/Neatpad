@@ -210,6 +210,7 @@ public:
 
 
 private:
+    friend class SequenceBufferProbe;
 
 	typedef			std::vector<span_range*>	  eventstack;
 	typedef			std::vector<buffer_control*>  bufferlist;
@@ -307,9 +308,12 @@ private:
 	buffer_control *alloc_modifybuffer(size_t size);
 	bool			import_buffer(const seqchar *buf, size_t len, size_t *buffer_offset);
 
-	bufferlist		buffer_list;
-	int				modifybuffer_id;
-	int				modifybuffer_pos;
+    // init/open reserve buffer 0 for the initial data, even for an empty document.
+    // Modify buffers are 1+; only modifybuffer_id receives new bytes. Full buffers
+    // remain referenced by spans/history. Old checkpoints retain their stored IDs.
+    bufferlist buffer_list;
+    int        modifybuffer_id;
+    int        modifybuffer_pos;
 
 	//
 	//	Sequence manipulation
@@ -366,6 +370,7 @@ class sequence::span
 	friend class sequence;
 	friend class span_range;
 	friend class span_cursor;
+    friend class SequenceBufferProbe;
 
 public:
 	// constructor
