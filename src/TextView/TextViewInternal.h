@@ -166,7 +166,10 @@ private:
 
 	// Filtering (TextViewFilter.cpp)
 	TextDocument *FileDoc() const;
-	bool		StartFilter();
+    UINT          SetFilterContext(UINT lines);
+    void          WriteFilterContext(TextPos match);
+    UINT          WriteFilterLines(LineIterator line, UINT count);
+    bool		StartFilter();
 	void		EndFilter(bool fKeepPlace);
 	bool		FilterSlice();
 	void		WriteFilterLine(TextPos begin, TextPos next);
@@ -379,7 +382,10 @@ private:
 	HANDLE		m_hFilterFile = INVALID_HANDLE_VALUE;
 	TextPos		m_filterFrom;					// how far through m_pSourceDoc filtering has got
 	std::vector<TextPos> m_filterOrigins;
-	UINT		m_nFilterEditMode = 0;			// the whole document's edit mode, meanwhile
+    TextPos              m_filterWrittenTo;     // end of the last source line included
+    UINT                 m_filterAfter     = 0; // context still wanted if the source grows
+    UINT                 m_nFilterContext  = 2;
+    UINT		m_nFilterEditMode = 0;			// the whole document's edit mode, meanwhile
 
 	// Runtime data
 	UINT_PTR	m_nScrollTimer;

@@ -80,6 +80,8 @@ COLORREF RealizeColour(COLORREF col);
 #define TXM_SHOWMATCHES			(TXM_BASE + 43)
 #define TXM_SAVESTATE (TXM_BASE + 44)
 #define TXM_LOADSTATE (TXM_BASE + 45)
+#define TXM_SETFILTERCONTEXT (TXM_BASE + 46)
+#define TV_MAX_FILTER_CONTEXT 100
 
     typedef struct _TEXTVIEWRECOVERY
     {
@@ -208,9 +210,13 @@ typedef struct _TEXTVIEWFIND
 #define SYSCOLIDX(COLREF)   ( 0x00FFFFFF & COLREF )
 #define REALIZE_SYSCOL(col) (RealizeColour(col))
 
-
 //
 //	TextView Message Macros defined here
+// Lines before and after each filtered match (default 2, 0 for matches only).
+// Clamps to TV_MAX_FILTER_CONTEXT; returns the previous count.
+#define TextView_SetFilterContext(hwndTV, lines)                                                                       \
+    ((UINT)SendMessage((hwndTV), TXM_SETFILTERCONTEXT, (WPARAM)(UINT)(lines), 0))
+
 //
 //	A file another program is writing opens read-only: TextView_GetEditMode says
 //	MODE_READONLY.
@@ -235,7 +241,7 @@ typedef struct _TEXTVIEWFIND
 
 //	Highlight every match of find->text (matching case if find->matchcase asks)
 //	wherever the text is shown, in the TXC_SEARCHMATCH colours - or none, for 0.
-//	fFilter shows only the lines holding a match, read-only, found in the
+//	fFilter shows matching lines with their configured context, read-only, found in the
 //	background in a large document. Filtering stops with the caret on the line
 //	it was on, in the whole document. Meanwhile, TextView_GetEditMode, saving
 //	and the document's details are still the whole document's.

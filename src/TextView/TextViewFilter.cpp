@@ -1,7 +1,7 @@
 //
 //	MODULE:		TextViewFilter.cpp
 //
-//	PURPOSE:	Showing only the lines that hold a match of the highlighted text.
+//	PURPOSE:	Showing matching lines and their surrounding context.
 //
 //	NOTES:		www.catch22.net
 //
@@ -32,8 +32,23 @@ TextDocument *TextView::FileDoc() const
 	return m_pSourceDoc ? m_pSourceDoc : m_pTextDoc;
 }
 
+// Set the surrounding line count, rebuilding an active filter when changed.
+UINT TextView::SetFilterContext(UINT lines)
+{
+    UINT previous = m_nFilterContext;
+
+    m_nFilterContext = min(lines, (UINT)TV_MAX_FILTER_CONTEXT);
+    if (m_pSourceDoc && previous != m_nFilterContext)
+    {
+        EndFilter(true);
+        m_fFilter = StartFilter();
+    }
+
+    return previous;
+}
+
 //
-//	Show only the lines holding a match of the highlighted text, read-only, from
+//	Show matching lines and their context, read-only, from
 //	the top: the first of them at once, and the rest as they're found
 //
 bool TextView::StartFilter()
@@ -66,13 +81,15 @@ bool TextView::StartFilter()
 		return false;
 	}
 
-	m_pSourceDoc	  = m_pTextDoc;
-	m_pTextDoc		  = filtered;
-	m_filterFrom	  = TextPos(0);
-	m_nFilterEditMode = m_nEditMode;
-	m_nEditMode		  = MODE_READONLY;
+    m_pSourceDoc      = m_pTextDoc;
+    m_pTextDoc        = filtered;
+    m_filterFrom      = TextPos(0);
+    m_filterWrittenTo = TextPos(0);
+    m_filterAfter     = 0;
+    m_nFilterEditMode = m_nEditMode;
+    m_nEditMode       = MODE_READONLY;
 
-	m_pTextDoc->coord_from_pos(TextPos(0), &m_cursorPos);
+    m_pTextDoc->coord_from_pos(TextPos(0), &m_cursorPos);
 	m_selAnchor = m_cursorPos;
 	SetScrollCoord(&m_cursorPos);
 
@@ -142,29 +159,74 @@ void TextView::EndFilter(bool fKeepPlace)
 //
 bool TextView::FilterSlice()
 {
-	LARGE_INTEGER freq, start, now;
-	size_w		  added;
+    LARGE_INTEGER freq, start, now;
+    size_w        added;
 
-	QueryPerformanceFrequency(&freq);
-	QueryPerformanceCounter(&start);
+    QueryPerformanceFrequency(&freq);
+    QueryPerformanceCounter(&start);
 
-	do
-	{
-		m_filterFrom = m_pSourceDoc->filter_lines(m_sMatchText.data(), (uint32_t)m_sMatchText.size(), m_fMatchCase != FALSE,
-			m_filterFrom, FILTER_CHUNK, [this](TextPos begin, TextPos next)
-		{
-			WriteFilterLine(begin, next);
-			m_filterOrigins.push_back(begin);
-		});
+    // A match at the old end may still be waiting for following context lines.
+    if (m_filterAfter && m_filterWrittenTo.byte_offset < m_pSourceDoc->byte_length())
+    {
+        LineIterator line = m_pSourceDoc->line_at(m_filterWrittenTo);
 
-		QueryPerformanceCounter(&now);
-	}
-	while(m_filterFrom.byte_offset < m_pSourceDoc->byte_length() &&
-		  (now.QuadPart - start.QuadPart) * 1000 < freq.QuadPart * FILTER_SLICE_MS);
+        if (line.line().line_begin == m_filterWrittenTo || line.next())
+            m_filterAfter = WriteFilterLines(line, m_filterAfter);
+    }
 
-	m_pTextDoc->grow(&added);
+    auto found = [this](TextPos begin, TextPos)
+    {
+        WriteFilterContext(begin);
+    };
+
+    do
+    {
+        m_filterFrom = m_pSourceDoc->filter_lines(m_sMatchText.data(), (uint32_t)m_sMatchText.size(),
+                                                  m_fMatchCase != FALSE, m_filterFrom, FILTER_CHUNK, found);
+
+        QueryPerformanceCounter(&now);
+    } while (m_filterFrom.byte_offset < m_pSourceDoc->byte_length() &&
+             (now.QuadPart - start.QuadPart) * 1000 < freq.QuadPart * FILTER_SLICE_MS);
+
+    m_pTextDoc->grow(&added);
 
     return m_filterFrom.byte_offset < m_pSourceDoc->byte_length();
+}
+
+// Expand a match with the existing line iterator. Matching and chunk scanning
+// stay in TextDocument; source offsets let overlapping ranges merge naturally.
+void TextView::WriteFilterContext(TextPos match)
+{
+    LineIterator line  = m_pSourceDoc->line_at(match);
+    UINT         count = m_nFilterContext + 1;
+
+    for (UINT before = 0; before < m_nFilterContext && line.prev(); ++before)
+        ++count;
+
+    m_filterAfter = WriteFilterLines(line, count);
+}
+
+// Append only source lines not already included by an earlier match. Return
+// the context lines not yet available at EOF, for a file being followed.
+UINT TextView::WriteFilterLines(LineIterator line, UINT count)
+{
+    while (count && line.line().line_begin.byte_offset < m_pSourceDoc->byte_length())
+    {
+        const TextCoord &coord = line.line();
+
+        if (coord.line_begin >= m_filterWrittenTo)
+        {
+            WriteFilterLine(coord.line_begin, coord.line_next);
+            m_filterOrigins.push_back(coord.line_begin);
+            m_filterWrittenTo = coord.line_next;
+        }
+
+        --count;
+        if (!line.next())
+            break;
+    }
+
+    return count;
 }
 
 //

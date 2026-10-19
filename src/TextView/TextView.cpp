@@ -759,7 +759,10 @@ LRESULT WINAPI TextView::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 	case TXM_GETLINEFORMAT:
 		return m_nCRLFMode;
 
-	case TXM_SETINMEMORYLIMIT:
+    case TXM_SETFILTERCONTEXT:
+        return SetFilterContext((UINT)wParam);
+
+    case TXM_SETINMEMORYLIMIT:
 		FileDoc()->set_in_memory_limit(wParam);
 		return 0;
 

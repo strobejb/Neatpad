@@ -676,6 +676,7 @@ void textview_filters_lines_and_goes_back_to_them()
 
     find.text   = error;
     find.length = 5;
+    TextView_SetFilterContext(view, 0);
     TextView_ShowMatches(view, &find, TRUE);
     CHECK(window_text(view) == L"error one\r\nerror two\r\n");
 
@@ -729,6 +730,7 @@ void textview_filtered_gutter_uses_original_numbers()
         TEXTVIEWFIND find = {};
         find.text         = needle;
         find.length       = 6;
+        TextView_SetFilterContext(pair.view, 0);
         TextView_ShowMatches(pair.view, &find, TRUE);
         CHECK(window_text(pair.view) == L"needle \x03bb\r\nneedle \x03bb\r\n");
         CHECK(TextViewMarginProbe::paint(pair.view, 0) == TextViewMarginProbe::paint(reference, 98));
@@ -766,6 +768,7 @@ void textview_filtered_gutter_waits_for_source_index()
     TextView_SetStyleBool(view, TXS_LINENUMBERS, TRUE);
     find.text   = needle;
     find.length = 6;
+    TextView_SetFilterContext(view, 0);
     TextView_ShowMatches(view, &find, TRUE);
     for (unsigned tick = 0; tick < 1000 && window_text(view).empty(); ++tick)
         SendMessage(view, WM_TIMER, FILTER_TIMER, 0);
@@ -795,6 +798,133 @@ void textview_filtered_gutter_waits_for_source_index()
     TextView_SetStyleBool(reference, TXS_LINENUMBERS, TRUE);
     SendMessage(reference, EM_GETLINECOUNT, 0, 0);
     CHECK(TextViewMarginProbe::paint(view, 0) == TextViewMarginProbe::paint(reference, bytes / 128));
+    DestroyWindow(parent);
+    DeleteFile(path);
+}
+
+void textview_filter_context_merges_ranges_and_applies_settings()
+{
+    const wchar_t *text = L"zero\none\nneedle needle\nthree\nfour\nfive\nsix\nneedle\neight\nnine\n";
+    EditPair       pair = {};
+    CHECK(open_edit_pair(&pair, text, NCP_UTF8));
+    TCHAR        needle[] = TEXT("needle");
+    TEXTVIEWFIND find     = {};
+    find.text             = needle;
+    find.length           = 6;
+
+    // Default two-line ranges touch, so every source line appears just once.
+    TextView_ShowMatches(pair.view, &find, TRUE);
+    CHECK(window_text(pair.view) == text);
+    CHECK(!TextView_GetModify(pair.view));
+    CHECK(TextView_SetFilterContext(pair.view, 0) == 2);
+    CHECK(window_text(pair.view) == L"needle needle\nneedle\n");
+    CHECK(TextView_SetFilterContext(pair.view, 1) == 0);
+    CHECK(window_text(pair.view) == L"one\nneedle needle\nthree\nsix\nneedle\neight\n");
+
+    // A context row retains its source position when filtering is switched off.
+    SendMessage(pair.view, EM_SETSEL, 0, 0);
+    TextView_ShowMatches(pair.view, &find, FALSE);
+    CHECK(window_text(pair.view) == text);
+    CHECK(SendMessage(pair.view, EM_LINEFROMCHAR, (WPARAM)-1, 0) == 1);
+    CHECK(TextView_SetFilterContext(pair.view, 1000) == 1);
+    CHECK(TextView_SetFilterContext(pair.view, 100) == TV_MAX_FILTER_CONTEXT);
+    TextView_ShowMatches(pair.view, &find, TRUE);
+    CHECK(window_text(pair.view) == text);
+    close_edit_pair(&pair);
+}
+
+void textview_filter_context_preserves_encodings_and_source_numbers()
+{
+    for (TEXT_ENCODING encoding : {NCP_UTF8, NCP_UTF16, NCP_UTF16BE, NCP_UTF32, NCP_UTF32BE})
+    {
+        EditPair pair = {};
+        CHECK(open_edit_pair(&pair, L"zero\r\none\rtwo\nneedle \x03bb\r\nfour\nfive\rsix", encoding));
+        HWND reference = create_textview(pair.parent);
+        CHECK(TextView_OpenFile(reference, pair.path));
+        TextView_SetStyleBool(pair.view, TXS_LINENUMBERS, TRUE);
+        TextView_SetStyleBool(reference, TXS_LINENUMBERS, TRUE);
+        TCHAR        needle[] = TEXT("needle");
+        TEXTVIEWFIND find     = {};
+        find.text             = needle;
+        find.length           = 6;
+        TextView_ShowMatches(pair.view, &find, TRUE);
+        CHECK(window_text(pair.view) == L"one\rtwo\nneedle \x03bb\r\nfour\nfive\r");
+        CHECK(TextViewMarginProbe::paint(pair.view, 0) == TextViewMarginProbe::paint(reference, 1));
+        CHECK(TextViewMarginProbe::paint(pair.view, 2) == TextViewMarginProbe::paint(reference, 3));
+        CHECK(TextViewMarginProbe::paint(pair.view, 4) == TextViewMarginProbe::paint(reference, 5));
+        CHECK(TextViewMarginProbe::paint(pair.view, 5) == TextViewMarginProbe::paint(pair.view, UINT64_MAX));
+        close_edit_pair(&pair);
+    }
+}
+
+void textview_filter_context_clips_at_document_ends()
+{
+    EditPair pair = {};
+    CHECK(open_edit_pair(&pair, L"needle first\none\ntwo\nskip\na\nb\nneedle last", NCP_UTF8));
+    TCHAR        needle[] = TEXT("needle"), absent[] = TEXT("absent");
+    TEXTVIEWFIND find = {};
+    find.text         = needle;
+    find.length       = 6;
+    TextView_ShowMatches(pair.view, &find, TRUE);
+    CHECK(window_text(pair.view) == L"needle first\none\ntwo\na\nb\nneedle last\n");
+    find.text = absent;
+    TextView_ShowMatches(pair.view, &find, TRUE);
+    CHECK(window_text(pair.view).empty());
+    close_edit_pair(&pair);
+}
+
+void textview_filter_context_merges_across_scan_chunks()
+{
+    const size_t chunk = 0x100000, width = 128;
+    std::string  text(2 * chunk, 'x');
+
+    for (size_t at = width - 1; at < text.size(); at += width)
+        text[at] = '\n';
+    text.replace(chunk - width, 6, "needle");
+    text.replace(chunk + 2 * width, 6, "needle");
+    std::string  included = text.substr(chunk - 3 * width, 8 * width);
+    std::wstring expected(included.begin(), included.end());
+    TCHAR        path[MAX_PATH], needle[] = TEXT("needle");
+    HWND         parent = create_hidden_parent(), view = create_textview(parent);
+    CHECK(write_temp_file(text.data(), text.size(), path));
+    CHECK(TextView_OpenFile(view, path));
+    TEXTVIEWFIND find = {};
+    find.text         = needle;
+    find.length       = 6;
+    TextView_ShowMatches(view, &find, TRUE);
+    for (unsigned tick = 0; tick < 1000 && window_text(view) != expected; ++tick)
+        SendMessage(view, WM_TIMER, FILTER_TIMER, 0);
+    CHECK(window_text(view) == expected);
+    DestroyWindow(parent);
+    DeleteFile(path);
+}
+
+void textview_filter_context_follows_new_surrounding_lines()
+{
+    TCHAR path[MAX_PATH], needle[] = TEXT("needle");
+    HWND  parent = create_hidden_parent(), view = create_textview(parent);
+    CHECK(write_textdocument_file("head\nneedle\n", DOC_UTF8_BOM, path));
+    CHECK(TextView_TailFile(view, path));
+    TEXTVIEWFIND find = {};
+    find.text         = needle;
+    find.length       = 6;
+    TextView_ShowMatches(view, &find, TRUE);
+    CHECK(window_text(view) == L"head\nneedle\n");
+
+    const char    *appends[]  = {"after one\n", "after two\noutside\n", "before\nneedle again\npost\n"};
+    const wchar_t *expected[] = {L"head\nneedle\nafter one\n", L"head\nneedle\nafter one\nafter two\n",
+                                 L"head\nneedle\nafter one\nafter two\noutside\nbefore\nneedle again\npost\n"};
+    for (unsigned i = 0; i < ARRAYSIZE(appends); ++i)
+    {
+        HANDLE writer  = CreateFile(path, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, 0,
+                                    OPEN_EXISTING, 0, 0);
+        DWORD  written = 0;
+        CHECK(writer != INVALID_HANDLE_VALUE);
+        CHECK(WriteFile(writer, appends[i], (DWORD)strlen(appends[i]), &written, 0));
+        CloseHandle(writer);
+        CHECK(TextView_UpdateTail(view));
+        CHECK(window_text(view) == expected[i]);
+    }
     DestroyWindow(parent);
     DeleteFile(path);
 }
@@ -1176,6 +1306,13 @@ const test_case tests[] = {
     {"textview_filters_lines_and_goes_back_to_them", textview_filters_lines_and_goes_back_to_them},
     {"textview_filtered_gutter_uses_original_numbers", textview_filtered_gutter_uses_original_numbers},
     {"textview_filtered_gutter_waits_for_source_index", textview_filtered_gutter_waits_for_source_index},
+    {"textview_filter_context_merges_ranges_and_applies_settings",
+     textview_filter_context_merges_ranges_and_applies_settings},
+    {"textview_filter_context_preserves_encodings_and_source_numbers",
+     textview_filter_context_preserves_encodings_and_source_numbers},
+    {"textview_filter_context_clips_at_document_ends", textview_filter_context_clips_at_document_ends},
+    {"textview_filter_context_merges_across_scan_chunks", textview_filter_context_merges_across_scan_chunks},
+    {"textview_filter_context_follows_new_surrounding_lines", textview_filter_context_follows_new_surrounding_lines},
 };
 }
 

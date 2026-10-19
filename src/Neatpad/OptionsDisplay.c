@@ -14,6 +14,7 @@
 #include <tchar.h>
 #include "Neatpad.h"
 #include "resource.h"
+#include "..\TextView\TextView.h"
 
 //
 //	Dialogbox procedure for the FONT pane
@@ -39,7 +40,11 @@ INT_PTR CALLBACK DisplayOptionsDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 
 		CheckDlgButton(hwnd, IDC_HIGHLIGHTCURLINE, g_nHLCurLine);
 
-		return TRUE;
+        SetDlgItemInt(hwnd, IDC_FILTERCONTEXT, g_nFilterContext, FALSE);
+        SendDlgItemMessage(hwnd, IDC_FILTERCONTEXTSPIN, UDM_SETRANGE32, 0, TV_MAX_FILTER_CONTEXT);
+        SendDlgItemMessage(hwnd, IDC_FILTERCONTEXT, EM_LIMITTEXT, 3, 0);
+
+        return TRUE;
 
 	case WM_CLOSE:
 		return TRUE;
@@ -50,7 +55,20 @@ INT_PTR CALLBACK DisplayOptionsDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 		
 		if(pshn->hdr.code == PSN_APPLY)
 		{
-			g_fLineNumbers	 = IsDlgButtonChecked(hwnd, IDC_LINENOS);
+            BOOL valid;
+            UINT context = GetDlgItemInt(hwnd, IDC_FILTERCONTEXT, &valid, FALSE);
+
+            if (!valid || context > TV_MAX_FILTER_CONTEXT)
+            {
+                MessageBox(hwnd, _T("Enter a context line count between 0 and 100."), _T("Filter context"),
+                           MB_OK | MB_ICONWARNING);
+                SetFocus(GetDlgItem(hwnd, IDC_FILTERCONTEXT));
+                SetWindowLongPtr(hwnd, DWLP_MSGRESULT, PSNRET_INVALID_NOCHANGEPAGE);
+                return TRUE;
+            }
+            g_nFilterContext = (LONG)context;
+
+            g_fLineNumbers	 = IsDlgButtonChecked(hwnd, IDC_LINENOS);
 			g_fSelMargin	 = IsDlgButtonChecked(hwnd, IDC_SELMARGIN);
 			g_fLongLines	 = (BOOL)SendDlgItemMessage(hwnd, IDC_LONGLINEMODE, CB_GETCURSEL, 0, 0);
 			g_nLongLineLimit = GetDlgItemInt(hwnd, IDC_LONGLINELIM, 0, FALSE);

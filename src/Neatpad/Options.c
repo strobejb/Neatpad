@@ -47,6 +47,7 @@ BOOL  g_fShowLineEndings;
 BOOL  g_fShowStatusbar;
 BOOL  g_fSearchMatchCase;
 BOOL  g_fSearchWrap;
+LONG  g_nFilterContext = 2;
 LONG  g_nInMemoryLimit;
 BOOL  g_fAddToExplorer		= 0;
 BOOL  g_fReplaceNotepad		= 0;
@@ -446,8 +447,11 @@ void LoadRegSettings()
 	GetSettingInt(hKey, _T("ShowLineEndings"), &g_fShowLineEndings, FALSE);
 	GetSettingInt(hKey, _T("SearchMatchCase"), &g_fSearchMatchCase, FALSE);
 	GetSettingInt(hKey, _T("SearchWrap"), &g_fSearchWrap, TRUE);
+    GetSettingInt(hKey, _T("FilterContext"), &g_nFilterContext, 2);
+    if (g_nFilterContext < 0 || g_nFilterContext > TV_MAX_FILTER_CONTEXT)
+        g_nFilterContext = 2;
 
-	// files under 16 MB are read into memory and released; larger ones are read
+    // files under 16 MB are read into memory and released; larger ones are read
 	// from disk and locked while they're open. 0 reads every file from disk.
 	GetSettingInt(hKey, _T("InMemoryLimit"), &g_nInMemoryLimit, 16 * 1024 * 1024);
 
@@ -527,7 +531,8 @@ void SaveRegSettings()
 	WriteSettingInt(hKey, _T("ShowLineEndings"), g_fShowLineEndings);
 	WriteSettingInt(hKey, _T("SearchMatchCase"), g_fSearchMatchCase);
 	WriteSettingInt(hKey, _T("SearchWrap"), g_fSearchWrap);
-	WriteSettingInt(hKey, _T("InMemoryLimit"), g_nInMemoryLimit);
+    WriteSettingInt(hKey, _T("FilterContext"), g_nFilterContext);
+    WriteSettingInt(hKey, _T("InMemoryLimit"), g_nInMemoryLimit);
 
 	WriteSettingInt(hKey, _T("AddExplorer"),  g_fAddToExplorer);
 	WriteSettingInt(hKey, _T("ReplaceNotepad"), g_fReplaceNotepad);
@@ -651,8 +656,9 @@ void ApplyRegSettings()
 	TextView_SetCaretWidth(g_hwndTextView, 2);
 	TextView_SetLongLine(g_hwndTextView, g_nLongLineLimit);
 	TextView_SetInMemoryLimit(g_hwndTextView, (DWORD)g_nInMemoryLimit);
+    TextView_SetFilterContext(g_hwndTextView, (UINT)g_nFilterContext);
 
-	ApplyFonts();
+    ApplyFonts();
 
 	for(i = 0; i < TXC_MAX_COLOURS; i++)
 	{

@@ -284,6 +284,11 @@ BEGIN
     CONTROL         "Use default printer's page width",IDC_CHECK1,"Button",BS_AUTOCHECKBOX | WS_DISABLED | WS_TABSTOP,16,49,115,10
     CONTROL         "&Selection margin",IDC_SELMARGIN,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,16,75,68,10
     CONTROL         "&Highlight current line",IDC_HIGHLIGHTCURLINE,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,185,75,80,10
+    GROUPBOX        "Filtering",IDC_STATIC,7,162,276,36
+    LTEXT           "&Context lines before and after each match:",IDC_STATIC,16,176,192,8
+    EDITTEXT        IDC_FILTERCONTEXT,236,173,38,14,ES_AUTOHSCROLL | ES_NUMBER
+    CONTROL         "",IDC_FILTERCONTEXTSPIN,"msctls_updown32",UDS_SETBUDDYINT | UDS_ALIGNRIGHT | UDS_AUTOBUDDY | UDS_ARROWKEYS,264,173,10,14
+    LTEXT           "0 shows matching lines only",IDC_STATIC,16,188,190,8
 END
 
 IDD_ABOUT DIALOGEX 0, 0, 224, 113
