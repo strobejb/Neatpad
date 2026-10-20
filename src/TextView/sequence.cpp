@@ -143,6 +143,7 @@ bool sequence::init (const seqchar *buffer, size_t length)
     head->next      = sptr;
     tail->prev      = sptr;
     sequence_length = length;
+    capture_saved_ranges();
     return true;
 }
 
@@ -168,6 +169,7 @@ bool sequence::open(const seqfilechar *filename, bool readonly, size_w in_memory
     head->next      = sptr;
     tail->prev      = sptr;
     sequence_length = bc->length;
+    capture_saved_ranges();
 
     // Count the first block up front so small files have exact line numbers immediately.
     index_range(0, seq_min(sequence_length, MEM_BLOCK_SIZE));
@@ -227,6 +229,7 @@ bool sequence::grow(size_w *added)
 
 		update_span_line_data(last);
 		index_range(old_length, *added);
+        capture_saved_ranges();
 	}
 
 	return true;
@@ -616,6 +619,7 @@ void sequence::mark_saved()
 	breakopt();
 
 	saved_group = undostack.empty() ? 0 : undostack.back()->group_id;
+    capture_saved_ranges();
 }
 
 bool sequence::modified() const
@@ -1112,6 +1116,13 @@ bool sequence::clear ()
 
 	buffer_list.clear();
 	sequence_length = 0;
+
+    saved_ranges.clear();
+    saved_length    = 0;
+    diff_available  = true;
+    diff_generation = 0;
+    diff_cache.clear();
+
 	lines_changed();
 	return true;
 }

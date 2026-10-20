@@ -61,6 +61,7 @@ class SequenceBufferProbe
 
         seq.modifybuffer_id  = 1;
         seq.modifybuffer_pos = 0;
+        seq.capture_saved_ranges();
     }
 };
 
@@ -1404,7 +1405,600 @@ void sequence_render_passes_a_block_per_span()
     CHECK(calls == 2);
 }
 
+std::vector<sequence::diff_range> read_diff(const sequence &seq, size_w index = 0, size_w length = MAX_SEQUENCE_LENGTH)
+{
+    std::vector<sequence::diff_range> ranges;
+
+    CHECK(seq.diff(index, length,
+                   [&ranges](const sequence::diff_range &range)
+                   {
+                       ranges.push_back(range);
+                       return true;
+                   }));
+    return ranges;
+}
+
+bool same_diff(const std::vector<sequence::diff_range> &actual, const std::vector<sequence::diff_range> &expected)
+{
+    if (actual.size() != expected.size())
+    {
+        return false;
+    }
+
+    for (size_t i = 0; i < actual.size(); ++i)
+    {
+        if (actual[i].offset != expected[i].offset || actual[i].erased != expected[i].erased ||
+            actual[i].inserted != expected[i].inserted)
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+void sequence_diff_tracks_insert_delete_and_saved_history()
+{
+    sequence seq;
+
+    init(seq, "abcdef");
+    CHECK(read_diff(seq).empty());
+    CHECK(insert_bytes(seq, 2, "X"));
+    CHECK(seq.erase(4, 2));
+    expect_content(seq, "abXcf");
+    CHECK(same_diff(read_diff(seq), {{2, 0, 1}, {4, 2, 0}}));
+
+    seq.mark_saved();
+    CHECK(read_diff(seq).empty());
+    CHECK(seq.undo());
+    CHECK(same_diff(read_diff(seq), {{4, 0, 2}}));
+    CHECK(seq.undo());
+    expect_content(seq, "abcdef");
+    CHECK(same_diff(read_diff(seq), {{2, 1, 0}, {3, 0, 2}}));
+    CHECK(seq.redo());
+    CHECK(same_diff(read_diff(seq), {{4, 0, 2}}));
+    CHECK(seq.redo());
+    CHECK(read_diff(seq).empty());
+
+    // Undo restores a single historical span containing both saved bytes and
+    // a byte that was absent when Save captured the baseline.
+    init(seq, "ABCDE");
+    CHECK(seq.erase(2, 1));
+    seq.mark_saved();
+    CHECK(seq.undo());
+    CHECK(same_diff(read_diff(seq), {{2, 0, 1}}));
+}
+
+void sequence_diff_survives_branches_and_nonsequential_source_order()
+{
+    sequence seq;
+
+    init(seq, "abc");
+    CHECK(insert_bytes(seq, 1, "X"));
+    seq.mark_saved();
+    CHECK(seq.undo());
+    CHECK(same_diff(read_diff(seq), {{1, 1, 0}}));
+    CHECK(insert_bytes(seq, 2, "Y"));
+    CHECK(!seq.canredo());
+    CHECK(same_diff(read_diff(seq), {{1, 1, 0}, {2, 0, 1}}));
+    CHECK(seq.undo());
+    CHECK(same_diff(read_diff(seq), {{1, 1, 0}}));
+
+    init(seq, "abc");
+    CHECK(insert_bytes(seq, 3, "Z"));
+    seq.breakopt();
+    CHECK(insert_bytes(seq, 0, "Y"));
+    seq.mark_saved();
+    CHECK(seq.undo());
+    CHECK(same_diff(read_diff(seq), {{0, 1, 0}}));
+    CHECK(seq.undo());
+    CHECK(same_diff(read_diff(seq), {{0, 1, 0}, {3, 1, 0}}));
+
+    // Data appended before Save but deleted before it is not saved data.
+    init(seq, "ab");
+    CHECK(insert_bytes(seq, 1, "X"));
+    seq.breakopt();
+    CHECK(seq.erase(1, 1));
+    seq.mark_saved();
+    CHECK(seq.undo());
+    CHECK(same_diff(read_diff(seq), {{1, 0, 1}}));
+}
+
+void sequence_diff_queries_whole_hunks_and_deletion_anchors()
+{
+    sequence seq;
+
+    init(seq, "abcdef");
+    CHECK(seq.erase(0, 1));
+    seq.breakopt();
+    CHECK(seq.erase(4, 1));
+    CHECK(same_diff(read_diff(seq), {{0, 1, 0}, {4, 1, 0}}));
+    CHECK(same_diff(read_diff(seq, 0, 1), {{0, 1, 0}}));
+    CHECK(read_diff(seq, 1, 2).empty());
+    CHECK(same_diff(read_diff(seq, seq.size(), 0), {{4, 1, 0}}));
+    CHECK(same_diff(read_diff(seq, 3, (size_w)-1), {{4, 1, 0}}));
+    CHECK(read_diff(seq, seq.size() + 1, 1).empty());
+
+    CHECK(seq.erase(0, seq.size()));
+    CHECK(same_diff(read_diff(seq, 0, 0), {{0, 6, 0}}));
+    CHECK(seq.clear());
+    CHECK(read_diff(seq).empty());
+    CHECK(seq.init());
+    CHECK(insert_bytes(seq, 0, "new"));
+    CHECK(same_diff(read_diff(seq), {{0, 0, 3}}));
+
+    init(seq, "abcdef");
+    CHECK(replace_bytes(seq, 2, "XYZ", 2));
+    CHECK(same_diff(read_diff(seq, 3, 1), {{2, 2, 3}}));
+    CHECK(read_diff(seq, 3, 0).empty());
+    CHECK(read_diff(seq, 0, 2).empty());
+    CHECK(read_diff(seq, 5, 1).empty());
+    CHECK(insert_bytes(seq, 0, "Q"));
+
+    unsigned calls = 0;
+
+    CHECK(seq.diff(0, seq.size(),
+                   [&calls](const sequence::diff_range &)
+                   {
+                       ++calls;
+                       return false;
+                   }));
+    CHECK(calls == 1);
+}
+
+void sequence_diff_handles_grouping_coalescing_and_identical_text()
+{
+    sequence seq;
+
+    init(seq, "0123456789");
+    seq.group();
+    CHECK(replace_bytes(seq, 1, "AA", 2));
+    CHECK(replace_bytes(seq, 7, "BB", 2));
+    seq.ungroup();
+    CHECK(same_diff(read_diff(seq), {{1, 2, 2}, {7, 2, 2}}));
+    seq.mark_saved();
+    CHECK(seq.undo());
+    CHECK(same_diff(read_diff(seq), {{1, 2, 2}, {7, 2, 2}}));
+    CHECK(seq.redo());
+    CHECK(read_diff(seq).empty());
+
+    init(seq, "abcde");
+    CHECK(replace_bytes(seq, 1, "X", 1));
+    CHECK(replace_bytes(seq, 2, "Y", 1));
+    CHECK(same_diff(read_diff(seq), {{1, 2, 2}}));
+    seq.mark_saved();
+    CHECK(seq.undo());
+    expect_content(seq, "abcde");
+    CHECK(same_diff(read_diff(seq), {{1, 2, 2}}));
+
+    init(seq, "abc");
+    CHECK(replace_bytes(seq, 1, "b", 1));
+    expect_content(seq, "abc");
+    CHECK(same_diff(read_diff(seq), {{1, 1, 1}}));
+    seq.mark_saved();
+    CHECK(read_diff(seq).empty());
+    CHECK(seq.undo());
+    expect_content(seq, "abc");
+    CHECK(same_diff(read_diff(seq), {{1, 1, 1}}));
+}
+
+void sequence_diff_handles_modify_buffer_rollover_and_reinitialization()
+{
+    sequence    seq;
+    std::string typed(0x10000, 'x');
+
+    init(seq, "abc");
+    CHECK(seq.insert(3, reinterpret_cast<const seqchar *>(typed.data()), typed.size()));
+    seq.breakopt();
+    CHECK(insert_bytes(seq, seq.size(), "y"));
+    CHECK(same_diff(read_diff(seq), {{3, 0, 0x10001}}));
+    seq.mark_saved();
+    CHECK(read_diff(seq).empty());
+    CHECK(seq.undo());
+    CHECK(same_diff(read_diff(seq), {{0x10003, 1, 0}}));
+    CHECK(seq.undo());
+    CHECK(same_diff(read_diff(seq), {{3, 0x10001, 0}}));
+
+    init(seq, "replacement");
+    CHECK(read_diff(seq).empty());
+    CHECK(!seq.modified());
+}
+
+void sequence_diff_keeps_open_and_external_growth_unmarked()
+{
+    sequence seq;
+    TCHAR    path[MAX_PATH];
+    HANDLE   writer;
+    DWORD    written;
+    size_w   added = 0;
+
+    CHECK(write_temp_file("first\n", 6, path));
+    CHECK(seq.open(path, false, 1024));
+    CHECK(read_diff(seq).empty());
+    CHECK(insert_bytes(seq, 0, "x"));
+    CHECK(same_diff(read_diff(seq), {{0, 0, 1}}));
+    CHECK(seq.clear());
+
+    writer = CreateFile(path, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_DELETE, 0, OPEN_EXISTING, 0, 0);
+    CHECK(writer != INVALID_HANDLE_VALUE);
+    CHECK(seq.open(path, true));
+    CHECK(read_diff(seq).empty());
+    CHECK(WriteFile(writer, "second\n", 7, &written, 0) && written == 7);
+    CHECK(FlushFileBuffers(writer));
+    CHECK(seq.grow(&added));
+    CHECK(added == 7);
+    CHECK(read_diff(seq).empty());
+    CHECK(seq.clear());
+    CloseHandle(writer);
+    DeleteFile(path);
+}
+
+// Independent per-byte identities: equal text does not mean equal provenance.
+// This oracle does not inspect sequence spans, buffer IDs or cached intervals.
+std::vector<sequence::diff_range> token_diff(const std::vector<unsigned> &current, const std::vector<unsigned> &saved)
+{
+    std::vector<sequence::diff_range> expected;
+    size_t                            current_end = 0;
+    size_t                            saved_end   = 0;
+
+    for (size_t i = 0; i < current.size(); ++i)
+    {
+        auto token = std::find(saved.begin(), saved.end(), current[i]);
+
+        if (token == saved.end())
+        {
+            continue;
+        }
+
+        size_t position = static_cast<size_t>(token - saved.begin());
+
+        CHECK(position >= saved_end);
+        if (i != current_end || position != saved_end)
+        {
+            expected.push_back({current_end, position - saved_end, i - current_end});
+        }
+
+        current_end = i + 1;
+        saved_end   = position + 1;
+    }
+
+    if (current_end != current.size() || saved_end != saved.size())
+    {
+        expected.push_back({current_end, saved.size() - saved_end, current.size() - current_end});
+    }
+
+    return expected;
+}
+
+void sequence_diff_matches_token_identity_through_random_history()
+{
+    for (unsigned seed = 1; seed <= 16; ++seed)
+    {
+        sequence                           seq;
+        std::vector<std::vector<unsigned>> history = {{1, 2, 3, 4, 5, 6, 7, 8}};
+        std::vector<unsigned>              saved   = history[0];
+        size_t                             cursor  = 0;
+        unsigned                           next_id = 9;
+        unsigned                           random  = seed;
+
+        init(seq, "xxxxxxxx");
+
+        auto next = [&random]()
+        {
+            random = random * 1664525U + 1013904223U;
+            return random;
+        };
+
+        for (unsigned step = 0; step < 200; ++step)
+        {
+            unsigned              operation = next() % 8;
+            std::vector<unsigned> current   = history[cursor];
+
+            seq.breakopt();
+
+            if (operation < 4)
+            {
+                size_t at       = next() % (current.size() + 1);
+                size_t inserted = operation < 2 ? 1 + next() % 3 : 0;
+                size_t erased   = operation == 0 ? 0 : (std::min)(current.size() - at, size_t(1 + next() % 3));
+
+                if (current.size() > 60)
+                {
+                    at       = 0;
+                    erased   = 4;
+                    inserted = 0;
+                }
+
+                if (inserted || erased)
+                {
+                    std::string           text(inserted, 'x');
+                    std::vector<unsigned> added;
+
+                    for (size_t i = 0; i < inserted; ++i)
+                    {
+                        added.push_back(next_id++);
+                    }
+
+                    if (!inserted)
+                    {
+                        CHECK(seq.erase(at, erased));
+                    }
+                    else if (!erased)
+                    {
+                        CHECK(seq.insert(at, reinterpret_cast<const seqchar *>(text.data()), inserted));
+                    }
+                    else
+                    {
+                        CHECK(seq.replace(at, reinterpret_cast<const seqchar *>(text.data()), inserted, erased));
+                    }
+
+                    current.erase(current.begin() + at, current.begin() + at + erased);
+                    current.insert(current.begin() + at, added.begin(), added.end());
+                    history.resize(cursor + 1);
+                    history.push_back(current);
+                    ++cursor;
+                }
+            }
+            else if (operation == 4 && cursor)
+            {
+                CHECK(seq.undo());
+                --cursor;
+            }
+            else if (operation == 5 && cursor + 1 < history.size())
+            {
+                CHECK(seq.redo());
+                ++cursor;
+            }
+            else if (operation >= 6)
+            {
+                seq.mark_saved();
+                saved = current;
+            }
+
+            CHECK(seq.size() == history[cursor].size());
+
+            bool matches = same_diff(read_diff(seq), token_diff(history[cursor], saved));
+
+            if (!matches)
+            {
+                printf("Diff token oracle: seed %u, step %u\n", seed, step);
+            }
+
+            CHECK(matches);
+        }
+    }
+}
+
+uint64_t read_checkpoint_integer(const std::vector<uint8_t> &bytes, size_t at, size_t width = 8)
+{
+    uint64_t value = 0;
+
+    for (size_t i = 0; i < width; ++i)
+        value |= (uint64_t)bytes[at + i] << (i * 8);
+    return value;
+}
+
+void write_checkpoint_integer(std::vector<uint8_t> &bytes, size_t at, uint64_t value, size_t width = 8)
+{
+    for (size_t i = 0; i < width; ++i)
+        bytes[at + i] = (uint8_t)(value >> (i * 8));
+}
+
+bool read_checkpoint(const checkpoint_store &store, std::vector<uint8_t> &bytes)
+{
+    TCHAR name[MAX_PATH];
+    FILE *fp = 0;
+
+    wsprintf(name, _T("%s\\state.bin"), store.dir);
+    _wfopen_s(&fp, name, L"rb");
+    if (!fp)
+        return false;
+
+    fseek(fp, 0, SEEK_END);
+    long length = ftell(fp);
+
+    rewind(fp);
+    bytes.resize((size_t)length);
+
+    bool success = fread(bytes.data(), 1, bytes.size(), fp) == bytes.size();
+
+    fclose(fp);
+    return success;
+}
+
+bool write_checkpoint(const checkpoint_store &store, std::vector<uint8_t> bytes)
+{
+    TCHAR    name[MAX_PATH];
+    FILE    *fp  = 0;
+    uint32_t crc = ~0U;
+
+    write_checkpoint_integer(bytes, 16, bytes.size() - 32);
+    for (size_t i = 32; i < bytes.size(); ++i)
+    {
+        crc ^= bytes[i];
+        for (int bit = 0; bit < 8; ++bit)
+            crc = (crc >> 1) ^ (0xedb88320U & (0U - (crc & 1)));
+    }
+    write_checkpoint_integer(bytes, 24, (uint32_t)~crc, 4);
+
+    wsprintf(name, _T("%s\\state.bin"), store.dir);
+    _wfopen_s(&fp, name, L"wb");
+    if (!fp)
+        return false;
+
+    bool success = fwrite(bytes.data(), 1, bytes.size(), fp) == bytes.size();
+
+    fclose(fp);
+    return success;
+}
+
+size_t checkpoint_diff_offset(const std::vector<uint8_t> &bytes)
+{
+    size_t at = 32 + 64;
+
+    for (uint64_t i = 0; i < read_checkpoint_integer(bytes, 64); ++i)
+        at += 64 + (size_t)read_checkpoint_integer(bytes, at + 56);
+    return at + (size_t)read_checkpoint_integer(bytes, 72) * 48 +
+           (size_t)(read_checkpoint_integer(bytes, 80) + read_checkpoint_integer(bytes, 88)) * 56;
+}
+
+void checkpoint_preserves_saved_diff_after_discarding_redo()
+{
+    checkpoint_store store;
+    sequence         seq, copy;
+
+    init(seq, "abc");
+    CHECK(insert_bytes(seq, 1, "X"));
+    seq.mark_saved();
+    CHECK(seq.undo());
+    CHECK(insert_bytes(seq, 3, "Y"));
+    CHECK(!seq.canredo());
+
+    // X belongs to the saved document, but its only span was discarded with
+    // redo. The buffer metadata must still retain its place in that baseline.
+    state_writer writer(store.dir);
+    state_reader reader(store.dir);
+
+    CHECK(seq.save_state(writer));
+    CHECK(copy.load_state(reader));
+    expect_content(copy, "abcY");
+
+    CHECK(same_diff(read_diff(copy), {{1, 1, 0}, {3, 0, 1}}));
+
+    CHECK(copy.undo());
+    CHECK(same_diff(read_diff(copy), {{1, 1, 0}}));
+    CHECK(copy.redo());
+    copy.mark_saved();
+    CHECK(copy.save_state(writer));
+    CHECK(seq.load_state(reader));
+
+    CHECK(read_diff(seq).empty());
+}
+
+void checkpoint_loads_legacy_diff_and_pins_its_version()
+{
+    checkpoint_store store;
+    sequence         seq, copy;
+
+    init(seq, "abc");
+    CHECK(insert_bytes(seq, 1, "X"));
+
+    state_writer writer(store.dir);
+
+    writer.set_context({1, 2, 3});
+    CHECK(seq.save_state(writer));
+
+    std::vector<uint8_t> bytes;
+
+    CHECK(read_checkpoint(store, bytes));
+    if (bytes.empty())
+        return;
+
+    size_t at     = checkpoint_diff_offset(bytes);
+    size_t length = 24 + (size_t)read_checkpoint_integer(bytes, at + 16) * 32;
+
+    bytes.erase(bytes.begin() + at, bytes.begin() + at + length);
+    write_checkpoint_integer(bytes, 8, 1, 4);
+    CHECK(write_checkpoint(store, bytes));
+
+    state_reader         reader(store.dir);
+    std::vector<uint8_t> context;
+
+    CHECK(reader.read_context(context));
+    CHECK(context == std::vector<uint8_t>({1, 2, 3}));
+    CHECK(copy.load_state(reader));
+    expect_content(copy, "aXbc");
+
+    size_t count   = 0;
+    auto   collect = [&](const sequence::diff_range &)
+    {
+        ++count;
+        return true;
+    };
+
+    CHECK(!copy.diff(0, copy.size(), collect));
+    CHECK(count == 0);
+    CHECK(copy.save_state(writer));
+    CHECK(seq.load_state(reader));
+    CHECK(!seq.diff(0, seq.size(), collect));
+
+    seq.mark_saved();
+    CHECK(seq.save_state(writer));
+    CHECK(copy.load_state(reader));
+    CHECK(copy.diff(0, copy.size(), collect));
+    CHECK(count == 0);
+}
+
+void checkpoint_rejects_invalid_diff_with_valid_checksum()
+{
+    checkpoint_store store;
+    sequence         seq, copy;
+
+    init(seq, "abcd");
+    CHECK(insert_bytes(seq, 2, "X"));
+    seq.mark_saved();
+
+    state_writer writer(store.dir);
+
+    CHECK(seq.save_state(writer));
+    init(copy, "keep");
+    CHECK(insert_bytes(copy, 4, "!"));
+
+    std::vector<uint8_t> original;
+
+    CHECK(read_checkpoint(store, original));
+    if (original.empty())
+        return;
+
+    size_t at = checkpoint_diff_offset(original);
+
+    CHECK(read_checkpoint_integer(original, at + 16) == 3);
+
+    const std::pair<size_t, uint64_t> corruptions[] = {
+        {at, 2},                   // Unknown availability flag.
+        {at + 4, 1},               // Nonzero reserved field.
+        {at + 8, 6},               // Incomplete logical saved document.
+        {at + 16, UINT64_MAX},     // Unbounded allocation count.
+        {at + 24, UINT64_MAX},     // Nonexistent backing buffer.
+        {at + 24 + 8, UINT64_MAX}, // Physical range outside its buffer.
+        {at + 24 + 16, 0},         // Empty saved range.
+        {at + 24 + 24, 1},         // Logical gap and overlap.
+        {at + 24 + 32 + 8, 0},     // Overlapping physical saved ranges.
+        {at + 24 + 32 + 24, 1},    // Overlapping logical saved ranges.
+    };
+
+    for (const auto &bad : corruptions)
+    {
+        std::vector<uint8_t> bytes = original;
+
+        write_checkpoint_integer(bytes, bad.first, bad.second);
+        CHECK(write_checkpoint(store, bytes));
+
+        state_reader reader(store.dir);
+
+        CHECK(!copy.load_state(reader));
+        expect_content(copy, "keep!");
+        CHECK(copy.canundo() && copy.modified());
+    }
+    CHECK(copy.undo());
+    expect_content(copy, "keep");
+}
+
 const test_case tests[] = {
+    {"checkpoint_preserves_saved_diff_after_discarding_redo", checkpoint_preserves_saved_diff_after_discarding_redo},
+    {"checkpoint_loads_legacy_diff_and_pins_its_version", checkpoint_loads_legacy_diff_and_pins_its_version},
+    {"checkpoint_rejects_invalid_diff_with_valid_checksum", checkpoint_rejects_invalid_diff_with_valid_checksum},
+    {"sequence_diff_tracks_insert_delete_and_saved_history", sequence_diff_tracks_insert_delete_and_saved_history},
+    {"sequence_diff_survives_branches_and_nonsequential_source_order",
+     sequence_diff_survives_branches_and_nonsequential_source_order},
+    {"sequence_diff_queries_whole_hunks_and_deletion_anchors", sequence_diff_queries_whole_hunks_and_deletion_anchors},
+    {"sequence_diff_handles_grouping_coalescing_and_identical_text",
+     sequence_diff_handles_grouping_coalescing_and_identical_text},
+    {"sequence_diff_handles_modify_buffer_rollover_and_reinitialization",
+     sequence_diff_handles_modify_buffer_rollover_and_reinitialization},
+    {"sequence_diff_keeps_open_and_external_growth_unmarked", sequence_diff_keeps_open_and_external_growth_unmarked},
+    {"sequence_diff_matches_token_identity_through_random_history",
+     sequence_diff_matches_token_identity_through_random_history},
     {"sequence_initial_and_modify_buffers_are_separate", sequence_initial_and_modify_buffers_are_separate},
     {"sequence_modify_buffers_roll_over_without_changing_initial_data",
      sequence_modify_buffers_roll_over_without_changing_initial_data},

@@ -628,6 +628,79 @@ uint32_t TextDocument::getline(const TextCoord &line, textchar *buf, uint32_t bu
 	return buflen;
 }
 
+// Compare raw byte ranges, then translate just the visible inserted text to
+// UTF-16 columns. The sequence owns the saved baseline and comparison cache.
+uint32_t TextDocument::line_diff(const TextCoord &line, const std::function<void(size_w, size_w)> &inserted,
+                                 size_w columns)
+{
+    size_w   begin   = line.line_begin.byte_offset;
+    size_w   next    = line.line_next.byte_offset;
+    size_w   shown   = next;
+    size_w   decoded = begin;
+    size_w   column  = 0;
+    bool     bounded = false;
+    uint32_t flags   = 0;
+
+    if (begin > next || next > byte_length())
+    {
+        return false;
+    }
+
+    auto compare = [&](const sequence::diff_range &range)
+    {
+        size_w at    = range.offset <= (size_w)m_nHeaderSize ? 0 : range.offset - m_nHeaderSize;
+        size_w end   = range.offset + range.inserted;
+        size_w first = max_of(range.offset, begin + m_nHeaderSize);
+        size_w last  = min_of(end, next + m_nHeaderSize);
+
+        if (first < last)
+        {
+            flags |= diff_inserted;
+
+            if (inserted)
+            {
+                if (!bounded && columns != (size_w)-1)
+                {
+                    shown   = begin + min_of(count_chars(begin, &columns), next - begin);
+                    bounded = true;
+                }
+
+                if (first < shown + m_nHeaderSize)
+                {
+                    last = min_of(last, shown + m_nHeaderSize);
+
+                    size_w from   = first - m_nHeaderSize;
+                    size_w length = count_code_units(from, last - first);
+
+                    column += count_code_units(decoded, from - decoded);
+
+                    if (length)
+                    {
+                        inserted(column, length);
+                    }
+
+                    column  += length;
+                    decoded  = last - m_nHeaderSize;
+                }
+            }
+        }
+
+        // EOF belongs to this line only when it has no final line break.
+        // Reading that last code unit avoids decoding a long line's prefix.
+        if (range.erased && at >= begin &&
+            (at < next || (at == next && next == byte_length() && !linebreak_from_coord(&line))))
+        {
+            flags |= at == byte_length() && at > begin ? diff_erased_after : diff_erased_before;
+        }
+
+        return true;
+    };
+
+    m_seq.diff(begin + m_nHeaderSize, next - begin, compare);
+
+    return flags;
+}
+
 //
 //	Convert the RAW buffer in underlying file-format to UTF-16
 //

@@ -47,6 +47,181 @@ void ShowRecoveredFile(HWND, const TCHAR *filename)
 class TextViewMarginProbe
 {
   public:
+    static std::vector<ATTR> attributes(HWND hwnd, size_w lineno)
+    {
+        TextView *view = (TextView *)GetWindowLongPtr(hwnd, 0);
+        TextCoord line;
+
+        CHECK(view->m_pTextDoc->coord_from_lineno(lineno, &line) == TDR_OK);
+
+        std::vector<TCHAR> text((size_t)(line.line_next - line.line_begin) + 1);
+        int                length = view->m_pTextDoc->getline(line, text.data(), (uint32_t)text.size());
+        std::vector<ATTR>  attr(length + 1);
+        ULONG              column = 0;
+
+        length = view->ApplyTextAttributes(&line, column, text.data(), length, attr.data());
+        attr.resize(length);
+        return attr;
+    }
+
+    static size_t marker_pixels(HWND hwnd, size_w lineno, int colour_index = TXC_CHANGEDLINE)
+    {
+        TextView             *view   = (TextView *)GetWindowLongPtr(hwnd, 0);
+        std::vector<uint32_t> pixels = paint(hwnd, lineno);
+        COLORREF              colour = view->GetColour(colour_index);
+        uint32_t              pixel  = (GetRValue(colour) << 16) | (GetGValue(colour) << 8) | GetBValue(colour);
+
+        return std::count(pixels.begin(), pixels.end(), pixel);
+    }
+
+    static bool deletion_triangle(HWND hwnd, size_w lineno, bool bottom)
+    {
+        TextView             *view      = (TextView *)GetWindowLongPtr(hwnd, 0);
+        std::vector<uint32_t> pixels    = paint(hwnd, lineno);
+        COLORREF              colour    = view->GetColour(TXC_CHANGEDTEXT);
+        uint32_t              pixel     = (GetRValue(colour) << 16) | (GetGValue(colour) << 8) | GetBValue(colour);
+        int                   width     = view->LeftMarginWidth();
+        int                   height    = view->m_nLineHeight;
+        int                   first     = bottom ? height / 2 : 0;
+        int                   last      = bottom ? height : height / 2;
+        int                   widest    = 0;
+        int                   narrowest = 9;
+        int                   rows      = 0;
+
+        for (int y = first; y < last; ++y)
+        {
+            int count = 0;
+
+            for (int x = width - 17; x < width - 8; ++x)
+            {
+                count += pixels[(size_t)y * width + x] == pixel;
+            }
+
+            if (count)
+            {
+                widest    = max(widest, count);
+                narrowest = min(narrowest, count);
+                ++rows;
+            }
+        }
+
+        return widest == 9 && narrowest == 1 && rows >= 3;
+    }
+
+    static bool outlined_marker(HWND hwnd, size_w lineno)
+    {
+        TextView             *view   = (TextView *)GetWindowLongPtr(hwnd, 0);
+        std::vector<uint32_t> pixels = paint(hwnd, lineno);
+        COLORREF              colour = view->GetColour(TXC_CHANGEDLINE);
+        uint32_t              pixel  = (GetRValue(colour) << 16) | (GetGValue(colour) << 8) | GetBValue(colour);
+        int                   width  = view->LeftMarginWidth();
+        int                   middle = view->m_nLineHeight / 2;
+
+        return pixels[(size_t)middle * width + width - 16] == pixel &&
+               pixels[(size_t)middle * width + width - 9] == pixel &&
+               pixels[(size_t)middle * width + width - 12] != pixel;
+    }
+
+    static int margin_width(HWND hwnd)
+    {
+        return ((TextView *)GetWindowLongPtr(hwnd, 0))->LeftMarginWidth();
+    }
+
+    static bool continuous_background(HWND hwnd, size_w lineno, bool numbered)
+    {
+        std::vector<uint32_t> pixels   = paint(hwnd, lineno);
+        int                   width    = margin_width(hwnd);
+        int                   height   = (int)(pixels.size() / width);
+        COLORREF              colour   = ((TextView *)GetWindowLongPtr(hwnd, 0))->GetColour(TXC_LINENUMBER);
+        uint32_t              expected = (GetRValue(colour) << 16) | (GetGValue(colour) << 8) | GetBValue(colour);
+
+        for (int y = 0; y < height; ++y)
+        {
+            // Include the old separator as well as the whole indicator area.
+            for (int x = numbered ? width - 21 : 0; x < width; ++x)
+            {
+                uint32_t reference = numbered ? expected : pixels[(size_t)y * width + x % 2];
+
+                if (pixels[(size_t)y * width + x] != reference)
+                {
+                    return false;
+                }
+            }
+        }
+
+        return numbered || pixels[0] != pixels[1];
+    }
+
+    static bool marker_cap(HWND hwnd, size_w lineno, bool bottom)
+    {
+        TextView             *view   = (TextView *)GetWindowLongPtr(hwnd, 0);
+        std::vector<uint32_t> pixels = paint(hwnd, lineno);
+        COLORREF              colour = view->GetColour(TXC_CHANGEDLINE);
+        uint32_t              pixel  = (GetRValue(colour) << 16) | (GetGValue(colour) << 8) | GetBValue(colour);
+        int                   width  = view->LeftMarginWidth();
+        int                   row    = bottom ? view->m_nLineHeight - 1 : 0;
+
+        for (int x = width - 16; x < width - 8; ++x)
+        {
+            if (pixels[(size_t)row * width + x] != pixel)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    static bool marker_has_right_padding(HWND hwnd, size_w lineno)
+    {
+        TextView             *view   = (TextView *)GetWindowLongPtr(hwnd, 0);
+        std::vector<uint32_t> pixels = paint(hwnd, lineno);
+        int                   width  = view->LeftMarginWidth();
+
+        for (int index : {TXC_CHANGEDLINE, TXC_CHANGEDTEXT})
+        {
+            COLORREF colour = view->GetColour(index);
+            uint32_t pixel  = (GetRValue(colour) << 16) | (GetGValue(colour) << 8) | GetBValue(colour);
+
+            for (int y = 0; y < view->m_nLineHeight; ++y)
+            {
+                for (int x = width - 8; x < width; ++x)
+                {
+                    if (pixels[(size_t)y * width + x] == pixel)
+                    {
+                        return false;
+                    }
+                }
+            }
+        }
+
+        return true;
+    }
+
+    static void cache_line(HWND hwnd, size_w lineno)
+    {
+        TextView *view = (TextView *)GetWindowLongPtr(hwnd, 0);
+        TextCoord line;
+
+        CHECK(view->m_pTextDoc->coord_from_lineno(lineno, &line) == TDR_OK);
+        CHECK(view->GetUspCache(0, &line) != 0);
+    }
+
+    static bool has_cache(HWND hwnd)
+    {
+        TextView *view = (TextView *)GetWindowLongPtr(hwnd, 0);
+
+        for (int i = 0; i < USP_CACHE_SIZE; ++i)
+        {
+            if (view->m_uspCache[i].usage)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     static std::vector<uint32_t> paint(HWND hwnd, size_w lineno)
     {
         TextView  *view   = (TextView *)GetWindowLongPtr(hwnd, 0);
@@ -1446,7 +1621,370 @@ void recovery_controller_restores_multiple_sessions_newest_first()
     CHECK(window_text(host.view) == L"older session");
 }
 
+void textview_diff_marks_text_and_clears_cached_colours_on_save()
+{
+    EditPair pair = {};
+
+    CHECK(open_edit_pair(&pair, L"alpha\r\nbeta", NCP_UTF8));
+    TextView_SetStyleBool(pair.view, TXS_SELMARGIN | TXS_LINENUMBERS, TRUE);
+    TextView_SetColor(pair.view, TXC_FOREGROUND, RGB(10, 20, 30));
+    TextView_SetColor(pair.view, TXC_CHANGEDTEXT, RGB(190, 55, 55));
+    TextView_SetColor(pair.view, TXC_SEARCHMATCHTEXT, RGB(40, 50, 60));
+
+    CHECK(TextViewMarginProbe::marker_pixels(pair.view, 0) == 0);
+    SendMessage(pair.view, EM_SETSEL, 1, 3);
+    SendMessage(pair.view, EM_REPLACESEL, TRUE, (LPARAM)L"X\xd83d\xde00");
+
+    std::vector<ATTR> attr = TextViewMarginProbe::attributes(pair.view, 0);
+
+    CHECK(attr.size() >= 6);
+    CHECK(attr[0].fg == RGB(10, 20, 30));
+    CHECK(attr[1].fg == RGB(190, 55, 55));
+    CHECK(attr[2].fg == RGB(190, 55, 55) && attr[3].fg == RGB(190, 55, 55));
+    CHECK(attr[4].fg == RGB(10, 20, 30));
+    CHECK(TextViewMarginProbe::outlined_marker(pair.view, 0));
+    CHECK(TextViewMarginProbe::marker_has_right_padding(pair.view, 0));
+    CHECK(TextViewMarginProbe::marker_pixels(pair.view, 0) > 0);
+    CHECK(TextViewMarginProbe::marker_pixels(pair.view, 1) == 0);
+    CHECK(TextViewMarginProbe::marker_pixels(pair.view, 0, TXC_CHANGEDTEXT) == 0);
+    CHECK(!TextViewMarginProbe::deletion_triangle(pair.view, 0, false));
+    CHECK(!TextViewMarginProbe::deletion_triangle(pair.view, 0, true));
+
+    TEXTVIEWFIND find = {};
+    find.text         = L"X";
+    find.length       = 1;
+    TextView_ShowMatches(pair.view, &find, FALSE);
+    SendMessage(pair.view, EM_SETSEL, 2, 4);
+    attr = TextViewMarginProbe::attributes(pair.view, 0);
+    CHECK(attr[1].fg == RGB(40, 50, 60));
+    CHECK(attr[2].fg == RGB(190, 55, 55) && attr[2].sel && attr[3].sel);
+
+    TextViewMarginProbe::cache_line(pair.view, 0);
+    CHECK(TextViewMarginProbe::has_cache(pair.view));
+    CHECK(TextView_SaveFile(pair.view, pair.path, NCP_UTF8, FALSE, 0));
+    CHECK(!TextViewMarginProbe::has_cache(pair.view));
+    CHECK(TextViewMarginProbe::marker_pixels(pair.view, 0) == 0);
+    CHECK(TextViewMarginProbe::marker_pixels(pair.view, 0, TXC_CHANGEDTEXT) == 0);
+    attr = TextViewMarginProbe::attributes(pair.view, 0);
+    CHECK(attr[1].fg == RGB(40, 50, 60));
+    CHECK(attr[2].fg == RGB(10, 20, 30) && attr[3].fg == RGB(10, 20, 30));
+
+    CHECK(TextView_Undo(pair.view));
+    attr = TextViewMarginProbe::attributes(pair.view, 0);
+    CHECK(attr[1].fg == RGB(190, 55, 55) && attr[2].fg == RGB(190, 55, 55));
+    CHECK(TextViewMarginProbe::marker_pixels(pair.view, 0) > 0);
+
+    close_edit_pair(&pair);
+}
+
+void textview_filtered_diff_uses_source_columns_and_clears_on_save()
+{
+    const TEXT_ENCODING encodings[] = {NCP_UTF8, NCP_UTF16, NCP_UTF16BE, NCP_UTF32, NCP_UTF32BE};
+
+    for (TEXT_ENCODING encoding : encodings)
+    {
+        EditPair pair = {};
+
+        CHECK(open_edit_pair(&pair, L"head\r\nbefore\r\nmatch\r\nafter", encoding));
+        TextView_SetStyleBool(pair.view, TXS_SELMARGIN | TXS_LINENUMBERS, TRUE);
+        TextView_SetColor(pair.view, TXC_FOREGROUND, RGB(10, 20, 30));
+        TextView_SetColor(pair.view, TXC_CHANGEDTEXT, RGB(190, 55, 55));
+        SendMessage(pair.view, EM_SETSEL, 21, 21);
+        SendMessage(pair.view, EM_REPLACESEL, TRUE, (LPARAM)L"X\xd83d\xde00");
+
+        TEXTVIEWFIND find = {};
+        find.text         = L"match";
+        find.length       = 5;
+        TextView_SetFilterContext(pair.view, 1);
+        TextView_ShowMatches(pair.view, &find, TRUE);
+        CHECK(window_text(pair.view) == L"before\r\nmatch\r\nX\xd83d\xde00"
+                                        L"after\r\n");
+
+        std::vector<ATTR> attr = TextViewMarginProbe::attributes(pair.view, 2);
+
+        CHECK(attr.size() >= 9);
+        CHECK(attr[0].fg == RGB(190, 55, 55));
+        CHECK(attr[1].fg == RGB(190, 55, 55) && attr[2].fg == RGB(190, 55, 55));
+        CHECK(attr[3].fg == RGB(10, 20, 30) && attr[8].fg == RGB(10, 20, 30));
+        CHECK(TextViewMarginProbe::marker_pixels(pair.view, 0) == 0);
+        CHECK(TextViewMarginProbe::marker_pixels(pair.view, 1) == 0);
+        CHECK(TextViewMarginProbe::outlined_marker(pair.view, 2));
+        CHECK(TextViewMarginProbe::marker_pixels(pair.view, 3) == 0);
+
+        TextViewMarginProbe::cache_line(pair.view, 2);
+        CHECK(TextView_SaveFile(pair.view, pair.path, encoding, encoding != NCP_UTF8, 0));
+        CHECK(!TextViewMarginProbe::has_cache(pair.view));
+        CHECK(TextViewMarginProbe::marker_pixels(pair.view, 2) == 0);
+        attr = TextViewMarginProbe::attributes(pair.view, 2);
+        CHECK(attr[0].fg == RGB(10, 20, 30) && attr[1].fg == RGB(10, 20, 30));
+
+        // Removing a complete source line marks the following surviving row,
+        // through the filtered UTF-16 copy in every supported Unicode encoding.
+        TextView_ShowMatches(pair.view, &find, FALSE);
+        SendMessage(pair.view, EM_SETSEL, 6, 14);
+        SendMessage(pair.view, EM_REPLACESEL, TRUE, (LPARAM)L"");
+        TextView_ShowMatches(pair.view, &find, TRUE);
+        CHECK(TextViewMarginProbe::marker_pixels(pair.view, 0, TXC_CHANGEDTEXT) == 0);
+        CHECK(TextViewMarginProbe::marker_pixels(pair.view, 1) == 0);
+        CHECK(TextViewMarginProbe::marker_pixels(pair.view, 1, TXC_CHANGEDTEXT) > 0);
+        CHECK(TextViewMarginProbe::deletion_triangle(pair.view, 1, false));
+        CHECK(!TextViewMarginProbe::deletion_triangle(pair.view, 1, true));
+        CHECK(TextViewMarginProbe::marker_pixels(pair.view, 2, TXC_CHANGEDTEXT) == 0);
+
+        close_edit_pair(&pair);
+    }
+}
+
+void textview_diff_paints_deletions_once_at_empty_and_eof_boundaries()
+{
+    EditPair pair = {};
+
+    CHECK(open_edit_pair(&pair, L"left\r\nright\r\n", NCP_UTF8));
+    TextView_SetStyleBool(pair.view, TXS_SELMARGIN | TXS_LINENUMBERS, TRUE);
+    SendMessage(pair.view, EM_SETSEL, 6, 11);
+    SendMessage(pair.view, EM_REPLACESEL, TRUE, (LPARAM)L"");
+    CHECK(TextViewMarginProbe::marker_pixels(pair.view, 0) == 0);
+    CHECK(TextViewMarginProbe::marker_pixels(pair.view, 1) == 0);
+    CHECK(TextViewMarginProbe::marker_pixels(pair.view, 1, TXC_CHANGEDTEXT) > 0);
+    CHECK(TextViewMarginProbe::deletion_triangle(pair.view, 1, false));
+    CHECK(!TextViewMarginProbe::deletion_triangle(pair.view, 1, true));
+    CHECK(TextViewMarginProbe::marker_pixels(pair.view, 2) == 0);
+
+    CHECK(TextView_Undo(pair.view));
+    SendMessage(pair.view, EM_SETSEL, 6, -1);
+    SendMessage(pair.view, EM_REPLACESEL, TRUE, (LPARAM)L"");
+    CHECK(TextViewMarginProbe::marker_pixels(pair.view, 0) == 0);
+    CHECK(TextViewMarginProbe::marker_pixels(pair.view, 1) == 0);
+    CHECK(TextViewMarginProbe::marker_pixels(pair.view, 1, TXC_CHANGEDTEXT) > 0);
+    CHECK(TextViewMarginProbe::deletion_triangle(pair.view, 1, false));
+    CHECK(!TextViewMarginProbe::deletion_triangle(pair.view, 1, true));
+
+    SendMessage(pair.view, EM_SETSEL, 0, -1);
+    SendMessage(pair.view, EM_REPLACESEL, TRUE, (LPARAM)L"");
+    CHECK(window_text(pair.view).empty());
+    CHECK(TextViewMarginProbe::marker_pixels(pair.view, 0) == 0);
+    CHECK(TextViewMarginProbe::marker_pixels(pair.view, 0, TXC_CHANGEDTEXT) > 0);
+    CHECK(TextViewMarginProbe::deletion_triangle(pair.view, 0, false));
+    CHECK(!TextViewMarginProbe::deletion_triangle(pair.view, 0, true));
+    CHECK(TextViewMarginProbe::marker_pixels(pair.view, UINT64_MAX) == 0);
+    CHECK(TextViewMarginProbe::marker_pixels(pair.view, UINT64_MAX, TXC_CHANGEDTEXT) == 0);
+
+    close_edit_pair(&pair);
+}
+
+void textview_diff_deletion_triangles_keep_both_boundaries_and_follow_history()
+{
+    EditPair pair = {};
+
+    CHECK(open_edit_pair(&pair, L"ABCDE", NCP_UTF8));
+    TextView_SetStyleBool(pair.view, TXS_SELMARGIN | TXS_LINENUMBERS, TRUE);
+    SendMessage(pair.view, EM_SETSEL, 1, 2);
+    SendMessage(pair.view, EM_REPLACESEL, TRUE, (LPARAM)L"");
+    SendMessage(pair.view, EM_SETSEL, 3, 4);
+    SendMessage(pair.view, EM_REPLACESEL, TRUE, (LPARAM)L"");
+    CHECK(window_text(pair.view) == L"ACD");
+    size_t bothTriangles = TextViewMarginProbe::marker_pixels(pair.view, 0, TXC_CHANGEDTEXT);
+    CHECK(TextViewMarginProbe::marker_has_right_padding(pair.view, 0));
+    CHECK(TextViewMarginProbe::marker_pixels(pair.view, 0) == 0);
+    CHECK(TextViewMarginProbe::marker_pixels(pair.view, 0, TXC_CHANGEDTEXT) > 0);
+    CHECK(TextViewMarginProbe::deletion_triangle(pair.view, 0, false));
+    CHECK(TextViewMarginProbe::deletion_triangle(pair.view, 0, true));
+
+    CHECK(TextView_Undo(pair.view));
+    CHECK(window_text(pair.view) == L"ACDE");
+    CHECK(TextViewMarginProbe::marker_pixels(pair.view, 0, TXC_CHANGEDTEXT) > 0);
+    CHECK(TextViewMarginProbe::deletion_triangle(pair.view, 0, false));
+    CHECK(!TextViewMarginProbe::deletion_triangle(pair.view, 0, true));
+    CHECK(TextView_Redo(pair.view));
+    CHECK(TextViewMarginProbe::marker_pixels(pair.view, 0, TXC_CHANGEDTEXT) == bothTriangles);
+
+    CHECK(TextView_SaveFile(pair.view, pair.path, NCP_UTF8, FALSE, 0));
+    CHECK(TextViewMarginProbe::marker_pixels(pair.view, 0, TXC_CHANGEDTEXT) == 0);
+    CHECK(TextView_Undo(pair.view));
+    CHECK(TextViewMarginProbe::marker_pixels(pair.view, 0, TXC_CHANGEDTEXT) == 0);
+    CHECK(TextViewMarginProbe::outlined_marker(pair.view, 0));
+    CHECK(TextView_Redo(pair.view));
+    CHECK(TextViewMarginProbe::marker_pixels(pair.view, 0) == 0);
+
+    close_edit_pair(&pair);
+}
+
+void textview_diff_outlines_join_adjacent_lines()
+{
+    EditPair pair = {};
+
+    CHECK(open_edit_pair(&pair, L"one\r\ntwo\r\nthree\r\nfour", NCP_UTF8));
+    TextView_SetStyleBool(pair.view, TXS_SELMARGIN | TXS_LINENUMBERS, TRUE);
+    TextView_SetColor(pair.view, TXC_CHANGEDLINE, RGB(35, 105, 75));
+    TextView_SetColor(pair.view, TXC_CHANGEDLINEBG, RGB(215, 240, 225));
+    SendMessage(pair.view, EM_SETSEL, 0, 17);
+    SendMessage(pair.view, EM_REPLACESEL, TRUE, (LPARAM)L"first\r\nsecond\r\nthird\r\n");
+
+    CHECK(TextViewMarginProbe::marker_cap(pair.view, 0, false));
+    CHECK(!TextViewMarginProbe::marker_cap(pair.view, 0, true));
+    CHECK(!TextViewMarginProbe::marker_cap(pair.view, 1, false));
+    CHECK(!TextViewMarginProbe::marker_cap(pair.view, 1, true));
+    CHECK(!TextViewMarginProbe::marker_cap(pair.view, 2, false));
+    CHECK(TextViewMarginProbe::marker_cap(pair.view, 2, true));
+    CHECK(TextViewMarginProbe::marker_pixels(pair.view, 3) == 0);
+
+    for (size_w row = 0; row < 3; ++row)
+    {
+        CHECK(TextViewMarginProbe::outlined_marker(pair.view, row));
+        CHECK(TextViewMarginProbe::marker_pixels(pair.view, row, TXC_CHANGEDTEXT) == 0);
+        CHECK(TextViewMarginProbe::marker_has_right_padding(pair.view, row));
+
+        std::vector<uint32_t> pixels = TextViewMarginProbe::paint(pair.view, row);
+        int                   width  = TextViewMarginProbe::margin_width(pair.view);
+        int                   height = (int)(pixels.size() / width);
+
+        // Interior colour continues through joined rows; only the outer ends have caps.
+        for (int y = row == 0 ? 1 : 0; y < height - (row == 2 ? 1 : 0); ++y)
+        {
+            CHECK(pixels[(size_t)y * width + width - 12] == 0xd7f0e1);
+
+            for (int x = width - 8; x < width; ++x)
+            {
+                CHECK(pixels[(size_t)y * width + x] != 0xd7f0e1);
+            }
+        }
+    }
+
+    CHECK(TextViewMarginProbe::marker_pixels(pair.view, 3, TXC_CHANGEDLINEBG) == 0);
+    TextView_SetStyleBool(pair.view, TXS_CHANGEMARKERS, FALSE);
+    CHECK(TextViewMarginProbe::marker_pixels(pair.view, 0, TXC_CHANGEDLINEBG) == 0);
+    TextView_SetStyleBool(pair.view, TXS_CHANGEMARKERS, TRUE);
+    CHECK(TextViewMarginProbe::marker_pixels(pair.view, 0, TXC_CHANGEDLINEBG) > 0);
+
+    CHECK(TextView_Undo(pair.view));
+    CHECK(TextViewMarginProbe::marker_pixels(pair.view, 0) == 0);
+    CHECK(TextViewMarginProbe::marker_pixels(pair.view, 0, TXC_CHANGEDLINEBG) == 0);
+    CHECK(TextView_Redo(pair.view));
+    CHECK(!TextViewMarginProbe::marker_cap(pair.view, 0, true));
+    CHECK(TextView_SaveFile(pair.view, pair.path, NCP_UTF8, FALSE, 0));
+    CHECK(TextViewMarginProbe::marker_pixels(pair.view, 0) == 0);
+    CHECK(TextViewMarginProbe::marker_pixels(pair.view, 0, TXC_CHANGEDLINEBG) == 0);
+    close_edit_pair(&pair);
+}
+
+void textview_filtered_diff_keeps_caps_across_hidden_lines()
+{
+    EditPair pair = {};
+
+    CHECK(open_edit_pair(&pair, L"match one\r\nskip\r\nmatch two", NCP_UTF8));
+    TextView_SetStyleBool(pair.view, TXS_SELMARGIN | TXS_LINENUMBERS, TRUE);
+    SendMessage(pair.view, EM_SETSEL, 6, 9);
+    SendMessage(pair.view, EM_REPLACESEL, TRUE, (LPARAM)L"ONE");
+    SendMessage(pair.view, EM_SETSEL, 23, 26);
+    SendMessage(pair.view, EM_REPLACESEL, TRUE, (LPARAM)L"TWO");
+
+    TEXTVIEWFIND find = {};
+    find.text         = L"match";
+    find.length       = 5;
+    TextView_SetFilterContext(pair.view, 0);
+    TextView_ShowMatches(pair.view, &find, TRUE);
+    CHECK(window_text(pair.view) == L"match ONE\r\nmatch TWO\r\n");
+
+    for (size_w row = 0; row < 2; ++row)
+    {
+        CHECK(TextViewMarginProbe::marker_cap(pair.view, row, false));
+        CHECK(TextViewMarginProbe::marker_cap(pair.view, row, true));
+    }
+
+    close_edit_pair(&pair);
+
+    // Consecutive source rows still join when displayed through the filter.
+    CHECK(open_edit_pair(&pair, L"match one\r\nmatch two", NCP_UTF8));
+    TextView_SetStyleBool(pair.view, TXS_SELMARGIN | TXS_LINENUMBERS, TRUE);
+    SendMessage(pair.view, EM_SETSEL, 6, 9);
+    SendMessage(pair.view, EM_REPLACESEL, TRUE, (LPARAM)L"ONE");
+    SendMessage(pair.view, EM_SETSEL, 17, 20);
+    SendMessage(pair.view, EM_REPLACESEL, TRUE, (LPARAM)L"TWO");
+    TextView_SetFilterContext(pair.view, 0);
+    TextView_ShowMatches(pair.view, &find, TRUE);
+
+    CHECK(TextViewMarginProbe::marker_cap(pair.view, 0, false));
+    CHECK(!TextViewMarginProbe::marker_cap(pair.view, 0, true));
+    CHECK(!TextViewMarginProbe::marker_cap(pair.view, 1, false));
+    CHECK(TextViewMarginProbe::marker_cap(pair.view, 1, true));
+    close_edit_pair(&pair);
+}
+
+void textview_diff_background_matches_the_whole_margin()
+{
+    EditPair pair = {};
+
+    CHECK(open_edit_pair(&pair, L"unchanged", NCP_UTF8));
+    TextView_SetStyleBool(pair.view, TXS_SELMARGIN | TXS_LINENUMBERS, TRUE);
+    TextView_SetColor(pair.view, TXC_LINENUMBER, RGB(55, 70, 85));
+    TextView_SetColor(pair.view, TXC_BACKGROUND, RGB(230, 240, 250));
+    CHECK(TextViewMarginProbe::continuous_background(pair.view, 0, true));
+
+    TextView_SetStyleBool(pair.view, TXS_LINENUMBERS, FALSE);
+    TextView_SetColor(pair.view, TXC_SELMARGIN1, RGB(80, 90, 100));
+    TextView_SetColor(pair.view, TXC_SELMARGIN2, RGB(160, 170, 180));
+    CHECK(TextViewMarginProbe::continuous_background(pair.view, 0, false));
+    close_edit_pair(&pair);
+}
+
+void textview_diff_indicators_can_be_hidden_without_losing_changes()
+{
+    EditPair pair = {};
+
+    CHECK(open_edit_pair(&pair, L"unchanged", NCP_UTF8));
+    TextView_SetStyleBool(pair.view, TXS_SELMARGIN | TXS_LINENUMBERS, TRUE);
+    TextView_SetColor(pair.view, TXC_FOREGROUND, RGB(10, 20, 30));
+    SendMessage(pair.view, EM_SETSEL, 0, 0);
+    SendMessage(pair.view, EM_REPLACESEL, TRUE, (LPARAM)L"X");
+    CHECK(TextViewMarginProbe::outlined_marker(pair.view, 0));
+
+    int width = TextViewMarginProbe::margin_width(pair.view);
+
+    TextView_SetStyleBool(pair.view, TXS_CHANGEMARKERS, FALSE);
+    CHECK(width - TextViewMarginProbe::margin_width(pair.view) == 20);
+    CHECK(TextViewMarginProbe::marker_pixels(pair.view, 0) == 0);
+    CHECK(TextView_GetModify(pair.view));
+
+    std::vector<ATTR> attrs = TextViewMarginProbe::attributes(pair.view, 0);
+
+    CHECK(!attrs.empty() && attrs[0].fg == RGB(190, 55, 55));
+    TextViewMarginProbe::cache_line(pair.view, 0);
+    CHECK(TextViewMarginProbe::has_cache(pair.view));
+    TextView_SetStyleBool(pair.view, TXS_HIGHLIGHTCHANGES, FALSE);
+    CHECK(!TextViewMarginProbe::has_cache(pair.view));
+    attrs = TextViewMarginProbe::attributes(pair.view, 0);
+    CHECK(!attrs.empty() && attrs[0].fg == RGB(10, 20, 30));
+    CHECK(TextViewMarginProbe::marker_pixels(pair.view, 0) == 0);
+
+    TextView_SetStyleBool(pair.view, TXS_CHANGEMARKERS, TRUE);
+    CHECK(TextViewMarginProbe::margin_width(pair.view) == width);
+    CHECK(TextViewMarginProbe::outlined_marker(pair.view, 0));
+    attrs = TextViewMarginProbe::attributes(pair.view, 0);
+    CHECK(!attrs.empty() && attrs[0].fg == RGB(10, 20, 30));
+    CHECK(TextView_GetModify(pair.view));
+
+    TextView_SetStyleBool(pair.view, TXS_HIGHLIGHTCHANGES, TRUE);
+    attrs = TextViewMarginProbe::attributes(pair.view, 0);
+    CHECK(!attrs.empty() && attrs[0].fg == RGB(190, 55, 55));
+    CHECK(TextViewMarginProbe::outlined_marker(pair.view, 0));
+    CHECK(window_text(pair.view) == L"Xunchanged");
+    close_edit_pair(&pair);
+}
+
 const test_case tests[] = {
+    {"textview_diff_background_matches_the_whole_margin", textview_diff_background_matches_the_whole_margin},
+    {"textview_diff_indicators_can_be_hidden_without_losing_changes",
+     textview_diff_indicators_can_be_hidden_without_losing_changes},
+    {"textview_diff_outlines_join_adjacent_lines", textview_diff_outlines_join_adjacent_lines},
+    {"textview_filtered_diff_keeps_caps_across_hidden_lines", textview_filtered_diff_keeps_caps_across_hidden_lines},
+    {"textview_diff_deletion_triangles_keep_both_boundaries_and_follow_history",
+     textview_diff_deletion_triangles_keep_both_boundaries_and_follow_history},
+    {"textview_diff_marks_text_and_clears_cached_colours_on_save",
+     textview_diff_marks_text_and_clears_cached_colours_on_save},
+    {"textview_filtered_diff_uses_source_columns_and_clears_on_save",
+     textview_filtered_diff_uses_source_columns_and_clears_on_save},
+    {"textview_diff_paints_deletions_once_at_empty_and_eof_boundaries",
+     textview_diff_paints_deletions_once_at_empty_and_eof_boundaries},
     {"textview_tab_width_changes_layout_without_changing_text",
      textview_tab_width_changes_layout_without_changing_text},
     {"textview_tab_inserts_spaces_to_the_next_stop", textview_tab_inserts_spaces_to_the_next_stop},

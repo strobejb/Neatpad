@@ -38,6 +38,9 @@ INT_PTR CALLBACK DisplayOptionsDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 
         CheckDlgButton(hwnd, IDC_LINENOS, g_fLineNumbers);
         CheckDlgButton(hwnd, IDC_SELMARGIN, g_fSelMargin);
+        CheckDlgButton(hwnd, IDC_CHANGEINDICATORS, g_fChangeIndicators);
+        CheckDlgButton(hwnd, IDC_HIGHLIGHTCHANGES, g_fHighlightChanges);
+        EnableDlgItem(hwnd, IDC_CHANGEINDICATORS, g_fSelMargin);
 
         CheckDlgButton(hwnd, IDC_HIGHLIGHTCURLINE, g_nHLCurLine);
 
@@ -95,13 +98,15 @@ INT_PTR CALLBACK DisplayOptionsDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
                 return TRUE;
             }
 
-            options->nTabWidth      = (LONG)width;
-            options->fInsertSpaces  = IsDlgButtonChecked(hwnd, IDC_INSERTSPACES);
-            options->fAutoIndent    = IsDlgButtonChecked(hwnd, IDC_AUTOINDENT);
-            options->nFilterContext = (LONG)context;
-            options->fLineNumbers   = IsDlgButtonChecked(hwnd, IDC_LINENOS);
-            options->fSelMargin     = IsDlgButtonChecked(hwnd, IDC_SELMARGIN);
-            options->fLongLines     = highlight;
+            options->nTabWidth         = (LONG)width;
+            options->fInsertSpaces     = IsDlgButtonChecked(hwnd, IDC_INSERTSPACES);
+            options->fAutoIndent       = IsDlgButtonChecked(hwnd, IDC_AUTOINDENT);
+            options->nFilterContext    = (LONG)context;
+            options->fLineNumbers      = IsDlgButtonChecked(hwnd, IDC_LINENOS);
+            options->fSelMargin        = IsDlgButtonChecked(hwnd, IDC_SELMARGIN);
+            options->fChangeIndicators = IsDlgButtonChecked(hwnd, IDC_CHANGEINDICATORS);
+            options->fHighlightChanges = IsDlgButtonChecked(hwnd, IDC_HIGHLIGHTCHANGES);
+            options->fLongLines        = highlight;
             if (valid && limit >= 1 && limit <= 10000)
             {
                 options->nLongLineLimit = (int)limit;
@@ -118,6 +123,13 @@ INT_PTR CALLBACK DisplayOptionsDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 
         switch (LOWORD(wParam))
         {
+        case IDC_SELMARGIN:
+            if (HIWORD(wParam) == BN_CLICKED)
+            {
+                EnableDlgItem(hwnd, IDC_CHANGEINDICATORS, IsDlgButtonChecked(hwnd, IDC_SELMARGIN) == BST_CHECKED);
+            }
+            return TRUE;
+
         case IDC_LONGLINES:
             if (HIWORD(wParam) == BN_CLICKED)
             {

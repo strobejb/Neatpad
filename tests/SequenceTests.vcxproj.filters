@@ -36,6 +36,9 @@
     <ClCompile Include="..\src\TextView\sequence.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\src\TextView\sequence_diff.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="..\src\TextView\sequence_state.cpp"><Filter>Source Files</Filter></ClCompile>
     <ClCompile Include="..\src\TextView\sequence_buf.cpp">
       <Filter>Source Files</Filter>

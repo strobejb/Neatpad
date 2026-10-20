@@ -2093,8 +2093,114 @@ void textdocument_filters_lines_holding_a_match()
     }
 }
 
+void textdocument_diff_maps_encoded_insertions_to_utf16_columns()
+{
+    const TEXT_ENCODING encodings[] = {NCP_UTF8, NCP_UTF16, NCP_UTF16BE, NCP_UTF32, NCP_UTF32BE};
+
+    for (TEXT_ENCODING encoding : encodings)
+    {
+        TextDocument doc;
+        TCHAR        path[MAX_PATH];
+        std::string  bytes = encode_text(L"first\r\na\x00e9\xd83d\xde00z\r\nlast", encoding);
+        TextCoord    line;
+        TextCoord    at;
+        TextChange   change;
+
+        CHECK(write_temp_file(bytes.data(), bytes.size(), path));
+        CHECK(doc.init(path));
+        CHECK(doc.coord_from_lineno(1, &line) == TDR_OK);
+        CHECK(!doc.line_diff(line));
+        CHECK(doc.coord_from_line_pos(&line, 4, &at));
+        CHECK(doc.insert_text(at, L"\xd83d\xde00!", 3, &change) > 0);
+        CHECK(doc.coord_from_lineno(1, &line) == TDR_OK);
+
+        std::vector<std::pair<size_w, size_w>> inserted;
+        auto                                   collect = [&](size_w column, size_w length)
+        {
+            inserted.push_back({column, length});
+        };
+
+        CHECK(doc.line_diff(line, collect));
+        CHECK(inserted.size() == 1 && inserted[0].first == 4 && inserted[0].second == 3);
+        inserted.clear();
+        CHECK(doc.line_diff(line, collect, 5)); // never colour half a surrogate pair
+        CHECK(inserted.empty());
+        CHECK(doc.save(path, encoding, encoding != NCP_UTF8, 0));
+        CHECK(!doc.line_diff(line));
+        CHECK(doc.undo(&change));
+        CHECK(doc.coord_from_lineno(1, &line) == TDR_OK);
+        inserted.clear();
+        CHECK(doc.line_diff(line, collect));
+        CHECK(inserted.empty());
+
+        doc.clear();
+        CHECK(DeleteFile(path));
+    }
+}
+
+void textdocument_diff_assigns_deletions_to_one_surviving_line()
+{
+    TextDocument doc;
+    TCHAR        path[MAX_PATH];
+    TextCoord    line;
+
+    CHECK(write_temp_file("left\r\nright\r\n", 13, path));
+    CHECK(doc.init(path));
+    CHECK(doc.erase_text(TextPos(6), TextPos(13), 0) == 7);
+    CHECK(doc.coord_from_lineno(0, &line) == TDR_OK);
+    CHECK(!doc.line_diff(line));
+    CHECK(doc.coord_from_lineno(1, &line) == TDR_OK);
+    CHECK(doc.line_diff(line) == TextDocument::diff_erased_before); // empty EOF line
+    CHECK(doc.erase_text(TextPos(0), TextPos(6), 0) == 6);
+    CHECK(doc.coord_from_pos(TextPos(0), &line));
+    CHECK(doc.line_diff(line) == TextDocument::diff_erased_before);
+    CHECK(doc.save(path, doc.getformat(), false, 0));
+    CHECK(!doc.line_diff(line));
+
+    doc.clear();
+    CHECK(DeleteFile(path));
+}
+
+void textdocument_diff_distinguishes_insertions_and_deletion_sides()
+{
+    TextDocument doc;
+    TCHAR        path[MAX_PATH];
+    TextCoord    line;
+    TextChange   change;
+
+    CHECK(write_temp_file("first\r\nremoved\r\nlast", 20, path));
+    CHECK(doc.init(path));
+    CHECK(doc.erase_text(TextPos(7), TextPos(16), &change) == 9);
+    CHECK(doc.coord_from_lineno(0, &line) == TDR_OK);
+    CHECK(doc.line_diff(line) == 0);
+    CHECK(doc.coord_from_lineno(1, &line) == TDR_OK);
+    CHECK(doc.line_diff(line) == TextDocument::diff_erased_before);
+    CHECK(doc.undo(&change));
+    CHECK(doc.coord_from_lineno(1, &line) == TDR_OK);
+    CHECK(doc.line_diff(line) == 0);
+    CHECK(doc.redo(&change));
+    CHECK(doc.coord_from_lineno(1, &line) == TDR_OK);
+    CHECK(doc.line_diff(line) == TextDocument::diff_erased_before);
+
+    // A second deletion at an unterminated EOF line keeps both boundaries.
+    CHECK(doc.erase_text(TextPos(9), TextPos(11), &change) == 2);
+    CHECK(doc.coord_from_lineno(1, &line) == TDR_OK);
+    CHECK(doc.line_diff(line) == (TextDocument::diff_erased_before | TextDocument::diff_erased_after));
+    CHECK(doc.save(path, doc.getformat(), false, 0));
+    CHECK(doc.line_diff(line) == 0);
+    CHECK(doc.undo(&change));
+    CHECK(doc.coord_from_lineno(1, &line) == TDR_OK);
+    CHECK(doc.line_diff(line) == TextDocument::diff_inserted);
+
+    doc.clear();
+    CHECK(DeleteFile(path));
+}
+
 const test_case tests[] =
 {
+    { "textdocument_diff_distinguishes_insertions_and_deletion_sides", textdocument_diff_distinguishes_insertions_and_deletion_sides },
+    { "textdocument_diff_maps_encoded_insertions_to_utf16_columns", textdocument_diff_maps_encoded_insertions_to_utf16_columns },
+    { "textdocument_diff_assigns_deletions_to_one_surviving_line", textdocument_diff_assigns_deletions_to_one_surviving_line },
     { "textdocument_edits_beyond_4gb", textdocument_edits_beyond_4gb },
     { "textdocument_utf16_coord_reads_line", textdocument_utf16_coord_reads_line },
     { "textdocument_utf16be_coord_reads_line", textdocument_utf16be_coord_reads_line },

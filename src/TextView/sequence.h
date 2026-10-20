@@ -188,6 +188,21 @@ public:
 	void		mark_saved();
 	bool		modified() const;
 
+    // Changes since the last init/open/save, based on source identity rather
+    // than a content comparison. Offsets refer to the current raw sequence.
+    // An insertion has erased == 0; a deletion has inserted == 0.
+    struct diff_range
+    {
+        size_w offset, erased, inserted;
+    };
+
+    // Emit whole hunks whose inserted bytes overlap [index, index + length),
+    // or whose deletion anchor lies in that range. A query reaching EOF also
+    // includes an EOF deletion; length 0 can query that anchor. fn may return
+    // false to stop successfully. False means the baseline is unavailable or
+    // comparison metadata could not be allocated. fn must not edit the sequence.
+    bool diff(size_w index, size_w length, const std::function<bool(const diff_range &)> &fn) const;
+
     // Durable sequence checkpoints, including undo/redo. Only between groups;
     // failed loads leave this sequence unchanged. See sequence_state.h.
     bool save_state(state_writer &out) const;
@@ -300,6 +315,26 @@ private:
 	size_w			change_offset;
 	size_w			change_erased;
 	size_w			change_inserted;
+
+    // Saved source intervals, sorted by buffer and source offset. These are
+    // independent of the live/undo span graph and contain no copied text.
+    struct saved_range
+    {
+        int    buffer;
+        size_w offset, length, saved_offset;
+    };
+
+    std::vector<saved_range> saved_ranges;
+    size_w                   saved_length   = 0;
+    bool                     diff_available = true;
+
+    // The existing line generation changes on edits and undo/redo, so the
+    // derived hunk cache needs no additional hooks in the editing algorithms.
+    mutable std::vector<diff_range> diff_cache;
+    mutable unsigned long           diff_generation = 0;
+
+    void capture_saved_ranges();
+    bool build_diff() const;
 
 	//
 	//	File and memory buffer management

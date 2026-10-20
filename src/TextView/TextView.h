@@ -175,6 +175,8 @@ typedef struct _TEXTVIEWFIND
 #define TXS_SHOWLINEENDINGS		32		// show every line ending, not just those that don't match the line format
 #define TXS_INSERTSPACES 64             // typing Tab inserts spaces to the next tab stop
 #define TXS_AUTOINDENT 128              // Enter continues the current line's leading whitespace
+#define TXS_CHANGEMARKERS 256           // show change outlines and deletion triangles in the selection margin
+#define TXS_HIGHLIGHTCHANGES 512        // colour inserted and replaced text
 
 //
 //	End-of-line mode: the TXL_ line break kinds come from codepages.h,
@@ -205,7 +207,10 @@ typedef struct _TEXTVIEWFIND
 #define TXC_CURRENTLINE			13			// active line background
 #define TXC_SEARCHMATCHTEXT		14			// search match text, as TextView_ShowMatches shows them
 #define TXC_SEARCHMATCH			15			// search match background
-#define TXC_MAX_COLOURS			16			// keep this updated!
+#define TXC_CHANGEDTEXT          16          // inserted/replaced text and deletion markers
+#define TXC_CHANGEDLINE          17          // changed-line indicator outline
+#define TXC_CHANGEDLINEBG        18          // changed-line indicator fill
+#define TXC_MAX_COLOURS          19          // keep this updated!
 
 #define SYSCOL(COLOR_IDX)					   ( 0x80000000 |                     COLOR_IDX  )
 #define MIXED_SYSCOL(COLOR_IDX1, COLOR_IDX2)   ( 0xC0000000 | (COLOR_IDX2 << 8) | COLOR_IDX1 )

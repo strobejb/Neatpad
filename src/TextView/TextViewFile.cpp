@@ -89,7 +89,14 @@ LONG TextView::SaveFile(TCHAR *szFileName, UINT nEncoding, BOOL fBom, UINT nLine
 	if(!FileDoc()->save(szFileName, (TEXT_ENCODING)nEncoding, fBom != FALSE, nLineBreak))
 		return FALSE;
 
-	return fConvert ? OpenFile(szFileName, (int)nEncoding, false) : TRUE;
+    if (fConvert)
+    {
+        return OpenFile(szFileName, (int)nEncoding, false);
+    }
+
+    ResetLineCache();
+    RefreshWindow();
+    return TRUE;
 }
 
 //

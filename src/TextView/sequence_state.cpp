@@ -287,6 +287,11 @@ struct event_record
     u32 action, flags;
 };
 
+struct saved_record
+{
+    u64 buffer, offset, length, saved_offset;
+};
+
 struct image
 {
     u64                        length = 0, group = 0, saved = 0;
@@ -294,11 +299,64 @@ struct image
     std::vector<buffer_record> buffers;
     std::vector<span_record>   spans;
     std::vector<event_record>  undo, redo;
+    std::vector<saved_record>  saved_ranges;
+    u64                        saved_length   = 0;
+    bool                       diff_available = false;
     std::vector<uint8_t>       context;
 };
 
+// Saved ranges use physical source order for queries; their logical positions
+// must describe one complete saved document, including bytes absent from history.
+bool validate_saved_ranges(const image &s)
+{
+    if (!s.diff_available && (s.saved_length || !s.saved_ranges.empty()))
+        return false;
+
+    for (size_t i = 0; i < s.saved_ranges.size(); ++i)
+    {
+        const saved_record &r = s.saved_ranges[i];
+
+        if (r.buffer >= s.buffers.size() || !r.length || r.offset > s.buffers[(size_t)r.buffer].length ||
+            r.length > s.buffers[(size_t)r.buffer].length - r.offset || r.saved_offset > s.saved_length ||
+            r.length > s.saved_length - r.saved_offset)
+            return false;
+
+        if (i)
+        {
+            const saved_record &prev = s.saved_ranges[i - 1];
+
+            if (r.buffer < prev.buffer || (r.buffer == prev.buffer && r.offset < prev.offset + prev.length))
+                return false;
+        }
+    }
+
+    std::vector<saved_record> logical = s.saved_ranges;
+
+    std::sort(logical.begin(), logical.end(),
+              [](const saved_record &a, const saved_record &b)
+              {
+                  return a.saved_offset < b.saved_offset;
+              });
+
+    u64 saved_end = 0;
+
+    for (const saved_record &r : logical)
+    {
+        if (r.saved_offset != saved_end)
+            return false;
+        saved_end += r.length;
+    }
+    if (saved_end != s.saved_length)
+        return false;
+
+    return true;
+}
+
 // V1: 64-byte sequence record, then variable buffer records, 48-byte spans (IDs
 // included), 56-byte history records, then u64 context length and opaque bytes.
+// V2 adds a 24-byte diff record before context: u32 availability, u32 reserved,
+// u64 saved length and u64 range count, followed by 32-byte saved-range records
+// (buffer, offset, length, saved offset). The editing history stays unchanged.
 // All integer fields are little endian. The header CRC covers this metadata;
 // buffer files are immutable committed prefixes, verified by length on load.
 bytes encode(const image &s)
@@ -354,12 +412,23 @@ bytes encode(const image &s)
             b.put(r.action, 4);
             b.put(r.flags, 4);
         }
+    b.put(s.diff_available ? 1 : 0, 4);
+    b.put(0, 4);
+    b.put(s.saved_length, 8);
+    b.put(s.saved_ranges.size(), 8);
+    for (const saved_record &r : s.saved_ranges)
+    {
+        b.put(r.buffer, 8);
+        b.put(r.offset, 8);
+        b.put(r.length, 8);
+        b.put(r.saved_offset, 8);
+    }
     b.put(s.context.size(), 8);
     b.data.insert(b.data.end(), s.context.begin(), s.context.end());
     return b;
 }
 
-bool decode(const std::vector<uint8_t> &data, image &s)
+bool decode(const std::vector<uint8_t> &data, image &s, u32 version = 2)
 {
     if (data.size() < 64)
         return false;
@@ -455,13 +524,36 @@ bool decode(const std::vector<uint8_t> &data, image &s)
                 return false;
         }
 
+    if (version == 2)
+    {
+        u64 flags = c.get(4), reserved = c.get(4);
+
+        s.saved_length = c.get(8);
+
+        u64 count = c.get(8);
+
+        if (!c.good || flags > 1 || reserved || count > MAX_METADATA / 32 || count > (data.size() - c.at) / 32 ||
+            (!flags && (s.saved_length || count)))
+            return false;
+
+        s.diff_available = flags != 0;
+        s.saved_ranges.resize((size_t)count);
+        for (saved_record &r : s.saved_ranges)
+        {
+            r.buffer       = c.get(8);
+            r.offset       = c.get(8);
+            r.length       = c.get(8);
+            r.saved_offset = c.get(8);
+        }
+    }
+
     u64 context = c.get(8);
 
     if (!c.good || context > 65536 || context != data.size() - c.at)
         return false;
 
     s.context.assign(data.begin() + c.at, data.end());
-    return true;
+    return validate_saved_ranges(s);
 }
 
 bool read_image(const path_string &dir, image &s, bool &missing)
@@ -480,7 +572,9 @@ bool read_image(const path_string &dir, image &s, bool &missing)
     cursor c = {header};
 
     c.at = 8;
-    if (c.get(4) != 1 || c.get(4) != HEADER_SIZE)
+    u32 version = (u32)c.get(4);
+
+    if ((version != 1 && version != 2) || c.get(4) != HEADER_SIZE)
         return false;
 
     u64 length = c.get(8);
@@ -495,7 +589,7 @@ bool read_image(const path_string &dir, image &s, bool &missing)
         checksum(data.data(), data.size()) != crc)
         return false;
 
-    return decode(data, s);
+    return decode(data, s, version);
 }
 
 bool publish(const path_string &directory, const image &s)
@@ -506,7 +600,7 @@ bool publish(const path_string &directory, const image &s)
         return false;
 
     header.data.assign(MAGIC, MAGIC + 8);
-    header.put(1, 4);
+    header.put(2, 4);
     header.put(HEADER_SIZE, 4);
     header.put(payload.data.size(), 8);
     header.put(checksum(payload.data.data(), payload.data.size()), 4);
@@ -525,6 +619,9 @@ bool validate(const image &s)
     const size_t n = s.spans.size();
 
     if (n < 2 || s.spans[0].prev || s.spans[1].next)
+        return false;
+
+    if (!validate_saved_ranges(s))
         return false;
 
     std::vector<uint8_t> owners(n + 1, 0);
@@ -682,6 +779,10 @@ bool sequence::save_state(state_writer &out) const
         s.group   = group_id;
         s.saved   = saved_group;
         s.flags   = can_quicksave ? 1 : 0;
+        s.saved_length   = saved_length;
+        s.diff_available = diff_available;
+        for (const saved_range &r : saved_ranges)
+            s.saved_ranges.push_back({(u64)r.buffer, r.offset, r.length, r.saved_offset});
 
         std::map<const span *, u64> ids;
         std::vector<const span *>   nodes;
@@ -919,6 +1020,9 @@ bool sequence::load_state(state_reader &in)
         }
         restored.undostack.reserve(s.undo.size());
         restored.redostack.reserve(s.redo.size());
+        restored.saved_ranges.reserve(s.saved_ranges.size());
+        for (const saved_record &r : s.saved_ranges)
+            restored.saved_ranges.push_back({(int)r.buffer, r.offset, r.length, r.saved_offset});
 
         for (const auto *stack : {&s.undo, &s.redo})
             for (const event_record &r : *stack)
@@ -948,6 +1052,8 @@ bool sequence::load_state(state_reader &in)
         restored.group_id        = (size_t)s.group;
         restored.saved_group     = (size_t)s.saved;
         restored.can_quicksave   = (s.flags & 1) != 0;
+        restored.saved_length    = s.saved_length;
+        restored.diff_available  = s.diff_available;
 
         int fresh_modify = restored.modifybuffer_id;
 
@@ -958,11 +1064,17 @@ bool sequence::load_state(state_reader &in)
         buffer_list.swap(restored.buffer_list);
         undostack.swap(restored.undostack);
         redostack.swap(restored.redostack);
+        saved_ranges.swap(restored.saved_ranges);
 
         std::swap(group_id, restored.group_id);
         std::swap(saved_group, restored.saved_group);
         std::swap(can_quicksave, restored.can_quicksave);
         std::swap(line_mode, restored.line_mode);
+        std::swap(saved_length, restored.saved_length);
+        std::swap(diff_available, restored.diff_available);
+
+        diff_cache.clear();
+        diff_generation = 0;
 
         modifybuffer_id  = fresh_modify;
         modifybuffer_pos = 0;
@@ -997,6 +1109,8 @@ bool state_reader::read_context(std::vector<uint8_t> &bytes)
         if (checkpoint.empty() ? !read_image(directory, s, missing) : !decode(checkpoint, s))
             return false;
 
+        // Pin the current payload format, retaining unavailable diff state
+        // when the manifest was read from an older checkpoint.
         checkpoint = encode(s).data;
         bytes      = s.context;
 

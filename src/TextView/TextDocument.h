@@ -258,6 +258,20 @@ public:
 	TextReader text_from_range(TextPos from, TextPos to);
 	uint32_t getline(const TextCoord &line, textchar *buf, uint32_t buflen);
 
+    enum diff_flags
+    {
+        diff_inserted      = 1,
+        diff_erased_before = 2,
+        diff_erased_after  = 4
+    };
+
+    // Saved-document differences on this line. Pass inserted UTF-16 column
+    // ranges to inserted, up to columns (the view's layout limit). Deletions
+    // mark the top of their surviving line, or the bottom when at a nonempty
+    // EOF line's end. Unavailable recovery baselines report no changes.
+    uint32_t line_diff(const TextCoord &line, const std::function<void(size_w, size_w)> &inserted = {},
+                       size_w columns = (size_w)-1);
+
 	// The line holding a position, to walk the document a line at a time
 	LineIterator line_at(TextPos pos);
 

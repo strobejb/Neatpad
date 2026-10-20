@@ -188,8 +188,11 @@ private:
 	void		PaintLine(HDC hdc, TextCoord *coord, ULONG row, int x, int y, HRGN hrgnUpdate);
 	void		PaintText(HDC hdc, TextCoord *coord, int x, int y, RECT *bounds);
 	int			PaintMargin(HDC hdc, TextCoord *line, int x, int y);
+    uint32_t    LineDiff(TextCoord *line, const std::function<void(size_w, size_w)> &inserted = {},
+                         size_w columns = (size_w)-1);
+    bool        DiffJoins(TextCoord *line, bool previous);
 
-	LONG		InvalidateRange(TextCoord *start, TextCoord *finish);
+    LONG		InvalidateRange(TextCoord *start, TextCoord *finish);
 	LONG		InvalidateLine(TextCoord *line, bool forceAnalysis);
 	VOID		UpdateLine(TextCoord *line);
 

@@ -59,7 +59,7 @@ TextView::TextView(HWND hwnd)
 
 	// Display-related data
 	m_nTabWidthChars = 4;
-	m_uStyleFlags	 = 0;
+	m_uStyleFlags	 = TXS_CHANGEMARKERS | TXS_HIGHLIGHTCHANGES;
 	m_nCaretWidth	 = 0;
 	m_nLongLineLimit = 80;
 	m_nLineInfoCount = 0;
@@ -97,6 +97,9 @@ TextView::TextView(HWND hwnd)
 	m_rgbColourList[TXC_CURRENTLINE]	 = RGB(230,240,255);
 	m_rgbColourList[TXC_SEARCHMATCHTEXT] = SYSCOL(COLOR_WINDOWTEXT);
 	m_rgbColourList[TXC_SEARCHMATCH]	 = RGB(255,230,128);
+    m_rgbColourList[TXC_CHANGEDTEXT]   = RGB(190, 55, 55);
+    m_rgbColourList[TXC_CHANGEDLINE]   = RGB(88, 132, 164);
+    m_rgbColourList[TXC_CHANGEDLINEBG] = SYSCOL(COLOR_3DFACE);
 
 
 	// Runtime data

@@ -22,6 +22,28 @@ void	DrawCheckedRect(HDC hdc, RECT *rect, COLORREF fg, COLORREF bg);
 
 extern "C" COLORREF MixRGB(COLORREF, COLORREF);
 
+// Diff gutter sizes, in pixels. The inset is the gap before the text edge.
+static const int CHANGE_MARKER_WIDTH    = 8;
+static const int CHANGE_MARKER_INSET    = CHANGE_MARKER_WIDTH;
+static const int CHANGE_TRIANGLE_WIDTH  = 9;
+static const int CHANGE_TRIANGLE_HEIGHT = 9; // maximum; clipped to fit small line heights
+static const int CHANGE_ICON_PADDING    = 3;
+static const int CHANGE_MARGIN_WIDTH =
+    CHANGE_MARKER_INSET + CHANGE_ICON_PADDING +
+    (CHANGE_MARKER_WIDTH > CHANGE_TRIANGLE_WIDTH ? CHANGE_MARKER_WIDTH : CHANGE_TRIANGLE_WIDTH);
+
+static void PaintDeletionTriangle(HDC hdc, int x, int y, int width, int height, COLORREF colour)
+{
+    int middle = height / 2;
+
+    for (int row = 0; row < height; ++row)
+    {
+        int distance = row > middle ? row - middle : middle - row;
+        int extent   = middle ? 1 + (width - 1) * (middle - distance) / middle : width;
+
+        PaintRect(hdc, x, y + row, extent, 1, colour);
+    }
+}
 
 //
 //	Perform a full redraw of the entire window
@@ -330,18 +352,17 @@ int TextView::LeftMarginWidth()
 		else
 			width += 20;
 
-		if(1) width += 1;
-		if(0) width += 5;
-		
-		return width;
+        if (CheckStyle(TXS_SELMARGIN) && CheckStyle(TXS_CHANGEMARKERS))
+        {
+            width += CHANGE_MARGIN_WIDTH;
+        }
+
+        return width;
 	}
 	// selection margin by itself
 	else if(CheckStyle(TXS_SELMARGIN))
 	{
-		width += cx + 4;
-
-		if(0) width += 1;
-		if(0) width += 5;
+        width += cx + 4 + (CheckStyle(TXS_CHANGEMARKERS) ? CHANGE_MARGIN_WIDTH : 0);
 
 		return width;
 	}
@@ -365,6 +386,73 @@ void TextView::UpdateMarginWidth()
 
 	SelectObject(hdc, hOldFont);
 	ReleaseDC(m_hWnd, hdc);
+}
+
+// Filtered text is a UTF-16 copy. Compare its source line instead, so both
+// the colours and the gutter retain the original document's saved baseline.
+uint32_t TextView::LineDiff(TextCoord *line, const std::function<void(size_w, size_w)> &inserted, size_w columns)
+{
+    if (!line)
+    {
+        return false;
+    }
+
+    if (m_pSourceDoc)
+    {
+        size_w    lineno;
+        TextCoord source;
+
+        if (m_pTextDoc->lineno_from_pos(*line, &lineno) != TDR_OK || lineno >= m_filterOrigins.size() ||
+            !m_pSourceDoc->coord_from_pos(m_filterOrigins[(size_t)lineno], &source))
+        {
+            return false;
+        }
+
+        return m_pSourceDoc->line_diff(source, inserted, columns);
+    }
+
+    return m_pTextDoc->line_diff(*line, inserted, columns);
+}
+
+// Join only neighbouring source lines: filtering can put unrelated lines
+// beside each other on screen, and those must retain their separate end caps.
+bool TextView::DiffJoins(TextCoord *line, bool previous)
+{
+    if (!line)
+    {
+        return false;
+    }
+
+    LineIterator neighbour = m_pTextDoc->line_at(line->line_begin);
+
+    if (!(previous ? neighbour.prev() : neighbour.next()))
+    {
+        return false;
+    }
+
+    if (m_pSourceDoc)
+    {
+        size_w row;
+
+        if (m_pTextDoc->lineno_from_pos(*line, &row) != TDR_OK || row >= m_filterOrigins.size() ||
+            (previous && row == 0) || (!previous && row + 1 >= m_filterOrigins.size()))
+        {
+            return false;
+        }
+
+        size_w       adjacent = previous ? row - 1 : row + 1;
+        LineIterator source   = m_pSourceDoc->line_at(m_filterOrigins[(size_t)row]);
+
+        if (!(previous ? source.prev() : source.next()) ||
+            source.line().line_begin != m_filterOrigins[(size_t)adjacent])
+        {
+            return false;
+        }
+    }
+
+    TextCoord adjacent = neighbour.line();
+
+    return (LineDiff(&adjacent) & TextDocument::diff_inserted) != 0;
 }
 
 //
@@ -398,6 +486,9 @@ int TextView::PaintMargin(HDC hdc, TextCoord *line, int xpos, int ypos)
 	if(CheckStyle(TXS_LINENUMBERS))
 	{
 		HANDLE hOldFont = SelectObject(hdc, m_uspFontList[0].hFont);
+
+        // One continuous background for numbers, icons and change markers.
+        PaintRect(hdc, &rect, GetColour(TXC_LINENUMBER));
 
         size_w number = nLineNo;
         bool   known  = exact && nLineNo < m_nLineCount;
@@ -439,17 +530,6 @@ int TextView::PaintMargin(HDC hdc, TextCoord *line, int xpos, int ypos)
 					len,
 					0);
 
-		// vertical line
-		rect.left   = rect.right;
-		rect.right += 1;
-		//PaintRect(hdc, &rect, MixRGB(GetSysColor(COLOR_3DFACE), 0xffffff));
-		PaintRect(hdc, &rect, GetColour(TXC_BACKGROUND));
-
-		// bleed area - use this to draw "folding" arrows
-		/*rect.left   = rect.right;
-		rect.right += 5;
-		PaintRect(hdc, &rect, GetColour(TXC_BACKGROUND));*/
-
 		SelectObject(hdc, hOldFont);
 	}
 	else
@@ -477,8 +557,65 @@ int TextView::PaintMargin(HDC hdc, TextCoord *line, int xpos, int ypos)
 					  ILD_TRANSPARENT
 					  );
 	}
-	
-	return rect.right-rect.left;
+
+    // The margin background above also clears markers after Save or a style change.
+    if (CheckStyle(TXS_SELMARGIN) && CheckStyle(TXS_CHANGEMARKERS))
+    {
+        int      right       = xpos + LeftMarginWidth();
+        int      markerRight = right - CHANGE_MARKER_INSET;
+        int      markerLeft  = markerRight - CHANGE_MARKER_WIDTH;
+        int      triangle    = min(CHANGE_TRIANGLE_HEIGHT, max(1, m_nLineHeight - 2));
+        uint32_t diff        = LineDiff(line);
+
+        // Mixed insertion/deletion is a modification: its outline takes
+        // precedence. Deletion-only lines use triangles in the same gutter.
+        if (diff & TextDocument::diff_inserted)
+        {
+            COLORREF colour = GetColour(TXC_CHANGEDLINE);
+
+            PaintRect(hdc, markerLeft, ypos, CHANGE_MARKER_WIDTH, m_nLineHeight, GetColour(TXC_CHANGEDLINEBG));
+            PaintRect(hdc, markerLeft, ypos, 1, m_nLineHeight, colour);
+            PaintRect(hdc, markerRight - 1, ypos, 1, m_nLineHeight, colour);
+
+            if (!DiffJoins(line, true))
+            {
+                PaintRect(hdc, markerLeft, ypos, CHANGE_MARKER_WIDTH, 1, colour);
+            }
+
+            if (!DiffJoins(line, false))
+            {
+                PaintRect(hdc, markerLeft, ypos + m_nLineHeight - 1, CHANGE_MARKER_WIDTH, 1, colour);
+            }
+        }
+        else
+        {
+            // Keep a sharp centre point and room for two deletion boundaries.
+            if ((diff & TextDocument::diff_erased_before) && (diff & TextDocument::diff_erased_after))
+            {
+                triangle = min(triangle, max(1, (m_nLineHeight - 1) / 2));
+            }
+            if (triangle > 1 && triangle % 2 == 0)
+            {
+                --triangle;
+            }
+
+            int triangleLeft = markerRight - CHANGE_TRIANGLE_WIDTH;
+
+            if (diff & TextDocument::diff_erased_before)
+            {
+                PaintDeletionTriangle(hdc, triangleLeft, ypos, CHANGE_TRIANGLE_WIDTH, triangle,
+                                      GetColour(TXC_CHANGEDTEXT));
+            }
+
+            if (diff & TextDocument::diff_erased_after)
+            {
+                PaintDeletionTriangle(hdc, triangleLeft, ypos + m_nLineHeight - triangle, CHANGE_TRIANGLE_WIDTH,
+                                      triangle, GetColour(TXC_CHANGEDTEXT));
+            }
+        }
+    }
+
+    return rect.right - rect.left;
 }
 
 static bool HasAppFocus(HWND hwnd)
@@ -633,6 +770,23 @@ int TextView::ApplyTextAttributes(TextCoord *line, ULONG &nColumn, TCHAR *szText
 	//
 	//	TODO: 1. Apply syntax colouring first of all
 	//
+
+    // Changed text precedes search and selection, which keep their colours.
+    if (CheckStyle(TXS_HIGHLIGHTCHANGES))
+    {
+        LineDiff(
+            line,
+            [&](size_w column, size_w length)
+            {
+                size_w end = min(column + length, (size_w)nTextLen);
+
+                for (size_w changed = column; changed < end; ++changed)
+                {
+                    attr[changed].fg = GetColour(TXC_CHANGEDTEXT);
+                }
+            },
+            nTextLen);
+    }
 
 	//
 	//	STEP 2. Highlight the search's matches (overriding syntax colouring)

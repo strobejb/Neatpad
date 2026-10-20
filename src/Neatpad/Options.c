@@ -33,6 +33,8 @@ TCHAR g_szFontName[LF_FACESIZE];
 BOOL  g_fLineNumbers;
 BOOL  g_fLongLines;
 BOOL  g_fSelMargin;
+BOOL  g_fChangeIndicators;
+BOOL  g_fHighlightChanges;
 BOOL  g_fSaveOnExit;
 int	  g_nLongLineLimit;
 BOOL  g_nHLCurLine;
@@ -462,6 +464,8 @@ void LoadRegSettings()
     }
 
     GetSettingInt(hKey, _T("SelMargin"),	 &g_fSelMargin, TRUE);
+    GetSettingInt(hKey, _T("ChangeIndicators"), &g_fChangeIndicators, TRUE);
+    GetSettingInt(hKey, _T("HighlightChanges"), &g_fHighlightChanges, TRUE);
 	GetSettingInt(hKey, _T("LineNumbers"),   &g_fLineNumbers, FALSE);
 	GetSettingInt(hKey, _T("LongLines"),	 &g_fLongLines, TRUE);
 	GetSettingInt(hKey, _T("LongLineLimit"), &g_nLongLineLimit, 80);
@@ -506,7 +510,17 @@ void LoadRegSettings()
 	GetSettingInt(hColKey, _T("Curline"),		&g_rgbColourList[TXC_CURRENTLINE],		g_rgbAutoColourList[TXC_CURRENTLINE]		);
 	GetSettingInt(hColKey, _T("SearchMatchText"), &g_rgbColourList[TXC_SEARCHMATCHTEXT],	g_rgbAutoColourList[TXC_SEARCHMATCHTEXT]	);
 	GetSettingInt(hColKey, _T("SearchMatch"),	&g_rgbColourList[TXC_SEARCHMATCH],		g_rgbAutoColourList[TXC_SEARCHMATCH]		);
-	
+    GetSettingInt(hColKey, _T("ChangedText"), &g_rgbColourList[TXC_CHANGEDTEXT], g_rgbAutoColourList[TXC_CHANGEDTEXT]);
+    GetSettingInt(hColKey, _T("ChangedLine"), &g_rgbColourList[TXC_CHANGEDLINE], g_rgbAutoColourList[TXC_CHANGEDLINE]);
+    GetSettingInt(hColKey, _T("ChangedLineBG"), &g_rgbColourList[TXC_CHANGEDLINEBG],
+                  g_rgbAutoColourList[TXC_CHANGEDLINEBG]);
+
+    // Replace the previous automatic colour, while retaining custom colours.
+    if (g_rgbColourList[TXC_CHANGEDLINE] == RGB(202, 151, 54))
+    {
+        g_rgbColourList[TXC_CHANGEDLINE] = g_rgbAutoColourList[TXC_CHANGEDLINE];
+    }
+
 	GetSettingBin(hColKey, _T("Custom"),		g_rgbCustColours, sizeof(g_rgbCustColours)); 
 
 	RegCloseKey(hColKey);
@@ -526,6 +540,8 @@ void SaveRegSettings()
     WriteSettingInt(hKey, _T("LineSpacing"), g_nLineSpacing);
 
     WriteSettingInt(hKey, _T("SelMargin"),	  g_fSelMargin);
+    WriteSettingInt(hKey, _T("ChangeIndicators"), g_fChangeIndicators);
+    WriteSettingInt(hKey, _T("HighlightChanges"), g_fHighlightChanges);
 	WriteSettingInt(hKey, _T("LineNumbers"),  g_fLineNumbers);
 	WriteSettingInt(hKey, _T("LongLines"),	  g_fLongLines);
 	WriteSettingInt(hKey, _T("SaveOnExit"),	  g_fSaveOnExit);
@@ -564,6 +580,9 @@ void SaveRegSettings()
 	WriteSettingInt(hColKey, _T("Curline"),		g_rgbColourList[TXC_CURRENTLINE]); 
 	WriteSettingInt(hColKey, _T("SearchMatchText"), g_rgbColourList[TXC_SEARCHMATCHTEXT]);
 	WriteSettingInt(hColKey, _T("SearchMatch"),	g_rgbColourList[TXC_SEARCHMATCH]);
+    WriteSettingInt(hColKey, _T("ChangedText"), g_rgbColourList[TXC_CHANGEDTEXT]);
+    WriteSettingInt(hColKey, _T("ChangedLine"), g_rgbColourList[TXC_CHANGEDLINE]);
+    WriteSettingInt(hColKey, _T("ChangedLineBG"), g_rgbColourList[TXC_CHANGEDLINEBG]);
 
 
 	WriteSettingBin(hColKey, _T("Custom"),		g_rgbCustColours, sizeof(g_rgbCustColours)); 
@@ -647,6 +666,8 @@ void ApplyRegSettings()
     TextView_SetLineSpacing(g_hwndTextView, g_nLineSpacing / 2, (g_nLineSpacing + 1) / 2);
 
     TextView_SetStyleBool(g_hwndTextView, TXS_SELMARGIN,	g_fSelMargin);
+    TextView_SetStyleBool(g_hwndTextView, TXS_CHANGEMARKERS, g_fChangeIndicators);
+    TextView_SetStyleBool(g_hwndTextView, TXS_HIGHLIGHTCHANGES, g_fHighlightChanges);
 	TextView_SetStyleBool(g_hwndTextView, TXS_LINENUMBERS,	g_fLineNumbers);
 	TextView_SetStyleBool(g_hwndTextView, TXS_LONGLINES,	g_fLongLines);
 
@@ -687,6 +708,8 @@ void ShowOptions(HWND hwndParent)
     options.fLineNumbers          = g_fLineNumbers;
     options.fLongLines            = g_fLongLines;
     options.fSelMargin            = g_fSelMargin;
+    options.fChangeIndicators     = g_fChangeIndicators;
+    options.fHighlightChanges     = g_fHighlightChanges;
     options.nLongLineLimit        = g_nLongLineLimit;
     options.fHighlightCurrentLine = g_nHLCurLine;
     options.nTabWidth             = g_nTabWidth;
@@ -732,18 +755,20 @@ void ShowOptions(HWND hwndParent)
 
     if (PropertySheet(&psh) > 0)
     {
-        g_nFontSize      = options.nFontSize;
-        g_fFontBold      = options.fFontBold;
-        g_nLineSpacing   = options.nLineSpacing;
-        g_fLineNumbers   = options.fLineNumbers;
-        g_fLongLines     = options.fLongLines;
-        g_fSelMargin     = options.fSelMargin;
-        g_nLongLineLimit = options.nLongLineLimit;
-        g_nHLCurLine     = options.fHighlightCurrentLine;
-        g_nTabWidth      = options.nTabWidth;
-        g_fInsertSpaces  = options.fInsertSpaces;
-        g_fAutoIndent    = options.fAutoIndent;
-        g_nFilterContext = options.nFilterContext;
+        g_nFontSize         = options.nFontSize;
+        g_fFontBold         = options.fFontBold;
+        g_nLineSpacing      = options.nLineSpacing;
+        g_fLineNumbers      = options.fLineNumbers;
+        g_fLongLines        = options.fLongLines;
+        g_fSelMargin        = options.fSelMargin;
+        g_fChangeIndicators = options.fChangeIndicators;
+        g_fHighlightChanges = options.fHighlightChanges;
+        g_nLongLineLimit    = options.nLongLineLimit;
+        g_nHLCurLine        = options.fHighlightCurrentLine;
+        g_nTabWidth         = options.nTabWidth;
+        g_fInsertSpaces     = options.fInsertSpaces;
+        g_fAutoIndent       = options.fAutoIndent;
+        g_nFilterContext    = options.nFilterContext;
         memcpy(g_szFontName, options.szFontName, sizeof(options.szFontName));
         memcpy(g_rgbColourList, options.rgbColourList, sizeof(options.rgbColourList));
         memcpy(g_rgbCustColours, options.rgbCustColours, sizeof(options.rgbCustColours));

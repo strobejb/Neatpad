@@ -55,6 +55,9 @@ COLORREF g_rgbAutoColourList[TXC_MAX_COLOURS] =
 	RGB(230,240,255),									// current line background
 	SYSCOL(COLOR_WINDOWTEXT),							// search match text
 	RGB(255,230,128),									// search match background
+    RGB(190, 55, 55),                                    // changed text
+    RGB(88, 132, 164),                                   // changed line outline
+    MIXED_SYSCOL2(COLOR_3DFACE, COLOR_WINDOW),             // changed line fill
 };
 
 
@@ -743,6 +746,8 @@ BOOL InitFontOptionsDlg(HWND hwnd)
 	AddColourListItem(hwnd, IDC_LIST1, -1,					TXC_LONGLINE,	  _T("Long Lines"));
 	AddColourListItem(hwnd, IDC_LIST1, TXC_CURRENTLINETEXT, TXC_CURRENTLINE,  _T("Current Line"));
 	AddColourListItem(hwnd, IDC_LIST1, TXC_SEARCHMATCHTEXT, TXC_SEARCHMATCH,  _T("Search Matches"));
+    AddColourListItem(hwnd, IDC_LIST1, TXC_CHANGEDTEXT, -1, _T("Changed Text"));
+    AddColourListItem(hwnd, IDC_LIST1, TXC_CHANGEDLINE, TXC_CHANGEDLINEBG, _T("Changed Lines"));
 	
 	SendDlgItemMessage(hwnd, IDC_ITEMLIST, LB_SETCURSEL, 0, 0);
 	PostMessage(hwnd, WM_COMMAND, MAKEWPARAM(IDC_ITEMLIST, LBN_SELCHANGE), (LPARAM)GetDlgItem(hwnd, IDC_ITEMLIST));

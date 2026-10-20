@@ -113,6 +113,7 @@
   <ItemGroup>
     <ClCompile Include="SaveFile.cpp" />
     <ClCompile Include="sequence.cpp" />
+    <ClCompile Include="sequence_diff.cpp" />
     <ClCompile Include="sequence_state.cpp" />
     <ClCompile Include="sequence_buf.cpp" />
     <ClCompile Include="sequence_chars.cpp" />
