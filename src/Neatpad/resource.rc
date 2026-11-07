@@ -274,7 +274,7 @@ FONT 8, "MS Shell Dlg", 0, 0, 0x1
 BEGIN
     DEFPUSHBUTTON   "OK",IDOK,167,91,50,14
     ICON            IDI_ICON1,IDC_HEADER2,13,20,20,20
-    LTEXT           "Copyright \xA9 2006-2026 Catch22 Solutions.\nWritten by J Brown.",IDC_STATIC,51,40,166,22
+    LTEXT           "Copyright © 2006-2026 Catch22 Solutions.\nWritten by J Brown.",IDC_STATIC,51,40,166,22
     LTEXT           "www.catch22.net",IDC_ABOUT_URL,51,70,166,18
     LTEXT           "Neatpad Beta 0.17.10",IDC_ABOUT_APPNAME,50,20,167,14
 END
@@ -409,10 +409,6 @@ BEGIN
 
     IDD_DISPLAY, DIALOG
     BEGIN
-        LEFTMARGIN, 7
-        RIGHTMARGIN, 283
-        TOPMARGIN, 7
-        BOTTOMMARGIN, 198
     END
 
     IDD_ABOUT, DIALOG
@@ -500,8 +496,8 @@ IDB_SEARCHBAR_BUTTONS   BITMAP                  "searchbar_buttons.bmp"
 //
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 1,0,19,1
- PRODUCTVERSION 1,0,19,0
+ FILEVERSION 1,1,0,0
+ PRODUCTVERSION 1,1,0,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x1L
@@ -517,14 +513,14 @@ BEGIN
         BLOCK "080904b0"
         BEGIN
             VALUE "Comments", "Neatpad text editor by www.catch22.net"
-            VALUE "CompanyName", "Catch22 Productions"
+            VALUE "CompanyName", "Catch22 Solutions"
             VALUE "FileDescription", "Neatpad Text Editor"
-            VALUE "FileVersion", "1.0.19.1"
+            VALUE "FileVersion", "1.1.0.0"
             VALUE "InternalName", "Neatpad"
-            VALUE "LegalCopyright", "Copyright \xA9 2006 Catch22 Productions"
+            VALUE "LegalCopyright", "Copyright © 2026 Catch22 Solutions"
             VALUE "OriginalFilename", "Neatpad.exe"
             VALUE "ProductName", "Neatpad"
-            VALUE "ProductVersion", "1.0.19"
+            VALUE "ProductVersion", "1.1.0"
         END
     END
     BLOCK "VarFileInfo"
