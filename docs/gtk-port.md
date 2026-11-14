@@ -122,7 +122,7 @@ Visual Studio stays in charge of the Win32 build, and CMake handles everything p
 
 Each step is its own commit on `main`, and moves and formatting changes stay separate from behavior changes (per AGENTS.md). Build Debug and Release x64 and run `SequenceTests.exe` after every commit.
 
-1. **Move the core into `src/TextDocument`** (spec under Current state). Then, as separate commits, move the app to `src/Neatpad/win32` and UspLib to `src/TextView/win32/UspLib`.
+1. **Move the core into `src/TextDocument`**. Then, as separate commits, move the app to `src/Neatpad/win32` and UspLib to `src/TextView/win32/UspLib`.
 2. **Add tests for what the split touches.** Today's `textview_tests` cover the `EM_*` messages, `WM_CHAR`, the filter and recovery, but no key navigation, mouse or painting. Add arrow, word and Home/End moves over surrogate pairs and combining marks, click-to-caret, and a few paint bitmap hashes (`WM_PRINTCLIENT` into a memory DC).
 3. **On Windows, split TextView into the engine plus `TextViewWin32`,** in small steps:
    1. Introduce `TextViewHost`, and route invalidation, scrolling, caret, timers, clipboard and notifications through it.
@@ -141,16 +141,14 @@ Each step is its own commit on `main`, and moves and formatting changes stay sep
 ## Current state
 
 - **Done:** `textchar` renamed to `tchar_t`, on `main`.
-- **Next:** step 1, done on Windows. An earlier copy of it in a Fedora working tree was abandoned.
-
-Spec for step 1:
-
-- **17 files move** from `src/TextView` to `src/TextDocument` with `git mv`: `sequence*`, `TextDocument*`, `SaveFile.*`, `Unicode.*` and `codepages.h`. `racursor.h` stays in TextView because it's a Win32 cursor bitmap.
-- **New `TextDocument.vcxproj`** (static library) and `.filters`, with the same configurations and settings as TextView. The moved files come out of `TextView.vcxproj` and its `.filters`.
-- **Project references:** TextView and Neatpad reference the new library, and `Neatpad.sln` lists it as a dependency of both. `SequenceTests` still compiles the sources directly, with its paths updated.
-- **Include fixes:** only the lines that point at moved headers, using forward-slash relative paths.
-- **Keep** CRLF line endings and BOMs. No other edits.
-- **Check:** Debug and Release x64 build with MSBuild, `SequenceTests.exe` passes, and the warning count is unchanged.
+- **Done:** step 1, on Windows, as three commits on `main`:
+  - The core is in `src/TextDocument`, built as the static library `TextDocument.vcxproj`. TextView and Neatpad
+    reference it, and `SequenceTests` still compiles its sources directly.
+  - The Win32 app is in `src/Neatpad/win32`. `release.yml` looks for `resource.rc` there first, then in
+    `src/Neatpad`, so older tags still build.
+  - UspLib is in `src/TextView/win32/UspLib`.
+  - Debug and Release x64 build with no warnings, as before, and `SequenceTests.exe` passes.
+- **Next:** step 2, tests for what the split touches.
 
 ## Open decisions
 

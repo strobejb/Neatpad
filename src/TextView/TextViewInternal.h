@@ -29,7 +29,7 @@ HRESULT (WINAPI * DrawThemeBackground_Proc)(HTHEME hTheme, HDC hdc, int, int, co
 #include "../TextDocument/TextDocument.h"
 #include "TextView.h"
 
-#include "..\UspLib\usplib.h"
+#include "win32/UspLib/usplib.h"
 
 typedef struct
 {

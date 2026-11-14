@@ -192,7 +192,7 @@
     <ProjectReference Include="..\..\TextView\TextView.vcxproj">
       <Project>{9D2C0B3C-26B9-4F43-B950-4550B8D21850}</Project>
     </ProjectReference>
-    <ProjectReference Include="..\..\UspLib\UspLib.vcxproj">
+    <ProjectReference Include="..\..\TextView\win32\UspLib\UspLib.vcxproj">
       <Project>{5E7AC3D0-6E3B-4BF1-9DD6-B68A47376C83}</Project>
     </ProjectReference>
   </ItemGroup>

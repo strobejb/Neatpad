@@ -133,7 +133,7 @@
     <ProjectReference Include="..\TextDocument\TextDocument.vcxproj">
       <Project>{841A9BB3-5A3C-45B6-A1F7-CDA3F8F55FE2}</Project>
     </ProjectReference>
-    <ProjectReference Include="..\UspLib\UspLib.vcxproj">
+    <ProjectReference Include="win32\UspLib\UspLib.vcxproj">
       <Project>{5E7AC3D0-6E3B-4BF1-9DD6-B68A47376C83}</Project>
     </ProjectReference>
   </ItemGroup>
