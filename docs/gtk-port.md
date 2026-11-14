@@ -166,7 +166,14 @@ Each step is its own commit on `main`, and moves and formatting changes stay sep
   and copies it across, as before, and `TextLayout::Draw` takes a canvas. Painting draws whole rows rather than
   clipping to the update region. `OnPaint` and `OnPrintClient` make the canvas for now, and the line-number width
   is still measured outside painting with a window DC.
-- **Next:** step 3.4, move the HWND, WndProc and message code into `src/TextView/win32/`.
+- **Step 3.4** is done in four parts:
+  - **Done:** 3.4a. The window holds `TextViewWin32`, which owns the engine. Its WndProc, the message dispatch, the
+    themed border, the context menu and focus-on-click are in `src/TextView/win32/TextViewWndProc.cpp`. The engine
+    has public methods for what the messages ask.
+  - **Next:** 3.4b. The engine stops calling Win32 for the window size, focus, mouse capture, cursor shapes and system
+    settings.
+  - 3.4c. Fonts and the image list move to the host, which creates layouts and canvases and handles WM_PAINT.
+  - 3.4d. The `EM_*` edit-control messages (`TextViewEdit.cpp`) move to `win32/`.
 
 ## Open decisions
 

@@ -51,6 +51,9 @@
     <ClCompile Include="win32\TextViewWin32.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="win32\TextViewWndProc.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="win32\Win32Canvas.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>

@@ -80,7 +80,7 @@ typedef struct
 } CURPOS;
 
 //
-//	TextView - internal window implementation
+//	TextView - the editor engine. Its platform's host owns it.
 //
 class TextView
 {
@@ -91,25 +91,17 @@ public:
 	TextView(HWND hwnd, TextViewHost *host);
 	~TextView();
 
-	LRESULT WINAPI WndProc(UINT msg, WPARAM wParam, LPARAM lParam);
-
-private:
-
 	//
-	//	Message handlers
+	//	Input, painting and timers, which the platform passes on
 	//
 	LONG OnPaint();
 	LONG OnPrintClient(HDC hdc);
-	LONG OnNcPaint(HRGN hrgnUpdate);
 	LONG OnSetFont(HFONT hFont);
 	LONG OnSize(UINT nFlags, int width, int height);
 	LONG OnVScroll(UINT nSBCode, UINT nPos);
 	LONG OnHScroll(UINT nSBCode, UINT nPos);
 	LONG OnMouseWheel(int nDelta);
 	LONG OnTimer(UINT_PTR nTimer);
-
-	LONG OnMouseActivate(HWND hwndTop, UINT nHitTest, UINT nMessage);
-	LONG OnContextMenu(HWND wParam, int x, int y);
 
 	LONG OnLButtonDown(UINT nFlags, int x, int y);
 	LONG OnLButtonUp(UINT nFlags, int x, int y);
@@ -126,32 +118,67 @@ private:
 	BOOL OnCopy();
 	BOOL OnPaste();
 	BOOL OnClear();
+
+	//
+	//	The view's API, which the platform's messages or functions call
+	//
+	BOOL		Undo();
+	BOOL		Redo();
+	BOOL		CanUndo();
+	BOOL		CanRedo();
+	TextDocument *FileDoc() const;
+	LRESULT		EditMessage(UINT msg, WPARAM wParam, LPARAM lParam);
+	LONG		OpenFile(TCHAR *szFileName, int nEncoding, bool fReadOnly);	// -1 for its byte-order mark to say
+    BOOL        SaveState(TEXTVIEWRECOVERY *state);
+    BOOL        LoadState(TEXTVIEWRECOVERY *state);
+	LONG		TailFile(TCHAR *szFileName);
+	BOOL		UpdateTail();
+	LONG		SaveFile(TCHAR *szFileName, UINT nEncoding, BOOL fBom, UINT nLineBreak);
+	LONG		ClearFile();
+	LONG		SetLineSpacing(int nAbove, int nBelow);
+	LONG		AddFont(HFONT);
+	LONG		AddFontFallback(int slot, HFONT hFont);
+	LONG		ClearFontFallbacks(int slot);
+	COLORREF	SetColour(UINT idx, COLORREF rgbColour);
+	ULONG		SetStyle(ULONG uMask, ULONG uStyles);
+	int			SetCaretWidth(int nWidth);
+    BOOL		SetImageList(HIMAGELIST hImgList);
+	LONG		SetLongLine(int nLength);
+	int			SetLineImage(ULONG nLineNo, ULONG nImageIdx);
+    UINT        SetTabWidth(UINT width);
+    UINT          SetFilterContext(UINT lines);
+    BOOL		ConvertLineBreaks(UINT nLineBreak);
+	size_w		SelectionSize();
+	ULONG		SelectAll();
+    LONG		IndexFile(BOOL fIndex);
+	TEXT_RESULT	GotoLine(size_w lineno, bool fMove);
+	VOID		FillIndexInfo(TVNINDEXINFO *info);
+	VOID		FillCursorInfo(TVNCURSORINFO *info);
+	UINT		FindText(TEXTVIEWFIND *find);
+	LONG		ShowMatches(TEXTVIEWFIND *find, BOOL fFilter);
+	size_w		ReplaceText(TEXTVIEWFIND *find, BOOL fAll);
+	TEXT_RESULT	CursorOffset(size_w *chars);
+	TEXT_RESULT	CursorLine(size_w *lineno);
+	size_w		CursorColumn();
+	int			LineFormat();
+	UINT		GetEditMode();
+	UINT		SetEditMode(UINT mode);
+	BOOL		GetDocStats(TEXTVIEWDOCSTATS *stats);
 	
 private:
 
 	//
 	//	Internal private functions
 	//
-	LONG		OpenFile(TCHAR *szFileName, int nEncoding, bool fReadOnly);	// -1 for its byte-order mark to say
-	LONG		TailFile(TCHAR *szFileName);
-	BOOL		UpdateTail();
-	LONG		SaveFile(TCHAR *szFileName, UINT nEncoding, BOOL fBom, UINT nLineBreak);
-	LONG		ClearFile();
-    BOOL        SaveState(TEXTVIEWRECOVERY *state);
-    BOOL        LoadState(TEXTVIEWRECOVERY *state);
 
-    LONG		IndexFile(BOOL fIndex);
 	LONG		OnIndexTimer();
 	VOID		IndexChanged();
-	TEXT_RESULT	GotoLine(size_w lineno, bool fMove);
-	VOID		FillIndexInfo(TVNINDEXINFO *info);
 	VOID		NotifyIndexChange();
 
 	//
 	//	Win32 EDIT control messages (TextViewEdit.cpp). They must answer, so
 	//	their lookups index as far as they need.
 	//
-	LRESULT		EditMessage(UINT msg, WPARAM wParam, LPARAM lParam);
 	TEXT_RESULT	IndexUntilKnown(const std::function<TEXT_RESULT()> &lookup);
 	bool		CharFromPos(const TextPos &pos, size_w *chars);
 	bool		PosFromChar(size_w chars, TextCoord *coord);
@@ -162,16 +189,9 @@ private:
 	//
 	//	Cursor/Selection
 	//
-	size_w		SelectionSize();
-	ULONG		SelectAll();
-	UINT		FindText(TEXTVIEWFIND *find);
-	size_w		ReplaceText(TEXTVIEWFIND *find, BOOL fAll);
-	LONG		ShowMatches(TEXTVIEWFIND *find, BOOL fFilter);
 	void		HighlightMatches(TCHAR *szText, int nTextLen, ATTR *attr);
 
 	// Filtering (TextViewFilter.cpp)
-	TextDocument *FileDoc() const;
-    UINT          SetFilterContext(UINT lines);
     void          WriteFilterContext(TextPos match);
     UINT          WriteFilterLines(LineIterator line, UINT count);
     bool		StartFilter();
@@ -213,12 +233,7 @@ private:
 	//
 	//	Font support
 	//
-	LONG		AddFont(HFONT);
-	LONG		AddFontFallback(int slot, HFONT hFont);
-	LONG		ClearFontFallbacks(int slot);
 	LONG		SetFont(HFONT, int idx);
-	LONG		SetLineSpacing(int nAbove, int nBelow);
-	LONG		SetLongLine(int nLength);
 	
 	//
 	//	
@@ -228,10 +243,6 @@ private:
 	//int		TabWidth();
 	int			LeftMarginWidth();
 	void		UpdateMarginWidth();
-	int			SetCaretWidth(int nWidth);
-    UINT        SetTabWidth(UINT width);
-    BOOL		SetImageList(HIMAGELIST hImgList);
-	int			SetLineImage(ULONG nLineNo, ULONG nImageIdx);
 	LINEINFO *	GetLineInfo(ULONG nLineNo);
 
 	//
@@ -269,14 +280,9 @@ private:
 	//
 	//	Editing
 	//	
-	BOOL		Undo();
-	BOOL		Redo();
-	BOOL		CanUndo();
-	BOOL		CanRedo();
 	BOOL		ForwardDelete();
 	BOOL		BackDelete();
     ULONG       EnterText(TCHAR *szText, ULONG nLength, bool forceInsert = false);
-    BOOL		ConvertLineBreaks(UINT nLineBreak);
 
 	//
 	//	Scrolling
@@ -301,13 +307,11 @@ private:
 	//
 	//	TextView configuration
 	//
-	ULONG		SetStyle(ULONG uMask, ULONG uStyles);
 	ULONG		SetVar(ULONG nVar, ULONG nValue);
 	ULONG		GetVar(ULONG nVar);
 	ULONG		GetStyleMask(ULONG uMask);
 	bool		CheckStyle(ULONG uMask);
 
-	COLORREF	SetColour(UINT idx, COLORREF rgbColour);
 	COLORREF	GetColour(UINT idx);
 	COLORREF	LineColour(TextCoord *line);
 	COLORREF	LongColour(TextCoord *line);
@@ -315,10 +319,8 @@ private:
 	//
 	//	Miscallaneous
 	//
-	HMENU		CreateContextMenu();
 	LRESULT		NotifyParent(UINT nNotifyCode, NMHDR *optional = 0);
 	VOID		NotifyCursorChange();
-	VOID		FillCursorInfo(TVNCURSORINFO *info);
 
 
 
@@ -328,7 +330,6 @@ private:
 
 	HWND		m_hWnd;
 	TextViewHost *m_pHost;		// redraws, scrolling, the caret, timers, clipboard, notifications
-	HTHEME		m_hTheme;
 	ULONG		m_uStyleFlags;
 
 	// File-related data
@@ -408,7 +409,6 @@ private:
 	bool		m_fHideCaret;
 	//bool		m_fTransparent;
 	HIMAGELIST	m_hImageList;
-	HMENU		m_hUserMenu;
 
 	// The lines laid out most recently
 	LINECACHE   *m_lineCache;

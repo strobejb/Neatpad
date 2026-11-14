@@ -19,7 +19,6 @@
 #include "TextView.h"
 #include "TextViewInternal.h"
 #include "racursor.h"
-#include "win32/TextViewWin32.h"
 #include "win32/UspTextLayout.h"
 
 
@@ -30,21 +29,14 @@
 #error "Please build as Unicode only!"
 #endif
 
-#if !defined(GetWindowLongPtr)
-#error "Latest Platform SDK is required to build Neatpad - try PSDK-Feb-2003
-#endif
-
-#pragma comment(lib, "comctl32.lib")
-
 //
-//	Constructor for TextView class. It owns host, and calls it from here on.
+//	Constructor for TextView class. Its host owns it, and it calls the host
+//	from here on.
 //
 TextView::TextView(HWND hwnd, TextViewHost *host)
 {
 	m_hWnd  = hwnd;
 	m_pHost = host;
-
-	m_hTheme = OpenThemeData(hwnd, L"edit");
 
 	// Font-related data
 	m_nNumFonts		= 1;
@@ -112,7 +104,6 @@ TextView::TextView(HWND hwnd, TextViewHost *host)
 	m_fIndexing			= false;
 	m_nIndexPercent		= 100;
 	m_fHideCaret		= false;
-	m_hUserMenu			= 0;
 	m_hImageList		= 0;
 	
 	m_nSelectionType	= SEL_NONE;
@@ -160,10 +151,6 @@ TextView::~TextView()
 		delete m_lineCache[i].layout;
 
 	delete[] m_lineCache;
-
-	CloseThemeData(m_hTheme);
-
-	delete m_pHost;
 }
 
 //
@@ -205,15 +192,6 @@ VOID TextView::NotifyCursorChange()
 
 	FillCursorInfo(&ci);
 	NotifyParent(TVN_CURSOR_CHANGE, (NMHDR *)&ci);
-}
-
-//
-//	A 64-bit value as a message result: exact wherever it fits (always on x64),
-//	otherwise the largest positive result, so it never reads as 0 or -1
-//
-static LRESULT ResultFromSize(size_w value)
-{
-	return value > (size_w)MAXLONG_PTR ? MAXLONG_PTR : (LRESULT)value;
 }
 
 VOID TextView::UpdateMetrics()
@@ -587,384 +565,85 @@ TEXT_RESULT TextView::GotoLine(size_w lineno, bool fMove)
 }
 
 //
-//	Public memberfunction 
+//	The caret's offset in characters from the start of the document, which
+//	isn't known past the indexed part of a UTF-8 or UTF-32 document
 //
-LRESULT WINAPI TextView::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
+TEXT_RESULT TextView::CursorOffset(size_w *chars)
 {
-	size_w offset_chars;
-	size_w lineno;
+	return m_pTextDoc->charoffset_from_pos(m_cursorPos, chars);
+}
 
-	switch(msg)
+//
+//	The caret's line, which may be an estimate past the indexed part
+//
+TEXT_RESULT TextView::CursorLine(size_w *lineno)
+{
+	return m_pTextDoc->lineno_from_pos(m_cursorPos, lineno);
+}
+
+size_w TextView::CursorColumn()
+{
+	return m_cursorPos.column;
+}
+
+int TextView::LineFormat()
+{
+	return m_nCRLFMode;
+}
+
+//
+//	Filtered, the view is read-only, but the document may not be
+//
+UINT TextView::GetEditMode()
+{
+	return m_pSourceDoc ? m_nFilterEditMode : m_nEditMode;
+}
+
+UINT TextView::SetEditMode(UINT mode)
+{
+	UINT oldMode = m_nEditMode;
+
+	m_nEditMode = mode;
+	return oldMode;
+}
+
+//
+//	The document's size and the selection's, in bytes and in characters where
+//	those are counted
+//
+BOOL TextView::GetDocStats(TEXTVIEWDOCSTATS *stats)
+{
+	TextCoord selStart, selEnd;
+	size_w chars, startChars, endChars;
+
+	if(stats == 0)
+		return FALSE;
+
+	stats->byte_count = (unsigned __int64)FileDoc()->file_length();
+	stats->char_count = 0;
+	stats->char_count_known = FALSE;
+	stats->sel_byte_count = 0;
+	stats->sel_char_count = 0;
+	stats->linebreaks_seen = FileDoc()->linebreaks_seen();
+
+	if(FileDoc()->charcount(&chars) == TDR_OK)
 	{
-	// Draw contents of TextView whenever window needs updating
-	case WM_ERASEBKGND:
-		return 1;
-
-	// Need to custom-draw the border for XP/Vista themes
-	case WM_NCPAINT:
-		return OnNcPaint((HRGN)wParam);
-
-	case WM_PAINT:
-		return OnPaint();
-
-	case WM_PRINTCLIENT:
-		return OnPrintClient((HDC)wParam);
-
-	// Set a new font 
-	case WM_SETFONT:
-		return OnSetFont((HFONT)wParam);
-
-	case WM_SIZE:
-		return OnSize((UINT)wParam, LOWORD(lParam), HIWORD(lParam));
-
-	case WM_VSCROLL:
-		return OnVScroll(LOWORD(wParam), HIWORD(wParam));
-
-	case WM_HSCROLL:
-		return OnHScroll(LOWORD(wParam), HIWORD(wParam));
-
-	case WM_MOUSEACTIVATE:
-		return OnMouseActivate((HWND)wParam, LOWORD(lParam), HIWORD(lParam));
-
-	case WM_CONTEXTMENU:
-		return OnContextMenu((HWND)wParam, (short)LOWORD(lParam), (short)HIWORD(lParam));
-
-	// Ctrl+wheel is left to DefWindowProc, which passes it to the parent to zoom
-	case WM_MOUSEWHEEL:
-		if(GET_KEYSTATE_WPARAM(wParam) & MK_CONTROL)
-			break;
-
-		return OnMouseWheel((short)HIWORD(wParam));
-
-	case WM_SETFOCUS:
-		return OnSetFocus((HWND)wParam);
-
-	case WM_KILLFOCUS:
-		return OnKillFocus((HWND)wParam);
-
-	// make sure we get arrow-keys, enter, tab, etc when hosted inside a dialog
-	case WM_GETDLGCODE:
-		return DLGC_WANTALLKEYS;
-
-	case WM_LBUTTONDOWN:
-		return OnLButtonDown((UINT)wParam, (short)LOWORD(lParam), (short)HIWORD(lParam));
-
-	case WM_LBUTTONUP:
-		return OnLButtonUp((UINT)wParam, (short)LOWORD(lParam), (short)HIWORD(lParam));
-
-	case WM_LBUTTONDBLCLK:
-		return OnLButtonDblClick((UINT)wParam, (short)LOWORD(lParam), (short)HIWORD(lParam));
-
-	case WM_MOUSEMOVE:
-		return OnMouseMove((UINT)wParam, (short)LOWORD(lParam), (short)HIWORD(lParam));
-
-	case WM_KEYDOWN:
-		return OnKeyDown((UINT)wParam, (UINT)lParam);
-
-	case WM_UNDO: case TXM_UNDO: case EM_UNDO:
-		return Undo();
-
-	case TXM_REDO: case EM_REDO:
-		return Redo();
-
-	case TXM_CANUNDO: case EM_CANUNDO:
-		return CanUndo();
-
-	case TXM_CANREDO: case EM_CANREDO:
-		return CanRedo();
-
-	// whether the text differs from its file, as an edit control reports it
-	case EM_GETMODIFY:
-		return FileDoc()->modified();
-
-	case WM_CHAR:
-		return OnChar((UINT)wParam, (UINT)lParam);
-
-	case WM_SETCURSOR:
-		
-		if(LOWORD(lParam) == HTCLIENT)
-			return TRUE;
-
-		break;
-
-	case WM_COPY:
-		return OnCopy();
-
-	case WM_CUT:
-		return OnCut();
-
-	case WM_PASTE:
-		return OnPaste();
-
-	case WM_CLEAR:
-		return OnClear();
-
-	// the Win32 EDIT control messages (TextViewEdit.cpp)
-	case WM_GETTEXT:		case WM_GETTEXTLENGTH:	case EM_GETLINE:
-	case EM_GETLINECOUNT:	case EM_GETFIRSTVISIBLELINE:
-	case EM_GETSEL:			case EM_SETSEL:
-	case EM_LINEFROMCHAR:	case EM_LINEINDEX:		case EM_LINELENGTH:
-	case EM_POSFROMCHAR:	case EM_CHARFROMPOS:
-	case EM_REPLACESEL:		case EM_SCROLLCARET:	case EM_LINESCROLL:
-		return EditMessage(msg, wParam, lParam);
-
-	case WM_TIMER:
-		return OnTimer((UINT_PTR)wParam);
-
-	//
-	case TXM_OPENFILE:
-		return OpenFile((TCHAR *)lParam, -1, false);
-
-    case TXM_SAVESTATE:
-        return SaveState((TEXTVIEWRECOVERY *)lParam);
-    case TXM_LOADSTATE:
-        return LoadState((TEXTVIEWRECOVERY *)lParam);
-
-    case TXM_TAILFILE:
-		return TailFile((TCHAR *)lParam);
-
-	case TXM_UPDATETAIL:
-		return UpdateTail();
-
-	case TXM_SAVEFILE:
-		return SaveFile((TCHAR *)lParam, LOBYTE(LOWORD(wParam)), HIWORD(wParam), HIBYTE(LOWORD(wParam)));
-
-	case TXM_CLEAR:
-		return ClearFile();
-
-	case TXM_SETLINESPACING:
-		return SetLineSpacing((int)wParam, (int)lParam);
-
-	case TXM_ADDFONT:
-		return AddFont((HFONT)wParam);
-
-	case TXM_ADDFONTFALLBACK:
-		return AddFontFallback((int)wParam, (HFONT)lParam);
-
-	case TXM_CLEARFONTFALLBACKS:
-		return ClearFontFallbacks((int)wParam);
-
-	case TXM_SETCOLOR:
-		return SetColour((UINT)wParam, (COLORREF)lParam);
-
-	case TXM_SETSTYLE:
-		return SetStyle((ULONG)wParam, (ULONG)lParam);
-
-	case TXM_SETCARETWIDTH:
-		return SetCaretWidth((int)wParam);
-
-	case TXM_SETIMAGELIST:
-		return SetImageList((HIMAGELIST)wParam);
-
-	case TXM_SETLONGLINE:
-		return SetLongLine((int)lParam);
-
-	case TXM_SETLINEIMAGE:
-		return SetLineImage((ULONG)wParam, (ULONG)lParam);
-
-	case TXM_GETFORMAT:
-		return FileDoc()->getformat();
-
-	case TXM_GETBOM:
-		return FileDoc()->has_bom();
-
-	case TXM_GETLINEFORMAT:
-		return m_nCRLFMode;
-
-    case TXM_SETTABWIDTH:
-        return SetTabWidth((UINT)wParam);
-
-    case TXM_SETFILTERCONTEXT:
-        return SetFilterContext((UINT)wParam);
-
-    case TXM_SETINMEMORYLIMIT:
-		FileDoc()->set_in_memory_limit(wParam);
-		return 0;
-
-	case TXM_CONVERTLINEBREAKS:
-		return ConvertLineBreaks((UINT)wParam);
-
-	case TXM_GETSELSIZE:
-		return ResultFromSize(SelectionSize());
-
-	case TXM_SETSELALL:
-		return SelectAll();
-
-	// -1 while the caret is past the indexed part of a UTF-8 or UTF-32 document
-	case TXM_GETCURPOS:
-		return m_pTextDoc->charoffset_from_pos(m_cursorPos, &offset_chars) == TDR_OK ? ResultFromSize(offset_chars) : -1;
-
-	case TXM_GETCURLINE:
-		m_pTextDoc->lineno_from_pos(m_cursorPos, &lineno);
-		return ResultFromSize(lineno);
-
-	case TXM_GETCURCOL:
-		return ResultFromSize(m_cursorPos.column);
-
-	// filtered, the view is read-only, but the document may not be
-	case TXM_GETEDITMODE:
-		return m_pSourceDoc ? m_nFilterEditMode : m_nEditMode;
-
-	case TXM_GETCURLINEKNOWN:
-		return m_pTextDoc->lineno_from_pos(m_cursorPos, &lineno) == TDR_OK;
-
-	case TXM_GETDOCSTATS:
+		stats->char_count = (unsigned __int64)chars;
+		stats->char_count_known = TRUE;
+	}
+
+	// the selection, counted the same way
+	if(GetSelection(&selStart, &selEnd))
 	{
-		TEXTVIEWDOCSTATS *stats = (TEXTVIEWDOCSTATS *)lParam;
-		TextCoord selStart, selEnd;
-		size_w chars, startChars, endChars;
+		stats->sel_byte_count = (unsigned __int64)(selEnd - selStart);
 
-		if(stats == 0)
-			return FALSE;
-
-		stats->byte_count = (unsigned __int64)FileDoc()->file_length();
-		stats->char_count = 0;
-		stats->char_count_known = FALSE;
-		stats->sel_byte_count = 0;
-		stats->sel_char_count = 0;
-		stats->linebreaks_seen = FileDoc()->linebreaks_seen();
-
-		if(FileDoc()->charcount(&chars) == TDR_OK)
+		if(stats->char_count_known &&
+			m_pTextDoc->charoffset_from_pos(selStart, &startChars) == TDR_OK &&
+			m_pTextDoc->charoffset_from_pos(selEnd, &endChars) == TDR_OK)
 		{
-			stats->char_count = (unsigned __int64)chars;
-			stats->char_count_known = TRUE;
+			stats->sel_char_count = (unsigned __int64)(endChars - startChars);
 		}
-
-		// the selection, counted the same way
-		if(GetSelection(&selStart, &selEnd))
-		{
-			stats->sel_byte_count = (unsigned __int64)(selEnd - selStart);
-
-			if(stats->char_count_known &&
-				m_pTextDoc->charoffset_from_pos(selStart, &startChars) == TDR_OK &&
-				m_pTextDoc->charoffset_from_pos(selEnd, &endChars) == TDR_OK)
-			{
-				stats->sel_char_count = (unsigned __int64)(endChars - startChars);
-			}
-		}
-
-		return TRUE;
 	}
 
-	case TXM_GETCURSORINFO:
-		if(lParam == 0)
-			return FALSE;
-
-		FillCursorInfo((TVNCURSORINFO *)lParam);
-		return TRUE;
-
-	case TXM_INDEXFILE:
-		return IndexFile((BOOL)wParam);
-
-	// the line number comes in two halves
-	case TXM_GOTOLINE: case TXM_CANGOTOLINE:
-		return GotoLine((size_w)(DWORD)wParam | ((size_w)(DWORD)lParam << 32), msg == TXM_GOTOLINE);
-
-	case TXM_GETINDEXINFO:
-		if(lParam == 0)
-			return FALSE;
-
-		FillIndexInfo((TVNINDEXINFO *)lParam);
-		return TRUE;
-
-	case TXM_FINDTEXT:
-		return FindText((TEXTVIEWFIND *)lParam);
-
-	case TXM_SHOWMATCHES:
-		return ShowMatches((TEXTVIEWFIND *)lParam, (BOOL)wParam);
-
-	case TXM_REPLACETEXT:
-		return ResultFromSize(ReplaceText((TEXTVIEWFIND *)lParam, (BOOL)wParam));
-
-	case TXM_SETEDITMODE:
-	{
-		UINT oldMode = m_nEditMode;
-		m_nEditMode = (UINT)wParam;
-		return oldMode;
-	}
-
-	case TXM_SETCONTEXTMENU:
-		m_hUserMenu = (HMENU)wParam;
-		return 0;
-
-	default:
-		break;
-	}
-
-	return DefWindowProc(m_hWnd, msg, wParam, lParam);
+	return TRUE;
 }
-
-//
-//	Win32 TextView window procedure stub
-//
-LRESULT WINAPI TextViewWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
-{
-	TextView *ptv = (TextView *)GetWindowLongPtr(hwnd, 0);
-
-	switch(msg)
-	{
-	// First message received by any window - make a new TextView object
-	// and store pointer to it in our extra-window-bytes
-	case WM_NCCREATE:
-
-		if((ptv = new TextView(hwnd, new TextViewWin32(hwnd))) == 0)
-			return FALSE;
-
-		SetWindowLongPtr(hwnd, 0, (LONG_PTR)ptv);
-		return TRUE;
-
-	// Last message received by any window - delete the TextView object
-	case WM_NCDESTROY:
-		delete ptv;
-		SetWindowLongPtr(hwnd, 0, 0);
-		return 0;
-
-	// Pass everything to the TextView window procedure
-	default:
-		if(ptv)
-			return ptv->WndProc(msg, wParam, lParam);
-		else
-			return 0;
-	}
-}
-
-//
-//	Register the TextView window class
-//
-BOOL InitTextView()
-{
-	WNDCLASSEX	wcx;
-
-	//Window class for the main application parent window
-	wcx.cbSize			= sizeof(wcx);
-	wcx.style			= CS_DBLCLKS;
-	wcx.lpfnWndProc		= TextViewWndProc;
-	wcx.cbClsExtra		= 0;
-	wcx.cbWndExtra		= sizeof(TextView *);
-	wcx.hInstance		= GetModuleHandle(0);
-	wcx.hIcon			= 0;
-	wcx.hCursor			= LoadCursor (NULL, IDC_IBEAM);
-	wcx.hbrBackground	= (HBRUSH)0;		//NO FLICKERING FOR US!!
-	wcx.lpszMenuName	= 0;
-	wcx.lpszClassName	= TEXTVIEW_CLASS;	
-	wcx.hIconSm			= 0;
-
-	return RegisterClassEx(&wcx) ? TRUE : FALSE;
-}
-
-//
-//	Create a TextView control!
-//
-HWND CreateTextView(HWND hwndParent)
-{
-	return CreateWindowEx(WS_EX_CLIENTEDGE, 
-//		L"EDIT", L"",
-		TEXTVIEW_CLASS, _T(""), 
-		WS_VSCROLL |WS_HSCROLL | WS_CHILD | WS_VISIBLE,
-		0, 0, 0, 0, 
-		hwndParent, 
-		0, 
-		GetModuleHandle(0), 
-		0);
-}
-

@@ -10,6 +10,7 @@
 #include <windows.h>
 
 #include "TextViewWin32.h"
+#include "../TextViewInternal.h"
 
 //
 //	64-bit scrollbars (www.catch22.net/tuts/win32/64bit-scrollbars): a range that
@@ -82,8 +83,16 @@ static uint64_t GetScrollPos64(HWND hwnd, int nBar, UINT fMask, uint64_t nMax64)
     return nPos32 * (nMax64 / WIN16_SCROLLBAR_MAX);
 }
 
-TextViewWin32::TextViewWin32(HWND hwnd) : m_hWnd(hwnd)
+TextViewWin32::TextViewWin32(HWND hwnd)
+    : m_hWnd(hwnd), m_pView(0), m_hTheme(OpenThemeData(hwnd, L"edit")), m_hUserMenu(0)
 {
+    m_pView = new TextView(hwnd, this);
+}
+
+TextViewWin32::~TextViewWin32()
+{
+    delete m_pView;
+    CloseThemeData(m_hTheme);
 }
 
 void TextViewWin32::Invalidate()

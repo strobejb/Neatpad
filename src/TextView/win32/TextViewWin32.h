@@ -4,18 +4,29 @@
 #define NEATPAD_TEXTVIEW_WIN32_INCLUDED
 
 #include <windows.h>
+#include <uxtheme.h>
 
 #include "../TextViewHost.h"
 
+class TextView;
+
 //
-//	TextViewWin32 - the TextView engine's host on Win32: its window. For now
-//	the engine is still the window's own object and owns this; the window
-//	will own the engine instead once the message code moves here.
+//	TextViewWin32 - the TextView window. The window holds it, and it holds the
+//	engine: it turns the window's messages into calls to the engine, and does
+//	what the engine asks of its host.
 //
 class TextViewWin32 : public TextViewHost
 {
   public:
     explicit TextViewWin32(HWND hwnd);
+    ~TextViewWin32() override;
+
+    LRESULT WndProc(UINT msg, WPARAM wParam, LPARAM lParam);
+
+    TextView *View() const
+    {
+        return m_pView;
+    }
 
     void Invalidate() override;
     void InvalidateRect(int left, int top, int right, int bottom) override;
@@ -43,7 +54,14 @@ class TextViewWin32 : public TextViewHost
     intptr_t Notify(unsigned code, void *info) override;
 
   private:
-    HWND m_hWnd;
+    LONG  OnNcPaint(HRGN hrgnUpdate);
+    LONG  OnContextMenu(HWND hwndParam, int x, int y);
+    HMENU CreateContextMenu();
+
+    HWND      m_hWnd;
+    TextView *m_pView;
+    HTHEME    m_hTheme;
+    HMENU     m_hUserMenu; // the context menu the parent gave, if any
 };
 
 #endif

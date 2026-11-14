@@ -7,6 +7,7 @@
 #include "../src/TextDocument/sequence_state.h"
 #include "../src/TextView/TextViewInternal.h"
 #include "../src/TextView/win32/Win32Canvas.h"
+#include "../src/TextView/win32/TextViewWin32.h"
 #include <tchar.h>
 #include <shellapi.h>
 #include "../src/Neatpad/win32/Neatpad.h"
@@ -48,9 +49,14 @@ void ShowRecoveredFile(HWND, const TCHAR *filename)
 class TextViewMarginProbe
 {
   public:
+    static TextView *view_of(HWND hwnd)
+    {
+        return ((TextViewWin32 *)GetWindowLongPtr(hwnd, 0))->View();
+    }
+
     static std::vector<ATTR> attributes(HWND hwnd, size_w lineno)
     {
-        TextView *view = (TextView *)GetWindowLongPtr(hwnd, 0);
+        TextView *view = view_of(hwnd);
         TextCoord line;
 
         CHECK(view->m_pTextDoc->coord_from_lineno(lineno, &line) == TDR_OK);
@@ -67,7 +73,7 @@ class TextViewMarginProbe
 
     static size_t marker_pixels(HWND hwnd, size_w lineno, int colour_index = TXC_CHANGEDLINE)
     {
-        TextView             *view   = (TextView *)GetWindowLongPtr(hwnd, 0);
+        TextView             *view   = view_of(hwnd);
         std::vector<uint32_t> pixels = paint(hwnd, lineno);
         COLORREF              colour = view->GetColour(colour_index);
         uint32_t              pixel  = (GetRValue(colour) << 16) | (GetGValue(colour) << 8) | GetBValue(colour);
@@ -77,7 +83,7 @@ class TextViewMarginProbe
 
     static bool deletion_triangle(HWND hwnd, size_w lineno, bool bottom)
     {
-        TextView             *view      = (TextView *)GetWindowLongPtr(hwnd, 0);
+        TextView             *view      = view_of(hwnd);
         std::vector<uint32_t> pixels    = paint(hwnd, lineno);
         COLORREF              colour    = view->GetColour(TXC_CHANGEDTEXT);
         uint32_t              pixel     = (GetRValue(colour) << 16) | (GetGValue(colour) << 8) | GetBValue(colour);
@@ -111,7 +117,7 @@ class TextViewMarginProbe
 
     static bool outlined_marker(HWND hwnd, size_w lineno)
     {
-        TextView             *view   = (TextView *)GetWindowLongPtr(hwnd, 0);
+        TextView             *view   = view_of(hwnd);
         std::vector<uint32_t> pixels = paint(hwnd, lineno);
         COLORREF              colour = view->GetColour(TXC_CHANGEDLINE);
         uint32_t              pixel  = (GetRValue(colour) << 16) | (GetGValue(colour) << 8) | GetBValue(colour);
@@ -125,7 +131,7 @@ class TextViewMarginProbe
 
     static int margin_width(HWND hwnd)
     {
-        return ((TextView *)GetWindowLongPtr(hwnd, 0))->LeftMarginWidth();
+        return view_of(hwnd)->LeftMarginWidth();
     }
 
     static bool continuous_background(HWND hwnd, size_w lineno, bool numbered)
@@ -133,7 +139,7 @@ class TextViewMarginProbe
         std::vector<uint32_t> pixels   = paint(hwnd, lineno);
         int                   width    = margin_width(hwnd);
         int                   height   = (int)(pixels.size() / width);
-        COLORREF              colour   = ((TextView *)GetWindowLongPtr(hwnd, 0))->GetColour(TXC_LINENUMBER);
+        COLORREF              colour   = view_of(hwnd)->GetColour(TXC_LINENUMBER);
         uint32_t              expected = (GetRValue(colour) << 16) | (GetGValue(colour) << 8) | GetBValue(colour);
 
         for (int y = 0; y < height; ++y)
@@ -155,7 +161,7 @@ class TextViewMarginProbe
 
     static bool marker_cap(HWND hwnd, size_w lineno, bool bottom)
     {
-        TextView             *view   = (TextView *)GetWindowLongPtr(hwnd, 0);
+        TextView             *view   = view_of(hwnd);
         std::vector<uint32_t> pixels = paint(hwnd, lineno);
         COLORREF              colour = view->GetColour(TXC_CHANGEDLINE);
         uint32_t              pixel  = (GetRValue(colour) << 16) | (GetGValue(colour) << 8) | GetBValue(colour);
@@ -175,7 +181,7 @@ class TextViewMarginProbe
 
     static bool marker_has_right_padding(HWND hwnd, size_w lineno)
     {
-        TextView             *view   = (TextView *)GetWindowLongPtr(hwnd, 0);
+        TextView             *view   = view_of(hwnd);
         std::vector<uint32_t> pixels = paint(hwnd, lineno);
         int                   width  = view->LeftMarginWidth();
 
@@ -201,7 +207,7 @@ class TextViewMarginProbe
 
     static void cache_line(HWND hwnd, size_w lineno)
     {
-        TextView *view = (TextView *)GetWindowLongPtr(hwnd, 0);
+        TextView *view = view_of(hwnd);
         TextCoord line;
 
         CHECK(view->m_pTextDoc->coord_from_lineno(lineno, &line) == TDR_OK);
@@ -210,7 +216,7 @@ class TextViewMarginProbe
 
     static bool has_cache(HWND hwnd)
     {
-        TextView *view = (TextView *)GetWindowLongPtr(hwnd, 0);
+        TextView *view = view_of(hwnd);
 
         for (int i = 0; i < LINE_CACHE_SIZE; ++i)
         {
@@ -225,7 +231,7 @@ class TextViewMarginProbe
 
     static std::vector<uint32_t> paint(HWND hwnd, size_w lineno)
     {
-        TextView  *view   = (TextView *)GetWindowLongPtr(hwnd, 0);
+        TextView  *view   = view_of(hwnd);
         int        width  = view->LeftMarginWidth();
         int        height = view->m_nLineHeight;
         BITMAPINFO info   = {};

@@ -125,6 +125,7 @@
     <ClCompile Include="TextViewScroll.cpp" />
     <ClCompile Include="TextViewSyntax.cpp" />
     <ClCompile Include="win32\TextViewWin32.cpp" />
+    <ClCompile Include="win32\TextViewWndProc.cpp" />
     <ClCompile Include="win32\Win32Canvas.cpp" />
     <ClCompile Include="win32\UspTextLayout.cpp" />
   </ItemGroup>
