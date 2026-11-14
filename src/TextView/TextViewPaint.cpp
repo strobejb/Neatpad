@@ -56,7 +56,7 @@ void TextView::RefreshWindow()
 LINECACHE *TextView::GetLineCache(TextCoord *coord)
 {
 	tchar_t	*buff;
-	ATTR	*attr;
+	TextRun	*attr;
 	uint32_t	 buflen;
 	uint32_t	 colno = 0;
 	int		 len;
@@ -101,7 +101,7 @@ LINECACHE *TextView::GetLineCache(TextCoord *coord)
 	//
 	buflen = (uint32_t)min_of(coord->line_next - coord->line_begin, (size_w)LINE_LAYOUT_LIMIT);
 	buff   = new tchar_t[buflen + 1];
-	attr   = new ATTR[buflen + 1];
+	attr   = new TextRun[buflen + 1];
 
 	len = m_pTextDoc->getline(*coord, buff, buflen);
 
@@ -598,7 +598,7 @@ int	TextView::ApplySelection(TextLayout *layout, TextCoord *line, uint32_t nText
 //	Colour each match of the text ShowMatches was given, left to right, as
 //	finding it would match it: unit for unit, or regardless of case
 //
-void TextView::HighlightMatches(tchar_t *szText, int nTextLen, ATTR *attr)
+void TextView::HighlightMatches(tchar_t *szText, int nTextLen, TextRun *attr)
 {
 	int length = (int)m_sMatchText.size();
 	int i = 0;
@@ -631,7 +631,7 @@ void TextView::HighlightMatches(tchar_t *szText, int nTextLen, ATTR *attr)
 //
 //	Returns new length of buffer if text has been modified
 //
-int TextView::ApplyTextAttributes(TextCoord *line, uint32_t &nColumn, tchar_t *szText, int nTextLen, ATTR *attr)
+int TextView::ApplyTextAttributes(TextCoord *line, uint32_t &nColumn, tchar_t *szText, int nTextLen, TextRun *attr)
 {
 	int i;
 
@@ -760,7 +760,7 @@ int TextView::CRLF_size(tchar_t *szText, int nLength)
 //	Strip CR/LF combinations from the end of a line and
 //  replace with a single space character (for drawing purposes)
 //
-int TextView::StripCRLF(tchar_t *szText, ATTR *attr, int nLength, bool fAllow)
+int TextView::StripCRLF(tchar_t *szText, TextRun *attr, int nLength, bool fAllow)
 {
 	if(nLength >= 2)
 	{

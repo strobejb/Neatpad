@@ -18,7 +18,7 @@ class UspTextLayout : public TextLayout
     UspTextLayout(HWND hwnd, USPFONT *fonts);
     ~UspTextLayout() override;
 
-    bool Analyze(const tchar_t *text, int length, ATTR *runs, int tabWidth) override;
+    bool Analyze(const tchar_t *text, int length, TextRun *runs, int tabWidth) override;
 
     int Length() override;
     int Width() override;

@@ -8,6 +8,8 @@
 
 #include <windows.h>
 
+#include <vector>
+
 #include "UspTextLayout.h"
 #include "Win32Canvas.h"
 
@@ -20,9 +22,23 @@ UspTextLayout::~UspTextLayout()
     UspFree(m_uspData);
 }
 
-bool UspTextLayout::Analyze(const tchar_t *text, int length, ATTR *runs, int tabWidth)
+bool UspTextLayout::Analyze(const tchar_t *text, int length, TextRun *runs, int tabWidth)
 {
-    HDC hdc = GetDC(m_hWnd);
+    HDC               hdc = GetDC(m_hWnd);
+    std::vector<ATTR> attr(length > 0 ? length : 1);
+
+    // UspLib's runs: the same, by another name
+    for (int i = 0; i < length; i++)
+    {
+        attr[i].fg       = runs[i].fg;
+        attr[i].bg       = runs[i].bg;
+        attr[i].len      = runs[i].len;
+        attr[i].font     = runs[i].font;
+        attr[i].sel      = runs[i].sel;
+        attr[i].ctrl     = runs[i].ctrl;
+        attr[i].eol      = runs[i].eol;
+        attr[i].reserved = runs[i].reserved;
+    }
 
     //
     // setup the tabs + itemization states
@@ -33,7 +49,7 @@ bool UspTextLayout::Analyze(const tchar_t *text, int length, ATTR *runs, int tab
     SCRIPT_STATE   scriptState   = {0};
 
     BOOL analyzed =
-        UspAnalyze(m_uspData, hdc, (WCHAR *)text, length, runs, 0, m_fonts, &scriptControl, &scriptState, &tabdef);
+        UspAnalyze(m_uspData, hdc, (WCHAR *)text, length, attr.data(), 0, m_fonts, &scriptControl, &scriptState, &tabdef);
 
     ReleaseDC(m_hWnd, hdc);
 

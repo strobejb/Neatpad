@@ -9,8 +9,21 @@
 
 class TextCanvas;
 
-// A line's colour and font runs, one per text unit. UspLib defines it for now.
-typedef struct _ATTR ATTR;
+//
+//	TextRun - how one unit of a line is drawn. A line has one per unit.
+//	Colours are 0x00BBGGRR.
+//
+struct TextRun
+{
+    uint32_t fg;
+    uint32_t bg;
+    int      len : 16;     // units in this run
+    int      font : 7;     // the host's font, by index
+    int      sel : 1;      // selected
+    int      ctrl : 1;     // shown as an isolated control character
+    int      eol : 1;      // part of the line break: the caret can't stop inside it
+    int      reserved : 6; // must be 0
+};
 
 //
 //	TextLayout - one line of text laid out, in the build's own text units.
@@ -27,7 +40,7 @@ class TextLayout
 
     // Lay out length units of text, with a run for each unit. Tab stops are
     // tabWidth columns apart.
-    virtual bool Analyze(const tchar_t *text, int length, ATTR *runs, int tabWidth) = 0;
+    virtual bool Analyze(const tchar_t *text, int length, TextRun *runs, int tabWidth) = 0;
 
     // The units laid out, and how wide they are
     virtual int Length() = 0;

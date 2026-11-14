@@ -55,7 +55,7 @@ class TextViewMarginProbe
         return ((TextViewWin32 *)GetWindowLongPtr(hwnd, 0))->View();
     }
 
-    static std::vector<ATTR> attributes(HWND hwnd, size_w lineno)
+    static std::vector<TextRun> attributes(HWND hwnd, size_w lineno)
     {
         TextView *view = view_of(hwnd);
         TextCoord line;
@@ -64,7 +64,7 @@ class TextViewMarginProbe
 
         std::vector<TCHAR> text((size_t)(line.line_next - line.line_begin) + 1);
         int                length = view->m_pTextDoc->getline(line, text.data(), (uint32_t)text.size());
-        std::vector<ATTR>  attr(length + 1);
+        std::vector<TextRun>  attr(length + 1);
         uint32_t           column = 0;
 
         length = view->ApplyTextAttributes(&line, column, text.data(), length, attr.data());
@@ -1646,7 +1646,7 @@ void textview_diff_marks_text_and_clears_cached_colours_on_save()
     SendMessage(pair.view, EM_SETSEL, 1, 3);
     SendMessage(pair.view, EM_REPLACESEL, TRUE, (LPARAM)L"X\xd83d\xde00");
 
-    std::vector<ATTR> attr = TextViewMarginProbe::attributes(pair.view, 0);
+    std::vector<TextRun> attr = TextViewMarginProbe::attributes(pair.view, 0);
 
     CHECK(attr.size() >= 6);
     CHECK(attr[0].fg == RGB(10, 20, 30));
@@ -1711,7 +1711,7 @@ void textview_filtered_diff_uses_source_columns_and_clears_on_save()
         CHECK(window_text(pair.view) == L"before\r\nmatch\r\nX\xd83d\xde00"
                                         L"after\r\n");
 
-        std::vector<ATTR> attr = TextViewMarginProbe::attributes(pair.view, 2);
+        std::vector<TextRun> attr = TextViewMarginProbe::attributes(pair.view, 2);
 
         CHECK(attr.size() >= 9);
         CHECK(attr[0].fg == RGB(190, 55, 55));
@@ -1956,7 +1956,7 @@ void textview_diff_indicators_can_be_hidden_without_losing_changes()
     CHECK(TextViewMarginProbe::marker_pixels(pair.view, 0) == 0);
     CHECK(TextView_GetModify(pair.view));
 
-    std::vector<ATTR> attrs = TextViewMarginProbe::attributes(pair.view, 0);
+    std::vector<TextRun> attrs = TextViewMarginProbe::attributes(pair.view, 0);
 
     CHECK(!attrs.empty() && attrs[0].fg == RGB(190, 55, 55));
     TextViewMarginProbe::cache_line(pair.view, 0);

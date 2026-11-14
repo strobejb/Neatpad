@@ -21,7 +21,7 @@
 
 typedef struct
 {
-	ATTR		attr;
+	TextRun		attr;
 	uint32_t	   type;
 	
 } TYPE;
@@ -37,7 +37,7 @@ struct LEX
 
 LEX firstchar[256];
 
-uint32_t lexer(uint32_t cookie, tchar_t *buf, uint32_t len, ATTR *attr)
+uint32_t lexer(uint32_t cookie, tchar_t *buf, uint32_t len, TextRun *attr)
 {
 	LEX *state = 0;
 	int	  i  = 0;
@@ -119,7 +119,7 @@ tchar_t *gettok(tchar_t *ptr, tchar_t *buf, int buflen)
 	return ptr;
 }
 
-void xSetStyle(ATTR *attr, uint32_t nPos, uint32_t nLen, uint32_t fg, uint32_t bg, int bold=0)
+void xSetStyle(TextRun *attr, uint32_t nPos, uint32_t nLen, uint32_t fg, uint32_t bg, int bold=0)
 {
 	for(uint32_t i = nPos; i < nPos+nLen; i++)
 	{
@@ -159,7 +159,7 @@ static int tstrcmp(const tchar_t *a, const tchar_t *b)
 	return *a < *b ? -1 : *a > *b ? 1 : 0;
 }
 
-int TextView::SyntaxColour(tchar_t *szText, uint32_t nTextLen, ATTR *attr)
+int TextView::SyntaxColour(tchar_t *szText, uint32_t nTextLen, TextRun *attr)
 {
 	tchar_t tok[128];
 

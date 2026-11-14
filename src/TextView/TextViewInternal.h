@@ -31,8 +31,6 @@ HRESULT (WINAPI * DrawThemeBackground_Proc)(HTHEME hTheme, HDC hdc, int, int, co
 #include "TextLayout.h"
 #include "TextCanvas.h"
 
-#include "win32/UspLib/usplib.h"
-
 //
 //	LINECACHE - a line laid out, kept while it's in use
 //
@@ -206,7 +204,7 @@ private:
 	//
 	//	Cursor/Selection
 	//
-	void		HighlightMatches(tchar_t *szText, int nTextLen, ATTR *attr);
+	void		HighlightMatches(tchar_t *szText, int nTextLen, TextRun *attr);
 
 	// Filtering (TextViewFilter.cpp)
     void          WriteFilterContext(TextPos match);
@@ -239,10 +237,10 @@ private:
 	void		UpdateLine(TextCoord *line);
 
 
-	int			ApplyTextAttributes(TextCoord *line, uint32_t &nColumn, tchar_t *szText, int nTextLen, ATTR *attr);
+	int			ApplyTextAttributes(TextCoord *line, uint32_t &nColumn, tchar_t *szText, int nTextLen, TextRun *attr);
 	int			ApplySelection(TextLayout *layout, TextCoord *line, uint32_t nTextLen);
-	int			SyntaxColour(tchar_t *szText, uint32_t nTextLen, ATTR *attr);
-	int			StripCRLF(tchar_t *szText, ATTR *attrList, int nLength, bool fAllow);
+	int			SyntaxColour(tchar_t *szText, uint32_t nTextLen, TextRun *attr);
+	int			StripCRLF(tchar_t *szText, TextRun *attrList, int nLength, bool fAllow);
 	int			CRLF_size(tchar_t *szText, int nLength);
 
 	//
