@@ -325,6 +325,7 @@ private:
 	bool		CheckStyle(uint32_t uMask);
 
 	uint32_t	GetColour(uint32_t idx);
+	uint32_t	ResolveColour(uint32_t col);
 	uint32_t	LineColour(TextCoord *line);
 	uint32_t	LongColour(TextCoord *line);
 

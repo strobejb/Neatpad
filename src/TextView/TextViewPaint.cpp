@@ -16,8 +16,6 @@
 #include "TextViewInternal.h"
 #include "../TextDocument/Unicode.h"
 
-extern "C" COLORREF MixRGB(COLORREF, COLORREF);
-
 // Diff gutter sizes, in pixels. The inset is the gap before the text edge.
 static const int CHANGE_MARKER_WIDTH    = 8;
 static const int CHANGE_MARKER_INSET    = CHANGE_MARKER_WIDTH;
@@ -828,27 +826,33 @@ uint32_t TextView::LongColour(TextCoord *line)
 		return GetColour(TXC_LONGLINE);
 }
 
-COLORREF MixRGB(COLORREF rgbCol1, COLORREF rgbCol2)
+// Half of each of two colours
+static uint32_t MixColour(uint32_t col1, uint32_t col2)
 {
-	return RGB(
-		(GetRValue(rgbCol1) + GetRValue(rgbCol2)) / 2,
-		(GetGValue(rgbCol1) + GetGValue(rgbCol2)) / 2,
-		(GetBValue(rgbCol1) + GetBValue(rgbCol2)) / 2
-		);
+	uint32_t mixed = 0;
+
+	for(int shift = 0; shift < 24; shift += 8)
+		mixed |= ((((col1 >> shift) & 0xff) + ((col2 >> shift) & 0xff)) / 2) << shift;
+
+	return mixed;
 }
 
-COLORREF RealizeColour(COLORREF col)
+//
+//	A colour as the SYSCOL encoding has it, made real: a system colour, or a
+//	mix of two, from the host
+//
+uint32_t TextView::ResolveColour(uint32_t col)
 {
 	uint32_t result = col;
 
 	if(col & 0x80000000)
-		result = GetSysColor(col & 0xff);
+		result = m_pHost->SystemColour(col & 0xff);
 	
 	if(col & 0x40000000)
-		result = MixRGB(GetSysColor((col & 0xff00) >> 8), result);
+		result = MixColour(m_pHost->SystemColour((col & 0xff00) >> 8), result);
 
 	if(col & 0x20000000)
-		result = MixRGB(GetSysColor((col & 0xff00) >> 8), result);
+		result = MixColour(m_pHost->SystemColour((col & 0xff00) >> 8), result);
 
 	return result;
 }
@@ -858,7 +862,7 @@ COLORREF RealizeColour(COLORREF col)
 //
 //	If the RGB value has the top bit set (0x80000000) then it is
 //  not a real RGB value - instead the low 29bits specify one
-//  of the GetSysColor COLOR_xxx indices. This allows us to use
+//  of the TVSC_xxx system colours. This allows us to use
 //	system colours without worrying about colour-scheme changes etc.
 //
 uint32_t TextView::GetColour(uint32_t idx)
@@ -866,7 +870,7 @@ uint32_t TextView::GetColour(uint32_t idx)
 	if(idx >= TXC_MAX_COLOURS)
 		return 0;
 
-	return REALIZE_SYSCOL(m_rgbColourList[idx]);
+	return ResolveColour(m_rgbColourList[idx]);
 }
 
 uint32_t TextView::SetColour(uint32_t idx, uint32_t rgbColour)

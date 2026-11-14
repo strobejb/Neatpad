@@ -65,4 +65,20 @@
 
 #define SYSCOLIDX(COLREF)   ( 0x00FFFFFF & COLREF )
 
+//
+//	The system colours the view uses, for SYSCOL: Win32's COLOR_* indices. On
+//	another platform the host gives each its theme's nearest colour.
+//
+#define TVSC_WINDOW				5
+#define TVSC_WINDOWTEXT			8
+#define TVSC_HIGHLIGHT			13
+#define TVSC_HIGHLIGHTTEXT		14
+#define TVSC_3DFACE				15
+#define TVSC_3DSHADOW			16
+#define TVSC_3DHIGHLIGHT		20
+#define TVSC_3DDKSHADOW			21
+
+// A colour, 0x00BBGGRR, as Win32's RGB makes it
+#define TV_RGB(r, g, b)		( (uint32_t)(r) | ((uint32_t)(g) << 8) | ((uint32_t)(b) << 16) )
+
 #endif

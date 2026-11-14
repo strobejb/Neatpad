@@ -70,6 +70,7 @@ class TextViewWin32 : public TextViewHost
     int  CaretWidth() override;
     int  WheelScrollLines() override;
 
+    uint32_t    SystemColour(int index) override;
     int         FontCount() override;
     void        GetFontMetrics(int font, FontMetrics *metrics) override;
     int         TextWidth(const tchar_t *text, int length) override;

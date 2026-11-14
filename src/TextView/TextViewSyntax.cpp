@@ -175,39 +175,39 @@ int TextView::SyntaxColour(tchar_t *szText, uint32_t nTextLen, TextRun *attr)
 	{
 		if(tok[0] >= '0' && tok[0] <= '9')
 		{
-			//xSetStyle(attr, ptr1 - szText, ptr2-ptr1, RGB(200,0,0), RGB(255,255,255), 0);
-			xSetStyle(attr, TextOffset(szText, ptr1), TextLength(ptr1, ptr2), RGB(255,80,80), RGB(255,255,255), 0);
+			//xSetStyle(attr, ptr1 - szText, ptr2-ptr1, TV_RGB(200,0,0), TV_RGB(255,255,255), 0);
+			xSetStyle(attr, TextOffset(szText, ptr1), TextLength(ptr1, ptr2), TV_RGB(255,80,80), TV_RGB(255,255,255), 0);
 		}
 		else if(memcmp(tok, TSTR("if"), 2) == 0 || 
 			memcmp(tok, TSTR("for"), 3) == 0)
 		{
-			//xSetStyle(attr, ptr1 - szText, ptr2-ptr1, RGB(0,0,128), RGB(255,255,255), 1);
-			xSetStyle(attr, TextOffset(szText, ptr1), TextLength(ptr1, ptr2), RGB(240,240,240), RGB(255,255,255), 1);
+			//xSetStyle(attr, ptr1 - szText, ptr2-ptr1, TV_RGB(0,0,128), TV_RGB(255,255,255), 1);
+			xSetStyle(attr, TextOffset(szText, ptr1), TextLength(ptr1, ptr2), TV_RGB(240,240,240), TV_RGB(255,255,255), 1);
 		}
 		else if(tok[0] == '\"' || tok[0] == '<' || tok[0] == '\'')
 		{
-			//xSetStyle(attr, ptr1 - szText, ptr2-ptr1, RGB(128,0,128), RGB(255,255,255));
-			xSetStyle(attr, TextOffset(szText, ptr1), TextLength(ptr1, ptr2), RGB(200,100,200), RGB(255,255,255));
+			//xSetStyle(attr, ptr1 - szText, ptr2-ptr1, TV_RGB(128,0,128), TV_RGB(255,255,255));
+			xSetStyle(attr, TextOffset(szText, ptr1), TextLength(ptr1, ptr2), TV_RGB(200,100,200), TV_RGB(255,255,255));
 		}
 		else if(tok[0] == '#')//lstrcmp(tok, _T("#include")) == 0)
 		{
-			//SetStyle(attr, ptr1 - szText, ptr2 - ptr1, RGB(255,255,0), RGB(255,0,0));
-			//xSetStyle(attr, ptr1 - szText, ptr2-ptr1, RGB(65,102,190), RGB(255,255,255));
-			xSetStyle(attr, TextOffset(szText, ptr1), TextLength(ptr1, ptr2), RGB(100,150,200), RGB(255,255,255));
+			//SetStyle(attr, ptr1 - szText, ptr2 - ptr1, TV_RGB(255,255,0), TV_RGB(255,0,0));
+			//xSetStyle(attr, ptr1 - szText, ptr2-ptr1, TV_RGB(65,102,190), TV_RGB(255,255,255));
+			xSetStyle(attr, TextOffset(szText, ptr1), TextLength(ptr1, ptr2), TV_RGB(100,150,200), TV_RGB(255,255,255));
 		}		
 		else if(tstrcmp(tok, TSTR("ULONG")) == 0)
 		{
-			xSetStyle(attr, TextOffset(szText, ptr1), TextLength(ptr1, ptr2), RGB(100,200,255), RGB(255,255,255));
+			xSetStyle(attr, TextOffset(szText, ptr1), TextLength(ptr1, ptr2), TV_RGB(100,200,255), TV_RGB(255,255,255));
 		}
 		else if(tstrcmp(tok, TSTR("//")) == 0)
 		{
-			//xSetStyle(attr, ptr1 - szText, nTextLen - (ptr1-szText), RGB(128,90,20), RGB(255,255,255));
-			xSetStyle(attr, TextOffset(szText, ptr1), (uint32_t)(nTextLen - (ptr1-szText)), RGB(128,110,90), RGB(255,255,255));
+			//xSetStyle(attr, ptr1 - szText, nTextLen - (ptr1-szText), TV_RGB(128,90,20), TV_RGB(255,255,255));
+			xSetStyle(attr, TextOffset(szText, ptr1), (uint32_t)(nTextLen - (ptr1-szText)), TV_RGB(128,110,90), TV_RGB(255,255,255));
 			break;
 		}
 		else
 		{
-			//xSetStyle(attr, ptr1 - szText, nTextLen - (ptr1-szText), RGB(200,200,200), RGB(255,255,255));
+			//xSetStyle(attr, ptr1 - szText, nTextLen - (ptr1-szText), TV_RGB(200,200,200), TV_RGB(255,255,255));
 		}
 
 		ptr1 = ptr2;

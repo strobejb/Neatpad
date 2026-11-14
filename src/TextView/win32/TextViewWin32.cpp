@@ -428,6 +428,11 @@ bool TextViewWin32::MarginImageSize(int *width, int *height)
     return m_hImageList && ImageList_GetIconSize(m_hImageList, width, height);
 }
 
+uint32_t TextViewWin32::SystemColour(int index)
+{
+    return GetSysColor(index);
+}
+
 TextLayout *TextViewWin32::CreateLayout()
 {
     return new UspTextLayout(m_hWnd, m_fonts);
@@ -499,4 +504,29 @@ intptr_t TextViewWin32::Notify(unsigned code, void *info)
     }
 
     return SendMessage(GetParent(m_hWnd), WM_NOTIFY, (WPARAM)nCtrlId, (LPARAM)nmptr);
+}
+
+static COLORREF MixRGB(COLORREF rgbCol1, COLORREF rgbCol2)
+{
+    return RGB((GetRValue(rgbCol1) + GetRValue(rgbCol2)) / 2, (GetGValue(rgbCol1) + GetGValue(rgbCol2)) / 2,
+               (GetBValue(rgbCol1) + GetBValue(rgbCol2)) / 2);
+}
+
+//
+//	A SYSCOL colour made real, for the application (TextView.h)
+//
+extern "C" COLORREF RealizeColour(COLORREF col)
+{
+    COLORREF result = col;
+
+    if (col & 0x80000000)
+        result = GetSysColor(col & 0xff);
+
+    if (col & 0x40000000)
+        result = MixRGB(GetSysColor((col & 0xff00) >> 8), result);
+
+    if (col & 0x20000000)
+        result = MixRGB(GetSysColor((col & 0xff00) >> 8), result);
+
+    return result;
 }

@@ -100,6 +100,9 @@ class TextViewHost
     virtual int CaretWidth()       = 0;
     virtual int WheelScrollLines() = 0;
 
+    // A system colour, 0x00BBGGRR, by its TVSC_* index (TextViewDefs.h)
+    virtual uint32_t SystemColour(int index) = 0;
+
     //
     //	Fonts. The host holds them, and a layout's runs choose one by index.
     //	Font 0 is the main font, which the margin uses too.
