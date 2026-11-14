@@ -4,6 +4,7 @@
 //	never shown.
 //
 #include "tests.h"
+#include "../src/TextView/TextView.h"
 #include "../src/TextDocument/sequence_state.h"
 #include "../src/TextView/TextViewInternal.h"
 #include "../src/TextView/win32/Win32Canvas.h"

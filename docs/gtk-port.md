@@ -187,9 +187,16 @@ Each step is its own commit on `main`, and moves and formatting changes stay sep
   - **Done:** 4a. `CMakeLists.txt` builds the `TextDocument` library and `CoreTests` (the sequence, line, char and
     document groups), checked with MSVC. `SequenceTests.vcxproj` defines `NEATPAD_TEXTVIEW_TESTS` to add the textview
     group.
-  - **Next:** 4b. Make the core tests portable: a portable test header for `TCHAR`, `MAX_PATH`, `DeleteFile` and
-    the like, with the Windows-only tests (file sharing, sparse files) behind `_WIN32`.
-  - 4c. POSIX fallbacks for `Unicode.c`'s ANSI and case-insensitive functions, and the Ubuntu CI job.
+  - **Done:** 4b. The core tests are portable, and `CoreTests` passes on Fedora with GCC. Text is `tchar_t`, with
+    `TSTR("...")` literals and `tstring`, and paths are `seqfilechar`; neither `TCHAR` nor `wchar_t` is left. Files
+    are made, read and deleted with `std::filesystem` and stdio, so `SequenceTests.vcxproj` builds as C++17.
+    Windows-only, behind `_WIN32`: the share-mode tests (locked files, a writer appending, growth), read-only
+    attributes, the NTFS stream, the ANSI code page and the creation-time check. The Windows build of this is not
+    yet checked.
+  - **Partly done:** 4c. `Unicode.c` has POSIX fallbacks: 8-bit text is taken as Latin-1, and case is compared
+    with `towlower_l` in the C.UTF-8 locale, one UTF-16 unit at a time. **Next:** the Ubuntu CI job.
+- **Step 5** flips `TSTR` to plain `"..."` along with `tchar_t = char`. The tests that spell out UTF-16 units
+  (surrogate pairs, `{ 0xd83d, 0xde00 }`) need UTF-8 versions then.
 - Still Win32 in the engine besides the types: `VK_*` keys and
   `GetKeyState`, the `ATTR` run type from UspLib, `wsprintf` for line numbers, the filter's temp-file `HANDLE`,
   `SYSCOL` colours and `GetSysColor`, and the `TVN_*` notification structures.

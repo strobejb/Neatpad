@@ -3,7 +3,6 @@
 //	redo, and reading files into a sequence
 //
 #include "tests.h"
-#include <tchar.h>
 #include "../src/TextDocument/sequence_state.h"
 
 // Inspect buffer ownership without adding a public sequence API for tests.
@@ -69,34 +68,28 @@ namespace
 {
 struct checkpoint_store
 {
-    TCHAR dir[MAX_PATH];
+    seqfilechar dir[TEST_PATH_MAX];
 
     checkpoint_store()
     {
-        CHECK(write_temp_file("", 0, dir));
-        CHECK(DeleteFile(dir));
-        CHECK(CreateDirectory(dir, 0));
+        std::error_code error;
+
+        CHECK(temp_file(dir));
+        CHECK(delete_file(dir));
+        CHECK(std::filesystem::create_directory(dir, error));
     }
 
     ~checkpoint_store()
     {
-        TCHAR           pattern[MAX_PATH], name[MAX_PATH];
-        WIN32_FIND_DATA data;
-        wsprintf(pattern, _T("%s\\*"), dir);
-        HANDLE find = FindFirstFile(pattern, &data);
-        if (find != INVALID_HANDLE_VALUE)
-        {
-            do
-            {
-                if (!(data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
-                {
-                    wsprintf(name, _T("%s\\%s"), dir, data.cFileName);
-                    DeleteFile(name);
-                }
-            } while (FindNextFile(find, &data));
-            FindClose(find);
-        }
-        RemoveDirectory(dir);
+        std::error_code error;
+
+        std::filesystem::remove_all(dir, error);
+    }
+
+    // A file in the store
+    std::filesystem::path file(const char *name) const
+    {
+        return std::filesystem::path(dir) / name;
     }
 };
 
@@ -164,7 +157,7 @@ void sequence_modify_buffers_roll_over_without_changing_initial_data()
 
 void sequence_file_initial_buffer_is_zero()
 {
-    TCHAR       file[MAX_PATH];
+    seqfilechar file[TEST_PATH_MAX];
     const char *text = "first\nlast";
 
     CHECK(write_temp_file(text, strlen(text), file));
@@ -186,7 +179,7 @@ void sequence_file_initial_buffer_is_zero()
         expect_content(seq, "first\nnew last");
         CHECK(SequenceBufferProbe::span_buffers(seq) == std::vector<int>({0, 1, 0}));
     }
-    CHECK(DeleteFile(file));
+    CHECK(delete_file(file));
 }
 
 void checkpoint_preserves_buffer_origins_and_legacy_ids()
@@ -290,7 +283,7 @@ void checkpoint_preserves_both_stacks_groups_and_saved_state()
 void checkpoint_references_original_and_retains_it_before_save()
 {
     checkpoint_store store;
-    TCHAR            file[MAX_PATH];
+    seqfilechar      file[TEST_PATH_MAX];
     std::string      text = utf8_text((size_t)MEM_BLOCK_SIZE * 5);
     CHECK(write_temp_file(text.data(), text.size(), file));
     sequence seq, copy;
@@ -299,14 +292,10 @@ void checkpoint_references_original_and_retains_it_before_save()
     CHECK(insert_bytes(seq, 25, "extra\r\n"));
     state_writer writer(store.dir);
     CHECK(seq.save_state(writer));
-    TCHAR base[MAX_PATH];
-    wsprintf(base, TEXT("%s\\buffer-0.bin"), store.dir);
-    CHECK(GetFileAttributes(base) == INVALID_FILE_ATTRIBUTES); // original was referenced
+    CHECK(!std::filesystem::exists(store.file("buffer-0.bin"))); // original was referenced
     // Simulate an uncommitted leftover: hard-link creation cannot replace it,
     // so retention exercises the copy fallback before publishing the new path.
-    wsprintf(base, TEXT("%s\\base-0.bin"), store.dir);
-    FILE *leftover = 0;
-    _wfopen_s(&leftover, base, L"wb");
+    FILE *leftover = open_file(store.file("base-0.bin"), "wb");
     CHECK(leftover != 0);
     if (leftover)
     {
@@ -316,7 +305,7 @@ void checkpoint_references_original_and_retains_it_before_save()
     CHECK(writer.preserve_sources()); // ordinary Save must keep the old base for undo
     CHECK(seq.save_state(writer));
     seq.clear();
-    CHECK(DeleteFile(file));
+    CHECK(delete_file(file));
     state_reader reader(store.dir);
     CHECK(copy.load_state(reader));
     CHECK(copy.size() == text.size() + 7);
@@ -349,10 +338,7 @@ void checkpoint_rejects_groups_and_bad_data_without_changing_destination()
     copy.clear();
     CHECK(seq.save_state(writer));
     // Interrupt a later append: extra uncommitted buffer bytes are ignored.
-    TCHAR path[MAX_PATH];
-    wsprintf(path, _T("%s\\buffer-0.bin"), store.dir);
-    FILE *fp = 0;
-    _wfopen_s(&fp, path, L"ab");
+    FILE *fp = open_file(store.file("buffer-0.bin"), "ab");
     CHECK(fp != 0);
     if (fp)
     {
@@ -363,8 +349,7 @@ void checkpoint_rejects_groups_and_bad_data_without_changing_destination()
     CHECK(render_content(copy) == render_content(seq));
     copy.clear();
     init(copy, "untouched");
-    wsprintf(path, _T("%s\\state.bin"), store.dir);
-    _wfopen_s(&fp, path, L"r+b");
+    fp = open_file(store.file("state.bin"), "r+b");
     CHECK(fp != 0);
     if (fp)
     {
@@ -381,7 +366,7 @@ void checkpoint_rejects_groups_and_bad_data_without_changing_destination()
 void checkpoint_large_original_writes_only_modified_bytes()
 {
     checkpoint_store store;
-    TCHAR            original[MAX_PATH];
+    seqfilechar      original[TEST_PATH_MAX];
     if (!write_sparse_file("head\n", "tail", 8ULL * 1024 * 1024 * 1024, original))
         return;
     sequence seq;
@@ -389,31 +374,28 @@ void checkpoint_large_original_writes_only_modified_bytes()
     CHECK(insert_bytes(seq, 2, "edit"));
     state_writer writer(store.dir);
     CHECK(seq.save_state(writer));
-    TCHAR pattern[MAX_PATH];
-    wsprintf(pattern, TEXT("%s\\*"), store.dir);
-    WIN32_FIND_DATA data;
-    ULONGLONG       total = 0;
-    HANDLE          find  = FindFirstFile(pattern, &data);
-    if (find != INVALID_HANDLE_VALUE)
+    uint64_t total = 0;
+    for (const std::filesystem::directory_entry &entry : std::filesystem::directory_iterator(store.dir))
     {
-        do
-        {
-            if (!(data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
-                total += ((ULONGLONG)data.nFileSizeHigh << 32) | data.nFileSizeLow;
-        } while (FindNextFile(find, &data));
-        FindClose(find);
+        if (entry.is_regular_file())
+            total += entry.file_size();
     }
     CHECK(total < 4096); // includes the entire manifest and all persisted buffers
     seq.clear();
-    CHECK(DeleteFile(original));
+    CHECK(delete_file(original));
 }
 
 void checkpoint_rejects_changed_or_missing_original_without_replacing_destination()
 {
     for (int kind = 0; kind < 5; ++kind)
     {
+#ifndef _WIN32
+        // POSIX files have no creation time to change
+        if (kind == 3)
+            continue;
+#endif
         checkpoint_store store;
-        TCHAR            original[MAX_PATH];
+        seqfilechar      original[TEST_PATH_MAX];
         CHECK(write_temp_file("abcdef", 6, original));
         sequence seq, copy;
         CHECK(seq.open(original, false));
@@ -425,10 +407,14 @@ void checkpoint_rejects_changed_or_missing_original_without_replacing_destinatio
         expect_content(copy, "abeditcdef");
         copy.clear();
         seq.clear();
+#ifdef _WIN32
         WIN32_FILE_ATTRIBUTE_DATA before;
         CHECK(GetFileAttributesEx(original, GetFileExInfoStandard, &before));
+#else
+        std::filesystem::file_time_type before = std::filesystem::last_write_time(original);
+#endif
         if (kind == 0)
-            CHECK(DeleteFile(original));
+            CHECK(delete_file(original));
         else
         {
             if (kind == 4)
@@ -438,6 +424,7 @@ void checkpoint_rejects_changed_or_missing_original_without_replacing_destinatio
                 CHECK(replacement.write("abcdef", 6));
                 CHECK(replacement.commit());
             }
+#ifdef _WIN32
             HANDLE file = CreateFile(original, GENERIC_WRITE | FILE_WRITE_ATTRIBUTES,
                                      FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, 0, OPEN_EXISTING, 0, 0);
             CHECK(file != INVALID_HANDLE_VALUE);
@@ -454,6 +441,22 @@ void checkpoint_rejects_changed_or_missing_original_without_replacing_destinatio
                 ++created.dwLowDateTime;
             CHECK(SetFileTime(file, &created, 0, &written));
             CloseHandle(file);
+#else
+            if (kind == 1)
+            {
+                FILE *file = open_file(original, "ab");
+                CHECK(file != 0);
+                if (file)
+                {
+                    fputc('!', file);
+                    fclose(file);
+                }
+            }
+            std::filesystem::file_time_type written = before;
+            if (kind == 2)
+                written += std::chrono::nanoseconds(1);
+            std::filesystem::last_write_time(original, written);
+#endif
         }
         init(copy, "keep this");
         CHECK(!copy.load_state(reader));
@@ -461,10 +464,11 @@ void checkpoint_rejects_changed_or_missing_original_without_replacing_destinatio
         expect_content(copy, "keep this");
         CHECK(!copy.canundo() && !copy.modified());
         if (kind != 0)
-            CHECK(DeleteFile(original));
+            CHECK(delete_file(original));
     }
 }
 
+#ifdef _WIN32
 void checkpoint_publish_failure_preserves_previous_commit_and_context()
 {
     checkpoint_store store;
@@ -482,9 +486,7 @@ void checkpoint_publish_failure_preserves_previous_commit_and_context()
     CHECK(insert_bytes(seq, seq.size(), " two"));
     seq.breakopt();
     writer.set_context({4, 5});
-    TCHAR manifest[MAX_PATH];
-    wsprintf(manifest, TEXT("%s\\state.bin"), store.dir);
-    HANDLE lock = CreateFile(manifest, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
+    HANDLE lock = CreateFile(store.file("state.bin").c_str(), GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
     CHECK(lock != INVALID_HANDLE_VALUE);
     CHECK(!seq.save_state(writer)); // backing append succeeds; manifest replacement fails
     CloseHandle(lock);
@@ -508,6 +510,7 @@ void checkpoint_publish_failure_preserves_previous_commit_and_context()
     CHECK(copy.undo());
     expect_content(copy, "base one");
 }
+#endif
 
 void checkpoint_roundtrips_mixed_history()
 {
@@ -569,7 +572,7 @@ void checkpoint_preserves_unicode_indexes_and_empty_sequences()
     {
         checkpoint_store store;
         sequence         seq, copy;
-        std::string      text = encode_text(L"first\r\n\x00e9\x20ac\nlast", encoding);
+        std::string      text = encode_text(TSTR("first\r\n\x00e9\x20ac\nlast"), encoding);
         CHECK(seq.init((const seqchar *)text.data(), text.size()));
         sequence::line_scan_mode mode = encoding == NCP_UTF8      ? sequence::line_scan_utf8
                                         : encoding == NCP_UTF16   ? sequence::line_scan_utf16le
@@ -619,10 +622,8 @@ void checkpoint_rejects_truncation_and_invalid_graph_with_valid_checksum()
     state_writer writer(store.dir);
     state_reader reader(store.dir);
     CHECK(seq.save_state(writer));
-    TCHAR name[MAX_PATH];
-    wsprintf(name, _T("%s\\state.bin"), store.dir);
-    FILE *fp = 0;
-    _wfopen_s(&fp, name, L"rb");
+    std::filesystem::path name = store.file("state.bin");
+    FILE                 *fp   = open_file(name, "rb");
     CHECK(fp != 0);
     if (!fp)
         return;
@@ -634,7 +635,7 @@ void checkpoint_rejects_truncation_and_invalid_graph_with_valid_checksum()
     fclose(fp);
     for (size_t length = 0; length < bytes.size(); length += 7)
     {
-        _wfopen_s(&fp, name, L"wb");
+        fp = open_file(name, "wb");
         CHECK(fp != 0);
         if (!fp)
             return;
@@ -661,7 +662,7 @@ void checkpoint_rejects_truncation_and_invalid_graph_with_valid_checksum()
     crc = ~crc;
     for (int i = 0; i < 4; ++i)
         bytes[24 + i] = (uint8_t)(crc >> (i * 8));
-    _wfopen_s(&fp, name, L"wb");
+    fp = open_file(name, "wb");
     CHECK(fp != 0);
     if (!fp)
         return;
@@ -1062,7 +1063,7 @@ void render_past_end_returns_available_bytes()
 void open_file_renders_file_backed_content()
 {
     sequence seq;
-    TCHAR path[MAX_PATH];
+    seqfilechar path[TEST_PATH_MAX];
     const char *text = "first\r\nsecond\nthird";
 
     CHECK(write_temp_file(text, strlen(text), path));
@@ -1073,13 +1074,13 @@ void open_file_renders_file_backed_content()
     expect_offset_from_lineno(seq, 2, 14);
 
 	seq.clear();
-    DeleteFile(path);
+    delete_file(path);
 }
 
 void open_file_renders_across_view_boundary()
 {
     sequence seq;
-    TCHAR path[MAX_PATH];
+    seqfilechar path[TEST_PATH_MAX];
     const size_t file_length = MEM_BLOCK_SIZE + 128;
     const size_w render_offset = MEM_BLOCK_SIZE - 60;
     const size_w render_length = 140;
@@ -1098,14 +1099,14 @@ void open_file_renders_across_view_boundary()
     CHECK(memcmp(actual.data(), data + render_offset, render_length) == 0);
 
 	seq.clear();
-    DeleteFile(path);
+    delete_file(path);
     delete[] data;
 }
 
 void open_file_larger_than_4gb()
 {
     sequence seq;
-    TCHAR path[MAX_PATH];
+    seqfilechar path[TEST_PATH_MAX];
     const size_w size = LARGE_FILE_SIZE;
     const size_w tail_length = strlen(LARGE_FILE_TAIL);
     const size_w last_line = size - strlen("last line");
@@ -1137,7 +1138,7 @@ void open_file_larger_than_4gb()
     CHECK(!seq.lineno_known_at(size));
 
     seq.clear();
-    DeleteFile(path);
+    delete_file(path);
 }
 
 void sequence_modified_follows_undo_history()
@@ -1221,7 +1222,7 @@ void sequence_modified_treats_group_as_one_edit()
 void sequence_reads_a_short_file_into_memory()
 {
     sequence       seq;
-    TCHAR          path[MAX_PATH];
+    seqfilechar    path[TEST_PATH_MAX];
     std::string    text;
     size_w         lines = 0;
     const seqchar  typed[] = "typed\n";
@@ -1232,7 +1233,9 @@ void sequence_reads_a_short_file_into_memory()
 
     CHECK(write_temp_file(text.data(), text.size(), path));
     CHECK(seq.open(path, false, text.size() + 1));
+#ifdef _WIN32
     CHECK(others_can_write(path));
+#endif
     CHECK(render_content(seq) == text);
 
     seq.index_lines(0, seq.size());
@@ -1246,9 +1249,10 @@ void sequence_reads_a_short_file_into_memory()
     CHECK(render_content(seq) == text);
 
     seq.clear();
-    DeleteFile(path);
+    delete_file(path);
 }
 
+#ifdef _WIN32
 // Line breaks in text: CR, LF and CRLF each count once
 size_w breaks_in(const std::string &text)
 {
@@ -1275,7 +1279,7 @@ bool append_to(HANDLE writer, const std::string &text)
 void sequence_grows_as_a_file_is_appended_to()
 {
     sequence    seq;
-    TCHAR       path[MAX_PATH];
+    seqfilechar path[TEST_PATH_MAX];
     std::string text = utf8_text(12 * 5600) + "\r";
     std::string more = "\nmore caf\xc3\xa9\r\n";
     std::string pages = utf8_text(12 * 11000);
@@ -1323,15 +1327,15 @@ void sequence_grows_as_a_file_is_appended_to()
 
     CloseHandle(writer);
     seq.clear();
-    DeleteFile(path);
+    delete_file(path);
 }
 
 void sequence_opens_read_only_while_another_program_writes()
 {
-    sequence seq;
-    TCHAR    path[MAX_PATH];
-    HANDLE   writer;
-    size_w   added = 0;
+    sequence    seq;
+    seqfilechar path[TEST_PATH_MAX];
+    HANDLE      writer;
+    size_w      added = 0;
 
     CHECK(write_temp_file("log line\r\n", 10, path));
 
@@ -1357,8 +1361,9 @@ void sequence_opens_read_only_while_another_program_writes()
 
     seq.clear();
     CloseHandle(writer);
-    DeleteFile(path);
+    delete_file(path);
 }
+#endif
 
 // What render passes on, joined, and how many blocks it came in
 std::string render_blocks(const sequence &seq, size_w index, size_w length, size_t *blocks)
@@ -1604,13 +1609,14 @@ void sequence_diff_handles_modify_buffer_rollover_and_reinitialization()
     CHECK(!seq.modified());
 }
 
+#ifdef _WIN32
 void sequence_diff_keeps_open_and_external_growth_unmarked()
 {
-    sequence seq;
-    TCHAR    path[MAX_PATH];
-    HANDLE   writer;
-    DWORD    written;
-    size_w   added = 0;
+    sequence    seq;
+    seqfilechar path[TEST_PATH_MAX];
+    HANDLE      writer;
+    DWORD       written;
+    size_w      added = 0;
 
     CHECK(write_temp_file("first\n", 6, path));
     CHECK(seq.open(path, false, 1024));
@@ -1630,8 +1636,9 @@ void sequence_diff_keeps_open_and_external_growth_unmarked()
     CHECK(read_diff(seq).empty());
     CHECK(seq.clear());
     CloseHandle(writer);
-    DeleteFile(path);
+    delete_file(path);
 }
+#endif
 
 // Independent per-byte identities: equal text does not mean equal provenance.
 // This oracle does not inspect sequence spans, buffer IDs or cached intervals.
@@ -1786,11 +1793,8 @@ void write_checkpoint_integer(std::vector<uint8_t> &bytes, size_t at, uint64_t v
 
 bool read_checkpoint(const checkpoint_store &store, std::vector<uint8_t> &bytes)
 {
-    TCHAR name[MAX_PATH];
-    FILE *fp = 0;
+    FILE *fp = open_file(store.file("state.bin"), "rb");
 
-    wsprintf(name, _T("%s\\state.bin"), store.dir);
-    _wfopen_s(&fp, name, L"rb");
     if (!fp)
         return false;
 
@@ -1808,7 +1812,6 @@ bool read_checkpoint(const checkpoint_store &store, std::vector<uint8_t> &bytes)
 
 bool write_checkpoint(const checkpoint_store &store, std::vector<uint8_t> bytes)
 {
-    TCHAR    name[MAX_PATH];
     FILE    *fp  = 0;
     uint32_t crc = ~0U;
 
@@ -1821,8 +1824,7 @@ bool write_checkpoint(const checkpoint_store &store, std::vector<uint8_t> bytes)
     }
     write_checkpoint_integer(bytes, 24, (uint32_t)~crc, 4);
 
-    wsprintf(name, _T("%s\\state.bin"), store.dir);
-    _wfopen_s(&fp, name, L"wb");
+    fp = open_file(store.file("state.bin"), "wb");
     if (!fp)
         return false;
 
@@ -1996,7 +1998,9 @@ const test_case tests[] = {
      sequence_diff_handles_grouping_coalescing_and_identical_text},
     {"sequence_diff_handles_modify_buffer_rollover_and_reinitialization",
      sequence_diff_handles_modify_buffer_rollover_and_reinitialization},
+#ifdef _WIN32
     {"sequence_diff_keeps_open_and_external_growth_unmarked", sequence_diff_keeps_open_and_external_growth_unmarked},
+#endif
     {"sequence_diff_matches_token_identity_through_random_history",
      sequence_diff_matches_token_identity_through_random_history},
     {"sequence_initial_and_modify_buffers_are_separate", sequence_initial_and_modify_buffers_are_separate},
@@ -2007,8 +2011,10 @@ const test_case tests[] = {
     {"checkpoint_large_original_writes_only_modified_bytes", checkpoint_large_original_writes_only_modified_bytes},
     {"checkpoint_rejects_changed_or_missing_original_without_replacing_destination",
      checkpoint_rejects_changed_or_missing_original_without_replacing_destination},
+#ifdef _WIN32
     {"checkpoint_publish_failure_preserves_previous_commit_and_context",
      checkpoint_publish_failure_preserves_previous_commit_and_context},
+#endif
     {"checkpoint_preserves_both_stacks_groups_and_saved_state",
      checkpoint_preserves_both_stacks_groups_and_saved_state},
     {"checkpoint_references_original_and_retains_it_before_save",
@@ -2058,8 +2064,10 @@ const test_case tests[] = {
      sequence_mark_saved_stops_typing_joining_the_saved_record},
     {"sequence_modified_treats_group_as_one_edit", sequence_modified_treats_group_as_one_edit},
     {"sequence_reads_a_short_file_into_memory", sequence_reads_a_short_file_into_memory},
+#ifdef _WIN32
     {"sequence_grows_as_a_file_is_appended_to", sequence_grows_as_a_file_is_appended_to},
     {"sequence_opens_read_only_while_another_program_writes", sequence_opens_read_only_while_another_program_writes},
+#endif
     {"sequence_render_passes_a_block_per_span", sequence_render_passes_a_block_per_span},
 };
 }

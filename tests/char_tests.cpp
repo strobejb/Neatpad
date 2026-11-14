@@ -26,7 +26,7 @@ void textdocument_charoffset_in_each_encoding()
     for(size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++)
     {
         TextDocument doc;
-        TCHAR path[MAX_PATH];
+        seqfilechar path[TEST_PATH_MAX];
         size_w offset_chars = 0;
 
         CHECK(write_temp_file(cases[i].bytes, cases[i].length, path));
@@ -43,7 +43,7 @@ void textdocument_charoffset_in_each_encoding()
         CHECK(offset_chars == 6);
 
         doc.clear();
-        DeleteFile(path);
+        delete_file(path);
     }
 }
 
@@ -334,7 +334,7 @@ void sequence_counts_chars_after_random_edits()
         }
         else if(at < text.size())
         {
-            size_t length = min(text.size() - at, static_cast<size_t>(1 + (seed >> 12) % 100));
+            size_t length = (std::min)(text.size() - at, static_cast<size_t>(1 + (seed >> 12) % 100));
 
             CHECK(seq.erase(at, length));
             text.erase(at, length);
@@ -359,7 +359,7 @@ void sequence_counts_chars_in_a_file_as_it_indexes()
 {
     std::string text = utf8_text(2 * 1024 * 1024 + 5);
     sequence seq;
-    TCHAR path[MAX_PATH];
+    seqfilechar path[TEST_PATH_MAX];
     const size_w inside_a_4_byte_char = 16 * LINE_PAGE_SIZE + 3;
     const size_w across_a_page = 3 * LINE_PAGE_SIZE - 5;
 
@@ -385,7 +385,7 @@ void sequence_counts_chars_in_a_file_as_it_indexes()
     CHECK(seq.indexed_chars() == utf8_chars(text, text.size()));
 
     seq.clear();
-    DeleteFile(path);
+    delete_file(path);
 }
 
 void sequence_counts_chars_in_each_scan_mode()
@@ -458,14 +458,14 @@ void textdocument_utf8_counts_chars()
     for(size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++)
     {
         TextDocument doc;
-        TCHAR path[MAX_PATH];
+        seqfilechar path[TEST_PATH_MAX];
 
         CHECK(write_temp_file(cases[i].bytes, cases[i].length, path));
         CHECK(doc.init(path));
         CHECK(TextDocumentLineIndexProbe::seq(doc).indexed_chars() == cases[i].chars);
 
         doc.clear();
-        DeleteFile(path);
+        delete_file(path);
     }
 }
 
@@ -627,7 +627,7 @@ void sequence_char_lookups_wait_for_the_index()
 {
     std::string text = utf8_text(2 * 1024 * 1024 + 5);
     sequence seq;
-    TCHAR path[MAX_PATH];
+    seqfilechar path[TEST_PATH_MAX];
     size_w indexed;
     size_w chars;
     size_w offset;
@@ -662,7 +662,7 @@ void sequence_char_lookups_wait_for_the_index()
     CHECK(chars == utf8_chars(text, text.size() / 2));
 
     seq.clear();
-    DeleteFile(path);
+    delete_file(path);
 }
 
 void textdocument_char_results_wait_for_the_index()
@@ -670,7 +670,7 @@ void textdocument_char_results_wait_for_the_index()
     std::string text = utf8_text(static_cast<size_t>(TextDocumentLineIndexProbe::open_index_length()) + 2 * 1024 * 1024);
     size_t near_end = text.size() - 10;
     TextDocument doc;
-    TCHAR path[MAX_PATH];
+    seqfilechar path[TEST_PATH_MAX];
     size_w chars = 0;
 
     CHECK(write_temp_file(text.data(), text.size(), path));
@@ -695,7 +695,7 @@ void textdocument_char_results_wait_for_the_index()
     CHECK(doc.charoffset_from_pos(TextPos(text.size() + 1), &chars) == TDR_FAILED);
 
     doc.clear();
-    DeleteFile(path);
+    delete_file(path);
 }
 
 const test_case tests[] =

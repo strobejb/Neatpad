@@ -48,8 +48,10 @@ bool wanted(const test_group *group, int argc, char *argv[])
 
 int main(int argc, char *argv[])
 {
+#ifdef _WIN32
     // A failed native test must report to the console, never a modal CRT box.
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
+#endif
     setvbuf(stdout, 0, _IONBF, 0);
 #ifdef _MSC_VER
     _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);

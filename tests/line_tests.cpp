@@ -6,49 +6,27 @@
 
 namespace
 {
-bool write_large_pattern_file(const char *line, size_t line_length, size_w line_count, TCHAR path[MAX_PATH])
+bool write_large_pattern_file(const char *line, size_t line_length, size_w line_count, seqfilechar path[TEST_PATH_MAX])
 {
-    TCHAR temp_path[MAX_PATH];
-    HANDLE hFile;
-    DWORD written = 0;
     size_w file_length = static_cast<size_w>(line_length) * line_count;
-    size_w first_length = min(file_length, TextDocumentLineIndexProbe::open_index_length());	// all that opening indexes
-    size_w tail_length = min(file_length, MEM_BLOCK_SIZE);
+    size_w first_length = (std::min)(file_length, TextDocumentLineIndexProbe::open_index_length());	// all that opening indexes
+    size_w tail_length = (std::min)(file_length, MEM_BLOCK_SIZE);
     size_w tail_offset = file_length - tail_length;
-    char *block = new char[MEM_BLOCK_SIZE];
-    LARGE_INTEGER pos;
-    bool ok = false;
+    std::vector<char> block(static_cast<size_t>(MEM_BLOCK_SIZE));
 
-    path[0] = 0;
-
-    if(block == 0)
+    if(!temp_file(path))
         return false;
 
-    if(GetTempPath(MAX_PATH, temp_path) == 0)
-        goto cleanup;
+    std::ofstream file(std::filesystem::path(path), std::ios::binary | std::ios::trunc);
 
-    if(GetTempFileName(temp_path, TEXT("seq"), 0, path) == 0)
-        goto cleanup;
-
-    hFile = CreateFile(path, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, FILE_ATTRIBUTE_TEMPORARY, 0);
-
-    if(hFile == INVALID_HANDLE_VALUE)
+    for(size_w done = 0; file && done < first_length; done += MEM_BLOCK_SIZE)
     {
-        DeleteFile(path);
-        path[0] = 0;
-        goto cleanup;
-    }
-
-    ok = true;
-
-    for(size_w done = 0; ok && done < first_length; done += MEM_BLOCK_SIZE)
-    {
-        size_w chunk = min(first_length - done, MEM_BLOCK_SIZE);
+        size_w chunk = (std::min)(first_length - done, MEM_BLOCK_SIZE);
 
         for(size_w i = 0; i < chunk; i++)
             block[i] = line[(done + i) % line_length];
 
-        ok = WriteFile(hFile, block, static_cast<DWORD>(chunk), &written, 0) && written == chunk;
+        file.write(block.data(), static_cast<std::streamsize>(chunk));
     }
 
     // the end of the file too, as much of it as the start didn't cover
@@ -58,77 +36,41 @@ bool write_large_pattern_file(const char *line, size_t line_length, size_w line_
         tail_length = file_length - first_length;
     }
 
-    if(ok && tail_length > 0)
+    if(file && tail_length > 0)
     {
-        pos.QuadPart = tail_offset;
-        ok = SetFilePointerEx(hFile, pos, 0, FILE_BEGIN) != 0;
+        file.seekp(static_cast<std::streamoff>(tail_offset));
 
-        for(size_w i = 0; ok && i < tail_length; i++)
+        for(size_w i = 0; i < tail_length; i++)
             block[i] = line[(tail_offset + i) % line_length];
 
-        ok = ok && WriteFile(hFile, block, static_cast<DWORD>(tail_length), &written, 0) && written == tail_length;
+        file.write(block.data(), static_cast<std::streamsize>(tail_length));
     }
 
-    CloseHandle(hFile);
+    file.close();
 
-    if(!ok)
+    if(!file)
     {
-        DeleteFile(path);
+        delete_file(path);
         path[0] = 0;
+        return false;
     }
 
-cleanup:
-    delete[] block;
-    return ok;
+    return true;
 }
 
-bool write_numbered_lines_file(size_t line_count, TCHAR path[MAX_PATH])
+bool write_numbered_lines_file(size_t line_count, seqfilechar path[TEST_PATH_MAX])
 {
-    TCHAR temp_path[MAX_PATH];
-    HANDLE hFile;
+    std::string text;
     char line[128];
-    bool ok = false;
-
-    path[0] = 0;
-
-    if(GetTempPath(MAX_PATH, temp_path) == 0)
-        return false;
-
-    if(GetTempFileName(temp_path, TEXT("seq"), 0, path) == 0)
-        return false;
-
-    hFile = CreateFile(path, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, FILE_ATTRIBUTE_TEMPORARY, 0);
-
-    if(hFile == INVALID_HANDLE_VALUE)
-    {
-        DeleteFile(path);
-        path[0] = 0;
-        return false;
-    }
-
-    ok = true;
 
     for(size_t i = 0; i < line_count; i++)
     {
-        DWORD written = 0;
-        int len = sprintf_s(line, sizeof(line), "line %u abcdefghijklmnopqrstuvwxyz 0123456789\r\n", static_cast<unsigned>(i));
+        int len = snprintf(line, sizeof(line), "line %u abcdefghijklmnopqrstuvwxyz 0123456789\r\n", static_cast<unsigned>(i));
 
-        if(!WriteFile(hFile, line, static_cast<DWORD>(len), &written, 0) || written != static_cast<DWORD>(len))
-        {
-            ok = false;
-            break;
-        }
+        text.append(line, static_cast<size_t>(len));
     }
 
-    CloseHandle(hFile);
-
-    if(!ok)
-    {
-        DeleteFile(path);
-        path[0] = 0;
-    }
-
-    return ok;
+    return write_temp_file(text.data(), text.size(), path);
 }
 
 void expect_lineno_from_offset(const sequence &seq, size_w offset, size_w expected_line, size_w expected_line_offset)
@@ -171,7 +113,7 @@ void expect_linebreak_kinds(const char *text, bool crlf, bool cr, bool lf)
 }
 
 // The start of line 'line', reached by walking down from the top of the document
-TextCoord doc_line(TextDocument &doc, ULONG line)
+TextCoord doc_line(TextDocument &doc, uint32_t line)
 {
     TextCoord top;
     TextCoord coord;
@@ -181,7 +123,7 @@ TextCoord doc_line(TextDocument &doc, ULONG line)
     return coord;
 }
 
-void expect_doc_line_begin(TextDocument &doc, ULONG line, ULONG expected)
+void expect_doc_line_begin(TextDocument &doc, uint32_t line, uint32_t expected)
 {
     TextCoord coord = doc_line(doc, line);
     bool exact = false;
@@ -191,12 +133,12 @@ void expect_doc_line_begin(TextDocument &doc, ULONG line, ULONG expected)
 }
 
 // Walking down past the last line stays on it
-void expect_doc_no_line(TextDocument &doc, ULONG line)
+void expect_doc_no_line(TextDocument &doc, uint32_t line)
 {
     CHECK(doc_line(doc, line).line_begin.byte_offset == doc_line(doc, line - 1).line_begin.byte_offset);
 }
 
-void expect_doc_line_at(TextDocument &doc, ULONG offset, ULONG expected_line, ULONG expected_line_begin)
+void expect_doc_line_at(TextDocument &doc, uint32_t offset, uint32_t expected_line, uint32_t expected_line_begin)
 {
     TextCoord coord;
     bool exact = false;
@@ -216,7 +158,7 @@ size_w doc_offset(TextDocument &doc, size_w sequence_offset)
 }
 
 // The line found by walking the document agrees with the sequence's line index
-void expect_sequence_line_matches_textdocument(TextDocument &doc, ULONG line)
+void expect_sequence_line_matches_textdocument(TextDocument &doc, uint32_t line)
 {
     sequence &seq = TextDocumentLineIndexProbe::seq(doc);
     TextCoord coord = doc_line(doc, line);
@@ -233,10 +175,10 @@ void expect_sequence_line_matches_textdocument(TextDocument &doc, ULONG line)
 }
 
 // The line found around an offset agrees with the sequence's line index
-void expect_sequence_offset_matches_textdocument(TextDocument &doc, ULONG offset)
+void expect_sequence_offset_matches_textdocument(TextDocument &doc, uint32_t offset)
 {
     sequence &seq = TextDocumentLineIndexProbe::seq(doc);
-    ULONG header = TextDocumentLineIndexProbe::header(doc);
+    uint32_t header = TextDocumentLineIndexProbe::header(doc);
     TextCoord coord;
     size_w line = 0;
     size_w line_offset = 0;
@@ -479,7 +421,7 @@ void line_bounds_from_offset_handles_crlf_boundaries()
 void line_bounds_from_offset_handles_long_lazy_file_line()
 {
 	sequence seq;
-	TCHAR path[MAX_PATH];
+	seqfilechar path[TEST_PATH_MAX];
 	const size_w file_length = MEM_BLOCK_SIZE * 3;
 	const size_w first_break = MEM_BLOCK_SIZE + 17;
 	const size_w second_break = MEM_BLOCK_SIZE * 2 + 91;
@@ -498,7 +440,7 @@ void line_bounds_from_offset_handles_long_lazy_file_line()
 	expect_line_bounds_from_offset(seq, second_break + 100, second_break + 1, file_length);
 
 	seq.clear();
-	DeleteFile(path);
+	delete_file(path);
 	delete[] data;
 }
 
@@ -594,8 +536,8 @@ void textdocument_linecount_handles_basic_newlines()
     for(size_t i = 0; i < sizeof(encodings) / sizeof(encodings[0]); i++)
     {
         TextDocument doc;
-        TCHAR path[MAX_PATH];
-        ULONG unit = unit_size(encodings[i]);
+        seqfilechar path[TEST_PATH_MAX];
+        uint32_t unit = unit_size(encodings[i]);
 
         CHECK(write_textdocument_file("abc\n", encodings[i], path));
         CHECK(doc.init(path));
@@ -606,7 +548,7 @@ void textdocument_linecount_handles_basic_newlines()
         expect_doc_no_line(doc, 2);
 
         doc.clear();
-        DeleteFile(path);
+        delete_file(path);
     }
 }
 
@@ -617,8 +559,8 @@ void textdocument_linecount_handles_crlf()
     for(size_t i = 0; i < sizeof(encodings) / sizeof(encodings[0]); i++)
     {
         TextDocument doc;
-        TCHAR path[MAX_PATH];
-        ULONG unit = unit_size(encodings[i]);
+        seqfilechar path[TEST_PATH_MAX];
+        uint32_t unit = unit_size(encodings[i]);
 
         CHECK(write_textdocument_file("abc\r\nxyz\nlast", encodings[i], path));
         CHECK(doc.init(path));
@@ -634,7 +576,7 @@ void textdocument_linecount_handles_crlf()
         expect_doc_line_at(doc, 9 * unit, 2, 9 * unit);
 
         doc.clear();
-        DeleteFile(path);
+        delete_file(path);
     }
 }
 
@@ -645,12 +587,12 @@ void textdocument_linecount_handles_crlf_split_across_lazy_page()
     for(size_t i = 0; i < sizeof(encodings) / sizeof(encodings[0]); i++)
     {
         TextDocument doc;
-        TCHAR path[MAX_PATH];
-        ULONG cr_offset = encodings[i] == DOC_UTF16LE_BOM || encodings[i] == DOC_UTF16BE_BOM
+        seqfilechar path[TEST_PATH_MAX];
+        uint32_t cr_offset = encodings[i] == DOC_UTF16LE_BOM || encodings[i] == DOC_UTF16BE_BOM
                             ? MEM_BLOCK_SIZE / 2 - 1
                             : MEM_BLOCK_SIZE - 1;
-        ULONG unit = unit_size(encodings[i]);
-        ULONG next_line = (cr_offset + 2) * unit;
+        uint32_t unit = unit_size(encodings[i]);
+        uint32_t next_line = (cr_offset + 2) * unit;
         char *text = new char[cr_offset + 4];
 
         memset(text, 'a', cr_offset);
@@ -671,7 +613,7 @@ void textdocument_linecount_handles_crlf_split_across_lazy_page()
         printf("split %u done\n", static_cast<unsigned>(i)); fflush(stdout);
 
         doc.clear();
-        DeleteFile(path);
+        delete_file(path);
         delete[] text;
     }
 }
@@ -679,14 +621,14 @@ void textdocument_linecount_handles_crlf_split_across_lazy_page()
 void textdocument_linecount_updates_after_insert_delete_replace()
 {
     const DocTestEncoding encodings[] = { DOC_ASCII, DOC_UTF8_BOM, DOC_UTF16LE_BOM, DOC_UTF16BE_BOM };
-    TCHAR insert_text[] = TEXT("\nX");
-    TCHAR replace_text[] = TEXT("\r\nZ\n");
+    tchar_t insert_text[] = TSTR("\nX");
+    tchar_t replace_text[] = TSTR("\r\nZ\n");
 
     for(size_t i = 0; i < sizeof(encodings) / sizeof(encodings[0]); i++)
     {
         TextDocument doc;
-        TCHAR path[MAX_PATH];
-        ULONG unit = unit_size(encodings[i]);
+        seqfilechar path[TEST_PATH_MAX];
+        uint32_t unit = unit_size(encodings[i]);
 
         CHECK(write_textdocument_file("abc", encodings[i], path));
         CHECK(doc.init(path));
@@ -705,20 +647,20 @@ void textdocument_linecount_updates_after_insert_delete_replace()
         expect_doc_line_begin(doc, 2, 5 * unit);
 
         doc.clear();
-        DeleteFile(path);
+        delete_file(path);
     }
 }
 
 void textdocument_linecount_restores_on_undo_redo()
 {
     const DocTestEncoding encodings[] = { DOC_ASCII, DOC_UTF8_BOM, DOC_UTF16LE_BOM, DOC_UTF16BE_BOM };
-    TCHAR insert_text[] = TEXT("\nxyz");
+    tchar_t insert_text[] = TSTR("\nxyz");
 
     for(size_t i = 0; i < sizeof(encodings) / sizeof(encodings[0]); i++)
     {
         TextDocument doc;
-        TCHAR path[MAX_PATH];
-        ULONG unit = unit_size(encodings[i]);
+        seqfilechar path[TEST_PATH_MAX];
+        uint32_t unit = unit_size(encodings[i]);
         TextCoord end;
         TextChange change;
 
@@ -737,14 +679,14 @@ void textdocument_linecount_restores_on_undo_redo()
         expect_doc_line_begin(doc, 1, 4 * unit);
 
         doc.clear();
-        DeleteFile(path);
+        delete_file(path);
     }
 }
 
 void open_file_handles_crlf_across_scan_boundary()
 {
     sequence seq;
-    TCHAR path[MAX_PATH];
+    seqfilechar path[TEST_PATH_MAX];
     const size_w scan_size = MEM_BLOCK_SIZE;
     const size_t file_length = scan_size + 16;
     char *data = new char[file_length];
@@ -760,14 +702,14 @@ void open_file_handles_crlf_across_scan_boundary()
     expect_offset_from_lineno(seq, 1, scan_size + 1);
 
     seq.clear();
-    DeleteFile(path);
+    delete_file(path);
     delete[] data;
 }
 
 void lazy_file_linebreak_kinds_grow_with_counting()
 {
     sequence seq;
-    TCHAR path[MAX_PATH];
+    seqfilechar path[TEST_PATH_MAX];
     const size_t file_length = MEM_BLOCK_SIZE * 2;
     char *data = new char[file_length];
 
@@ -787,14 +729,14 @@ void lazy_file_linebreak_kinds_grow_with_counting()
     expect_linebreak_kinds(seq, true, false, true, true);
 
     seq.clear();
-    DeleteFile(path);
+    delete_file(path);
     delete[] data;
 }
 
 void lazy_file_insert_crlf_updates_visible_line_offsets()
 {
     sequence seq;
-    TCHAR path[MAX_PATH];
+    seqfilechar path[TEST_PATH_MAX];
     const char *line = "line abcdefghijklmnopqrstuvwxyz 0123456789\r\n";
     const size_t line_length = strlen(line);
     const size_t line_count = MEM_BLOCK_SIZE / line_length + 32;
@@ -816,14 +758,14 @@ void lazy_file_insert_crlf_updates_visible_line_offsets()
     CHECK(line_offset == line_length * 10 + 2);
 
     seq.clear();
-    DeleteFile(path);
+    delete_file(path);
     delete[] data;
 }
 
 void lazy_file_fully_indexed_keeps_exact_lines()
 {
     sequence seq;
-    TCHAR path[MAX_PATH];
+    seqfilechar path[TEST_PATH_MAX];
     const char *line = "line abcdefghijklmnopqrstuvwxyz 0123456789\r\n";
     const size_t line_length = strlen(line);
     const size_t line_count = (MEM_BLOCK_SIZE * 3) / line_length;
@@ -850,14 +792,14 @@ void lazy_file_fully_indexed_keeps_exact_lines()
     CHECK(line_offset == line_length * 6000 + 2);
 
     seq.clear();
-    DeleteFile(path);
+    delete_file(path);
     delete[] data;
 }
 
 void lazy_line_numbers_follow_edits_above()
 {
     sequence seq;
-    TCHAR path[MAX_PATH];
+    seqfilechar path[TEST_PATH_MAX];
     const char *line = "line abcdefghijklmnopqrstuvwxyz 0123456789\r\n";
     const size_t line_length = strlen(line);
     const size_t line_count = (MEM_BLOCK_SIZE * 3) / line_length;
@@ -883,21 +825,21 @@ void lazy_line_numbers_follow_edits_above()
     CHECK(line_offset == probe);
 
     seq.clear();
-    DeleteFile(path);
+    delete_file(path);
     delete[] data;
 }
 
 void textdocument_coord_handles_lazy_end_after_insert()
 {
     TextDocument doc;
-    TCHAR path[MAX_PATH];
+    seqfilechar path[TEST_PATH_MAX];
     const char *line = "line abcdefghijklmnopqrstuvwxyz 0123456789\r\n";
     const size_t line_length = strlen(line);
     const size_t line_count = MEM_BLOCK_SIZE / line_length + 32;
     const size_t file_length = line_length * line_count;
     char *data = new char[file_length];
     TextCoord eof;
-    TCHAR crlf[] = TEXT("\r\n");
+    tchar_t crlf[] = TSTR("\r\n");
 
     for(size_t i = 0; i < line_count; i++)
         memcpy(data + i * line_length, line, line_length);
@@ -905,28 +847,28 @@ void textdocument_coord_handles_lazy_end_after_insert()
     CHECK(write_temp_file(data, file_length, path));
     CHECK(doc.init(path));
 
-    CHECK(doc_insert(doc, static_cast<ULONG>(line_length * 9 + 37), crlf, 2) == 2);
+    CHECK(doc_insert(doc, static_cast<uint32_t>(line_length * 9 + 37), crlf, 2) == 2);
     CHECK(doc.coord_from_document_end(&eof));
     CHECK(eof.line_begin.byte_offset == doc.byte_length());
     CHECK(eof.line_next.byte_offset == doc.byte_length());
 
     doc.clear();
-    DeleteFile(path);
+    delete_file(path);
     delete[] data;
 }
 
 void textdocument_final_sparse_line_ignores_estimated_linecount()
 {
     TextDocument doc;
-    TCHAR path[MAX_PATH];
+    seqfilechar path[TEST_PATH_MAX];
     const size_t prefix_lines = MEM_BLOCK_SIZE / 3;
     const size_t prefix_length = prefix_lines * 3;
     const size_t file_length = MEM_BLOCK_SIZE * 4;
-    const ULONG insert_offset = 9 * 3 + 1;
-    const ULONG final_line_offset = static_cast<ULONG>(prefix_length + 2);
+    const uint32_t insert_offset = 9 * 3 + 1;
+    const uint32_t final_line_offset = static_cast<uint32_t>(prefix_length + 2);
     char *data = new char[file_length];
     TextCoord coord;
-    TCHAR crlf[] = TEXT("\r\n");
+    tchar_t crlf[] = TSTR("\r\n");
 
     memset(data, 'A', file_length);
 
@@ -946,7 +888,7 @@ void textdocument_final_sparse_line_ignores_estimated_linecount()
     CHECK(coord.line_next.byte_offset == doc.byte_length());
 
     doc.clear();
-    DeleteFile(path);
+    delete_file(path);
     delete[] data;
 }
 
@@ -954,14 +896,14 @@ void textdocument_ctrl_end_uses_final_page_when_lines_are_lazy()
 {
     TextDocument doc;
     sequence &seq = TextDocumentLineIndexProbe::seq(doc);
-    TCHAR path[MAX_PATH];
+    seqfilechar path[TEST_PATH_MAX];
     const char *line = "line abcdefghijklmnopqrstuvwxyz 0123456789\r\n";
     const size_t line_length = strlen(line);
     const size_w open_index = TextDocumentLineIndexProbe::open_index_length();
     const size_t line_count = static_cast<size_t>((open_index + MEM_BLOCK_SIZE * 8) / line_length);
     const size_t file_length = line_length * line_count;
     char *data = new char[file_length];
-    ULONG target_line = static_cast<ULONG>(open_index / line_length + 20);
+    uint32_t target_line = static_cast<uint32_t>(open_index / line_length + 20);
     size_w line_offset = 0;
     TextCoord eof;
     TextCoord prev;
@@ -994,7 +936,7 @@ void textdocument_ctrl_end_uses_final_page_when_lines_are_lazy()
     CHECK(next.line_begin.byte_offset == doc.byte_length());
 
     doc.clear();
-    DeleteFile(path);
+    delete_file(path);
     delete[] data;
 }
 
@@ -1002,7 +944,7 @@ void textdocument_lazy_eof_line_number_maps_back_to_same_line()
 {
     TextDocument doc;
     sequence &seq = TextDocumentLineIndexProbe::seq(doc);
-    TCHAR path[MAX_PATH];
+    seqfilechar path[TEST_PATH_MAX];
     const size_t line_count = 200000;
     TextCoord eof;
     size_w eof_line;
@@ -1020,13 +962,13 @@ void textdocument_lazy_eof_line_number_maps_back_to_same_line()
     CHECK(!seq.offset_from_lineno(eof_line + 1, &line_offset));
 
     doc.clear();
-    DeleteFile(path);
+    delete_file(path);
 }
 
 void textdocument_lazy_eof_without_final_crlf_maps_to_final_line()
 {
     TextDocument doc;
-    TCHAR path[MAX_PATH];
+    seqfilechar path[TEST_PATH_MAX];
     const char *line = "line abcdefghijklmnopqrstuvwxyz 0123456789\r\n";
     const char *last_line = "final abcdefghijklmnopqrstuvwxyz 0123456789";
     const size_t line_length = strlen(line);
@@ -1067,19 +1009,19 @@ void textdocument_lazy_eof_without_final_crlf_maps_to_final_line()
     CHECK(next.line_next.byte_offset == doc.byte_length());
 
     doc.clear();
-    DeleteFile(path);
+    delete_file(path);
     delete[] data;
 }
 
 void textdocument_lazy_offset_lookup_uses_sequence_line_bounds()
 {
     TextDocument doc;
-    TCHAR path[MAX_PATH];
+    seqfilechar path[TEST_PATH_MAX];
     const size_w open_index = TextDocumentLineIndexProbe::open_index_length();
     const size_t file_length = static_cast<size_t>(open_index + MEM_BLOCK_SIZE * 3);
-    const ULONG first_break = static_cast<ULONG>(open_index + MEM_BLOCK_SIZE + 17);
-    const ULONG second_break = static_cast<ULONG>(open_index + MEM_BLOCK_SIZE * 2 + 91);
-    const ULONG target_offset = first_break + 100;
+    const uint32_t first_break = static_cast<uint32_t>(open_index + MEM_BLOCK_SIZE + 17);
+    const uint32_t second_break = static_cast<uint32_t>(open_index + MEM_BLOCK_SIZE * 2 + 91);
+    const uint32_t target_offset = first_break + 100;
     char *data = new char[file_length];
     TextCoord coord;
     TextCoord prev;
@@ -1109,7 +1051,7 @@ void textdocument_lazy_offset_lookup_uses_sequence_line_bounds()
     CHECK(next.line_next.byte_offset == file_length);
 
     doc.clear();
-    DeleteFile(path);
+    delete_file(path);
     delete[] data;
 }
 
@@ -1117,8 +1059,8 @@ void textdocument_lazy_line_numbers_continue_after_first_page()
 {
     TextDocument doc;
     sequence &seq = TextDocumentLineIndexProbe::seq(doc);
-    TCHAR path[MAX_PATH];
-    ULONG first_unknown = 0;
+    seqfilechar path[TEST_PATH_MAX];
+    uint32_t first_unknown = 0;
 
     // about 6 MB: more than opening indexes
     CHECK(write_numbered_lines_file(120000, path));
@@ -1129,7 +1071,7 @@ void textdocument_lazy_line_numbers_continue_after_first_page()
 
     CHECK(first_unknown > 1000);
 
-    for(ULONG line = first_unknown; line < first_unknown + 100; line++)
+    for(uint32_t line = first_unknown; line < first_unknown + 100; line++)
     {
         size_w line_offset = 0;
         TextCoord coord;
@@ -1144,14 +1086,14 @@ void textdocument_lazy_line_numbers_continue_after_first_page()
     }
 
     doc.clear();
-    DeleteFile(path);
+    delete_file(path);
 }
 
 void textdocument_large_lazy_file_line_estimate_does_not_overflow()
 {
     TextDocument doc;
     sequence &seq = TextDocumentLineIndexProbe::seq(doc);
-    TCHAR path[MAX_PATH];
+    seqfilechar path[TEST_PATH_MAX];
     const char *line = "line 0000000 abcdefghijklmnopqrstuvwxyz 0123456789\r\n";
     const size_t line_length = strlen(line);
     const size_w line_count = 5000000;
@@ -1168,7 +1110,7 @@ void textdocument_large_lazy_file_line_estimate_does_not_overflow()
     CHECK(doc.coord_from_pos(TextPos(0), &coord));
     CHECK(doc_lineno(doc, coord, &exact) == 0);
     CHECK(exact);
-    CHECK(doc.coord_from_pos(TextPos(static_cast<ULONG>(line_length * 10)), &coord));
+    CHECK(doc.coord_from_pos(TextPos(static_cast<uint32_t>(line_length * 10)), &coord));
     CHECK(doc_lineno(doc, coord, &exact) == 10);
     CHECK(exact);
 
@@ -1184,17 +1126,17 @@ void textdocument_large_lazy_file_line_estimate_does_not_overflow()
     CHECK(next_offset - line_offset <= line_length);
 
     doc.clear();
-    DeleteFile(path);
+    delete_file(path);
 }
 
 // Walking down the document finds the lines it counts, and stops where Ctrl+End does
-void expect_doc_lines_consistent(const void *data, size_t length, ULONG expected_lines)
+void expect_doc_lines_consistent(const void *data, size_t length, uint32_t expected_lines)
 {
     TextDocument doc;
-    TCHAR path[MAX_PATH];
+    seqfilechar path[TEST_PATH_MAX];
     TextCoord line;
     TextCoord eof;
-    ULONG walked = 1;
+    uint32_t walked = 1;
 
     CHECK(write_temp_file(static_cast<const char *>(data), length, path));
     CHECK(doc.init(path));
@@ -1219,7 +1161,7 @@ void expect_doc_lines_consistent(const void *data, size_t length, ULONG expected
     CHECK(eof.line_begin.byte_offset == line.line_begin.byte_offset);
 
     doc.clear();
-    DeleteFile(path);
+    delete_file(path);
 }
 
 void textdocument_only_cr_lf_end_lines()
@@ -1256,7 +1198,7 @@ void textdocument_linebreak_from_coord()
     for(size_t i = 0; i < sizeof(encodings) / sizeof(encodings[0]); i++)
     {
         TextDocument doc;
-        TCHAR path[MAX_PATH];
+        seqfilechar path[TEST_PATH_MAX];
         TextCoord line;
 
         CHECK(write_textdocument_file("crlf\r\nlf\ncr\rnone", encodings[i], path));
@@ -1275,7 +1217,7 @@ void textdocument_linebreak_from_coord()
         CHECK(doc.linebreak_from_coord(&line) == 0);
 
         doc.clear();
-        DeleteFile(path);
+        delete_file(path);
     }
 }
 
@@ -1286,28 +1228,28 @@ void textdocument_linebreaks_seen()
     for(size_t i = 0; i < sizeof(encodings) / sizeof(encodings[0]); i++)
     {
         TextDocument doc;
-        TCHAR path[MAX_PATH];
+        seqfilechar path[TEST_PATH_MAX];
 
         CHECK(write_textdocument_file("crlf\r\nlf\nmore\r\n", encodings[i], path));
         CHECK(doc.init(path));
         CHECK(doc.linebreaks_seen() == (TXL_CRLF | TXL_LF));
 
         doc.clear();
-        DeleteFile(path);
+        delete_file(path);
     }
 }
 
 void textdocument_coord_tracks_lazy_eof_after_newline_edits()
 {
     TextDocument doc;
-    TCHAR path[MAX_PATH];
+    seqfilechar path[TEST_PATH_MAX];
     const char line[] = "abcdefghijklmnopqrstuvwxyz 0123456789\r\n";
     const size_t line_length = strlen(line);
     const size_w line_count = (TextDocumentLineIndexProbe::open_index_length() + MEM_BLOCK_SIZE * 4) / line_length;
     TextCoord before;
     TextCoord after;
     TextCoord top;
-    TCHAR newlines[] = TEXT("\r\n\r\n\r\n");
+    tchar_t newlines[] = TSTR("\r\n\r\n\r\n");
     bool exact;
 
     CHECK(write_large_pattern_file(line, line_length, line_count, path));
@@ -1325,7 +1267,7 @@ void textdocument_coord_tracks_lazy_eof_after_newline_edits()
     CHECK(doc_lineno(doc, after, &exact) >= doc_lineno(doc, top, &exact));
 
     doc.clear();
-    DeleteFile(path);
+    delete_file(path);
 }
 
 // Numbered lines, each 14 bytes with its line feed
@@ -1346,7 +1288,7 @@ std::string numbered_lines(size_t line_count)
 void sequence_index_next_indexes_to_the_end()
 {
     sequence seq;
-    TCHAR path[MAX_PATH];
+    seqfilechar path[TEST_PATH_MAX];
     const size_t lines = 600000;
     std::string text = numbered_lines(lines);
     size_w before;
@@ -1375,13 +1317,13 @@ void sequence_index_next_indexes_to_the_end()
     CHECK(!seq.index_next(0x100000));
 
     seq.clear();
-    DeleteFile(path);
+    delete_file(path);
 }
 
 void textdocument_open_indexes_the_first_4mb()
 {
     TextDocument doc;
-    TCHAR path[MAX_PATH];
+    seqfilechar path[TEST_PATH_MAX];
     const size_t lines = 600000;
     std::string text = numbered_lines(lines);
     TextCoord end;
@@ -1405,7 +1347,7 @@ void textdocument_open_indexes_the_first_4mb()
     CHECK(exact);
 
     doc.clear();
-    DeleteFile(path);
+    delete_file(path);
 
     // a smaller file is indexed whole when it opens
     text = numbered_lines(200000);
@@ -1417,7 +1359,7 @@ void textdocument_open_indexes_the_first_4mb()
     CHECK(!doc.index_next(0x100000));
 
     doc.clear();
-    DeleteFile(path);
+    delete_file(path);
 
     // the byte-order mark isn't part of what's indexed
     CHECK(write_textdocument_file("a\nb", DOC_UTF8_BOM, path));
@@ -1425,7 +1367,7 @@ void textdocument_open_indexes_the_first_4mb()
     CHECK(doc.indexed_length() == doc.byte_length());
 
     doc.clear();
-    DeleteFile(path);
+    delete_file(path);
 
     // opened as another encoding, it's indexed again as that
     text = numbered_lines(400000);
@@ -1447,13 +1389,13 @@ void textdocument_open_indexes_the_first_4mb()
     CHECK(doc.linecount() == 400000 + 1);
 
     doc.clear();
-    DeleteFile(path);
+    delete_file(path);
 }
 
 void textdocument_coord_from_lineno_finds_line_starts()
 {
     TextDocument doc;
-    TCHAR path[MAX_PATH];
+    seqfilechar path[TEST_PATH_MAX];
     TextCoord line;
 
     CHECK(write_textdocument_file("ab\r\ncd\nef", DOC_UTF8_BOM, path));
@@ -1477,13 +1419,13 @@ void textdocument_coord_from_lineno_finds_line_starts()
     CHECK(line.byte_offset == 0);
     CHECK(doc.coord_from_lineno(1, &line) == TDR_FAILED);
 
-    DeleteFile(path);
+    delete_file(path);
 }
 
 void textdocument_lookups_are_pending_past_the_index()
 {
     TextDocument doc;
-    TCHAR path[MAX_PATH];
+    seqfilechar path[TEST_PATH_MAX];
     const size_t lines = 1000000;
     const size_w near_line = 0x400000 / 14 + 100;
     std::string text = numbered_lines(lines);
@@ -1515,14 +1457,14 @@ void textdocument_lookups_are_pending_past_the_index()
     CHECK(doc.coord_from_lineno(lines + 1, &line) == TDR_FAILED);
 
     doc.clear();
-    DeleteFile(path);
+    delete_file(path);
 }
 
 void textdocument_sequence_index_matches_ascii_after_edits()
 {
     TextDocument doc;
-    TCHAR path[MAX_PATH];
-    TCHAR crlf[] = TEXT("\r\n");
+    seqfilechar path[TEST_PATH_MAX];
+    tchar_t crlf[] = TSTR("\r\n");
 
     CHECK(write_textdocument_file("abc\r\nxyz", DOC_ASCII, path));
     CHECK(doc.init(path));
@@ -1537,14 +1479,14 @@ void textdocument_sequence_index_matches_ascii_after_edits()
     expect_sequence_offset_matches_textdocument(doc, 6);
 
     doc.clear();
-    DeleteFile(path);
+    delete_file(path);
 }
 
 void textdocument_sequence_index_matches_utf16le()
 {
     TextDocument doc;
-    TCHAR path[MAX_PATH];
-    const WCHAR text[] = { 0xfeff, 'a', '\r', '\n', 'b', 0xd83d, 0xde00, '\r', '\n', 'c' };
+    seqfilechar path[TEST_PATH_MAX];
+    const tchar_t text[] = { 0xfeff, 'a', '\r', '\n', 'b', 0xd83d, 0xde00, '\r', '\n', 'c' };
 
     CHECK(write_temp_file(reinterpret_cast<const char *>(text), sizeof(text), path));
     CHECK(doc.init(path));
@@ -1558,13 +1500,13 @@ void textdocument_sequence_index_matches_utf16le()
     expect_sequence_offset_matches_textdocument(doc, 16);
 
     doc.clear();
-    DeleteFile(path);
+    delete_file(path);
 }
 
 void textdocument_sequence_index_matches_utf16be()
 {
     TextDocument doc;
-    TCHAR path[MAX_PATH];
+    seqfilechar path[TEST_PATH_MAX];
     const unsigned char text[] =
     {
         0xfe, 0xff,
@@ -1591,13 +1533,13 @@ void textdocument_sequence_index_matches_utf16be()
     expect_sequence_offset_matches_textdocument(doc, 16);
 
     doc.clear();
-    DeleteFile(path);
+    delete_file(path);
 }
 
 void textdocument_sequence_index_matches_utf8_bom()
 {
     TextDocument doc;
-    TCHAR path[MAX_PATH];
+    seqfilechar path[TEST_PATH_MAX];
     const unsigned char text[] =
     {
         0xef, 0xbb, 0xbf,
@@ -1620,26 +1562,26 @@ void textdocument_sequence_index_matches_utf8_bom()
     expect_sequence_offset_matches_textdocument(doc, 10);
 
     doc.clear();
-    DeleteFile(path);
+    delete_file(path);
 }
 
 void textdocument_utf8_lf_lazy_lookup_returns_bounded_line()
 {
     TextDocument doc;
     sequence &seq = TextDocumentLineIndexProbe::seq(doc);
-    TCHAR path[MAX_PATH];
+    seqfilechar path[TEST_PATH_MAX];
     const unsigned char bom[] = { 0xef, 0xbb, 0xbf };
     const char *line = "line UTF-8 LF cafe\xcc\x81 omega \xce\xa9 emoji \xf0\x9f\x98\x80 0123456789\n";
     const size_t line_length = strlen(line);
     const size_w open_index = TextDocumentLineIndexProbe::open_index_length();
     const size_t line_count = static_cast<size_t>((open_index + MEM_BLOCK_SIZE * 4) / line_length);
     const size_t file_length = sizeof(bom) + line_length * line_count;
-    const ULONG target_line = static_cast<ULONG>((open_index + MEM_BLOCK_SIZE * 2) / line_length);
+    const uint32_t target_line = static_cast<uint32_t>((open_index + MEM_BLOCK_SIZE * 2) / line_length);
     char *data = new char[file_length];
-    TCHAR buf[128];
+    tchar_t buf[128];
     size_w line_offset = 0;
     size_w line_begin;
-    ULONG chars;
+    uint32_t chars;
     TextCoord coord;
     TextCoord prev;
     TextCoord next;
@@ -1679,7 +1621,7 @@ void textdocument_utf8_lf_lazy_lookup_returns_bounded_line()
     CHECK(buf[chars - 1] == '\n');
 
     doc.clear();
-    DeleteFile(path);
+    delete_file(path);
     delete[] data;
 }
 

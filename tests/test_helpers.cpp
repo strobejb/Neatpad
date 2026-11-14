@@ -3,6 +3,11 @@
 //
 #include "tests.h"
 
+#ifndef _WIN32
+#include <stdlib.h>
+#include <unistd.h>
+#endif
+
 void init(sequence &seq, const char *text)
 {
     CHECK(seq.init(reinterpret_cast<const seqchar *>(text), strlen(text)));
@@ -27,62 +32,98 @@ size_w doc_lineno(TextDocument &doc, TextPos pos, bool *exact)
     return lineno;
 }
 
-bool write_temp_file(const char *data, size_t length, TCHAR path[MAX_PATH])
+// A new, empty temporary file
+bool temp_file(seqfilechar path[TEST_PATH_MAX])
 {
-    TCHAR temp_path[MAX_PATH];
-    HANDLE hFile;
-    DWORD written = 0;
-    bool ok;
-
     path[0] = 0;
 
-    if(GetTempPath(MAX_PATH, temp_path) == 0)
+#ifdef _WIN32
+    seqfilechar temp_path[TEST_PATH_MAX];
+
+    if(GetTempPath(static_cast<DWORD>(TEST_PATH_MAX), temp_path) == 0)
         return false;
 
-    if(GetTempFileName(temp_path, TEXT("seq"), 0, path) == 0)
+    return GetTempFileName(temp_path, L"seq", 0, path) != 0;
+#else
+    std::string name = (std::filesystem::temp_directory_path() / "seqXXXXXX").string();
+    int         fd;
+
+    if(name.size() >= TEST_PATH_MAX)
         return false;
 
-    hFile = CreateFile(path, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, FILE_ATTRIBUTE_TEMPORARY, 0);
+    strcpy(path, name.c_str());
+    fd = mkstemp(path);
 
-    if(hFile == INVALID_HANDLE_VALUE)
-	{
-		DeleteFile(path);
-		path[0] = 0;
-        return false;
-	}
-
-    ok = WriteFile(hFile, data, static_cast<DWORD>(length), &written, 0) && written == length;
-    CloseHandle(hFile);
-
-    if(!ok)
+    if(fd == -1)
     {
-        DeleteFile(path);
         path[0] = 0;
+        return false;
     }
 
-    return ok;
+    close(fd);
+    return true;
+#endif
+}
+
+bool write_temp_file(const char *data, size_t length, seqfilechar path[TEST_PATH_MAX])
+{
+    if(!temp_file(path))
+        return false;
+
+    std::ofstream file(std::filesystem::path(path), std::ios::binary | std::ios::trunc);
+
+    file.write(data, static_cast<std::streamsize>(length));
+    file.close();
+
+    if(!file)
+    {
+        delete_file(path);
+        path[0] = 0;
+        return false;
+    }
+
+    return true;
+}
+
+bool delete_file(const seqfilechar *path)
+{
+    std::error_code error;
+
+    return std::filesystem::remove(path, error);
+}
+
+// fopen, for a path in the platform's own form
+FILE *open_file(const std::filesystem::path &path, const char *mode)
+{
+#ifdef _WIN32
+    std::wstring wide(mode, mode + strlen(mode));
+    FILE        *fp = 0;
+
+    _wfopen_s(&fp, path.c_str(), wide.c_str());
+    return fp;
+#else
+    return fopen(path.c_str(), mode);
+#endif
 }
 
 // Write such a file sparsely, so only the text takes disk space. Returns false
 // where the volume can't make sparse files; the tests that need one then skip.
-bool write_sparse_file(const char *head, const char *tail, unsigned long long size, TCHAR path[MAX_PATH])
+bool write_sparse_file(const char *head, const char *tail, unsigned long long size, seqfilechar path[TEST_PATH_MAX])
 {
-    TCHAR temp_path[MAX_PATH];
+    if(!temp_file(path))
+        return false;
+
+#ifdef _WIN32
     LARGE_INTEGER pos;
     HANDLE hFile;
     DWORD bytes;
     bool ok;
 
-    path[0] = 0;
-
-    if(GetTempPath(MAX_PATH, temp_path) == 0 || GetTempFileName(temp_path, TEXT("seq"), 0, path) == 0)
-        return false;
-
     hFile = CreateFile(path, GENERIC_READ | GENERIC_WRITE, 0, 0, CREATE_ALWAYS, 0, 0);
 
     if(hFile == INVALID_HANDLE_VALUE)
     {
-        DeleteFile(path);
+        delete_file(path);
         return false;
     }
 
@@ -94,14 +135,25 @@ bool write_sparse_file(const char *head, const char *tail, unsigned long long si
          WriteFile(hFile, tail, static_cast<DWORD>(strlen(tail)), &bytes, 0);
 
     CloseHandle(hFile);
+#else
+    // POSIX file systems leave the gap a seek skips unallocated
+    std::ofstream file(path, std::ios::binary | std::ios::trunc);
+
+    file.write(head, static_cast<std::streamsize>(strlen(head)));
+    file.seekp(static_cast<std::streamoff>(size - strlen(tail)));
+    file.write(tail, static_cast<std::streamsize>(strlen(tail)));
+    file.close();
+
+    bool ok = !file.fail();
+#endif
 
     if(!ok)
-        DeleteFile(path);
+        delete_file(path);
 
     return ok;
 }
 
-bool write_textdocument_file(const char *text, DocTestEncoding encoding, TCHAR path[MAX_PATH])
+bool write_textdocument_file(const char *text, DocTestEncoding encoding, seqfilechar path[TEST_PATH_MAX])
 {
     std::string bytes;
     size_t len = strlen(text);
@@ -181,13 +233,13 @@ void expect_offset_from_lineno(const sequence &seq, size_w line, size_w expected
 }
 
 // Bytes per character of the plain test text in each encoding
-ULONG unit_size(DocTestEncoding encoding)
+uint32_t unit_size(DocTestEncoding encoding)
 {
     return encoding == DOC_UTF16LE_BOM || encoding == DOC_UTF16BE_BOM ? 2 : 1;
 }
 
 // Edits at document byte offsets
-size_w doc_insert(TextDocument &doc, size_w offset, const TCHAR *text, ULONG length, TextChange *change)
+size_w doc_insert(TextDocument &doc, size_w offset, const tchar_t *text, uint32_t length, TextChange *change)
 {
     return doc.insert_text(TextPos(offset), text, length, change);
 }
@@ -197,13 +249,14 @@ size_w doc_erase(TextDocument &doc, size_w from, size_w to, TextChange *change)
     return doc.erase_text(TextPos(from), TextPos(to), change);
 }
 
-size_w doc_replace(TextDocument &doc, size_w from, size_w to, const TCHAR *text, ULONG length, TextChange *change)
+size_w doc_replace(TextDocument &doc, size_w from, size_w to, const tchar_t *text, uint32_t length, TextChange *change)
 {
     return doc.replace_text(TextPos(from), TextPos(to), text, length, change);
 }
 
+#ifdef _WIN32
 // Whether another program could open a file to write it now
-bool others_can_write(const TCHAR *path)
+bool others_can_write(const seqfilechar *path)
 {
     HANDLE writer = CreateFile(path, GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, 0, OPEN_EXISTING, 0, 0);
 
@@ -213,6 +266,7 @@ bool others_can_write(const TCHAR *path)
     CloseHandle(writer);
     return true;
 }
+#endif
 
 size_w utf8_chars(const std::string &text, size_t length)
 {
@@ -235,9 +289,9 @@ std::string utf8_text(size_t length)
 
 // Text as a file in an encoding: UTF-8 without a byte-order mark, UTF-16 or
 // UTF-32 with one
-std::string encode_text(const wchar_t *text, TEXT_ENCODING encoding)
+std::string encode_text(const tchar_t *text, TEXT_ENCODING encoding)
 {
-    size_t length = wcslen(text);
+    size_t length = tstrlen(text);
     size_t out = length * 4;
     std::string bytes;
 
@@ -245,7 +299,7 @@ std::string encode_text(const wchar_t *text, TEXT_ENCODING encoding)
     {
     case NCP_UTF16:
         bytes.assign("\xff\xfe", 2);
-        bytes.append(reinterpret_cast<const char *>(text), length * sizeof(wchar_t));
+        bytes.append(reinterpret_cast<const char *>(text), length * sizeof(tchar_t));
         break;
 
     case NCP_UTF16BE:
@@ -273,7 +327,8 @@ std::string encode_text(const wchar_t *text, TEXT_ENCODING encoding)
 
     default:
         bytes.resize(out);
-        bytes.resize(WideCharToMultiByte(CP_UTF8, 0, text, static_cast<int>(length), &bytes[0], static_cast<int>(out), 0, 0));
+        utf16_to_utf8(reinterpret_cast<const UTF16 *>(text), length, reinterpret_cast<UTF8 *>(&bytes[0]), &out);
+        bytes.resize(out);
         break;
     }
 
