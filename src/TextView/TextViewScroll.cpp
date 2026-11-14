@@ -212,6 +212,17 @@ int TextView::ScrollVByLines(int dy)
 }
 
 //
+//	The view's client area, from its top-left corner
+//
+void TextView::ClientRect(RECT *rect)
+{
+	int width, height;
+
+	m_pHost->ClientSize(&width, &height);
+	SetRect(rect, 0, 0, width, height);
+}
+
+//
 //	The window has changed size - update the scrollbars
 //
 LONG TextView::OnSize(UINT nFlags, int width, int height)
@@ -246,7 +257,7 @@ bool TextView::ScrollRgn(int dx, int dy, bool fReturnUpdateRgn, RECT *scrolled)
 {
 	RECT clip;
 
-	GetClientRect(m_hWnd, &clip);
+	ClientRect(&clip);
 
 	//
 	// make sure that dx,dy don't scroll us past the edge of the document!
@@ -284,7 +295,7 @@ bool TextView::ScrollRgn(int dx, int dy, bool fReturnUpdateRgn, RECT *scrolled)
 
 	// ignore clipping rectangle if its a whole-window scroll
 	if(fReturnUpdateRgn == false)
-		GetClientRect(m_hWnd, &clip);
+		ClientRect(&clip);
 
 	// take margin into account
 	clip.left += LeftMarginWidth();
@@ -306,7 +317,7 @@ bool TextView::ScrollRgn(int dx, int dy, bool fReturnUpdateRgn, RECT *scrolled)
 
 	if(dy != 0)
 	{
-		GetClientRect(m_hWnd, &clip);
+		ClientRect(&clip);
 		clip.right = LeftMarginWidth();
 		m_pHost->InvalidateRect(clip.left, clip.top, clip.right, clip.bottom);
 	}
@@ -322,7 +333,7 @@ void TextView::InvalidateOutside(const RECT &inside)
 {
 	RECT client;
 
-	GetClientRect(m_hWnd, &client);
+	ClientRect(&client);
 
 	if(inside.top > client.top)
 		m_pHost->InvalidateRect(client.left, client.top, client.right, inside.top);
@@ -359,7 +370,7 @@ VOID TextView::ScrollToCoord(int xpos, TextCoord *coord)
 	ULONG windowLines = m_nWindowLines > 0 ? (ULONG)m_nWindowLines : 0;
 	bool coordVisible = false;
 
-	GetClientRect(m_hWnd, &rect);
+	ClientRect(&rect);
 
 	xpos -= m_nHScrollPos * m_nFontWidth;
 	xpos += marginWidth;
@@ -563,9 +574,7 @@ LONG TextView::OnMouseWheel(int nDelta)
 
 	if(!IsKeyPressed(VK_SHIFT))
 	{
-		int nScrollLines;
-
-		SystemParametersInfo(SPI_GETWHEELSCROLLLINES, 0, &nScrollLines, 0);
+		int nScrollLines = m_pHost->WheelScrollLines();
 
 		if(nScrollLines <= 1)
 			nScrollLines = 3;

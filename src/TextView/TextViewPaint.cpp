@@ -200,7 +200,7 @@ LONG TextView::OnPrintClient(HDC hdc)
 {
 	RECT rect;
 
-	GetClientRect(m_hWnd, &rect);
+	ClientRect(&rect);
 
 	TextCanvas *canvas = CreateCanvas(hdc);
 
@@ -233,7 +233,7 @@ void TextView::Paint(TextCanvas &canvas, RECT *rcPaint)
 	bool		haveLine;
 	RECT		rect;
 
-	GetClientRect(m_hWnd, &rect);
+	ClientRect(&rect);
 
 	//
 	// figure out which lines to redraw
@@ -283,7 +283,7 @@ void TextView::PaintLine(TextCanvas &canvas, TextCoord *coord, int xpos)
 	RECT	bounds;
 
 	// the text's part of the row, from where the line starts on-screen
-	GetClientRect(m_hWnd, &bounds);
+	ClientRect(&bounds);
 
 	bounds.left		= (long)(-m_nHScrollPos * m_nFontWidth + LeftMarginWidth());
 	bounds.top		= 0;
@@ -570,22 +570,6 @@ int TextView::PaintMargin(TextCanvas &canvas, TextCoord *line, int xpos, int ypo
     return rect.right - rect.left;
 }
 
-static bool HasAppFocus(HWND hwnd)
-{
-	if(!IsWindowEnabled(hwnd) || !IsWindowEnabled(GetAncestor(hwnd, GA_ROOT)))
-		return false;
-
-	HWND hwndFocus = GetFocus();
-
-	if(hwndFocus == hwnd || IsChild(hwnd, hwndFocus))
-		return true;
-
-	HWND hwndRoot = GetAncestor(hwnd, GA_ROOT);
-	HWND hwndForeground = GetForegroundWindow();
-
-	return hwndForeground == hwndRoot || GetAncestor(hwndForeground, GA_ROOT) == hwndRoot;
-}
-
 //
 //	Draw a line of text into the specified device-context
 //
@@ -600,7 +584,7 @@ void TextView::PaintText(TextCanvas &canvas, TextCoord *coord, int xpos, int ypo
 		return;
 
 	// set highlight-colours depending on window-focus
-	if(HasAppFocus(m_hWnd))
+	if(m_pHost->IsActive())
 		layout->SetSelectionColours(GetColour(TXC_HIGHLIGHTTEXT), GetColour(TXC_HIGHLIGHT));
 	else
 		layout->SetSelectionColours(GetColour(TXC_HIGHLIGHTTEXT2), GetColour(TXC_HIGHLIGHT2));

@@ -68,6 +68,36 @@ class TextViewHost
     // a selection is dragged past the edge
     virtual void MousePosition(int *x, int *y) = 0;
 
+    // Keep the mouse while a selection is dragged, and let it go
+    virtual void CaptureMouse() = 0;
+    virtual void ReleaseMouse() = 0;
+
+    // The mouse pointer's shape: the text's I-beam, or the margin's arrow
+    enum Cursor
+    {
+        CursorText,
+        CursorMargin
+    };
+
+    virtual void SetCursor(Cursor cursor) = 0;
+
+    //
+    //	The view and its window
+    //
+
+    // The view's size, in pixels
+    virtual void ClientSize(int *width, int *height) = 0;
+
+    // Whether the view has the keyboard focus, and whether it's in the active
+    // window, which shows the selection in its active colours
+    virtual bool HasFocus() = 0;
+    virtual bool IsActive() = 0;
+
+    // The user's settings: the caret's width (0 for the platform's usual), and
+    // how many lines one notch of the mouse wheel scrolls
+    virtual int CaretWidth()       = 0;
+    virtual int WheelScrollLines() = 0;
+
     //
     //	The clipboard, as text in the build's text units, without copying it
     //	more than the platform needs to

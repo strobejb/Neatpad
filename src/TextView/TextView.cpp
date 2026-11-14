@@ -18,13 +18,9 @@
 
 #include "TextView.h"
 #include "TextViewInternal.h"
-#include "racursor.h"
 #include "win32/UspTextLayout.h"
 
 
-#ifndef SPI_GETCARETWIDTH
-#define SPI_GETCARETWIDTH 0x2006
-#endif
 #if !defined(UNICODE)
 #error "Please build as Unicode only!"
 #endif
@@ -70,7 +66,7 @@ TextView::TextView(HWND hwnd, TextViewHost *host)
 		m_lineCache[i].layout  = CreateLayout();
 	}
 
-	SystemParametersInfo(SPI_GETCARETWIDTH, 0, &m_nCaretWidth, 0);
+	m_nCaretWidth = m_pHost->CaretWidth();
 
 	if(m_nCaretWidth == 0)
 		m_nCaretWidth = 2;
@@ -116,8 +112,6 @@ TextView::TextView(HWND hwnd, TextViewHost *host)
 
 	m_pTextDoc = new TextDocument();
 
-	m_hMarginCursor = CreateCursor(GetModuleHandle(0), 21, 5, 32, 32, XORMask, ANDMask);
-	
 	//
 	//	The TextView state must be fully initialized before we
 	//	start calling member-functions
@@ -141,8 +135,6 @@ TextView::~TextView()
 
 	if(m_pTextDoc)
 		delete m_pTextDoc;
-
-	DestroyCursor(m_hMarginCursor);
 
 	for(int i = 0; i < m_nNumFonts; i++)
 		UspFreeFont(&m_uspFontList[i]);
@@ -197,7 +189,7 @@ VOID TextView::NotifyCursorChange()
 VOID TextView::UpdateMetrics()
 {
 	RECT rect;
-	GetClientRect(m_hWnd, &rect);
+	ClientRect(&rect);
 
 	OnSize(0, rect.right, rect.bottom);
 	RefreshWindow();

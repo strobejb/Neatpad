@@ -54,7 +54,7 @@ VOID TextView::RecalcLineHeight()
 	m_nLineHeight += m_nHeightAbove + m_nHeightBelow;
 
 	// force caret resize if we've got the focus
-	if(GetFocus() == m_hWnd)
+	if(m_pHost->HasFocus())
 	{
 		OnKillFocus(0);
 		OnSetFocus(0);

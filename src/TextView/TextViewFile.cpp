@@ -9,6 +9,7 @@
 #define STRICT
 #define WIN32_LEAN_AND_MEAN
 
+#include <chrono>
 #include <windows.h>
 #include <tchar.h>
 #include <memory>
@@ -244,18 +245,15 @@ LONG TextView::IndexFile(BOOL fIndex)
 //
 LONG TextView::OnIndexTimer()
 {
-	LARGE_INTEGER freq, start, now;
 	bool          more;
 
-	QueryPerformanceFrequency(&freq);
-	QueryPerformanceCounter(&start);
+	auto start = std::chrono::steady_clock::now();
 
 	do
 	{
 		more = FileDoc()->index_next(INDEX_CHUNK);
-		QueryPerformanceCounter(&now);
 	}
-	while(more && (now.QuadPart - start.QuadPart) * 1000 < freq.QuadPart * INDEX_SLICE_MS);
+	while(more && std::chrono::steady_clock::now() - start < std::chrono::milliseconds(INDEX_SLICE_MS));
 
 	// done, or no more can be read
 	if(!more)

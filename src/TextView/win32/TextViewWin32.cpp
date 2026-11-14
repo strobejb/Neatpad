@@ -10,7 +10,12 @@
 #include <windows.h>
 
 #include "TextViewWin32.h"
+#include "racursor.h"
 #include "../TextViewInternal.h"
+
+#ifndef SPI_GETCARETWIDTH
+#define SPI_GETCARETWIDTH 0x2006
+#endif
 
 //
 //	64-bit scrollbars (www.catch22.net/tuts/win32/64bit-scrollbars): a range that
@@ -84,7 +89,8 @@ static uint64_t GetScrollPos64(HWND hwnd, int nBar, UINT fMask, uint64_t nMax64)
 }
 
 TextViewWin32::TextViewWin32(HWND hwnd)
-    : m_hWnd(hwnd), m_pView(0), m_hTheme(OpenThemeData(hwnd, L"edit")), m_hUserMenu(0)
+    : m_hWnd(hwnd), m_pView(0), m_hTheme(OpenThemeData(hwnd, L"edit")), m_hUserMenu(0),
+      m_hMarginCursor(CreateCursor(GetModuleHandle(0), 21, 5, 32, 32, XORMask, ANDMask))
 {
     m_pView = new TextView(hwnd, this);
 }
@@ -92,6 +98,7 @@ TextViewWin32::TextViewWin32(HWND hwnd)
 TextViewWin32::~TextViewWin32()
 {
     delete m_pView;
+    DestroyCursor(m_hMarginCursor);
     CloseThemeData(m_hTheme);
 }
 
@@ -194,6 +201,76 @@ void TextViewWin32::MousePosition(int *x, int *y)
 
     *x = pt.x;
     *y = pt.y;
+}
+
+void TextViewWin32::CaptureMouse()
+{
+    SetCapture(m_hWnd);
+}
+
+void TextViewWin32::ReleaseMouse()
+{
+    ReleaseCapture();
+}
+
+void TextViewWin32::SetCursor(Cursor cursor)
+{
+    ::SetCursor(cursor == CursorMargin ? m_hMarginCursor : LoadCursor(0, IDC_IBEAM));
+}
+
+void TextViewWin32::ClientSize(int *width, int *height)
+{
+    RECT rect;
+
+    GetClientRect(m_hWnd, &rect);
+
+    *width  = rect.right;
+    *height = rect.bottom;
+}
+
+bool TextViewWin32::HasFocus()
+{
+    return GetFocus() == m_hWnd;
+}
+
+//
+//	Whether the view or its top-level window has the focus, so the selection
+//	shows in its active colours
+//
+bool TextViewWin32::IsActive()
+{
+    if (!IsWindowEnabled(m_hWnd) || !IsWindowEnabled(GetAncestor(m_hWnd, GA_ROOT)))
+    {
+        return false;
+    }
+
+    HWND hwndFocus = GetFocus();
+
+    if (hwndFocus == m_hWnd || IsChild(m_hWnd, hwndFocus))
+    {
+        return true;
+    }
+
+    HWND hwndRoot       = GetAncestor(m_hWnd, GA_ROOT);
+    HWND hwndForeground = GetForegroundWindow();
+
+    return hwndForeground == hwndRoot || GetAncestor(hwndForeground, GA_ROOT) == hwndRoot;
+}
+
+int TextViewWin32::CaretWidth()
+{
+    DWORD width = 0;
+
+    SystemParametersInfo(SPI_GETCARETWIDTH, 0, &width, 0);
+    return (int)width;
+}
+
+int TextViewWin32::WheelScrollLines()
+{
+    UINT lines = 0;
+
+    SystemParametersInfo(SPI_GETWHEELSCROLLLINES, 0, &lines, 0);
+    return (int)lines;
 }
 
 bool TextViewWin32::ReadClipboard(const std::function<void(const tchar_t *text, size_t length)> &use)

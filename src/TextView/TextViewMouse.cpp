@@ -112,7 +112,7 @@ LONG TextView::OnLButtonDown(UINT nFlags, int mx, int my)
 		SetCursorCoord(&coord);
 	}
 
-	SetCapture(m_hWnd);
+	m_pHost->CaptureMouse();
 
 	NotifyCursorChange();
 	return 0;
@@ -135,7 +135,7 @@ LONG TextView::OnLButtonUp(UINT nFlags, int mx, int my)
 		}
 
 		m_nSelectionMode = SEL_NONE;
-		ReleaseCapture();
+		m_pHost->ReleaseMouse();
 	}
 
 	return 0;
@@ -206,7 +206,7 @@ LONG TextView::OnMouseMove(UINT nFlags, int mx, int my)
 		if(m_nSelectionMode == SEL_MARGIN && mx > LeftMarginWidth())
 		{
 			m_nSelectionMode = SEL_NORMAL;
-			SetCursor(LoadCursor(0, IDC_IBEAM));
+			m_pHost->SetCursor(TextViewHost::CursorText);
 		}
 
 		//
@@ -214,7 +214,7 @@ LONG TextView::OnMouseMove(UINT nFlags, int mx, int my)
 		//	is inside/outside of the TextView scrolling area
 		//  and stop/start a scrolling timer appropriately
 		//
-		GetClientRect(m_hWnd, &rect);
+		ClientRect(&rect);
 		
 		// build the scrolling area
 		rect.bottom -= rect.bottom % m_nLineHeight;
@@ -293,12 +293,12 @@ LONG TextView::OnMouseMove(UINT nFlags, int mx, int my)
 	{
 		if(mx < LeftMarginWidth())
 		{
-			SetCursor(m_hMarginCursor);
+			m_pHost->SetCursor(TextViewHost::CursorMargin);
 		}
 		else
 		{
 			//OnLButtonDown(0, mx, my);
-			SetCursor(LoadCursor(0, IDC_IBEAM));
+			m_pHost->SetCursor(TextViewHost::CursorText);
 		}
 
 	}
@@ -325,7 +325,7 @@ LONG TextView::OnTimer(UINT_PTR nTimerId)
 		return OnFilterTimer();
 	
 	// find client area, but make it an even no. of lines
-	GetClientRect(m_hWnd, &rect);
+	ClientRect(&rect);
 	rect.bottom -= rect.bottom % m_nLineHeight;
 	rect.left   += LeftMarginWidth();
 
@@ -416,7 +416,7 @@ BOOL TextView::MouseCoordToTextCoord(	int		 mx,			// [in]  mouse x-coord
 		*psnappedX = 0;
 
 	// get scrollable area
-	GetClientRect(m_hWnd, &rect);
+	ClientRect(&rect);
 	rect.bottom -= rect.bottom % m_nLineHeight;
 
 	if(rect.bottom <= 0 || rect.right <= 0 || m_nLineCount == 0)
@@ -476,7 +476,7 @@ LONG TextView::InvalidateLine(TextCoord *line, bool forceAnalysis)
 	{
 		RECT rect;
 
-		GetClientRect(m_hWnd, &rect);
+		ClientRect(&rect);
 
 		rect.top    = row * m_nLineHeight;
 		rect.bottom = rect.top + m_nLineHeight;
@@ -516,7 +516,7 @@ LONG TextView::InvalidateRange(TextCoord *startCoord, TextCoord *finishCoord)
 
 	LineIterator line = m_pTextDoc->line_at(m_scrollVPos);
 
-	GetClientRect(m_hWnd, &client);
+	ClientRect(&client);
 
 	// invalidate *whole* lines. don't care about flickering anymore because
 	// all output is double-buffered now, and this method is much simpler

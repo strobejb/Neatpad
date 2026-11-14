@@ -287,6 +287,7 @@ private:
 	//
 	//	Scrolling
 	//
+	void		ClientRect(RECT *rect);
 	bool		ScrollRgn(int dx, int dy, bool fReturnUpdateRgn, RECT *scrolled);
 	void		InvalidateOutside(const RECT &inside);
 	void		Scroll(int dx, int dy);
@@ -379,7 +380,6 @@ private:
 
 	// Margin information
 	int			m_nLinenoWidth;
-	HCURSOR		m_hMarginCursor;
 	//RECT		m_rcBorder;
 
 	COLORREF	m_rgbColourList[TXC_MAX_COLOURS];

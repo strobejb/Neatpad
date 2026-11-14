@@ -15,6 +15,7 @@
 #define STRICT
 #define WIN32_LEAN_AND_MEAN
 
+#include <chrono>
 #include <windows.h>
 #include <tchar.h>
 #include "TextView.h"
@@ -159,11 +160,9 @@ void TextView::EndFilter(bool fKeepPlace)
 //
 bool TextView::FilterSlice()
 {
-    LARGE_INTEGER freq, start, now;
     size_w        added;
 
-    QueryPerformanceFrequency(&freq);
-    QueryPerformanceCounter(&start);
+    auto start = std::chrono::steady_clock::now();
 
     // A match at the old end may still be waiting for following context lines.
     if (m_filterAfter && m_filterWrittenTo.byte_offset < m_pSourceDoc->byte_length())
@@ -184,9 +183,8 @@ bool TextView::FilterSlice()
         m_filterFrom = m_pSourceDoc->filter_lines(m_sMatchText.data(), (uint32_t)m_sMatchText.size(),
                                                   m_fMatchCase != FALSE, m_filterFrom, FILTER_CHUNK, found);
 
-        QueryPerformanceCounter(&now);
     } while (m_filterFrom.byte_offset < m_pSourceDoc->byte_length() &&
-             (now.QuadPart - start.QuadPart) * 1000 < freq.QuadPart * FILTER_SLICE_MS);
+             std::chrono::steady_clock::now() - start < std::chrono::milliseconds(FILTER_SLICE_MS));
 
     m_pTextDoc->grow(&added);
 

@@ -47,6 +47,15 @@ class TextViewWin32 : public TextViewHost
     bool StartTimer(unsigned id, unsigned milliseconds) override;
     void StopTimer(unsigned id) override;
     void MousePosition(int *x, int *y) override;
+    void CaptureMouse() override;
+    void ReleaseMouse() override;
+    void SetCursor(Cursor cursor) override;
+
+    void ClientSize(int *width, int *height) override;
+    bool HasFocus() override;
+    bool IsActive() override;
+    int  CaretWidth() override;
+    int  WheelScrollLines() override;
 
     bool ReadClipboard(const std::function<void(const tchar_t *text, size_t length)> &use) override;
     bool WriteClipboard(size_t length, const std::function<size_t(tchar_t *buffer)> &fill) override;
@@ -61,7 +70,8 @@ class TextViewWin32 : public TextViewHost
     HWND      m_hWnd;
     TextView *m_pView;
     HTHEME    m_hTheme;
-    HMENU     m_hUserMenu; // the context menu the parent gave, if any
+    HMENU     m_hUserMenu;     // the context menu the parent gave, if any
+    HCURSOR   m_hMarginCursor; // the margin's right-pointing arrow
 };
 
 #endif
