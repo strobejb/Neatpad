@@ -498,7 +498,7 @@ size_w TextDocument::count_chars(size_w offset_bytes, size_w *length_chars)
 
 	while(remaining && offset_bytes < rawLength)
 	{
-		textchar buf[0x100];
+		tchar_t buf[0x100];
 		uint32_t charlen = (uint32_t)min_of(remaining, (size_w)0x100);
 		size_w   bytelen = decode_text(offset_bytes, rawLength - offset_bytes, buf, &charlen);
 
@@ -521,7 +521,7 @@ size_w TextDocument::count_code_units(size_w offset_bytes, size_w length_bytes)
 
 	while(length_bytes && offset_bytes < rawLength)
 	{
-		textchar buf[0x100];
+		tchar_t buf[0x100];
 		uint32_t charlen = 0x100;
 		size_w bytelen = decode_text(offset_bytes, min_of(length_bytes, rawLength - offset_bytes), buf, &charlen);
 
@@ -596,7 +596,7 @@ uint32_t LineIterator::linebreak() const
 	return m_doc ? m_doc->linebreak_from_coord(&m_line) : 0;
 }
 
-uint32_t LineIterator::text(textchar *buf, uint32_t buflen) const
+uint32_t LineIterator::text(tchar_t *buf, uint32_t buflen) const
 {
 	return m_doc ? m_doc->getline(m_line, buf, buflen) : 0;
 }

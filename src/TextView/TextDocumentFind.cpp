@@ -22,21 +22,21 @@
 //	the start when searching forwards, the end when searching backwards -
 //	the edge a match needs once that unit is the oldest in the window.
 //
-bool TextDocument::find_text_nocase(const textchar *text, uint32_t length, size_w from, size_w to, bool backwards, size_w *match, size_w *match_length)
+bool TextDocument::find_text_nocase(const tchar_t *text, uint32_t length, size_w from, size_w to, bool backwards, size_w *match, size_w *match_length)
 {
 	size_w    docLength = byte_length();
 	size_w    offset;
 	size_w    bytes;
 
 	uint32_t  ch32;
-	textchar  units[2];
+	tchar_t  units[2];
 	size_t    unitCount;
 	
 	uint32_t  slot = 0;
 	uint32_t  used = 0;
 	bool   matched = false;
 
-	textchar  *window = 0;
+	tchar_t  *window = 0;
 	size_w *edges  = 0;
 
 	if(text == 0 || length == 0 || match == 0 || match_length == 0)
@@ -49,7 +49,7 @@ bool TextDocument::find_text_nocase(const textchar *text, uint32_t length, size_
 	if(from == to || length > INT_MAX)
 		return false;
 
-	window = new textchar[length * 2];
+	window = new tchar_t[length * 2];
 	edges  = new size_w[length];
 
 	if(window == 0 || edges == 0)
@@ -144,7 +144,7 @@ bool TextDocument::find_text_nocase(const textchar *text, uint32_t length, size_
 	return matched;
 }
 
-TextPos TextDocument::filter_lines(const textchar *text, uint32_t length, bool matchcase, TextPos from, size_w bytes,
+TextPos TextDocument::filter_lines(const tchar_t *text, uint32_t length, bool matchcase, TextPos from, size_w bytes,
 								   const std::function<void(TextPos line_begin, TextPos line_next)> &found)
 {
 	size_w    length_left = byte_length() - min_of(from.byte_offset, byte_length());
@@ -167,7 +167,7 @@ TextPos TextDocument::filter_lines(const textchar *text, uint32_t length, bool m
 	return last.line_next;
 }
 
-bool TextDocument::find_text(const textchar *text, uint32_t length, TextPos from_pos, TextPos to_pos, bool backwards, bool matchcase, TextPos *match_begin, TextPos *match_end)
+bool TextDocument::find_text(const tchar_t *text, uint32_t length, TextPos from_pos, TextPos to_pos, bool backwards, bool matchcase, TextPos *match_begin, TextPos *match_end)
 {
 	const size_w chunkSize = 0x10000;
 

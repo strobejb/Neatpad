@@ -14,12 +14,12 @@
 //	char16_t, which is what Qt's QString holds.
 //
 #ifdef _WIN32
-typedef wchar_t	 textchar;
+typedef wchar_t	 tchar_t;
 #else
-typedef char16_t textchar;
+typedef char16_t tchar_t;
 #endif
 
-static_assert(sizeof(textchar) == 2, "textchar must be a UTF-16 code unit");
+static_assert(sizeof(tchar_t) == 2, "tchar_t must be a UTF-16 code unit");
 
 class TextDocument;
 class TextDocumentLineIndexProbe;
@@ -109,7 +109,7 @@ public:
 
 	// Read up to buflen units: returns how many, or 0 at the end. A surrogate pair
 	// needs room for 2.
-	uint32_t read(textchar *buf, uint32_t buflen);
+	uint32_t read(tchar_t *buf, uint32_t buflen);
 
 	TextPos pos() const;		// where the next read starts
 	bool    at_end() const;
@@ -199,8 +199,8 @@ public:
 	// A range is [from, to) in either order; each returns the bytes
 	// it inserted (insert/replace) or erased (erase), and can report the bytes it changed
 	// so callers can move their positions across it.
-	size_w	insert_text  (TextPos at,               const textchar *text, uint32_t length, TextChange *change);
-	size_w	replace_text (TextPos from, TextPos to, const textchar *text, uint32_t length, TextChange *change);
+	size_w	insert_text  (TextPos at,               const tchar_t *text, uint32_t length, TextChange *change);
+	size_w	replace_text (TextPos from, TextPos to, const tchar_t *text, uint32_t length, TextChange *change);
 	size_w	erase_text   (TextPos from, TextPos to, TextChange *change);
 
 	// Make every line break in [from, to) linebreak - TXL_CR, TXL_LF or TXL_CRLF -
@@ -210,7 +210,7 @@ public:
 
 	// Put replace in place of every match of text, as one edit that undoes in
 	// one step, and say how many matches it replaced.
-	size_w	replace_all(const textchar *text, uint32_t length, bool matchcase, const textchar *replace, uint32_t replace_length);
+	size_w	replace_all(const tchar_t *text, uint32_t length, bool matchcase, const tchar_t *replace, uint32_t replace_length);
 
 	//
 	//	Coordinates
@@ -256,7 +256,7 @@ public:
 	//	Text access
 	//
 	TextReader text_from_range(TextPos from, TextPos to);
-	uint32_t getline(const TextCoord &line, textchar *buf, uint32_t buflen);
+	uint32_t getline(const TextCoord &line, tchar_t *buf, uint32_t buflen);
 
     enum diff_flags
     {
@@ -276,13 +276,13 @@ public:
 	LineIterator line_at(TextPos pos);
 
 	// Find text within [from, to), from 'to' backwards if asked, and report where the match begins and ends.
-	bool  find_text(const textchar *text, uint32_t length, TextPos from, TextPos to, bool backwards, bool matchcase, TextPos *match_begin, TextPos *match_end);
+	bool  find_text(const tchar_t *text, uint32_t length, TextPos from, TextPos to, bool backwards, bool matchcase, TextPos *match_begin, TextPos *match_end);
 
 	// From 'from', a line's start, pass each line holding a match of text to
 	// found - once, however many it holds - with the start of the line after
 	// it. It goes on in whole lines to the end of the one 'bytes' on reaches,
 	// and returns where it stopped: the start of the next line, or the end.
-	TextPos filter_lines(const textchar *text, uint32_t length, bool matchcase, TextPos from, size_w bytes,
+	TextPos filter_lines(const tchar_t *text, uint32_t length, bool matchcase, TextPos from, size_w bytes,
 						 const std::function<void(TextPos line_begin, TextPos line_next)> &found);
 
 	//
@@ -337,7 +337,7 @@ private:
 	bool unit_before(size_w offset_bytes, uint32_t *ch, uint32_t *size);
 	bool line_bounds_from_offset(size_w offset_bytes, size_w *line_begin, size_w *line_next);
 	void coord_in_line(size_w line_begin, size_w line_next, size_w column, TextCoord *coord);
-	bool find_text_nocase(const textchar *text, uint32_t length, size_w from, size_w to, bool backwards, size_w *match, size_w *match_length);
+	bool find_text_nocase(const tchar_t *text, uint32_t length, size_w from, size_w to, bool backwards, size_w *match, size_w *match_length);
 
 	//
 	//	UTF-16 / backing-byte conversion
@@ -346,8 +346,8 @@ private:
 	size_w      count_code_units      (size_w offset_bytes, size_w  length_bytes);
 	TEXT_RESULT charoffset_from_bytes (size_w offset_bytes, size_w *offset_chars);
 
-	size_t utf16_to_rawdata(const textchar *utf16str, size_t utf16len, uint8_t *rawdata, size_t *rawlen);
-	size_t rawdata_to_utf16(uint8_t *rawdata, size_t rawlen, textchar *utf16str, size_t *utf16len);
+	size_t utf16_to_rawdata(const tchar_t *utf16str, size_t utf16len, uint8_t *rawdata, size_t *rawlen);
+	size_t rawdata_to_utf16(uint8_t *rawdata, size_t rawlen, tchar_t *utf16str, size_t *utf16len);
 	size_t rawdata_complete_length(uint8_t *rawdata, size_t rawlen);
 
 	bool   write_converted(SaveFile &file, TEXT_ENCODING encoding, uint32_t linebreak);
@@ -357,7 +357,7 @@ private:
 	//
 
 	TEXT_ENCODING detect_file_format(int *headersize);
-	size_w decode_text(size_w offset_bytes, size_w lenbytes, textchar *buf, uint32_t *len);
+	size_w decode_text(size_w offset_bytes, size_w lenbytes, tchar_t *buf, uint32_t *len);
 	size_w decode_char(size_w offset_bytes, size_t lenbytes, uint32_t *pch32);
 	size_w decode_prev_char(size_w offset_bytes, size_w lower_bound, uint32_t *pch32);
 	size_w code_unit_size();
@@ -366,8 +366,8 @@ private:
 	//	Raw editing
 	//
 
-	size_w	insert_raw(size_w offset_bytes, const textchar *text, uint32_t length);
-	size_w	replace_raw(size_w offset_bytes, const textchar *text, uint32_t length, size_w erase_bytes);
+	size_w	insert_raw(size_w offset_bytes, const tchar_t *text, uint32_t length);
+	size_w	replace_raw(size_w offset_bytes, const tchar_t *text, uint32_t length, size_w erase_bytes);
 	void	event_change(TextChange *change);
 
 
@@ -408,7 +408,7 @@ public:
 	uint32_t linebreak() const;
 
 	// The line's text, its line break included, as getline()
-	uint32_t text(textchar *buf, uint32_t buflen) const;
+	uint32_t text(tchar_t *buf, uint32_t buflen) const;
 
 	// The line's text as a stream, for a line too long for one buffer
 	TextReader reader() const;
