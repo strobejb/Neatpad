@@ -428,6 +428,12 @@ bool TextViewWin32::MarginImageSize(int *width, int *height)
     return m_hImageList && ImageList_GetIconSize(m_hImageList, width, height);
 }
 
+unsigned TextViewWin32::Modifiers()
+{
+    return (GetKeyState(VK_SHIFT) < 0 ? TVMOD_SHIFT : 0) | (GetKeyState(VK_CONTROL) < 0 ? TVMOD_CTRL : 0) |
+           (GetKeyState(VK_MENU) < 0 ? TVMOD_ALT : 0);
+}
+
 uint32_t TextViewWin32::SystemColour(int index)
 {
     return GetSysColor(index);

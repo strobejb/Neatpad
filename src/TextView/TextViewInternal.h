@@ -70,6 +70,46 @@ typedef struct
 
 } LINEINFO;
 
+//
+//	The keys and scrollbar actions the engine handles: Win32's VK_* and SB_*
+//	values, so the Win32 host passes its own straight in. Other hosts map theirs.
+//
+enum
+{
+	TVK_BACK	= 0x08,
+	TVK_SHIFT	= 0x10,
+	TVK_CONTROL	= 0x11,
+	TVK_PRIOR	= 0x21,
+	TVK_NEXT	= 0x22,
+	TVK_END		= 0x23,
+	TVK_HOME	= 0x24,
+	TVK_LEFT	= 0x25,
+	TVK_UP		= 0x26,
+	TVK_RIGHT	= 0x27,
+	TVK_DOWN	= 0x28,
+	TVK_INSERT	= 0x2D,
+	TVK_DELETE	= 0x2E
+};
+
+enum
+{
+	TVSB_LINEUP			= 0,
+	TVSB_LINEDOWN		= 1,
+	TVSB_PAGEUP			= 2,
+	TVSB_PAGEDOWN		= 3,
+	TVSB_THUMBPOSITION	= 4,
+	TVSB_THUMBTRACK		= 5,
+	TVSB_TOP			= 6,
+	TVSB_BOTTOM			= 7,
+
+	TVSB_LINELEFT		= TVSB_LINEUP,
+	TVSB_LINERIGHT		= TVSB_LINEDOWN,
+	TVSB_PAGELEFT		= TVSB_PAGEUP,
+	TVSB_PAGERIGHT		= TVSB_PAGEDOWN,
+	TVSB_LEFT			= TVSB_TOP,
+	TVSB_RIGHT			= TVSB_BOTTOM
+};
+
 // The smaller and larger of two values of one type (windows.h has min and
 // max macros, which std::min and std::max trip over)
 template <class T> inline T min_of(T a, T b)

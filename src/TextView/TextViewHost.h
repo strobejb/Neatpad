@@ -74,6 +74,16 @@ class TextViewHost
     virtual void CaptureMouse() = 0;
     virtual void ReleaseMouse() = 0;
 
+    // The modifier keys held down now, as TVMOD_* flags
+    enum
+    {
+        TVMOD_SHIFT = 1,
+        TVMOD_CTRL  = 2,
+        TVMOD_ALT   = 4
+    };
+
+    virtual unsigned Modifiers() = 0;
+
     // The mouse pointer's shape: the text's I-beam, or the margin's arrow
     enum Cursor
     {

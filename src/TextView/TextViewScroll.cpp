@@ -14,7 +14,6 @@
 #include "TextView.h"
 #include "TextViewInternal.h"
 
-bool IsKeyPressed(uint32_t nVirtKey);
 
 //
 //	Set scrollbar positions and range
@@ -464,36 +463,36 @@ int32_t TextView::OnVScroll(uint32_t nSBCode, uint32_t nPos)
 
 	switch(nSBCode)
 	{
-	case SB_TOP:
+	case TVSB_TOP:
 		if(m_pTextDoc->coord_from_pos(TextPos(0), &coord))
 			SetScrollCoord(&coord);
 
 		RefreshWindow();
 		break;
 
-	case SB_BOTTOM:
+	case TVSB_BOTTOM:
 		ScrollToDocumentEnd();
 		RefreshWindow();
 		break;
 
-	case SB_LINEUP:
+	case TVSB_LINEUP:
 		Scroll(0, -1);
 		break;
 
-	case SB_LINEDOWN:
+	case TVSB_LINEDOWN:
 		Scroll(0, 1);
 		break;
 
-	case SB_PAGEDOWN:
+	case TVSB_PAGEDOWN:
 		Scroll(0, m_nWindowLines);
 		break;
 
-	case SB_PAGEUP:
+	case TVSB_PAGEUP:
 		Scroll(0, -m_nWindowLines);
 		break;
 
-	case SB_THUMBPOSITION:
-	case SB_THUMBTRACK:
+	case TVSB_THUMBPOSITION:
+	case TVSB_THUMBTRACK:
 
 		// the thumb is a byte offset, which can fall part way through a character:
 		// only the line containing it is used, to show that line
@@ -523,34 +522,34 @@ int32_t TextView::OnHScroll(uint32_t nSBCode, uint32_t nPos)
 
 	switch(nSBCode)
 	{
-	case SB_LEFT:
+	case TVSB_LEFT:
 		m_nHScrollPos = 0;
 		RefreshWindow();
 		break;
 
-	case SB_RIGHT:
+	case TVSB_RIGHT:
 		m_nHScrollPos = m_nHScrollMax;
 		RefreshWindow();
 		break;
 
-	case SB_LINELEFT:
+	case TVSB_LINELEFT:
 		Scroll(-1, 0);
 		break;
 
-	case SB_LINERIGHT:
+	case TVSB_LINERIGHT:
 		Scroll(1, 0);
 		break;
 
-	case SB_PAGELEFT:
+	case TVSB_PAGELEFT:
 		Scroll(-m_nWindowColumns, 0);
 		break;
 
-	case SB_PAGERIGHT:
+	case TVSB_PAGERIGHT:
 		Scroll(m_nWindowColumns, 0);
 		break;
 
-	case SB_THUMBPOSITION:
-	case SB_THUMBTRACK:
+	case TVSB_THUMBPOSITION:
+	case TVSB_THUMBTRACK:
 
 		m_nHScrollPos = m_pHost->HScrollTrackPos();
 		RefreshWindow();
@@ -568,11 +567,7 @@ int32_t TextView::OnHScroll(uint32_t nSBCode, uint32_t nPos)
 
 int32_t TextView::OnMouseWheel(int nDelta)
 {
-#ifndef	SPI_GETWHEELSCROLLLINES	
-#define SPI_GETWHEELSCROLLLINES   104
-#endif
-
-	if(!IsKeyPressed(VK_SHIFT))
+	if((m_pHost->Modifiers() & TextViewHost::TVMOD_SHIFT) == 0)
 	{
 		int nScrollLines = m_pHost->WheelScrollLines();
 

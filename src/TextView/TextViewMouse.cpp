@@ -15,7 +15,6 @@
 #include "TextViewInternal.h"
 
 int ScrollDir(int counter, int dir);
-bool IsKeyPressed(uint32_t nVirtKey);
 
 //
 //	WM_LBUTTONDOWN
@@ -38,7 +37,7 @@ int32_t TextView::OnLButtonDown(uint32_t nFlags, int mx, int my)
 		UpdateCaretXY(m_nCaretPosX, &coord);
 
 		// Any key but <shift>
-		if(IsKeyPressed(VK_SHIFT) == false)
+		if((m_pHost->Modifiers() & TextViewHost::TVMOD_SHIFT) == 0)
 		{
 			// remove any existing selection
 			InvalidateRange(&selStart, &selEnd);
@@ -55,7 +54,7 @@ int32_t TextView::OnLButtonDown(uint32_t nFlags, int mx, int my)
 			InvalidateRange(&m_cursorPos, &coord);
 		}
 
-		if(IsKeyPressed(VK_MENU))
+		if((m_pHost->Modifiers() & TextViewHost::TVMOD_ALT) != 0)
 		{
 			m_cpBlockStart.line_begin = coord.line_begin;
 			m_cpBlockStart.xpos = m_nCaretPosX;
@@ -67,7 +66,7 @@ int32_t TextView::OnLButtonDown(uint32_t nFlags, int mx, int my)
 		}
 
 		// set capture for mouse-move selections
-		m_nSelectionMode = IsKeyPressed(VK_MENU) ? SEL_BLOCK : SEL_NORMAL;
+		m_nSelectionMode = (m_pHost->Modifiers() & TextViewHost::TVMOD_ALT) != 0 ? SEL_BLOCK : SEL_NORMAL;
 	}
 	// mouse clicked within margin: select the whole line
 	else

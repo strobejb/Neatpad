@@ -271,7 +271,7 @@ static size_w TabColumn(TextDocument *document, const TextCoord &at, uint32_t wi
     uint32_t   length;
     size_w     column = 0;
 
-    while ((length = reader.read(buffer, ARRAYSIZE(buffer))) != 0)
+    while ((length = reader.read(buffer, sizeof(buffer) / sizeof(buffer[0]))) != 0)
     {
         for (uint32_t i = 0; i < length; ++i)
             column += buffer[i] == '\t' ? width - column % width : 1;
@@ -282,7 +282,7 @@ static size_w TabColumn(TextDocument *document, const TextCoord &at, uint32_t wi
 
 int32_t TextView::OnChar(uint32_t nChar, uint32_t nFlags)
 {
-    WCHAR ch = (WCHAR)nChar;
+    tchar_t ch = (tchar_t)nChar;
 
     if (m_nEditMode == MODE_READONLY || (nChar < 32 && nChar != '\t' && nChar != '\r' && nChar != '\n'))
         return 0;
@@ -318,7 +318,7 @@ int32_t TextView::OnChar(uint32_t nChar, uint32_t nFlags)
             uint32_t   read;
             bool       leading = true;
 
-            while (leading && (read = reader.read(buffer, ARRAYSIZE(buffer))) != 0)
+            while (leading && (read = reader.read(buffer, sizeof(buffer) / sizeof(buffer[0]))) != 0)
             {
                 for (uint32_t i = 0; i < read; ++i)
                 {

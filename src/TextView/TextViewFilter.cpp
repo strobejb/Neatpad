@@ -240,7 +240,7 @@ void TextView::WriteFilterLine(TextPos begin, TextPos next)
 	uint32_t	 len;
 	DWORD		 written;	// WriteFile's count
 
-	while((len = reader.read(buf, ARRAYSIZE(buf))) != 0)
+	while((len = reader.read(buf, sizeof(buf) / sizeof(buf[0]))) != 0)
 	{
 		WriteFile(m_hFilterFile, buf, len * sizeof(tchar_t), &written, 0);
 		last = buf[len - 1];

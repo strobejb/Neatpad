@@ -25,11 +25,6 @@
 };*/
 
 
-bool IsKeyPressed(uint32_t nVirtKey)
-{
-	return GetKeyState(nVirtKey) < 0 ? true : false;
-}
-
 //
 //	Get the layout for the line containing coord
 //
@@ -380,8 +375,8 @@ void TextView::MoveFileEnd()
 //
 int32_t TextView::OnKeyDown(uint32_t nKeyCode, uint32_t nFlags)
 {
-	bool fCtrlDown	= IsKeyPressed(VK_CONTROL);
-	bool fShiftDown	= IsKeyPressed(VK_SHIFT);
+	bool fCtrlDown	= (m_pHost->Modifiers() & TextViewHost::TVMOD_CTRL) != 0;
+	bool fShiftDown	= (m_pHost->Modifiers() & TextViewHost::TVMOD_SHIFT) != 0;
 	bool fAdvancing = false;
 	TextCoord oldCursor = m_cursorPos;
 
@@ -391,7 +386,7 @@ int32_t TextView::OnKeyDown(uint32_t nKeyCode, uint32_t nFlags)
 	//
 	switch(nKeyCode)
 	{
-	case VK_SHIFT: case VK_CONTROL:
+	case TVK_SHIFT: case TVK_CONTROL:
 		return 0;
 
 	// CTRL+Z undo
@@ -411,7 +406,7 @@ int32_t TextView::OnKeyDown(uint32_t nKeyCode, uint32_t nFlags)
 		return 0;
 
 	// Change insert mode / clipboard copy&paste
-	case VK_INSERT:
+	case TVK_INSERT:
 
 		if(fCtrlDown)
 		{
@@ -436,7 +431,7 @@ int32_t TextView::OnKeyDown(uint32_t nKeyCode, uint32_t nFlags)
 
 		return 0;
 
-	case VK_DELETE:
+	case TVK_DELETE:
 
 		if(m_nEditMode != MODE_READONLY)
 		{
@@ -449,7 +444,7 @@ int32_t TextView::OnKeyDown(uint32_t nKeyCode, uint32_t nFlags)
 		}
 		return 0;
 
-	case VK_BACK:
+	case TVK_BACK:
 
 		if(m_nEditMode != MODE_READONLY)
 		{
@@ -460,7 +455,7 @@ int32_t TextView::OnKeyDown(uint32_t nKeyCode, uint32_t nFlags)
 		}
 		return 0;
 
-	case VK_LEFT:
+	case TVK_LEFT:
 
 		if(fCtrlDown)	MoveWordPrev();
 		else			MoveCharPrev();
@@ -468,7 +463,7 @@ int32_t TextView::OnKeyDown(uint32_t nKeyCode, uint32_t nFlags)
 		fAdvancing = false;
 		break;
 
-	case VK_RIGHT:
+	case TVK_RIGHT:
 		
 		if(fCtrlDown)	MoveWordNext();
 		else			MoveCharNext();
@@ -476,18 +471,18 @@ int32_t TextView::OnKeyDown(uint32_t nKeyCode, uint32_t nFlags)
 		fAdvancing = true;
 		break;
 
-	case VK_UP:
+	case TVK_UP:
 		if(fCtrlDown)	Scroll(0, -1);
 		else			MoveLineUp(1);
 		break;
 
-	case VK_DOWN:
+	case TVK_DOWN:
 		if(fCtrlDown)	Scroll(0, 1);
 		else			MoveLineDown(1);
 		break;
 
 	// page up/down scroll the view and the caret together, so the caret keeps its row
-	case VK_PRIOR:
+	case TVK_PRIOR:
 		if(!fCtrlDown)
 		{
 			Scroll(0, -m_nWindowLines);
@@ -495,7 +490,7 @@ int32_t TextView::OnKeyDown(uint32_t nKeyCode, uint32_t nFlags)
 		}
 		break;
 
-	case VK_NEXT:
+	case TVK_NEXT:
 		if(!fCtrlDown)
 		{
 			Scroll(0, m_nWindowLines);
@@ -503,12 +498,12 @@ int32_t TextView::OnKeyDown(uint32_t nKeyCode, uint32_t nFlags)
 		}
 		break;
 
-	case VK_HOME:
+	case TVK_HOME:
 		if(fCtrlDown)	MoveFileStart();
 		else			MoveCurrentLineStart();
 		break;
 
-	case VK_END:
+	case TVK_END:
 		if(fCtrlDown)	MoveFileEnd();
 		else			MoveCurrentLineEnd();
 		break;
@@ -540,7 +535,7 @@ int32_t TextView::OnKeyDown(uint32_t nKeyCode, uint32_t nFlags)
 	UpdateCaretCoord(&m_cursorPos, fAdvancing, &m_nCaretPosX);
 	
 	// maintain the caret 'anchor' position *except* for up/down actions
-	if(nKeyCode != VK_UP && nKeyCode != VK_DOWN)
+	if(nKeyCode != TVK_UP && nKeyCode != TVK_DOWN)
 	{
 		m_nAnchorPosX = m_nCaretPosX;
 
