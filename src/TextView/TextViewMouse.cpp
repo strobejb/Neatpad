@@ -517,10 +517,10 @@ BOOL TextView::MouseCoordToTextCoord(	int		 mx,			// [in]  mouse x-coord
 
 	mx += m_nHScrollPos * m_nFontWidth;
 
-	// get the USPDATA object for the selected line!!
-		USPDATA *uspData = GetUspData(0, &lineCoord);
+	// get the layout for the selected line!!
+	TextLayout *layout = GetLayout(&lineCoord);
 
-	if(uspData == 0)
+	if(layout == 0)
 	{
 		*coord = lineCoord;
 
@@ -528,7 +528,7 @@ BOOL TextView::MouseCoordToTextCoord(	int		 mx,			// [in]  mouse x-coord
 	}
 
 	// convert mouse-x coordinate to a character-offset relative to start of line
-	UspSnapXToOffset(uspData, mx, &mx, &cp, 0);
+	cp = layout->SnapXToOffset(mx, &mx);
 
 	if(!m_pTextDoc->coord_from_line_pos(&lineCoord, cp, coord))
 	{
@@ -561,11 +561,11 @@ LONG TextView::InvalidateLine(TextCoord *line, bool forceAnalysis)
 
 	if(forceAnalysis)
 	{
-		for(int i = 0; i < USP_CACHE_SIZE; i++)
+		for(int i = 0; i < LINE_CACHE_SIZE; i++)
 		{
-			if(m_uspCache[i].usage > 0 && m_uspCache[i].line_begin == line->line_begin)
+			if(m_lineCache[i].usage > 0 && m_lineCache[i].line_begin == line->line_begin)
 			{
-				m_uspCache[i].usage = 0;
+				m_lineCache[i].usage = 0;
 				break;
 			}
 		}
@@ -683,22 +683,22 @@ VOID TextView::UpdateCaretXY(int xpos, TextCoord *coord)
 BOOL TextView::TextCoordToX(TextCoord *coord, BOOL fTrailing, int *x)
 {
 	size_w		off_chars = coord->column;
-	USPDATA	  * uspData;
+	TextLayout  * layout;
 
 	*x = 0;
 
-	// locate the USPDATA for this line
-	if((uspData = GetUspData(NULL, coord)) == 0)
+	// locate the layout for this line
+	if((layout = GetLayout(coord)) == 0)
 		return FALSE;
 
 	// Provisional lazy offsets can disagree slightly; keep the caret
 	// position relative to the analyzed line instead of wrapping.
-	off_chars = min(off_chars, (size_w)uspData->stringLen);
+	off_chars = min(off_chars, (size_w)layout->Length());
 
 	if(fTrailing && off_chars > 0)
-		UspOffsetToX(uspData, (int)(off_chars - 1), TRUE, x);
+		*x = layout->OffsetToX((int)(off_chars - 1), true);
 	else
-		UspOffsetToX(uspData, (int)off_chars, FALSE, x);
+		*x = layout->OffsetToX((int)off_chars, false);
 
 	return TRUE;
 }

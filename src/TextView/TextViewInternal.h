@@ -29,23 +29,25 @@ HRESULT (WINAPI * DrawThemeBackground_Proc)(HTHEME hTheme, HDC hdc, int, int, co
 #include "../TextDocument/TextDocument.h"
 #include "TextView.h"
 #include "TextViewHost.h"
+#include "TextLayout.h"
 
 #include "win32/UspLib/usplib.h"
 
+//
+//	LINECACHE - a line laid out, kept while it's in use
+//
 typedef struct
 {
-	USPDATA *uspData;
+	TextLayout *layout;
 	TextPos	 line_begin;	// the line's start (cache key; flushed on every edit)
 	ULONG	 usage;			// cache-count
 
 	int		 length;		// length in chars INCLUDING CR/LF
 	int		 length_CRLF;	// length in chars EXCLUDING CR/LF
 
-} USPCACHE;
+} LINECACHE;
 
-typedef const SCRIPT_LOGATTR CSCRIPT_LOGATTR;
-
-#define USP_CACHE_SIZE 200
+#define LINE_CACHE_SIZE 200
 
 //
 //	LINEINFO - information about a specific line
@@ -201,7 +203,7 @@ private:
 
 
 	int			ApplyTextAttributes(TextCoord *line, ULONG &nColumn, TCHAR *szText, int nTextLen, ATTR *attr);
-	int			ApplySelection(USPDATA *uspData, TextCoord *line, ULONG nTextLen);
+	int			ApplySelection(TextLayout *layout, TextCoord *line, ULONG nTextLen);
 	int			SyntaxColour(TCHAR *szText, ULONG nTextLen, ATTR *attr);
 	int			StripCRLF(TCHAR *szText, ATTR *attrList, int nLength, bool fAllow);
 	int			CRLF_size(TCHAR *szText, int nLength);
@@ -257,7 +259,7 @@ private:
 	VOID		MoveFileStart();
 	VOID		MoveFileEnd();
 
-	bool		GetLineLayout(TextCoord *line, USPCACHE **uspCache, CSCRIPT_LOGATTR **logAttr);
+	bool		GetLineLayout(TextCoord *line, LINECACHE **lineCache);
 	bool		CoordAtPreviousLineEnd(TextCoord *coord, TextCoord *result);
 	bool		CoordAtNextLineStart(TextCoord *coord, TextCoord *result);
 	VOID		SetCursorLinePos(int charPos);
@@ -406,10 +408,11 @@ private:
 	HIMAGELIST	m_hImageList;
 	HMENU		m_hUserMenu;
 
-	// Cache for USPDATA objects
-	USPCACHE    *m_uspCache;
-	USPDATA		*GetUspData(HDC hdc, TextCoord *coord);
-	USPCACHE    *GetUspCache(HDC hdc, TextCoord *coord);
+	// The lines laid out most recently
+	LINECACHE   *m_lineCache;
+	TextLayout	*CreateLayout();
+	TextLayout	*GetLayout(TextCoord *coord);
+	LINECACHE   *GetLineCache(TextCoord *coord);
 
 	TextDocument *m_pTextDoc;
 };

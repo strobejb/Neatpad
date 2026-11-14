@@ -58,14 +58,14 @@ ULONG TextView::EnterText(TCHAR *szText, ULONG nLength, bool forceInsert)
 		// without a selection, overwrite the text after the caret but never the CR/LF
 		if(!fReplaceSelection)
 		{
-			USPCACHE *uspCache = GetUspCache(0, &m_cursorPos);
+			LINECACHE *lineCache = GetLineCache(&m_cursorPos);
 			size_w lineEnd;
 			size_w endPos;
 
-			if(uspCache == 0)
+			if(lineCache == 0)
 				return 0;
 
-			lineEnd = uspCache->length_CRLF;
+			lineEnd = lineCache->length_CRLF;
 
 			// single-character overwrite - must behave like 'forward delete'
 			// and remove a whole character-cluster (i.e. maybe more than 1 char)

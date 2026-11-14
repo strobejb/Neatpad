@@ -100,6 +100,9 @@
     <ClCompile Include="..\src\TextView\win32\TextViewWin32.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\src\TextView\win32\UspTextLayout.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="tests.h">
@@ -124,6 +127,12 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\src\TextView\win32\TextViewWin32.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\TextView\TextLayout.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\TextView\win32\UspTextLayout.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\src\TextDocument\Unicode.h">

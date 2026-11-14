@@ -204,16 +204,16 @@ class TextViewMarginProbe
         TextCoord line;
 
         CHECK(view->m_pTextDoc->coord_from_lineno(lineno, &line) == TDR_OK);
-        CHECK(view->GetUspCache(0, &line) != 0);
+        CHECK(view->GetLineCache(&line) != 0);
     }
 
     static bool has_cache(HWND hwnd)
     {
         TextView *view = (TextView *)GetWindowLongPtr(hwnd, 0);
 
-        for (int i = 0; i < USP_CACHE_SIZE; ++i)
+        for (int i = 0; i < LINE_CACHE_SIZE; ++i)
         {
-            if (view->m_uspCache[i].usage)
+            if (view->m_lineCache[i].usage)
             {
                 return true;
             }
@@ -2094,6 +2094,23 @@ void textview_arrows_step_over_whole_characters()
     }
 }
 
+void textview_arrows_leave_an_empty_last_line()
+{
+    // the last line is empty: the caret starts on it, at 4
+    for (TEXT_ENCODING encoding : nav_encodings)
+    {
+        EditPair pair = {};
+
+        CHECK(open_edit_pair(&pair, L"ab\r\n", encoding));
+
+        SendMessage(pair.view, EM_SETSEL, 4, 4);
+        expect_key_moves(pair.view, VK_LEFT, false, 2, "Left");
+        expect_key_moves(pair.view, VK_RIGHT, false, 4, "Right");
+
+        close_edit_pair(&pair);
+    }
+}
+
 void textview_word_moves_skip_whitespace_and_line_breaks()
 {
     // U+0301 at 8 belongs to the word "cafe" that starts at 4. The second line
@@ -2635,6 +2652,7 @@ const test_case tests[] = {
     {"textview_filter_context_merges_across_scan_chunks", textview_filter_context_merges_across_scan_chunks},
     {"textview_filter_context_follows_new_surrounding_lines", textview_filter_context_follows_new_surrounding_lines},
     {"textview_arrows_step_over_whole_characters", textview_arrows_step_over_whole_characters},
+    {"textview_arrows_leave_an_empty_last_line", textview_arrows_leave_an_empty_last_line},
     {"textview_word_moves_skip_whitespace_and_line_breaks", textview_word_moves_skip_whitespace_and_line_breaks},
     {"textview_home_and_end_go_to_whole_characters", textview_home_and_end_go_to_whole_characters},
     {"textview_up_and_down_keep_the_column", textview_up_and_down_keep_the_column},

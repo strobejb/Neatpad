@@ -20,6 +20,7 @@
 #include "TextViewInternal.h"
 #include "racursor.h"
 #include "win32/TextViewWin32.h"
+#include "win32/UspTextLayout.h"
 
 
 #ifndef SPI_GETCARETWIDTH
@@ -67,14 +68,14 @@ TextView::TextView(HWND hwnd, TextViewHost *host)
 	m_nLineInfoCount = 0;
 	m_nCRLFMode		 = TXL_CRLF;//ALL;
 
-	// allocate the USPDATA cache
-	m_uspCache		= new USPCACHE[USP_CACHE_SIZE];
-	
-	for(int i = 0; i < USP_CACHE_SIZE; i++)
+	// allocate the line-layout cache
+	m_lineCache		= new LINECACHE[LINE_CACHE_SIZE];
+
+	for(int i = 0; i < LINE_CACHE_SIZE; i++)
 	{
-		m_uspCache[i].usage   = 0;
-		m_uspCache[i].line_begin = TextPos();
-		m_uspCache[i].uspData = UspAllocate();
+		m_lineCache[i].usage   = 0;
+		m_lineCache[i].line_begin = TextPos();
+		m_lineCache[i].layout  = CreateLayout();
 	}
 
 	SystemParametersInfo(SPI_GETCARETWIDTH, 0, &m_nCaretWidth, 0);
@@ -155,12 +156,23 @@ TextView::~TextView()
 	for(int i = 0; i < m_nNumFonts; i++)
 		UspFreeFont(&m_uspFontList[i]);
 
-	for(int i = 0; i < USP_CACHE_SIZE; i++)
-		UspFree(m_uspCache[i].uspData);
+	for(int i = 0; i < LINE_CACHE_SIZE; i++)
+		delete m_lineCache[i].layout;
+
+	delete[] m_lineCache;
 
 	CloseThemeData(m_hTheme);
 
 	delete m_pHost;
+}
+
+//
+//	A layout for a line, in the view's fonts. The host will make these once it
+//	holds the fonts.
+//
+TextLayout *TextView::CreateLayout()
+{
+	return new UspTextLayout(m_hWnd, m_uspFontList);
 }
 
 LRESULT TextView::NotifyParent(UINT nNotifyCode, NMHDR *optional)

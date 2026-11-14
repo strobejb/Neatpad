@@ -15,6 +15,7 @@
 #include "TextView.h"
 #include "TextViewInternal.h"
 #include "../TextDocument/Unicode.h"
+#include "win32/UspTextLayout.h"
 
 void	PaintRect(HDC hdc, int x, int y, int width, int height, COLORREF fill);
 void	PaintRect(HDC hdc, RECT *rect, COLORREF fill);
@@ -54,10 +55,10 @@ VOID TextView::RefreshWindow()
 }
 
 //
-//	Return the analyzed Uniscribe data for the line containing coord. Entries are
-//	keyed by the line's starting byte; ResetLineCache flushes them on every edit.
+//	Return the laid-out line containing coord. Entries are keyed by the line's
+//	starting byte; ResetLineCache flushes them on every edit.
 //
-USPCACHE *TextView::GetUspCache(HDC hdc, TextCoord *coord)
+LINECACHE *TextView::GetLineCache(TextCoord *coord)
 {
 	TCHAR	*buff;
 	ATTR	*attr;
@@ -65,10 +66,8 @@ USPCACHE *TextView::GetUspCache(HDC hdc, TextCoord *coord)
 	ULONG	 colno = 0;
 	int		 len;
 	int		 columns;
-	SIZE	 size;
-	HDC		 hdcTemp;
 
-	USPDATA *uspData;
+	TextLayout *layout;
 	ULONG    lru_usage = -1;
 	int		 lru_index = 0;
 
@@ -78,31 +77,28 @@ USPCACHE *TextView::GetUspCache(HDC hdc, TextCoord *coord)
 	//
 	//	Search the cache to see if we've already analyzed the requested line
 	//
-	for(int i = 0; i < USP_CACHE_SIZE; i++)
+	for(int i = 0; i < LINE_CACHE_SIZE; i++)
 	{
 		// remember the least-recently used
-		if(m_uspCache[i].usage < lru_usage)
+		if(m_lineCache[i].usage < lru_usage)
 		{
 			lru_index = i;
-			lru_usage = m_uspCache[i].usage;
+			lru_usage = m_lineCache[i].usage;
 		}
 
-		if(m_uspCache[i].usage > 0 && m_uspCache[i].line_begin == coord->line_begin)
+		if(m_lineCache[i].usage > 0 && m_lineCache[i].line_begin == coord->line_begin)
 		{
-			m_uspCache[i].usage++;
-			return &m_uspCache[i];
+			m_lineCache[i].usage++;
+			return &m_lineCache[i];
 		}
 	}
 
 	//
 	// not found? overwrite the "least-recently-used" entry
 	//
-	m_uspCache[lru_index].line_begin = coord->line_begin;
-	m_uspCache[lru_index].usage		= 1;
-	uspData = m_uspCache[lru_index].uspData;
-
-	if(hdc == 0)	hdcTemp = GetDC(m_hWnd);
-	else			hdcTemp = hdc;
+	m_lineCache[lru_index].line_begin = coord->line_begin;
+	m_lineCache[lru_index].usage		= 1;
+	layout = m_lineCache[lru_index].layout;
 
 	//
 	// get the text for the entire line (up to the layout limit) and apply style
@@ -115,50 +111,26 @@ USPCACHE *TextView::GetUspCache(HDC hdc, TextCoord *coord)
 	len = m_pTextDoc->getline(*coord, buff, buflen);
 
 	// cache the line's length information
-	m_uspCache[lru_index].length		= len;
-	m_uspCache[lru_index].length_CRLF	= len - CRLF_size(buff, len);
+	m_lineCache[lru_index].length		= len;
+	m_lineCache[lru_index].length_CRLF	= len - CRLF_size(buff, len);
 
 	len = ApplyTextAttributes(coord, colno, buff, len, attr);
 
 	//
-	// setup the tabs + itemization states
-	//
-	int				tablist[]		= { m_nTabWidthChars };
-	SCRIPT_TABDEF	tabdef			= { 1, 0, tablist, 0 };
-	SCRIPT_CONTROL	scriptControl	= { 0 };
-	SCRIPT_STATE	scriptState		= { 0 };
-
-	//SCRIPT_DIGITSUBSTITUTE scriptDigitSub;
-	//ScriptRecordDigitSubstitution(LOCALE_USER_DEFAULT, &scriptDigitSub);
-	//ScriptApplyDigitSubstitution(&scriptDigitSub, &scriptControl, &scriptState);
-
-	//
 	// go!
 	//
-	UspAnalyze(
-		uspData,
-		hdcTemp,
-		buff,
-		len,
-		attr,
-		0,
-		m_uspFontList,
-		&scriptControl,
-		&scriptState,
-		&tabdef
-	);
+	layout->Analyze(buff, len, attr, m_nTabWidthChars);
 
 	//
 	//	Apply the selection
 	//
-	ApplySelection(uspData, coord, len);
+	ApplySelection(layout, coord, len);
 
 	//
 	//	The widest line laid out so far sets the horizontal scrolling range.
 	//	It only ever grows, with a column to spare for the caret at the end.
 	//
-	UspGetSize(uspData, &size);
-	columns = (size.cx + m_nFontWidth - 1) / m_nFontWidth + 1;
+	columns = (layout->Width() + m_nFontWidth - 1) / m_nFontWidth + 1;
 
 	if(columns > m_nLongestLine)
 	{
@@ -166,24 +138,21 @@ USPCACHE *TextView::GetUspCache(HDC hdc, TextCoord *coord)
 		SetupScrollbars();
 	}
 
-	if(hdc == 0)
-		ReleaseDC(m_hWnd, hdcTemp);
-
 	delete[] buff;
 	delete[] attr;
 
-	return &m_uspCache[lru_index];
+	return &m_lineCache[lru_index];
 }
 
 //
-//	Return a fully-analyzed USPDATA object for the specified line
+//	Return the laid-out line containing coord
 //
-USPDATA *TextView::GetUspData(HDC hdc, TextCoord *coord)
+TextLayout *TextView::GetLayout(TextCoord *coord)
 {
-	USPCACHE *uspCache = GetUspCache(hdc, coord);
+	LINECACHE *lineCache = GetLineCache(coord);
 
-	if(uspCache)
-		return uspCache->uspData;
+	if(lineCache)
+		return lineCache->layout;
 	else
 		return 0;
 }
@@ -193,9 +162,9 @@ USPDATA *TextView::GetUspData(HDC hdc, TextCoord *coord)
 //
 void TextView::ResetLineCache()
 {
-	for(int i = 0; i < USP_CACHE_SIZE; i++)
+	for(int i = 0; i < LINE_CACHE_SIZE; i++)
 	{
-		m_uspCache[i].usage	= 0;
+		m_lineCache[i].usage	= 0;
 	}
 }
 
@@ -668,33 +637,33 @@ static bool HasAppFocus(HWND hwnd)
 //
 void TextView::PaintText(HDC hdc, TextCoord *coord, int xpos, int ypos, RECT *bounds)
 {
-	USPDATA * uspData;
+	TextLayout * layout;
 
-	// grab the USPDATA for this line
-	uspData = GetUspData(hdc, coord);
+	// grab the layout for this line
+	layout = GetLayout(coord);
 
-	if(uspData == 0)
+	if(layout == 0)
 		return;
 
 	// set highlight-colours depending on window-focus
 	if(HasAppFocus(m_hWnd))
-		UspSetSelColor(uspData, GetColour(TXC_HIGHLIGHTTEXT), GetColour(TXC_HIGHLIGHT));
+		layout->SetSelectionColours(GetColour(TXC_HIGHLIGHTTEXT), GetColour(TXC_HIGHLIGHT));
 	else
-		UspSetSelColor(uspData, GetColour(TXC_HIGHLIGHTTEXT2), GetColour(TXC_HIGHLIGHT2));
+		layout->SetSelectionColours(GetColour(TXC_HIGHLIGHTTEXT2), GetColour(TXC_HIGHLIGHT2));
 
 	// update selection-attribute information for the line
 	ULONG selStart, selEnd;
 
-	SelectionColumns(coord, uspData->stringLen, &selStart, &selEnd);
-	UspApplySelection(uspData, selStart, selEnd);
+	SelectionColumns(coord, layout->Length(), &selStart, &selEnd);
+	layout->SetSelection(selStart, selEnd);
 
-	ApplySelection(uspData, coord, uspData->stringLen);
+	ApplySelection(layout, coord, layout->Length());
 
-	// draw the text!
-	UspTextOut(uspData, hdc, xpos, ypos, m_nLineHeight, m_nHeightAbove, bounds);
+	// draw the text! Win32 only, until TextCanvas
+	static_cast<UspTextLayout *>(layout)->Draw(hdc, xpos, ypos, m_nLineHeight, m_nHeightAbove, bounds);
 }
 
-int	TextView::ApplySelection(USPDATA *uspData, TextCoord *line, ULONG nTextLen)
+int	TextView::ApplySelection(TextLayout *layout, TextCoord *line, ULONG nTextLen)
 {
 	int selstart = 0;
 	int selend   = 0;
@@ -704,19 +673,19 @@ int	TextView::ApplySelection(USPDATA *uspData, TextCoord *line, ULONG nTextLen)
 
 	if(line->line_begin >= m_cpBlockStart.line_begin && line->line_begin <= m_cpBlockEnd.line_begin)
 	{
-		int trailing;
-		
-		UspXToOffset(uspData, m_cpBlockStart.xpos, &selstart, &trailing, 0);
+		bool trailing;
+
+		layout->XToOffset(m_cpBlockStart.xpos, &selstart, &trailing);
 		selstart += trailing;
-		
-		UspXToOffset(uspData, m_cpBlockEnd.xpos, &selend, &trailing, 0);
+
+		layout->XToOffset(m_cpBlockEnd.xpos, &selend, &trailing);
 		selend += trailing;
 
 		if(selstart > selend)
 			selstart ^= selend ^= selstart^= selend;
 	}
 
-	UspApplySelection(uspData, selend, selstart);
+	layout->SetSelection(selend, selstart);
 
 	return 0;
 }

@@ -156,7 +156,12 @@ Each step is its own commit on `main`, and moves and formatting changes stay sep
   timers, the mouse position for drag-scrolling, the clipboard and notifications. `TextViewWin32` implements it in
   `src/TextView/win32`. Until step 3.4 the engine is still the window's object and owns its host. Client size, fonts
   and DCs, focus, mouse capture and cursors, the theme and the context menu still call Win32 directly.
-- **Next:** step 3.2, introduce `TextLayout` with `UspTextLayout`.
+- **Done:** step 3.2. `TextLayout` (`src/TextView/TextLayout.h`) is one line laid out: x to offset and back, snapping,
+  cursor and word stops, white space, width and the selection. `UspTextLayout` in `src/TextView/win32` wraps `USPDATA`.
+  The line cache (`LINECACHE`) holds layouts, and navigation, the mouse, the caret and painting use them. Still to
+  move: drawing (`UspTextLayout::Draw` until `TextCanvas`), the `ATTR` run type, and the fonts, so for now the
+  engine creates its layouts rather than the host.
+- **Next:** step 3.3, introduce `TextCanvas`.
 
 ## Open decisions
 

@@ -166,6 +166,7 @@
     <ClCompile Include="..\src\TextView\TextViewScroll.cpp" />
     <ClCompile Include="..\src\TextView\TextViewSyntax.cpp" />
     <ClCompile Include="..\src\TextView\win32\TextViewWin32.cpp" />
+    <ClCompile Include="..\src\TextView\win32\UspTextLayout.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\src\TextView\win32\UspLib\UspLib.vcxproj">
@@ -182,6 +183,8 @@
     <ClInclude Include="..\src\TextView\TextView.h" />
     <ClInclude Include="..\src\TextView\TextViewHost.h" />
     <ClInclude Include="..\src\TextView\win32\TextViewWin32.h" />
+    <ClInclude Include="..\src\TextView\TextLayout.h" />
+    <ClInclude Include="..\src\TextView\win32\UspTextLayout.h" />
     <ClInclude Include="..\src\TextDocument\Unicode.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
