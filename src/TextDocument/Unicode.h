@@ -84,14 +84,14 @@ size_t	utf16_to_utf32be (const UTF16 *utf16str, size_t utf16len,  UTF8 *utf32str
 
 //
 //	Conversions between ASCII/ANSI and UTF-16 strings. These use the Windows
-//	ANSI code page, so for now they only exist on Windows.
+//	ANSI code page; other platforms take 8-bit text as Latin-1.
 //
 size_t	ascii_to_utf16 (const UTF8 *asciistr,  size_t asciilen, UTF16 *utf16str, size_t *utf16len);
 size_t  utf16_to_ascii (const UTF16 *utf16str, size_t utf16len, UTF8  *asciistr, size_t *asciilen);
 
 //
 //	Compares two UTF-16 strings of the same length, ignoring case. This uses
-//	the Windows invariant locale, so for now it only exists on Windows.
+//	the Windows invariant locale, and the C.UTF-8 locale elsewhere.
 //
 bool	utf16_equal_nocase(const UTF16 *str1, const UTF16 *str2, size_t len);
 

@@ -985,7 +985,8 @@ size_t utf16_to_utf32be(const UTF16 *utf16str, size_t utf16len, UTF8 *utf32str, 
 //	code page comes from the user's Windows locale, and only Windows converts
 //	it, and case is compared by the Windows invariant locale. They come last,
 //	after windows.h, so that nothing above them can come to depend on it. Other
-//	platforms have no implementation yet.
+//	platforms take 8-bit text as Latin-1, and compare case with the C.UTF-8
+//	locale.
 //
 #ifdef _WIN32
 
@@ -1055,6 +1056,97 @@ bool utf16_equal_nocase(const UTF16 *str1, const UTF16 *str2, size_t len)
 		return false;
 
 	return CompareStringW(LOCALE_INVARIANT, NORM_IGNORECASE, (LPCWCH)str1, (int)len, (LPCWCH)str2, (int)len) == CSTR_EQUAL;
+}
+
+#else
+
+#include <locale.h>
+#include <wctype.h>
+
+//
+//	ascii_to_utf16
+//
+//	Converts 8-bit text to UTF-16, each byte as the Latin-1 character of the
+//	same value
+//
+size_t ascii_to_utf16(const UTF8 *asciistr, size_t asciilen, UTF16 *utf16str, size_t *utf16len)
+{
+	size_t len = size_min(*utf16len, asciilen);
+	size_t i;
+
+	for(i = 0; i < len; i++)
+		utf16str[i] = asciistr[i];
+
+	*utf16len = len;
+	return len;
+}
+
+//
+//	utf16_to_ascii
+//
+//	Converts UTF-16 to 8-bit Latin-1 (lossy): each UTF16 that isn't Latin-1
+//	becomes a '?', as each half of a surrogate pair does on Windows
+//
+size_t utf16_to_ascii(const UTF16 *utf16str, size_t utf16len, UTF8 *asciistr, size_t *asciilen)
+{
+	size_t len = size_min(utf16len, *asciilen);
+	size_t i;
+
+	for(i = 0; i < len; i++)
+		asciistr[i] = utf16str[i] < 0x100 ? (UTF8)utf16str[i] : '?';
+
+	*asciilen = len;
+	return len;
+}
+
+//
+//	utf16_lower
+//
+//	A UTF16's lower case, as the C.UTF-8 locale has it, so that it doesn't
+//	depend on the user's locale. Without that locale, only ASCII has a case.
+//	Surrogates stay as they are.
+//
+static UTF16 utf16_lower(UTF16 ch)
+{
+	static locale_t locale = (locale_t)0;
+	static bool     looked = false;
+
+	if(!looked)
+	{
+		locale = newlocale(LC_CTYPE_MASK, "C.UTF-8", (locale_t)0);
+		looked = true;
+	}
+
+	if(ch >= 0xD800 && ch <= 0xDFFF)
+		return ch;
+
+	if(locale == (locale_t)0)
+		return ch >= 'A' && ch <= 'Z' ? (UTF16)(ch + ('a' - 'A')) : ch;
+
+	return (UTF16)towlower_l(ch, locale);
+}
+
+//
+//	utf16_equal_nocase
+//
+//	Compares two UTF-16 strings of the same length, ignoring case
+//
+//	str1, str2	- [in]	buffers containing UTF-16 text
+//	len			- [in]	number of UTF16s in each buffer
+//
+//	Returns true when the two match
+//
+bool utf16_equal_nocase(const UTF16 *str1, const UTF16 *str2, size_t len)
+{
+	size_t i;
+
+	for(i = 0; i < len; i++)
+	{
+		if(str1[i] != str2[i] && utf16_lower(str1[i]) != utf16_lower(str2[i]))
+			return false;
+	}
+
+	return true;
 }
 
 #endif
