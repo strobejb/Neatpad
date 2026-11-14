@@ -1971,6 +1971,614 @@ void textview_diff_indicators_can_be_hidden_without_losing_changes()
     close_edit_pair(&pair);
 }
 
+// Key navigation, click-to-caret and painting: what splitting TextView into an
+// engine and a Win32 host touches. Positions are UTF-16 units, as EM_GETSEL
+// gives them.
+
+// Press a key with Ctrl and Shift held or not. TextView reads them with
+// GetKeyState, which follows this thread's own keyboard state, so nothing
+// reaches the desktop.
+void press_key(HWND view, UINT key, bool ctrl = false, bool shift = false)
+{
+    BYTE keys[256] = {};
+
+    keys[VK_CONTROL] = ctrl ? 0x80 : 0;
+    keys[VK_SHIFT]   = shift ? 0x80 : 0;
+    SetKeyboardState(keys);
+
+    SendMessage(view, WM_KEYDOWN, key, 1);
+
+    keys[VK_CONTROL] = 0;
+    keys[VK_SHIFT]   = 0;
+    SetKeyboardState(keys);
+}
+
+// Click at a point in the window, with Shift held or not
+void click(HWND view, int x, int y, bool shift = false)
+{
+    BYTE keys[256] = {};
+
+    keys[VK_SHIFT] = shift ? 0x80 : 0;
+    SetKeyboardState(keys);
+
+    SendMessage(view, WM_LBUTTONDOWN, shift ? MK_LBUTTON | MK_SHIFT : MK_LBUTTON, MAKELPARAM(x, y));
+    SendMessage(view, WM_LBUTTONUP, 0, MAKELPARAM(x, y));
+
+    keys[VK_SHIFT] = 0;
+    SetKeyboardState(keys);
+}
+
+struct Selection
+{
+    DWORD start;
+    DWORD end;
+};
+
+Selection selection(HWND view)
+{
+    Selection sel = {};
+
+    SendMessage(view, EM_GETSEL, (WPARAM)&sel.start, (LPARAM)&sel.end);
+    return sel;
+}
+
+// The caret's position, with nothing selected
+DWORD caret(HWND view)
+{
+    Selection sel = selection(view);
+
+    CHECK(sel.start == sel.end);
+    return sel.end;
+}
+
+// Press a key and check where the caret goes
+void expect_key_moves(HWND view, UINT key, bool ctrl, DWORD expected, const char *name)
+{
+    DWORD before = caret(view);
+    DWORD after;
+
+    press_key(view, key, ctrl);
+    after = caret(view);
+
+    if (after != expected)
+    {
+        printf("%s from %lu: caret at %lu, expected %lu\n", name, before, after, expected);
+        g_failures++;
+    }
+}
+
+// Where a character starts in the window
+POINT char_pos(HWND view, DWORD index)
+{
+    LRESULT pos   = SendMessage(view, EM_POSFROMCHAR, index, 0);
+    POINT   point = {(short)LOWORD(pos), (short)HIWORD(pos)};
+
+    CHECK(pos != -1);
+    return point;
+}
+
+const TEXT_ENCODING nav_encodings[] = {NCP_UTF8, NCP_UTF16, NCP_UTF32};
+
+void textview_arrows_step_over_whole_characters()
+{
+    // U+1F600 is the units at 1 and 2; U+0301 at 4 combines with the e at 3.
+    // The line break is at 6 and 7.
+    const wchar_t text[] = L"a\xd83d\xde00"
+                           L"e\x0301"
+                           L"b\r\nxy";
+
+    const DWORD rights[] = {1, 3, 5, 6, 8, 9, 10, 10};
+    const DWORD lefts[]  = {9, 8, 6, 5, 3, 1, 0, 0};
+
+    for (TEXT_ENCODING encoding : nav_encodings)
+    {
+        EditPair pair = {};
+
+        CHECK(open_edit_pair(&pair, text, encoding));
+
+        for (DWORD expected : rights)
+        {
+            expect_key_moves(pair.view, VK_RIGHT, false, expected, "Right");
+        }
+
+        for (DWORD expected : lefts)
+        {
+            expect_key_moves(pair.view, VK_LEFT, false, expected, "Left");
+        }
+
+        // starting inside a character, a step goes to the next one
+        SendMessage(pair.view, EM_SETSEL, 4, 4);
+        expect_key_moves(pair.view, VK_RIGHT, false, 5, "Right");
+
+        close_edit_pair(&pair);
+    }
+}
+
+void textview_word_moves_skip_whitespace_and_line_breaks()
+{
+    // U+0301 at 8 belongs to the word "cafe" that starts at 4. The second line
+    // starts at 15 with two spaces.
+    const wchar_t text[] = L"one cafe\x0301 two\r\n  next";
+
+    const DWORD rights[] = {4, 10, 13, 15, 17};
+    const DWORD lefts[]  = {15, 13, 10, 4, 0, 0};
+
+    for (TEXT_ENCODING encoding : nav_encodings)
+    {
+        EditPair pair = {};
+
+        CHECK(open_edit_pair(&pair, text, encoding));
+
+        for (DWORD expected : rights)
+        {
+            expect_key_moves(pair.view, VK_RIGHT, true, expected, "Ctrl+Right");
+        }
+
+        for (DWORD expected : lefts)
+        {
+            expect_key_moves(pair.view, VK_LEFT, true, expected, "Ctrl+Left");
+        }
+
+        close_edit_pair(&pair);
+    }
+}
+
+void textview_home_and_end_go_to_whole_characters()
+{
+    // the first line ends in U+1F600, at 2 and 3; the last line starts at 6
+    const wchar_t text[] = L"ab\xd83d\xde00\r\nc\xd83d\xde00";
+
+    for (TEXT_ENCODING encoding : nav_encodings)
+    {
+        EditPair pair = {};
+
+        CHECK(open_edit_pair(&pair, text, encoding));
+
+        SendMessage(pair.view, EM_SETSEL, 1, 1);
+        expect_key_moves(pair.view, VK_END, false, 4, "End");
+        expect_key_moves(pair.view, VK_HOME, false, 0, "Home");
+        expect_key_moves(pair.view, VK_END, true, 9, "Ctrl+End");
+        expect_key_moves(pair.view, VK_HOME, false, 6, "Home");
+        expect_key_moves(pair.view, VK_END, false, 9, "End");
+        expect_key_moves(pair.view, VK_HOME, true, 0, "Ctrl+Home");
+
+        close_edit_pair(&pair);
+    }
+}
+
+void textview_up_and_down_keep_the_column()
+{
+    // the lines start at 0, 8 and 12; the middle one is shorter than the
+    // caret's column, and they all start alike, so this holds in any font
+    const wchar_t text[] = L"ab\xd83d\xde00"
+                           L"cd\r\n"
+                           L"ab\r\n"
+                           L"ab\xd83d\xde00"
+                           L"cd";
+
+    for (TEXT_ENCODING encoding : nav_encodings)
+    {
+        EditPair pair = {};
+
+        CHECK(open_edit_pair(&pair, text, encoding));
+
+        // reach the column with keys, which set the column up and down keep
+        press_key(pair.view, VK_RIGHT);
+        press_key(pair.view, VK_RIGHT);
+        press_key(pair.view, VK_RIGHT);
+        CHECK(caret(pair.view) == 4);
+
+        expect_key_moves(pair.view, VK_DOWN, false, 10, "Down");
+        expect_key_moves(pair.view, VK_DOWN, false, 16, "Down");
+        expect_key_moves(pair.view, VK_DOWN, false, 16, "Down");
+        expect_key_moves(pair.view, VK_UP, false, 10, "Up");
+        expect_key_moves(pair.view, VK_UP, false, 4, "Up");
+        expect_key_moves(pair.view, VK_UP, false, 4, "Up");
+
+        close_edit_pair(&pair);
+    }
+}
+
+void textview_shift_extends_the_selection_from_its_anchor()
+{
+    const wchar_t text[] = L"a\xd83d\xde00"
+                           L"e\x0301"
+                           L"b\r\nxy";
+
+    for (TEXT_ENCODING encoding : nav_encodings)
+    {
+        EditPair  pair = {};
+        Selection sel;
+
+        CHECK(open_edit_pair(&pair, text, encoding));
+
+        SendMessage(pair.view, EM_SETSEL, 1, 1);
+        press_key(pair.view, VK_RIGHT, false, true);
+        press_key(pair.view, VK_RIGHT, false, true);
+        sel = selection(pair.view);
+        CHECK(sel.start == 1 && sel.end == 5);
+
+        // back past the anchor, the selection turns round
+        press_key(pair.view, VK_LEFT, false, true);
+        press_key(pair.view, VK_LEFT, false, true);
+        press_key(pair.view, VK_LEFT, false, true);
+        sel = selection(pair.view);
+        CHECK(sel.start == 0 && sel.end == 1);
+
+        // to the end of the line, and over the line break
+        press_key(pair.view, VK_END, false, true);
+        sel = selection(pair.view);
+        CHECK(sel.start == 1 && sel.end == 6);
+
+        press_key(pair.view, VK_RIGHT, false, true);
+        sel = selection(pair.view);
+        CHECK(sel.start == 1 && sel.end == 8);
+
+        // and an arrow without Shift drops it
+        press_key(pair.view, VK_RIGHT);
+        CHECK(caret(pair.view) == 9);
+
+        close_edit_pair(&pair);
+    }
+}
+
+void textview_click_puts_the_caret_between_whole_characters()
+{
+    const wchar_t text[] = L"a\xd83d\xde00"
+                           L"e\x0301"
+                           L"b\r\nxy\r\nz";
+
+    // where each character starts, on the first line and the second
+    const DWORD starts[] = {0, 1, 3, 5, 8, 9};
+
+    for (TEXT_ENCODING encoding : nav_encodings)
+    {
+        EditPair  pair = {};
+        Selection sel;
+
+        CHECK(open_edit_pair(&pair, text, encoding));
+
+        // just inside a character's left edge, the caret goes before it
+        for (DWORD index : starts)
+        {
+            POINT pos = char_pos(pair.view, index);
+
+            click(pair.view, pos.x + 1, pos.y + 1);
+            CHECK(caret(pair.view) == index);
+        }
+
+        // just inside the right edge of U+1F600 and of the e with its accent,
+        // the caret goes after them, never between their units
+        POINT emoji_end = char_pos(pair.view, 3);
+        POINT e_end     = char_pos(pair.view, 5);
+
+        click(pair.view, emoji_end.x - 1, emoji_end.y + 1);
+        CHECK(caret(pair.view) == 3);
+        click(pair.view, e_end.x - 1, e_end.y + 1);
+        CHECK(caret(pair.view) == 5);
+
+        // past the end of a line, the caret goes to its end
+        POINT line_end = char_pos(pair.view, 5);
+
+        click(pair.view, line_end.x + 200, line_end.y + 1);
+        CHECK(caret(pair.view) == 6);
+
+        // Shift+click extends the selection from where it was
+        POINT second = char_pos(pair.view, 9);
+
+        click(pair.view, char_pos(pair.view, 1).x + 1, 1);
+        click(pair.view, second.x + 1, second.y + 1, true);
+        sel = selection(pair.view);
+        CHECK(sel.start == 1 && sel.end == 9);
+
+        close_edit_pair(&pair);
+    }
+}
+
+void textview_click_in_the_margin_selects_the_line()
+{
+    const wchar_t text[] = L"a\xd83d\xde00\r\nxy\r\nz";
+    EditPair      pair   = {};
+    Selection     sel;
+
+    CHECK(open_edit_pair(&pair, text, NCP_UTF8));
+    TextView_SetStyleBool(pair.view, TXS_SELMARGIN, TRUE);
+
+    // the second line, with its line break
+    click(pair.view, 1, char_pos(pair.view, 5).y + 1);
+    sel = selection(pair.view);
+    CHECK(sel.start == 5 && sel.end == 9);
+
+    // the last line, which has none
+    click(pair.view, 1, char_pos(pair.view, 9).y + 1);
+    sel = selection(pair.view);
+    CHECK(sel.start == 9 && sel.end == 10);
+
+    close_edit_pair(&pair);
+}
+
+// The whole client area, drawn by WM_PRINTCLIENT into a memory bitmap
+struct Picture
+{
+    int                   width;
+    int                   height;
+    std::vector<uint32_t> pixels;
+
+    uint32_t at(int x, int y) const
+    {
+        return pixels[(size_t)y * width + x];
+    }
+};
+
+Picture print_client(HWND view)
+{
+    Picture    picture = {};
+    RECT       client;
+    BITMAPINFO info   = {};
+    void      *pixels = 0;
+
+    GetClientRect(view, &client);
+    picture.width  = client.right;
+    picture.height = client.bottom;
+
+    info.bmiHeader.biSize     = sizeof(BITMAPINFOHEADER);
+    info.bmiHeader.biWidth    = picture.width;
+    info.bmiHeader.biHeight   = -picture.height;
+    info.bmiHeader.biPlanes   = 1;
+    info.bmiHeader.biBitCount = 32;
+
+    HDC     dc     = CreateCompatibleDC(0);
+    HBITMAP bitmap = CreateDIBSection(dc, &info, DIB_RGB_COLORS, &pixels, 0, 0);
+
+    CHECK(dc && bitmap && pixels);
+
+    if (dc && bitmap && pixels)
+    {
+        HGDIOBJ previous = SelectObject(dc, bitmap);
+
+        memset(pixels, 0, (size_t)picture.width * picture.height * sizeof(uint32_t));
+        SendMessage(view, WM_PRINTCLIENT, (WPARAM)dc, PRF_CLIENT);
+        GdiFlush();
+        picture.pixels.assign((uint32_t *)pixels, (uint32_t *)pixels + (size_t)picture.width * picture.height);
+
+        SelectObject(dc, previous);
+    }
+
+    DeleteObject(bitmap);
+    DeleteDC(dc);
+
+    return picture;
+}
+
+// FNV-1a over the pixels
+uint64_t picture_hash(const Picture &picture)
+{
+    uint64_t hash = 14695981039346656037ULL;
+
+    for (uint32_t pixel : picture.pixels)
+    {
+        for (int i = 0; i < 4; i++)
+        {
+            hash ^= (pixel >> (i * 8)) & 0xff;
+            hash *= 1099511628211ULL;
+        }
+    }
+
+    return hash;
+}
+
+uint32_t dib_pixel(COLORREF colour)
+{
+    return (GetRValue(colour) << 16) | (GetGValue(colour) << 8) | GetBValue(colour);
+}
+
+// Show line numbers, so the margin is painted too, and the selection in one
+// colour whether or not the window is active
+void paint_styles(HWND view)
+{
+    TextView_SetStyleBool(view, TXS_SELMARGIN | TXS_LINENUMBERS, TRUE);
+    TextView_SetColor(view, TXC_HIGHLIGHT, RGB(0x12, 0x34, 0x56));
+    TextView_SetColor(view, TXC_HIGHLIGHT2, RGB(0x12, 0x34, 0x56));
+    TextView_SetColor(view, TXC_HIGHLIGHTTEXT, RGB(0xfe, 0xdc, 0xba));
+    TextView_SetColor(view, TXC_HIGHLIGHTTEXT2, RGB(0xfe, 0xdc, 0xba));
+}
+
+const wchar_t paint_text[] = L"Hello caf\x00e9 \x20ac \xd83d\xde00 e\x0301 end\r\n"
+                             L"\tindented\r\n"
+                             L"\r\n"
+                             L"last line, long enough to scroll sideways past the right edge of the window, with "
+                             L"more words after that to be sure it reaches well past it";
+
+void textview_paints_the_same_text_alike_in_every_encoding()
+{
+    uint64_t hashes[3] = {};
+
+    for (size_t e = 0; e < 3; e++)
+    {
+        EditPair pair = {};
+
+        CHECK(open_edit_pair(&pair, paint_text, nav_encodings[e]));
+        paint_styles(pair.view);
+        SendMessage(pair.view, EM_SETSEL, 4, 27);
+
+        Picture picture = print_client(pair.view);
+
+        hashes[e] = picture_hash(picture);
+
+        // something was drawn: more than one colour
+        CHECK(std::count(picture.pixels.begin(), picture.pixels.end(), picture.pixels[0]) <
+              (ptrdiff_t)picture.pixels.size());
+
+        close_edit_pair(&pair);
+    }
+
+    CHECK(hashes[0] == hashes[1]);
+    CHECK(hashes[0] == hashes[2]);
+}
+
+void textview_paints_the_selection_over_exactly_its_characters()
+{
+    // U+1F600 and the e with its accent (units 13 to 18), "cafe" and "Hel", all
+    // on the first line, which ends at 24
+    const struct
+    {
+        DWORD start;
+        DWORD end;
+    } selections[] = {{13, 18}, {6, 10}, {0, 3}};
+
+    for (TEXT_ENCODING encoding : nav_encodings)
+    {
+        EditPair pair = {};
+
+        CHECK(open_edit_pair(&pair, paint_text, encoding));
+        paint_styles(pair.view);
+
+        for (const auto &range : selections)
+        {
+            SendMessage(pair.view, EM_SETSEL, range.start, range.end);
+
+            Picture  picture   = print_client(pair.view);
+            uint32_t highlight = dib_pixel(RGB(0x12, 0x34, 0x56));
+            int      first     = picture.width;
+            int      last      = -1;
+            POINT    from      = char_pos(pair.view, range.start);
+            POINT    to        = char_pos(pair.view, range.end);
+            int      bottom    = char_pos(pair.view, 24).y;
+
+            // the columns of the first line that show the selection's colour
+            for (int y = 0; y < bottom; y++)
+            {
+                for (int x = 0; x < picture.width; x++)
+                {
+                    if (picture.at(x, y) != highlight)
+                    {
+                        continue;
+                    }
+
+                    first = min(first, x);
+                    last  = max(last, x);
+                }
+            }
+
+            if (first != from.x || last + 1 != to.x)
+            {
+                printf("selection %lu-%lu painted from x %d to %d, its characters span %ld to %ld\n", range.start,
+                       range.end, first, last + 1, from.x, to.x);
+                g_failures++;
+            }
+        }
+
+        close_edit_pair(&pair);
+    }
+}
+
+void textview_paints_the_same_after_scrolling_away_and_back()
+{
+    std::wstring text;
+    EditPair     pair = {};
+
+    for (int i = 0; i < 200; i++)
+    {
+        text += L"line ";
+        text += std::to_wstring(i);
+        text += L" caf\x00e9 \xd83d\xde00 e\x0301 and a long tail to scroll sideways"
+                L" past the right edge of the window\r\n";
+    }
+
+    CHECK(open_edit_pair(&pair, text.c_str(), NCP_UTF8));
+    paint_styles(pair.view);
+    SendMessage(pair.view, EM_SETSEL, 30, 200);
+
+    uint64_t before = picture_hash(print_client(pair.view));
+
+    // down a line at a time, then a page, and back
+    for (int i = 0; i < 3; i++)
+    {
+        SendMessage(pair.view, WM_VSCROLL, SB_LINEDOWN, 0);
+    }
+
+    SendMessage(pair.view, WM_VSCROLL, SB_PAGEDOWN, 0);
+    CHECK(picture_hash(print_client(pair.view)) != before);
+
+    SendMessage(pair.view, WM_VSCROLL, SB_PAGEUP, 0);
+
+    for (int i = 0; i < 3; i++)
+    {
+        SendMessage(pair.view, WM_VSCROLL, SB_LINEUP, 0);
+    }
+
+    CHECK(picture_hash(print_client(pair.view)) == before);
+
+    // and across
+    for (int i = 0; i < 5; i++)
+    {
+        SendMessage(pair.view, WM_HSCROLL, SB_LINERIGHT, 0);
+    }
+
+    CHECK(picture_hash(print_client(pair.view)) != before);
+
+    for (int i = 0; i < 5; i++)
+    {
+        SendMessage(pair.view, WM_HSCROLL, SB_LINELEFT, 0);
+    }
+
+    CHECK(picture_hash(print_client(pair.view)) == before);
+
+    close_edit_pair(&pair);
+}
+
+// Paint hashes depend on the machine's fonts and settings, so no test expects
+// particular values. Set NEATPAD_PAINT_HASHES to print them, to compare one
+// build with another on the same machine.
+void textview_paint_hashes_are_repeatable()
+{
+    char setting[8];
+    bool print = GetEnvironmentVariableA("NEATPAD_PAINT_HASHES", setting, sizeof(setting)) != 0;
+
+    const struct
+    {
+        const char   *name;
+        TEXT_ENCODING encoding;
+        DWORD         start;
+        DWORD         end;
+        int           hscroll;
+    } scenes[] = {
+        {"plain", NCP_UTF8, 0, 0, 0},
+        {"selection", NCP_UTF16, 4, 27, 0},
+        {"selection-across-lines", NCP_UTF8, 20, 40, 0},
+        {"scrolled-across", NCP_UTF8, 0, 0, 2},
+    };
+
+    for (const auto &scene : scenes)
+    {
+        EditPair pair = {};
+
+        CHECK(open_edit_pair(&pair, paint_text, scene.encoding));
+        paint_styles(pair.view);
+        SendMessage(pair.view, EM_SETSEL, scene.start, scene.end);
+
+        // the view learns how wide its lines are as it paints them
+        print_client(pair.view);
+
+        for (int i = 0; i < scene.hscroll; i++)
+        {
+            SendMessage(pair.view, WM_HSCROLL, SB_LINERIGHT, 0);
+        }
+
+        uint64_t first  = picture_hash(print_client(pair.view));
+        uint64_t second = picture_hash(print_client(pair.view));
+
+        CHECK(first == second);
+
+        if (print)
+        {
+            printf("paint hash %-24s %016llx\n", scene.name, (unsigned long long)first);
+        }
+
+        close_edit_pair(&pair);
+    }
+}
+
 const test_case tests[] = {
     {"textview_diff_background_matches_the_whole_margin", textview_diff_background_matches_the_whole_margin},
     {"textview_diff_indicators_can_be_hidden_without_losing_changes",
@@ -2026,6 +2634,18 @@ const test_case tests[] = {
     {"textview_filter_context_clips_at_document_ends", textview_filter_context_clips_at_document_ends},
     {"textview_filter_context_merges_across_scan_chunks", textview_filter_context_merges_across_scan_chunks},
     {"textview_filter_context_follows_new_surrounding_lines", textview_filter_context_follows_new_surrounding_lines},
+    {"textview_arrows_step_over_whole_characters", textview_arrows_step_over_whole_characters},
+    {"textview_word_moves_skip_whitespace_and_line_breaks", textview_word_moves_skip_whitespace_and_line_breaks},
+    {"textview_home_and_end_go_to_whole_characters", textview_home_and_end_go_to_whole_characters},
+    {"textview_up_and_down_keep_the_column", textview_up_and_down_keep_the_column},
+    {"textview_shift_extends_the_selection_from_its_anchor", textview_shift_extends_the_selection_from_its_anchor},
+    {"textview_click_puts_the_caret_between_whole_characters", textview_click_puts_the_caret_between_whole_characters},
+    {"textview_click_in_the_margin_selects_the_line", textview_click_in_the_margin_selects_the_line},
+    {"textview_paints_the_same_text_alike_in_every_encoding", textview_paints_the_same_text_alike_in_every_encoding},
+    {"textview_paints_the_selection_over_exactly_its_characters",
+     textview_paints_the_selection_over_exactly_its_characters},
+    {"textview_paints_the_same_after_scrolling_away_and_back", textview_paints_the_same_after_scrolling_away_and_back},
+    {"textview_paint_hashes_are_repeatable", textview_paint_hashes_are_repeatable},
 };
 }
 

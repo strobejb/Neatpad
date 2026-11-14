@@ -205,17 +205,7 @@ void TextView::ResetLineCache()
 LONG TextView::OnPaint()
 {
 	PAINTSTRUCT ps;
-	ULONG		row;
-	ULONG		first;
-	ULONG		last;
-	TextCoord	lineCoord;
-	LineIterator lines;
-	bool		haveLine;
-
 	HRGN		hrgnUpdate;
-	HDC			hdcMem;
-	HBITMAP		hbmMem;
-	RECT		rect;
 
 	//
 	// get update region *before* BeginPaint validates the window
@@ -223,22 +213,66 @@ LONG TextView::OnPaint()
 	hrgnUpdate = CreateRectRgn(0,0,1,1);
 	GetUpdateRgn(m_hWnd, hrgnUpdate, FALSE);
 
+	BeginPaint(m_hWnd, &ps);
+	PaintRows(ps.hdc, &ps.rcPaint, hrgnUpdate);
+	EndPaint(m_hWnd, &ps);
+
+	DeleteObject(hrgnUpdate);
+
+	return 0;
+}
+
+//
+//	WM_PRINTCLIENT: draw the whole client area into hdc, as WM_PAINT draws it
+//	when the whole window needs updating
+//
+LONG TextView::OnPrintClient(HDC hdc)
+{
+	RECT rect;
+	HRGN hrgnUpdate;
+
+	GetClientRect(m_hWnd, &rect);
+	hrgnUpdate = CreateRectRgnIndirect(&rect);
+
+	PaintRows(hdc, &rect, hrgnUpdate);
+
+	DeleteObject(hrgnUpdate);
+
+	return 0;
+}
+
+//
+//	Draw the rows that rcPaint covers into hdc, one line at a time through a
+//	memory DC
+//
+void TextView::PaintRows(HDC hdc, RECT *rcPaint, HRGN hrgnUpdate)
+{
+	ULONG		row;
+	ULONG		first;
+	ULONG		last;
+	TextCoord	lineCoord;
+	LineIterator lines;
+	bool		haveLine;
+
+	HDC			hdcMem;
+	HBITMAP		hbmMem;
+	RECT		rect;
+
 	//
 	// create a memoryDC the same size a single line, for double-buffering
 	//
-	BeginPaint(m_hWnd, &ps);
 	GetClientRect(m_hWnd, &rect);
 
-	hdcMem = CreateCompatibleDC(ps.hdc);
-	hbmMem = CreateCompatibleBitmap(ps.hdc, rect.right-rect.left, m_nLineHeight);
+	hdcMem = CreateCompatibleDC(hdc);
+	hbmMem = CreateCompatibleBitmap(hdc, rect.right-rect.left, m_nLineHeight);
 
 	SelectObject(hdcMem, hbmMem);
 
 	//
 	// figure out which lines to redraw
 	//
-	first = ps.rcPaint.top    / m_nLineHeight;
-	last  = ps.rcPaint.bottom / m_nLineHeight;
+	first = rcPaint->top    / m_nLineHeight;
+	last  = rcPaint->bottom / m_nLineHeight;
 
 	// rows past the end of the document have no line
 	haveLine = ViewportLineFromRow(first, &lineCoord);
@@ -261,8 +295,8 @@ LONG TextView::OnPaint()
 		// draw each line into the offscreen buffer
 		PaintLine(hdcMem, line, row, -m_nHScrollPos * m_nFontWidth, 0, hrgnUpdate);
 
-		// transfer to screen 
-		BitBlt(	ps.hdc, sx, sy, width, m_nLineHeight, hdcMem, 0, 0, SRCCOPY);
+		// transfer to screen
+		BitBlt(	hdc, sx, sy, width, m_nLineHeight, hdcMem, 0, 0, SRCCOPY);
 
 		// step down to the next line, if there is one
 		if(haveLine)
@@ -275,13 +309,8 @@ LONG TextView::OnPaint()
 	//
 	//	Cleanup
 	//
-	EndPaint(m_hWnd, &ps);
-
 	DeleteDC(hdcMem);
 	DeleteObject(hbmMem);
-	DeleteObject(hrgnUpdate);
-
-	return 0;
 }
 
 //

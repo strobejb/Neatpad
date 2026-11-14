@@ -95,6 +95,7 @@ private:
 	//	Message handlers
 	//
 	LONG OnPaint();
+	LONG OnPrintClient(HDC hdc);
 	LONG OnNcPaint(HRGN hrgnUpdate);
 	LONG OnSetFont(HFONT hFont);
 	LONG OnSize(UINT nFlags, int width, int height);
@@ -185,6 +186,7 @@ private:
 	//	Painting support
 	//
 	void		RefreshWindow();
+	void		PaintRows(HDC hdc, RECT *rcPaint, HRGN hrgnUpdate);
 	void		PaintLine(HDC hdc, TextCoord *coord, ULONG row, int x, int y, HRGN hrgnUpdate);
 	void		PaintText(HDC hdc, TextCoord *coord, int x, int y, RECT *bounds);
 	int			PaintMargin(HDC hdc, TextCoord *line, int x, int y);

@@ -148,7 +148,11 @@ Each step is its own commit on `main`, and moves and formatting changes stay sep
     `src/Neatpad`, so older tags still build.
   - UspLib is in `src/TextView/win32/UspLib`.
   - Debug and Release x64 build with no warnings, as before, and `SequenceTests.exe` passes.
-- **Next:** step 2, tests for what the split touches.
+- **Done:** step 2. `textview_tests` cover arrow, word, Home/End and up/down moves and Shift selection over
+  surrogate pairs and combining marks, click-to-caret and margin clicks, and painting through `WM_PRINTCLIENT`, which
+  TextView now handles. Paint hashes depend on the machine's fonts, so the tests compare paintings with each other
+  rather than with stored hashes. Set `NEATPAD_PAINT_HASHES=1` to print a few, to compare builds on one machine.
+- **Next:** step 3.1, introduce `TextViewHost`.
 
 ## Open decisions
 

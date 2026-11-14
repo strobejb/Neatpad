@@ -601,6 +601,9 @@ LRESULT WINAPI TextView::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 	case WM_PAINT:
 		return OnPaint();
 
+	case WM_PRINTCLIENT:
+		return OnPrintClient((HDC)wParam);
+
 	// Set a new font 
 	case WM_SETFONT:
 		return OnSetFont((HFONT)wParam);
