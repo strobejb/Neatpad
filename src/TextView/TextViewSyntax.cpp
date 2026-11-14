@@ -22,7 +22,7 @@
 typedef struct
 {
 	ATTR		attr;
-	ULONG	   type;
+	uint32_t	   type;
 	
 } TYPE;
 
@@ -37,11 +37,11 @@ struct LEX
 
 LEX firstchar[256];
 
-ULONG lexer(ULONG cookie, TCHAR *buf, ULONG len, ATTR *attr)
+uint32_t lexer(uint32_t cookie, tchar_t *buf, uint32_t len, ATTR *attr)
 {
 	LEX *state = 0;
 	int	  i  = 0;
-	ULONG ch = buf[i++];
+	uint32_t ch = buf[i++];
 
 	// start at the correct place in our state machine
 	LEX *node = &state[cookie];
@@ -63,7 +63,7 @@ ULONG lexer(ULONG cookie, TCHAR *buf, ULONG len, ATTR *attr)
 	return COOKIE_END;	
 }
 
-TCHAR *gettok(TCHAR *ptr, TCHAR *buf, int buflen)
+tchar_t *gettok(tchar_t *ptr, tchar_t *buf, int buflen)
 {
 	int ch = *ptr++;
 	int i = 0;
@@ -119,9 +119,9 @@ TCHAR *gettok(TCHAR *ptr, TCHAR *buf, int buflen)
 	return ptr;
 }
 
-void xSetStyle(ATTR *attr, ULONG nPos, ULONG nLen, COLORREF fg, COLORREF bg, int bold=0)
+void xSetStyle(ATTR *attr, uint32_t nPos, uint32_t nLen, uint32_t fg, uint32_t bg, int bold=0)
 {
-	for(ULONG i = nPos; i < nPos+nLen; i++)
+	for(uint32_t i = nPos; i < nPos+nLen; i++)
 	{
 		attr[i].fg = fg;
 		//attr[i].bg = bg;
@@ -131,28 +131,28 @@ void xSetStyle(ATTR *attr, ULONG nPos, ULONG nLen, COLORREF fg, COLORREF bg, int
 	}
 }
 
-static ULONG TextOffset(TCHAR *base, TCHAR *ptr)
+static uint32_t TextOffset(tchar_t *base, tchar_t *ptr)
 {
-	return (ULONG)(ptr - base);
+	return (uint32_t)(ptr - base);
 }
 
-static ULONG TextLength(TCHAR *first, TCHAR *last)
+static uint32_t TextLength(tchar_t *first, tchar_t *last)
 {
-	return (ULONG)(last - first);
+	return (uint32_t)(last - first);
 }
 
 typedef struct
 {
-	TCHAR firstchar[256];
+	tchar_t firstchar[256];
 
 } SYNTAX_NODE;
 
-int TextView::SyntaxColour(TCHAR *szText, ULONG nTextLen, ATTR *attr)
+int TextView::SyntaxColour(tchar_t *szText, uint32_t nTextLen, ATTR *attr)
 {
-	TCHAR tok[128];
+	tchar_t tok[128];
 
-	TCHAR *ptr1 = szText;
-	TCHAR *ptr2;
+	tchar_t *ptr1 = szText;
+	tchar_t *ptr2;
 
 	if(nTextLen == 0)
 		return 0;
@@ -190,7 +190,7 @@ int TextView::SyntaxColour(TCHAR *szText, ULONG nTextLen, ATTR *attr)
 		else if(lstrcmp(tok, _T("//")) == 0)
 		{
 			//xSetStyle(attr, ptr1 - szText, nTextLen - (ptr1-szText), RGB(128,90,20), RGB(255,255,255));
-			xSetStyle(attr, TextOffset(szText, ptr1), (ULONG)(nTextLen - (ptr1-szText)), RGB(128,110,90), RGB(255,255,255));
+			xSetStyle(attr, TextOffset(szText, ptr1), (uint32_t)(nTextLen - (ptr1-szText)), RGB(128,110,90), RGB(255,255,255));
 			break;
 		}
 		else

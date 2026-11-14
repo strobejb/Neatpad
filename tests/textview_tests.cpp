@@ -64,7 +64,7 @@ class TextViewMarginProbe
         std::vector<TCHAR> text((size_t)(line.line_next - line.line_begin) + 1);
         int                length = view->m_pTextDoc->getline(line, text.data(), (uint32_t)text.size());
         std::vector<ATTR>  attr(length + 1);
-        ULONG              column = 0;
+        uint32_t           column = 0;
 
         length = view->ApplyTextAttributes(&line, column, text.data(), length, attr.data());
         attr.resize(length);

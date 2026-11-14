@@ -27,11 +27,11 @@ uint64_t get(const std::vector<uint8_t> &in, size_t &at, unsigned bytes)
 }
 } // namespace
 
-BOOL TextView::SaveState(TEXTVIEWRECOVERY *state)
+bool TextView::SaveState(TEXTVIEWRECOVERY *state)
 {
     if (!state || !state->directory)
-        return FALSE;
-    state->originalUnavailable = FALSE;
+        return false;
+    state->originalUnavailable = false;
     try
     {
         std::vector<uint8_t> context;
@@ -41,7 +41,7 @@ BOOL TextView::SaveState(TEXTVIEWRECOVERY *state)
             ++length;
 
         if (length == MAX_PATH)
-            return FALSE;
+            return false;
 
         put(context, 0x5756504e, 4);
         put(context, 1, 4);
@@ -61,15 +61,15 @@ BOOL TextView::SaveState(TEXTVIEWRECOVERY *state)
     }
     catch (...)
     {
-        return FALSE;
+        return false;
     }
 }
 
-BOOL TextView::LoadState(TEXTVIEWRECOVERY *state)
+bool TextView::LoadState(TEXTVIEWRECOVERY *state)
 {
     if (!state || !state->directory)
-        return FALSE;
-    state->originalUnavailable = FALSE;
+        return false;
+    state->originalUnavailable = false;
     try
     {
         state_reader reader(state->directory);
@@ -77,12 +77,12 @@ BOOL TextView::LoadState(TEXTVIEWRECOVERY *state)
         std::vector<uint8_t> context;
 
         if (!reader.read_context(context) || context.size() < 56)
-            return FALSE;
+            return false;
 
         size_t at = 16;
 
         if (get(context, at, 4) != 0x5756504e || get(context, at, 4) != 1)
-            return FALSE;
+            return false;
 
         uint32_t crlf   = (uint32_t)get(context, at, 4);
         size_t   length = (size_t)get(context, at, 4);
@@ -90,15 +90,15 @@ BOOL TextView::LoadState(TEXTVIEWRECOVERY *state)
 
         if (length >= MAX_PATH || context.size() != at + length * 2 ||
             (crlf != TXL_CR && crlf != TXL_LF && crlf != TXL_CRLF))
-            return FALSE;
+            return false;
 
-        TCHAR filename[MAX_PATH];
+        tchar_t filename[MAX_PATH];
 
         for (size_t i = 0; i < length; ++i)
         {
-            filename[i] = (TCHAR)get(context, at, 2);
+            filename[i] = (tchar_t)get(context, at, 2);
             if (!filename[i])
-                return FALSE;
+                return false;
         }
         filename[length] = 0;
 
@@ -108,24 +108,24 @@ BOOL TextView::LoadState(TEXTVIEWRECOVERY *state)
         if (!document->load_state(reader))
         {
             state->originalUnavailable = reader.original_unavailable();
-            return FALSE;
+            return false;
         }
         if (!document->modified())
-            return FALSE;
+            return false;
         if (cursor > document->byte_length() || anchor > document->byte_length() || top > document->byte_length())
-            return FALSE;
+            return false;
 
         TextCoord caret, selection, scroll;
 
         if (!document->coord_from_pos(TextPos(cursor), &caret) ||
             !document->coord_from_pos(TextPos(anchor), &selection) || !document->coord_from_pos(TextPos(top), &scroll))
-            return FALSE;
+            return false;
 
         ClearFile();
         delete m_pTextDoc;
 
         m_pTextDoc    = document.release();
-        m_fFilter     = FALSE;
+        m_fFilter     = false;
 
         m_sMatchText.clear();
         m_nEditMode   = MODE_INSERT;
@@ -138,7 +138,7 @@ BOOL TextView::LoadState(TEXTVIEWRECOVERY *state)
         m_nLineCount = m_pTextDoc->linecount();
 
         ResetLineCache();
-        UpdateViewState(TRUE);
+        UpdateViewState(true);
         SetScrollCoord(&scroll);
         SetupScrollbars();
         RepositionCaret();
@@ -148,10 +148,10 @@ BOOL TextView::LoadState(TEXTVIEWRECOVERY *state)
         NotifyParent(TVN_CHANGED);
         lstrcpy(state->filename, filename);
 
-        return TRUE;
+        return true;
     }
     catch (...)
     {
-        return FALSE;
+        return false;
     }
 }

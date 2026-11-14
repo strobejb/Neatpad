@@ -136,7 +136,7 @@ TextView::~TextView()
 	delete[] m_lineCache;
 }
 
-LRESULT TextView::NotifyParent(UINT nNotifyCode, NMHDR *optional)
+LRESULT TextView::NotifyParent(uint32_t nNotifyCode, NMHDR *optional)
 {
 	return m_pHost->Notify(nNotifyCode, optional);
 }
@@ -145,7 +145,7 @@ LRESULT TextView::NotifyParent(UINT nNotifyCode, NMHDR *optional)
 //	Describe the caret: its line (an estimate past the counted part of a large
 //	file), its column, and its offset in the document where that is cheap
 //
-VOID TextView::FillCursorInfo(TVNCURSORINFO *info)
+void TextView::FillCursorInfo(TVNCURSORINFO *info)
 {
 	size_w lineno = 0;
 	size_w offset_chars = 0;
@@ -160,7 +160,7 @@ VOID TextView::FillCursorInfo(TVNCURSORINFO *info)
 //
 //	Tell the parent the caret has moved, and where to
 //
-VOID TextView::NotifyCursorChange()
+void TextView::NotifyCursorChange()
 {
 	TVNCURSORINFO ci;
 
@@ -168,9 +168,9 @@ VOID TextView::NotifyCursorChange()
 	NotifyParent(TVN_CURSOR_CHANGE, (NMHDR *)&ci);
 }
 
-VOID TextView::UpdateMetrics()
+void TextView::UpdateMetrics()
 {
-	RECT rect;
+	TextRect rect;
 	ClientRect(&rect);
 
 	OnSize(0, rect.right, rect.bottom);
@@ -179,7 +179,7 @@ VOID TextView::UpdateMetrics()
 	RepositionCaret();
 }
 
-LONG TextView::OnSetFocus()
+int32_t TextView::OnSetFocus()
 {
 	m_pHost->CreateCaret(m_nCaretWidth, m_nLineHeight);
 	RepositionCaret();
@@ -189,7 +189,7 @@ LONG TextView::OnSetFocus()
 	return 0;
 }
 
-LONG TextView::OnKillFocus()
+int32_t TextView::OnKillFocus()
 {
 	// if we are making a selection when we lost focus then
 	// stop the selection logic
@@ -204,9 +204,9 @@ LONG TextView::OnKillFocus()
 	return 0;
 }
 
-ULONG TextView::SetStyle(ULONG uMask, ULONG uStyles)
+uint32_t TextView::SetStyle(uint32_t uMask, uint32_t uStyles)
 {
-	ULONG oldstyle = m_uStyleFlags;
+	uint32_t oldstyle = m_uStyleFlags;
 
 	m_uStyleFlags  = (m_uStyleFlags & ~uMask) | uStyles;
 
@@ -219,22 +219,22 @@ ULONG TextView::SetStyle(ULONG uMask, ULONG uStyles)
 	return oldstyle;
 }
 
-ULONG TextView::SetVar(ULONG nVar, ULONG nValue)
+uint32_t TextView::SetVar(uint32_t nVar, uint32_t nValue)
 {
 	return 0;//oldval;
 }
 
-ULONG TextView::GetVar(ULONG nVar)
+uint32_t TextView::GetVar(uint32_t nVar)
 {
 	return 0;
 }
 
-ULONG TextView::GetStyleMask(ULONG uMask)
+uint32_t TextView::GetStyleMask(uint32_t uMask)
 {
 	return m_uStyleFlags & uMask;
 }
 	
-bool TextView::CheckStyle(ULONG uMask)
+bool TextView::CheckStyle(uint32_t uMask)
 {
 	return (m_uStyleFlags & uMask) ? true : false;
 }
@@ -247,7 +247,7 @@ int TextView::SetCaretWidth(int nWidth)
 	return oldwidth;
 }
 
-LONG TextView::SetLongLine(int nLength)
+int32_t TextView::SetLongLine(int nLength)
 {
 	int oldlen = m_nLongLineLimit;
 	m_nLongLineLimit = nLength;
@@ -264,7 +264,7 @@ int CompareLineInfo(LINEINFO *elem1, LINEINFO *elem2)
 		return 0;
 }
 
-int TextView::SetLineImage(ULONG nLineNo, ULONG nImageIdx)
+int TextView::SetLineImage(uint32_t nLineNo, uint32_t nImageIdx)
 {
 	LINEINFO *linfo = GetLineInfo(nLineNo);
 
@@ -291,7 +291,7 @@ int TextView::SetLineImage(ULONG nLineNo, ULONG nImageIdx)
 	return 0;
 }
 
-LINEINFO* TextView::GetLineInfo(ULONG nLineNo)
+LINEINFO* TextView::GetLineInfo(uint32_t nLineNo)
 {
 	LINEINFO key = { nLineNo, 0 };
 
@@ -321,13 +321,13 @@ bool TextView::GetSelection(TextCoord *start, TextCoord *end)
 //
 //	The UTF-16 column of pos within a line, clamped to the line
 //
-static ULONG LineColumn(TextCoord *line, TextCoord *pos, ULONG lineLen)
+static uint32_t LineColumn(TextCoord *line, TextCoord *pos, uint32_t lineLen)
 {
 	if(*pos <= line->line_begin)
 		return 0;
 
 	if(pos->line_begin == line->line_begin)
-		return (ULONG)min(pos->column, (size_w)lineLen);
+		return (uint32_t)min(pos->column, (size_w)lineLen);
 
 	return lineLen;
 }
@@ -335,7 +335,7 @@ static ULONG LineColumn(TextCoord *line, TextCoord *pos, ULONG lineLen)
 //
 //	Return the selected UTF-16 columns [start, end) of a line lineLen columns long
 //
-void TextView::SelectionColumns(TextCoord *line, ULONG lineLen, ULONG *start, ULONG *end)
+void TextView::SelectionColumns(TextCoord *line, uint32_t lineLen, uint32_t *start, uint32_t *end)
 {
 	TextCoord selStart, selEnd;
 
@@ -356,17 +356,17 @@ size_w TextView::SelectionSize()
 	return end - start;
 }
 
-ULONG TextView::SelectAll()
+uint32_t TextView::SelectAll()
 {
 	m_pTextDoc->coord_from_pos(TextPos(0), &m_selAnchor);
 	m_pTextDoc->coord_from_document_end(&m_cursorPos);
 
-	UpdateViewState(TRUE);
+	UpdateViewState(true);
 	RefreshWindow();
 	return 0;
 }
 
-UINT TextView::FindText(TEXTVIEWFIND *find)
+uint32_t TextView::FindText(TEXTVIEWFIND *find)
 {
 	TextCoord selStart;
 	TextCoord selEnd;
@@ -375,7 +375,7 @@ UINT TextView::FindText(TEXTVIEWFIND *find)
 	TextPos start;
 	TextPos matchBegin;
 	TextPos matchEnd;
-	UINT result = TVFR_FOUND;
+	uint32_t result = TVFR_FOUND;
 
 	if(find == 0 || find->text == 0 || find->length == 0)
 		return TVFR_NOTFOUND;
@@ -387,12 +387,12 @@ UINT TextView::FindText(TEXTVIEWFIND *find)
 	else
 		start = m_cursorPos;
 
-	if(!m_pTextDoc->find_text(find->text, find->length, find->backwards ? docStart : start, find->backwards ? start : docEnd, find->backwards != FALSE, find->matchcase != FALSE, &matchBegin, &matchEnd))
+	if(!m_pTextDoc->find_text(find->text, find->length, find->backwards ? docStart : start, find->backwards ? start : docEnd, find->backwards != false, find->matchcase != false, &matchBegin, &matchEnd))
 	{
 		if(!find->wrap || docEnd == docStart)
 			return TVFR_NOTFOUND;
 
-		if(!m_pTextDoc->find_text(find->text, find->length, find->backwards ? start : docStart, find->backwards ? docEnd : start, find->backwards != FALSE, find->matchcase != FALSE, &matchBegin, &matchEnd))
+		if(!m_pTextDoc->find_text(find->text, find->length, find->backwards ? start : docStart, find->backwards ? docEnd : start, find->backwards != false, find->matchcase != false, &matchBegin, &matchEnd))
 			return TVFR_NOTFOUND;
 
 		result = TVFR_FOUNDWRAPPED;
@@ -404,7 +404,7 @@ UINT TextView::FindText(TEXTVIEWFIND *find)
 		return TVFR_NOTFOUND;
 
 	m_nSelectionType = SEL_NORMAL;
-	UpdateViewState(TRUE);
+	UpdateViewState(true);
 	RefreshWindow();
 	return result;
 }
@@ -414,7 +414,7 @@ UINT TextView::FindText(TEXTVIEWFIND *find)
 //	showing only the lines that hold one, with fFilter. Lines are laid out
 //	again, to colour them.
 //
-LONG TextView::ShowMatches(TEXTVIEWFIND *find, BOOL fFilter)
+int32_t TextView::ShowMatches(TEXTVIEWFIND *find, bool fFilter)
 {
 	// other matches, or none, start from the whole document again
 	EndFilter(true);
@@ -433,7 +433,7 @@ LONG TextView::ShowMatches(TEXTVIEWFIND *find, BOOL fFilter)
 
 	ResetLineCache();
 	RefreshWindow();
-	return TRUE;
+	return true;
 }
 
 //
@@ -442,7 +442,7 @@ LONG TextView::ShowMatches(TEXTVIEWFIND *find, BOOL fFilter)
 //	in the document, as one undo step, keeping the caret and the view on their
 //	lines. Returns how many matches it replaced.
 //
-size_w TextView::ReplaceText(TEXTVIEWFIND *find, BOOL fAll)
+size_w TextView::ReplaceText(TEXTVIEWFIND *find, bool fAll)
 {
 	TextCoord  start, end, line;
 	TextPos    matchBegin, matchEnd;
@@ -458,7 +458,7 @@ size_w TextView::ReplaceText(TEXTVIEWFIND *find, BOOL fAll)
 		if(!LineFromPos(m_cursorPos, &caretLine) || !LineFromPos(m_scrollVPos, &topLine))
 			return 0;
 
-		if((count = m_pTextDoc->replace_all(find->text, find->length, find->matchcase != FALSE, find->replace, find->replacelength)) == 0)
+		if((count = m_pTextDoc->replace_all(find->text, find->length, find->matchcase != false, find->replace, find->replacelength)) == 0)
 			return 0;
 
 		ResetLineCache();
@@ -476,7 +476,7 @@ size_w TextView::ReplaceText(TEXTVIEWFIND *find, BOOL fAll)
 	{
 		// the selection holds a match if a match spans it exactly
 		if(!GetSelection(&start, &end) ||
-		   !m_pTextDoc->find_text(find->text, find->length, start, end, false, find->matchcase != FALSE, &matchBegin, &matchEnd) ||
+		   !m_pTextDoc->find_text(find->text, find->length, start, end, false, find->matchcase != false, &matchBegin, &matchEnd) ||
 		   matchBegin != start || matchEnd != end)
 			return 0;
 
@@ -499,7 +499,7 @@ size_w TextView::ReplaceText(TEXTVIEWFIND *find, BOOL fAll)
 	m_selAnchor = m_cursorPos;
 
 	RefreshWindow();
-	UpdateViewState(TRUE);
+	UpdateViewState(true);
 	NotifyParent(TVN_CHANGED);
 	return count;
 }
@@ -525,7 +525,7 @@ TEXT_RESULT TextView::GotoLine(size_w lineno, bool fMove)
 		m_selAnchor = line;
 		m_nSelectionType = SEL_NORMAL;
 
-		UpdateViewState(TRUE);
+		UpdateViewState(true);
 		RefreshWindow();
 	}
 
@@ -562,14 +562,14 @@ int TextView::LineFormat()
 //
 //	Filtered, the view is read-only, but the document may not be
 //
-UINT TextView::GetEditMode()
+uint32_t TextView::GetEditMode()
 {
 	return m_pSourceDoc ? m_nFilterEditMode : m_nEditMode;
 }
 
-UINT TextView::SetEditMode(UINT mode)
+uint32_t TextView::SetEditMode(uint32_t mode)
 {
-	UINT oldMode = m_nEditMode;
+	uint32_t oldMode = m_nEditMode;
 
 	m_nEditMode = mode;
 	return oldMode;
@@ -579,17 +579,17 @@ UINT TextView::SetEditMode(UINT mode)
 //	The document's size and the selection's, in bytes and in characters where
 //	those are counted
 //
-BOOL TextView::GetDocStats(TEXTVIEWDOCSTATS *stats)
+bool TextView::GetDocStats(TEXTVIEWDOCSTATS *stats)
 {
 	TextCoord selStart, selEnd;
 	size_w chars, startChars, endChars;
 
 	if(stats == 0)
-		return FALSE;
+		return false;
 
 	stats->byte_count = (unsigned __int64)FileDoc()->file_length();
 	stats->char_count = 0;
-	stats->char_count_known = FALSE;
+	stats->char_count_known = false;
 	stats->sel_byte_count = 0;
 	stats->sel_char_count = 0;
 	stats->linebreaks_seen = FileDoc()->linebreaks_seen();
@@ -597,7 +597,7 @@ BOOL TextView::GetDocStats(TEXTVIEWDOCSTATS *stats)
 	if(FileDoc()->charcount(&chars) == TDR_OK)
 	{
 		stats->char_count = (unsigned __int64)chars;
-		stats->char_count_known = TRUE;
+		stats->char_count_known = true;
 	}
 
 	// the selection, counted the same way
@@ -613,5 +613,5 @@ BOOL TextView::GetDocStats(TEXTVIEWDOCSTATS *stats)
 		}
 	}
 
-	return TRUE;
+	return true;
 }

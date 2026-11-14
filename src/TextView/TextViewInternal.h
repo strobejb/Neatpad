@@ -21,8 +21,8 @@
 #include <vector>
 
 /*HTHEME  (WINAPI * OpenThemeData_Proc)(HWND hwnd, LPCWSTR pszClassList);
-BOOL    (WINAPI * CloseThemeData_Proc)(HTHEME hTheme);
-HRESULT (WINAPI * DrawThemeBackground_Proc)(HTHEME hTheme, HDC hdc, int, int, const RECT*, const RECT*);
+bool    (WINAPI * CloseThemeData_Proc)(HTHEME hTheme);
+HRESULT (WINAPI * DrawThemeBackground_Proc)(HTHEME hTheme, HDC hdc, int, int, const TextRect*, const TextRect*);
 */
 
 
@@ -37,11 +37,22 @@ HRESULT (WINAPI * DrawThemeBackground_Proc)(HTHEME hTheme, HDC hdc, int, int, co
 //
 //	LINECACHE - a line laid out, kept while it's in use
 //
+//
+//	A rectangle in the view, in pixels: right and bottom are just outside it
+//
+struct TextRect
+{
+	int left;
+	int top;
+	int right;
+	int bottom;
+};
+
 typedef struct
 {
 	TextLayout *layout;
 	TextPos	 line_begin;	// the line's start (cache key; flushed on every edit)
-	ULONG	 usage;			// cache-count
+	uint32_t	 usage;			// cache-count
 
 	int		 length;		// length in chars INCLUDING CR/LF
 	int		 length_CRLF;	// length in chars EXCLUDING CR/LF
@@ -55,7 +66,7 @@ typedef struct
 //
 typedef struct
 {
-	ULONG	nLineNo;
+	uint32_t	nLineNo;
 	int		nImageIdx;
 
 	// more here in the future?
@@ -72,7 +83,7 @@ enum SELMODE { SEL_NONE, SEL_NORMAL, SEL_MARGIN, SEL_BLOCK };
 typedef struct
 {
 	TextPos	line_begin;		// the line's start
-	ULONG	xpos;
+	uint32_t	xpos;
 
 } CURPOS;
 
@@ -91,73 +102,73 @@ public:
 	//
 	//	Input, painting and timers, which the platform passes on
 	//
-	void Paint(TextCanvas &canvas, RECT *rcPaint);
+	void Paint(TextCanvas &canvas, TextRect *rcPaint);
 	void FontsChanged();
-	LONG OnSize(UINT nFlags, int width, int height);
-	LONG OnVScroll(UINT nSBCode, UINT nPos);
-	LONG OnHScroll(UINT nSBCode, UINT nPos);
-	LONG OnMouseWheel(int nDelta);
-	LONG OnTimer(UINT_PTR nTimer);
+	int32_t OnSize(uint32_t nFlags, int width, int height);
+	int32_t OnVScroll(uint32_t nSBCode, uint32_t nPos);
+	int32_t OnHScroll(uint32_t nSBCode, uint32_t nPos);
+	int32_t OnMouseWheel(int nDelta);
+	int32_t OnTimer(uintptr_t nTimer);
 
-	LONG OnLButtonDown(UINT nFlags, int x, int y);
-	LONG OnLButtonUp(UINT nFlags, int x, int y);
-	LONG OnLButtonDblClick(UINT nFlags, int x, int y);
-	LONG OnMouseMove(UINT nFlags, int x, int y);
+	int32_t OnLButtonDown(uint32_t nFlags, int x, int y);
+	int32_t OnLButtonUp(uint32_t nFlags, int x, int y);
+	int32_t OnLButtonDblClick(uint32_t nFlags, int x, int y);
+	int32_t OnMouseMove(uint32_t nFlags, int x, int y);
 
-	LONG OnKeyDown(UINT nKeyCode, UINT nFlags);
-	LONG OnChar(UINT nChar, UINT nFlags);
+	int32_t OnKeyDown(uint32_t nKeyCode, uint32_t nFlags);
+	int32_t OnChar(uint32_t nChar, uint32_t nFlags);
 
-	LONG OnSetFocus();
-	LONG OnKillFocus();
+	int32_t OnSetFocus();
+	int32_t OnKillFocus();
 
-	BOOL OnCut();
-	BOOL OnCopy();
-	BOOL OnPaste();
-	BOOL OnClear();
+	bool OnCut();
+	bool OnCopy();
+	bool OnPaste();
+	bool OnClear();
 
 	//
 	//	The view's API, which the platform's messages or functions call
 	//
-	BOOL		Undo();
-	BOOL		Redo();
-	BOOL		CanUndo();
-	BOOL		CanRedo();
+	bool		Undo();
+	bool		Redo();
+	bool		CanUndo();
+	bool		CanRedo();
 	TextDocument *FileDoc() const;
 #ifdef _WIN32
-	LRESULT		EditMessage(UINT msg, WPARAM wParam, LPARAM lParam);	// win32/TextViewEdit.cpp
+	LRESULT		EditMessage(uint32_t msg, WPARAM wParam, LPARAM lParam);	// win32/TextViewEdit.cpp
 #endif
-	LONG		OpenFile(TCHAR *szFileName, int nEncoding, bool fReadOnly);	// -1 for its byte-order mark to say
-    BOOL        SaveState(TEXTVIEWRECOVERY *state);
-    BOOL        LoadState(TEXTVIEWRECOVERY *state);
-	LONG		TailFile(TCHAR *szFileName);
-	BOOL		UpdateTail();
-	LONG		SaveFile(TCHAR *szFileName, UINT nEncoding, BOOL fBom, UINT nLineBreak);
-	LONG		ClearFile();
-	LONG		SetLineSpacing(int nAbove, int nBelow);
-	COLORREF	SetColour(UINT idx, COLORREF rgbColour);
-	ULONG		SetStyle(ULONG uMask, ULONG uStyles);
+	int32_t		OpenFile(tchar_t *szFileName, int nEncoding, bool fReadOnly);	// -1 for its byte-order mark to say
+    bool        SaveState(TEXTVIEWRECOVERY *state);
+    bool        LoadState(TEXTVIEWRECOVERY *state);
+	int32_t		TailFile(tchar_t *szFileName);
+	bool		UpdateTail();
+	int32_t		SaveFile(tchar_t *szFileName, uint32_t nEncoding, bool fBom, uint32_t nLineBreak);
+	int32_t		ClearFile();
+	int32_t		SetLineSpacing(int nAbove, int nBelow);
+	uint32_t	SetColour(uint32_t idx, uint32_t rgbColour);
+	uint32_t		SetStyle(uint32_t uMask, uint32_t uStyles);
 	int			SetCaretWidth(int nWidth);
-	LONG		SetLongLine(int nLength);
-	int			SetLineImage(ULONG nLineNo, ULONG nImageIdx);
-    UINT        SetTabWidth(UINT width);
-    UINT          SetFilterContext(UINT lines);
-    BOOL		ConvertLineBreaks(UINT nLineBreak);
+	int32_t		SetLongLine(int nLength);
+	int			SetLineImage(uint32_t nLineNo, uint32_t nImageIdx);
+    uint32_t        SetTabWidth(uint32_t width);
+    uint32_t          SetFilterContext(uint32_t lines);
+    bool		ConvertLineBreaks(uint32_t nLineBreak);
 	size_w		SelectionSize();
-	ULONG		SelectAll();
-    LONG		IndexFile(BOOL fIndex);
+	uint32_t		SelectAll();
+    int32_t		IndexFile(bool fIndex);
 	TEXT_RESULT	GotoLine(size_w lineno, bool fMove);
-	VOID		FillIndexInfo(TVNINDEXINFO *info);
-	VOID		FillCursorInfo(TVNCURSORINFO *info);
-	UINT		FindText(TEXTVIEWFIND *find);
-	LONG		ShowMatches(TEXTVIEWFIND *find, BOOL fFilter);
-	size_w		ReplaceText(TEXTVIEWFIND *find, BOOL fAll);
+	void		FillIndexInfo(TVNINDEXINFO *info);
+	void		FillCursorInfo(TVNCURSORINFO *info);
+	uint32_t		FindText(TEXTVIEWFIND *find);
+	int32_t		ShowMatches(TEXTVIEWFIND *find, bool fFilter);
+	size_w		ReplaceText(TEXTVIEWFIND *find, bool fAll);
 	TEXT_RESULT	CursorOffset(size_w *chars);
 	TEXT_RESULT	CursorLine(size_w *lineno);
 	size_w		CursorColumn();
 	int			LineFormat();
-	UINT		GetEditMode();
-	UINT		SetEditMode(UINT mode);
-	BOOL		GetDocStats(TEXTVIEWDOCSTATS *stats);
+	uint32_t		GetEditMode();
+	uint32_t		SetEditMode(uint32_t mode);
+	bool		GetDocStats(TEXTVIEWDOCSTATS *stats);
 	
 private:
 
@@ -165,9 +176,9 @@ private:
 	//	Internal private functions
 	//
 
-	LONG		OnIndexTimer();
-	VOID		IndexChanged();
-	VOID		NotifyIndexChange();
+	int32_t		OnIndexTimer();
+	void		IndexChanged();
+	void		NotifyIndexChange();
 
 	//
 	//	Lookups for the EDIT control messages (TextViewFile.cpp). They must answer, so
@@ -183,19 +194,19 @@ private:
 	//
 	//	Cursor/Selection
 	//
-	void		HighlightMatches(TCHAR *szText, int nTextLen, ATTR *attr);
+	void		HighlightMatches(tchar_t *szText, int nTextLen, ATTR *attr);
 
 	// Filtering (TextViewFilter.cpp)
     void          WriteFilterContext(TextPos match);
-    UINT          WriteFilterLines(LineIterator line, UINT count);
+    uint32_t          WriteFilterLines(LineIterator line, uint32_t count);
     bool		StartFilter();
 	void		EndFilter(bool fKeepPlace);
 	bool		FilterSlice();
 	void		WriteFilterLine(TextPos begin, TextPos next);
 	void		ShowFilteredLines();
-	LONG		OnFilterTimer();
+	int32_t		OnFilterTimer();
 	bool		GetSelection(TextCoord *start, TextCoord *end);
-	void		SelectionColumns(TextCoord *line, ULONG lineLen, ULONG *start, ULONG *end);
+	void		SelectionColumns(TextCoord *line, uint32_t lineLen, uint32_t *start, uint32_t *end);
 
 	//void		Toggle
 
@@ -205,22 +216,22 @@ private:
 	//
 	void		RefreshWindow();
 	void		PaintLine(TextCanvas &canvas, TextCoord *coord, int x);
-	void		PaintText(TextCanvas &canvas, TextCoord *coord, int x, int y, RECT *bounds);
+	void		PaintText(TextCanvas &canvas, TextCoord *coord, int x, int y, TextRect *bounds);
 	int			PaintMargin(TextCanvas &canvas, TextCoord *line, int x, int y);
     uint32_t    LineDiff(TextCoord *line, const std::function<void(size_w, size_w)> &inserted = {},
                          size_w columns = (size_w)-1);
     bool        DiffJoins(TextCoord *line, bool previous);
 
-    LONG		InvalidateRange(TextCoord *start, TextCoord *finish);
-	LONG		InvalidateLine(TextCoord *line, bool forceAnalysis);
-	VOID		UpdateLine(TextCoord *line);
+    int32_t		InvalidateRange(TextCoord *start, TextCoord *finish);
+	int32_t		InvalidateLine(TextCoord *line, bool forceAnalysis);
+	void		UpdateLine(TextCoord *line);
 
 
-	int			ApplyTextAttributes(TextCoord *line, ULONG &nColumn, TCHAR *szText, int nTextLen, ATTR *attr);
-	int			ApplySelection(TextLayout *layout, TextCoord *line, ULONG nTextLen);
-	int			SyntaxColour(TCHAR *szText, ULONG nTextLen, ATTR *attr);
-	int			StripCRLF(TCHAR *szText, ATTR *attrList, int nLength, bool fAllow);
-	int			CRLF_size(TCHAR *szText, int nLength);
+	int			ApplyTextAttributes(TextCoord *line, uint32_t &nColumn, tchar_t *szText, int nTextLen, ATTR *attr);
+	int			ApplySelection(TextLayout *layout, TextCoord *line, uint32_t nTextLen);
+	int			SyntaxColour(tchar_t *szText, uint32_t nTextLen, ATTR *attr);
+	int			StripCRLF(tchar_t *szText, ATTR *attrList, int nLength, bool fAllow);
+	int			CRLF_size(tchar_t *szText, int nLength);
 
 	//
 	//	Font support
@@ -233,85 +244,85 @@ private:
 	//int		TabWidth();
 	int			LeftMarginWidth();
 	void		UpdateMarginWidth();
-	LINEINFO *	GetLineInfo(ULONG nLineNo);
+	LINEINFO *	GetLineInfo(uint32_t nLineNo);
 
 	//
 	//	Caret/Cursor positioning
 	//
-	BOOL		MouseCoordToTextCoord(int x, int y, TextCoord *coord, int *px);
-	BOOL		TextCoordToX(TextCoord *coord, BOOL fTrailing, int *x);
-	VOID		RepositionCaret();
-	//VOID		MoveCaret(int x, int y);
-	VOID		UpdateCaretXY(int x, TextCoord *coord);
-	VOID		UpdateCaretCoord(TextCoord *coord, BOOL fTrailing, int *outx=0);
-	VOID		UpdateViewState(BOOL fAdvancing);
+	bool		MouseCoordToTextCoord(int x, int y, TextCoord *coord, int *px);
+	bool		TextCoordToX(TextCoord *coord, bool fTrailing, int *x);
+	void		RepositionCaret();
+	//void		MoveCaret(int x, int y);
+	void		UpdateCaretXY(int x, TextCoord *coord);
+	void		UpdateCaretCoord(TextCoord *coord, bool fTrailing, int *outx=0);
+	void		UpdateViewState(bool fAdvancing);
 	bool		SetCursorCoord(TextCoord *coord);
 
-	VOID		MoveWordPrev();
-	VOID		MoveWordNext();
-	VOID		MoveWordStart();
-	VOID		MoveWordEnd();
-	VOID		MoveCharPrev();
-	VOID		MoveCharNext();
-	VOID		MoveCurrentLineStart();
-	VOID		MoveCurrentLineEnd();
-	VOID		MoveLineUp(int numLines);
-	VOID		MoveLineDown(int numLines);
-	VOID		MovePageUp();
-	VOID		MovePageDown();
-	VOID		MoveFileStart();
-	VOID		MoveFileEnd();
+	void		MoveWordPrev();
+	void		MoveWordNext();
+	void		MoveWordStart();
+	void		MoveWordEnd();
+	void		MoveCharPrev();
+	void		MoveCharNext();
+	void		MoveCurrentLineStart();
+	void		MoveCurrentLineEnd();
+	void		MoveLineUp(int numLines);
+	void		MoveLineDown(int numLines);
+	void		MovePageUp();
+	void		MovePageDown();
+	void		MoveFileStart();
+	void		MoveFileEnd();
 
 	bool		GetLineLayout(TextCoord *line, LINECACHE **lineCache);
 	bool		CoordAtPreviousLineEnd(TextCoord *coord, TextCoord *result);
 	bool		CoordAtNextLineStart(TextCoord *coord, TextCoord *result);
-	VOID		SetCursorLinePos(int charPos);
+	void		SetCursorLinePos(int charPos);
 
 	//
 	//	Editing
 	//	
-	BOOL		ForwardDelete();
-	BOOL		BackDelete();
-    ULONG       EnterText(TCHAR *szText, ULONG nLength, bool forceInsert = false);
+	bool		ForwardDelete();
+	bool		BackDelete();
+    uint32_t       EnterText(tchar_t *szText, uint32_t nLength, bool forceInsert = false);
 
 	//
 	//	Scrolling
 	//
-	void		ClientRect(RECT *rect);
-	bool		ScrollRgn(int dx, int dy, bool fReturnUpdateRgn, RECT *scrolled);
-	void		InvalidateOutside(const RECT &inside);
+	void		ClientRect(TextRect *rect);
+	bool		ScrollRgn(int dx, int dy, bool fReturnUpdateRgn, TextRect *scrolled);
+	void		InvalidateOutside(const TextRect &inside);
 	void		Scroll(int dx, int dy);
 	bool		SetScrollCoord(TextCoord *coord);
 	bool		LastScrollCoord(TextCoord *top);
-	VOID		AdjustCoordsForChange(TextChange *change);
-	bool		ViewportLineFromRow(ULONG row, TextCoord *coord);
-	bool		ViewportRowFromLine(TextCoord *line, ULONG *row);
+	void		AdjustCoordsForChange(TextChange *change);
+	bool		ViewportLineFromRow(uint32_t row, TextCoord *coord);
+	bool		ViewportRowFromLine(TextCoord *line, uint32_t *row);
 	int			ScrollVByLines(int dy);
 	void		ScrollToCaret();
 	void		ScrollToCoord(int xpos, TextCoord *coord);
 	void		ScrollToDocumentEnd();
-	VOID		SetupScrollbars();
-	VOID		UpdateMetrics();
-	VOID		RecalcLineHeight();
+	void		SetupScrollbars();
+	void		UpdateMetrics();
+	void		RecalcLineHeight();
 	bool		PinToBottomCorner();
 
 	//
 	//	TextView configuration
 	//
-	ULONG		SetVar(ULONG nVar, ULONG nValue);
-	ULONG		GetVar(ULONG nVar);
-	ULONG		GetStyleMask(ULONG uMask);
-	bool		CheckStyle(ULONG uMask);
+	uint32_t		SetVar(uint32_t nVar, uint32_t nValue);
+	uint32_t		GetVar(uint32_t nVar);
+	uint32_t		GetStyleMask(uint32_t uMask);
+	bool		CheckStyle(uint32_t uMask);
 
-	COLORREF	GetColour(UINT idx);
-	COLORREF	LineColour(TextCoord *line);
-	COLORREF	LongColour(TextCoord *line);
+	uint32_t	GetColour(uint32_t idx);
+	uint32_t	LineColour(TextCoord *line);
+	uint32_t	LongColour(TextCoord *line);
 
 	//
 	//	Miscallaneous
 	//
-	LRESULT		NotifyParent(UINT nNotifyCode, NMHDR *optional = 0);
-	VOID		NotifyCursorChange();
+	LRESULT		NotifyParent(uint32_t nNotifyCode, NMHDR *optional = 0);
+	void		NotifyCursorChange();
 
 
 
@@ -320,7 +331,7 @@ private:
 	//
 
 	TextViewHost *m_pHost;		// redraws, scrolling, the caret, timers, clipboard, notifications
-	ULONG		m_uStyleFlags;
+	uint32_t		m_uStyleFlags;
 
 	// File-related data
 	// Display/scroll line count; may be estimated or EOF-clamped while lazy indexing is incomplete.
@@ -354,11 +365,11 @@ private:
 	SELMODE		m_nSelectionType;
 	CURPOS		m_cpBlockStart;
 	CURPOS		m_cpBlockEnd;
-	UINT		m_nEditMode;
+	uint32_t		m_nEditMode;
 
 	// Display-related data
 	int			m_nTabWidthChars;
-	DWORD		m_nCaretWidth;
+	uint32_t		m_nCaretWidth;
 	int			m_nLongLineLimit;
 	int			m_nCRLFMode;
 	
@@ -367,32 +378,32 @@ private:
 
 	// Margin information
 	int			m_nLinenoWidth;
-	//RECT		m_rcBorder;
+	//TextRect		m_rcBorder;
 
-	COLORREF	m_rgbColourList[TXC_MAX_COLOURS];
+	uint32_t	m_rgbColourList[TXC_MAX_COLOURS];
 
 	// The text ShowMatches highlights (none while empty), and whether its case matters
-	std::basic_string<TCHAR> m_sMatchText;
-	BOOL		m_fMatchCase = FALSE;
+	std::basic_string<tchar_t> m_sMatchText;
+	bool		m_fMatchCase = false;
 
 	// Showing only the lines holding a match: they're written to a temp file
 	// as they're found, which m_pTextDoc shows, read-only, while m_pSourceDoc
 	// holds the whole document. Each line's start in it is kept, to go back to.
-	BOOL		m_fFilter = FALSE;
+	bool		m_fFilter = false;
 	TextDocument *m_pSourceDoc = 0;
 	HANDLE		m_hFilterFile = INVALID_HANDLE_VALUE;
 	TextPos		m_filterFrom;					// how far through m_pSourceDoc filtering has got
 	std::vector<TextPos> m_filterOrigins;
     TextPos              m_filterWrittenTo;     // end of the last source line included
-    UINT                 m_filterAfter     = 0; // context still wanted if the source grows
-    UINT                 m_nFilterContext  = 2;
-    UINT		m_nFilterEditMode = 0;			// the whole document's edit mode, meanwhile
+    uint32_t                 m_filterAfter     = 0; // context still wanted if the source grows
+    uint32_t                 m_nFilterContext  = 2;
+    uint32_t		m_nFilterEditMode = 0;			// the whole document's edit mode, meanwhile
 
 	// Runtime data
-	UINT_PTR	m_nScrollTimer;
+	uintptr_t	m_nScrollTimer;
 	int			m_nScrollCounter;
 	bool		m_fIndexing;		// the index timer is running
-	UINT		m_nIndexPercent;	// as the parent was last told
+	uint32_t		m_nIndexPercent;	// as the parent was last told
 	bool		m_fHideCaret;
 	//bool		m_fTransparent;
 

@@ -28,7 +28,7 @@ int TextView::NeatTextYOffset(int font)
 //
 //	Update the lineheight based on current font settings
 //
-VOID TextView::RecalcLineHeight()
+void TextView::RecalcLineHeight()
 {
 	m_nLineHeight	= 0;
 	m_nMaxAscent	= 0;
@@ -58,7 +58,7 @@ VOID TextView::RecalcLineHeight()
 //
 //	The host's fonts have changed: measure the lines and the margin again
 //
-VOID TextView::FontsChanged()
+void TextView::FontsChanged()
 {
 	TextViewHost::FontMetrics metrics;
 
@@ -79,10 +79,10 @@ VOID TextView::FontsChanged()
 //	Set spacing (in pixels) above and below each line - 
 //  this is in addition to the external-leading of a font
 //
-LONG TextView::SetLineSpacing(int nAbove, int nBelow)
+int32_t TextView::SetLineSpacing(int nAbove, int nBelow)
 {
 	m_nHeightAbove = nAbove;
 	m_nHeightBelow = nBelow;
 	RecalcLineHeight();
-	return TRUE;
+	return true;
 }

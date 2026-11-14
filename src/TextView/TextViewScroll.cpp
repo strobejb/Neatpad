@@ -14,15 +14,15 @@
 #include "TextView.h"
 #include "TextViewInternal.h"
 
-bool IsKeyPressed(UINT nVirtKey);
+bool IsKeyPressed(uint32_t nVirtKey);
 
 //
 //	Set scrollbar positions and range
 //
-VOID TextView::SetupScrollbars()
+void TextView::SetupScrollbars()
 {
-	ULONG windowColumns = m_nWindowColumns > 0 ? (ULONG)m_nWindowColumns : 0;
-	ULONG longestLine = m_nLongestLine > 0 ? (ULONG)m_nLongestLine : 0;
+	uint32_t windowColumns = m_nWindowColumns > 0 ? (uint32_t)m_nWindowColumns : 0;
+	uint32_t longestLine = m_nLongestLine > 0 ? (uint32_t)m_nLongestLine : 0;
 	size_w docBytes = m_pTextDoc->byte_length();
 	TextCoord belowWindow;
 	size_w pageEnd;
@@ -55,8 +55,8 @@ bool TextView::PinToBottomCorner()
 {
 	bool repos = false;
 	TextPos topLine = m_scrollVPos.line_begin;
-	ULONG windowColumns = m_nWindowColumns > 0 ? (ULONG)m_nWindowColumns : 0;
-	ULONG longestLine = m_nLongestLine > 0 ? (ULONG)m_nLongestLine : 0;
+	uint32_t windowColumns = m_nWindowColumns > 0 ? (uint32_t)m_nWindowColumns : 0;
+	uint32_t longestLine = m_nLongestLine > 0 ? (uint32_t)m_nLongestLine : 0;
 
 	if(longestLine <= windowColumns)
 	{
@@ -66,7 +66,7 @@ bool TextView::PinToBottomCorner()
 			repos = true;
 		}
 	}
-	else if((ULONG)m_nHScrollPos + windowColumns > longestLine)
+	else if((uint32_t)m_nHScrollPos + windowColumns > longestLine)
 	{
 		m_nHScrollPos = (int)(longestLine - windowColumns);
 		repos = true;
@@ -122,7 +122,7 @@ bool TextView::LastScrollCoord(TextCoord *top)
 //	anchor's line bounds are re-resolved even when the anchor itself does not
 //	move, because an edit on the top line changes where that line ends.
 //
-VOID TextView::AdjustCoordsForChange(TextChange *change)
+void TextView::AdjustCoordsForChange(TextChange *change)
 {
 	TextCoord scrollPos = m_scrollVPos;
 
@@ -130,7 +130,7 @@ VOID TextView::AdjustCoordsForChange(TextChange *change)
 		SetScrollCoord(&scrollPos);
 }
 
-bool TextView::ViewportLineFromRow(ULONG row, TextCoord *coord)
+bool TextView::ViewportLineFromRow(uint32_t row, TextCoord *coord)
 {
 	LineIterator line = m_pTextDoc->line_at(m_scrollVPos);
 
@@ -151,12 +151,12 @@ bool TextView::ViewportLineFromRow(ULONG row, TextCoord *coord)
 //	Find the viewport row showing a line, including the partly visible row
 //	below the last whole one
 //
-bool TextView::ViewportRowFromLine(TextCoord *line, ULONG *row)
+bool TextView::ViewportRowFromLine(TextCoord *line, uint32_t *row)
 {
-	ULONG windowLines = m_nWindowLines > 0 ? (ULONG)m_nWindowLines : 0;
+	uint32_t windowLines = m_nWindowLines > 0 ? (uint32_t)m_nWindowLines : 0;
 	LineIterator rowLine = m_pTextDoc->line_at(m_scrollVPos);
 
-	for(ULONG r = 0; r <= windowLines; r++)
+	for(uint32_t r = 0; r <= windowLines; r++)
 	{
 		if(rowLine.line().line_begin == line->line_begin)
 		{
@@ -214,18 +214,18 @@ int TextView::ScrollVByLines(int dy)
 //
 //	The view's client area, from its top-left corner
 //
-void TextView::ClientRect(RECT *rect)
+void TextView::ClientRect(TextRect *rect)
 {
 	int width, height;
 
 	m_pHost->ClientSize(&width, &height);
-	SetRect(rect, 0, 0, width, height);
+	*rect = { 0, 0, width, height };
 }
 
 //
 //	The window has changed size - update the scrollbars
 //
-LONG TextView::OnSize(UINT nFlags, int width, int height)
+int32_t TextView::OnSize(uint32_t nFlags, int width, int height)
 {
 	int margin = LeftMarginWidth();
 
@@ -253,9 +253,9 @@ LONG TextView::OnSize(UINT nFlags, int width, int height)
 //
 //  Otherwise ScrollRgn returns false and updates the entire window
 //
-bool TextView::ScrollRgn(int dx, int dy, bool fReturnUpdateRgn, RECT *scrolled)
+bool TextView::ScrollRgn(int dx, int dy, bool fReturnUpdateRgn, TextRect *scrolled)
 {
-	RECT clip;
+	TextRect clip;
 
 	ClientRect(&clip);
 
@@ -329,9 +329,9 @@ bool TextView::ScrollRgn(int dx, int dy, bool fReturnUpdateRgn, RECT *scrolled)
 //	Redraw everything in the window outside a rectangle (the part that is never
 //	scrolled): above, below, and to either side of it
 //
-void TextView::InvalidateOutside(const RECT &inside)
+void TextView::InvalidateOutside(const TextRect &inside)
 {
-	RECT client;
+	TextRect client;
 
 	ClientRect(&client);
 
@@ -351,7 +351,7 @@ void TextView::InvalidateOutside(const RECT &inside)
 //
 //	Scroll viewport in specified direction
 //
-VOID TextView::Scroll(int dx, int dy)
+void TextView::Scroll(int dx, int dy)
 {
 	// do a "normal" scroll - don't worry about invalid regions,
 	// just scroll the whole window 
@@ -362,12 +362,12 @@ VOID TextView::Scroll(int dx, int dy)
 //	Ensure that the specified file-location is visible within
 //  the window-viewport, Scrolling the viewport as necessary
 //
-VOID TextView::ScrollToCoord(int xpos, TextCoord *coord)
+void TextView::ScrollToCoord(int xpos, TextCoord *coord)
 {
 	bool fRefresh = false;
-	RECT rect;
+	TextRect rect;
 	int  marginWidth = LeftMarginWidth();
-	ULONG windowLines = m_nWindowLines > 0 ? (ULONG)m_nWindowLines : 0;
+	uint32_t windowLines = m_nWindowLines > 0 ? (uint32_t)m_nWindowLines : 0;
 	bool coordVisible = false;
 
 	ClientRect(&rect);
@@ -391,7 +391,7 @@ VOID TextView::ScrollToCoord(int xpos, TextCoord *coord)
 	{
 		LineIterator rowLine = m_pTextDoc->line_at(m_scrollVPos);
 
-		for(ULONG row = 0; row < windowLines; row++)
+		for(uint32_t row = 0; row < windowLines; row++)
 		{
 			if(rowLine.line().line_begin == coord->line_begin)
 			{
@@ -438,12 +438,12 @@ VOID TextView::ScrollToCoord(int xpos, TextCoord *coord)
 	}
 }
 
-VOID TextView::ScrollToCaret()
+void TextView::ScrollToCaret()
 {
 	ScrollToCoord(m_nCaretPosX, &m_cursorPos);
 }
 
-VOID TextView::ScrollToDocumentEnd()
+void TextView::ScrollToDocumentEnd()
 {
 	TextCoord eofCoord;
 
@@ -456,7 +456,7 @@ VOID TextView::ScrollToDocumentEnd()
 //
 //	Vertical scrollbar support
 //
-LONG TextView::OnVScroll(UINT nSBCode, UINT nPos)
+int32_t TextView::OnVScroll(uint32_t nSBCode, uint32_t nPos)
 {
 	TextPos oldpos = m_scrollVPos.line_begin;
 	size_w docBytes = m_pTextDoc->byte_length();
@@ -517,7 +517,7 @@ LONG TextView::OnVScroll(UINT nSBCode, UINT nPos)
 //
 //	Horizontal scrollbar support
 //
-LONG TextView::OnHScroll(UINT nSBCode, UINT nPos)
+int32_t TextView::OnHScroll(uint32_t nSBCode, uint32_t nPos)
 {
 	int oldpos = m_nHScrollPos;
 
@@ -566,7 +566,7 @@ LONG TextView::OnHScroll(UINT nSBCode, UINT nPos)
 	return 0;
 }
 
-LONG TextView::OnMouseWheel(int nDelta)
+int32_t TextView::OnMouseWheel(int nDelta)
 {
 #ifndef	SPI_GETWHEELSCROLLLINES	
 #define SPI_GETWHEELSCROLLLINES   104

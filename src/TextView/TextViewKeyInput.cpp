@@ -20,11 +20,11 @@
 //	Import the specified text into the TextView at the current
 //	cursor position, replacing any text-selection in the process
 //
-ULONG TextView::EnterText(TCHAR *szText, ULONG nLength, bool forceInsert)
+uint32_t TextView::EnterText(tchar_t *szText, uint32_t nLength, bool forceInsert)
 {
 	TextCoord	selStart;
 	TextCoord	selEnd;
-	BOOL		fReplaceSelection = GetSelection(&selStart, &selEnd);
+	bool		fReplaceSelection = GetSelection(&selStart, &selEnd);
 	TextChange	change;
 
     switch (forceInsert && m_nEditMode == MODE_OVERWRITE ? MODE_INSERT : m_nEditMode)
@@ -102,12 +102,12 @@ ULONG TextView::EnterText(TCHAR *szText, ULONG nLength, bool forceInsert)
 	ResetLineCache();
 	RefreshWindow();
 
-	UpdateViewState(TRUE);
+	UpdateViewState(true);
 
 	return nLength;
 }
 
-BOOL TextView::ForwardDelete()
+bool TextView::ForwardDelete()
 {
 	TextCoord	selStart;
 	TextCoord	selEnd;
@@ -132,12 +132,12 @@ BOOL TextView::ForwardDelete()
 
 	ResetLineCache();
 	RefreshWindow();
-	UpdateViewState(FALSE);
+	UpdateViewState(false);
 
-	return TRUE;
+	return true;
 }
 
-BOOL TextView::BackDelete()
+bool TextView::BackDelete()
 {
 	TextCoord	selStart;
 	TextCoord	selEnd;
@@ -163,16 +163,16 @@ BOOL TextView::BackDelete()
 
 	ResetLineCache();
 	RefreshWindow();
-	UpdateViewState(FALSE);
+	UpdateViewState(false);
 
-	return TRUE;
+	return true;
 }
 
 //
 //	After an edit (or select-all): refresh the metrics, put the caret in view
 //	and tell the parent where it is now
 //
-void TextView::UpdateViewState(BOOL fAdvancing)
+void TextView::UpdateViewState(bool fAdvancing)
 {
 	m_nLineCount   = m_pTextDoc->linecount();
 
@@ -188,15 +188,15 @@ void TextView::UpdateViewState(BOOL fAdvancing)
 	NotifyCursorChange();
 }
 
-BOOL TextView::Undo()
+bool TextView::Undo()
 {
 	TextChange change;
 
 	if(m_nEditMode == MODE_READONLY)
-		return FALSE;
+		return false;
 
 	if(!m_pTextDoc->undo(&change))
-		return FALSE;
+		return false;
 
 	AdjustCoordsForChange(&change);
 
@@ -209,18 +209,18 @@ BOOL TextView::Undo()
 
 	UpdateViewState(change.inserted != 0);
 
-	return TRUE;
+	return true;
 }
 
-BOOL TextView::Redo()
+bool TextView::Redo()
 {
 	TextChange change;
 
 	if(m_nEditMode == MODE_READONLY)
-		return FALSE;
+		return false;
 
 	if(!m_pTextDoc->redo(&change))
-		return FALSE;
+		return false;
 
 	AdjustCoordsForChange(&change);
 
@@ -232,30 +232,30 @@ BOOL TextView::Redo()
 	RefreshWindow();
 	UpdateViewState(change.inserted != 0);
 
-	return TRUE;
+	return true;
 }
 
-BOOL TextView::CanUndo()
+bool TextView::CanUndo()
 {
-	return m_pTextDoc->can_undo() ? TRUE : FALSE;
+	return m_pTextDoc->can_undo() ? true : false;
 }
 
-BOOL TextView::CanRedo()
+bool TextView::CanRedo()
 {
-	return m_pTextDoc->can_redo() ? TRUE : FALSE;
+	return m_pTextDoc->can_redo() ? true : false;
 }
 
 // Changing tab stops changes layout, but never the document's characters.
-UINT TextView::SetTabWidth(UINT width)
+uint32_t TextView::SetTabWidth(uint32_t width)
 {
-    UINT previous = (UINT)m_nTabWidthChars;
+    uint32_t previous = (uint32_t)m_nTabWidthChars;
 
-    m_nTabWidthChars = (int)max(1U, min(width, (UINT)TV_MAX_TAB_WIDTH));
-    if ((UINT)m_nTabWidthChars != previous)
+    m_nTabWidthChars = (int)max(1U, min(width, (uint32_t)TV_MAX_TAB_WIDTH));
+    if ((uint32_t)m_nTabWidthChars != previous)
     {
         m_nLongestLine = 0;
         ResetLineCache();
-        UpdateViewState(TRUE);
+        UpdateViewState(true);
         RefreshWindow();
     }
 
@@ -264,10 +264,10 @@ UINT TextView::SetTabWidth(UINT width)
 
 // TextCoord columns count UTF-16 units. Expand existing tabs while counting the
 // prefix so a typed Tab still reaches the correct tab stop after earlier tabs.
-static size_w TabColumn(TextDocument *document, const TextCoord &at, UINT width)
+static size_w TabColumn(TextDocument *document, const TextCoord &at, uint32_t width)
 {
     TextReader reader = document->text_from_range(at.line_begin, at);
-    TCHAR      buffer[128];
+    tchar_t      buffer[128];
     uint32_t   length;
     size_w     column = 0;
 
@@ -280,7 +280,7 @@ static size_w TabColumn(TextDocument *document, const TextCoord &at, UINT width)
     return column;
 }
 
-LONG TextView::OnChar(UINT nChar, UINT nFlags)
+int32_t TextView::OnChar(uint32_t nChar, uint32_t nFlags)
 {
     WCHAR ch = (WCHAR)nChar;
 
@@ -291,11 +291,11 @@ LONG TextView::OnChar(UINT nChar, UINT nFlags)
     {
         TextCoord start, end;
         GetSelection(&start, &end);
-        UINT                     width  = (UINT)m_nTabWidthChars;
+        uint32_t                     width  = (uint32_t)m_nTabWidthChars;
         size_w                   column = TabColumn(m_pTextDoc, start, width);
-        std::basic_string<TCHAR> spaces(width - column % width, _T(' '));
+        std::basic_string<tchar_t> spaces(width - column % width, _T(' '));
 
-        if (EnterText(&spaces[0], (ULONG)spaces.size()))
+        if (EnterText(&spaces[0], (uint32_t)spaces.size()))
             NotifyParent(TVN_CHANGED);
         return 0;
     }
@@ -304,17 +304,17 @@ LONG TextView::OnChar(UINT nChar, UINT nFlags)
     // leading whitespace before the selection's start. Treat it as one edit.
     if (nChar == '\r' || nChar == '\n')
     {
-        TCHAR                    crlf[] = _T("\r\n");
-        TCHAR                   *brk    = m_nCRLFMode == TXL_LF ? crlf + 1 : crlf;
-        ULONG                    length = m_nCRLFMode == TXL_LF || m_nCRLFMode == TXL_CR ? 1 : 2;
-        std::basic_string<TCHAR> text(brk, length);
+        tchar_t                    crlf[] = _T("\r\n");
+        tchar_t                   *brk    = m_nCRLFMode == TXL_LF ? crlf + 1 : crlf;
+        uint32_t                    length = m_nCRLFMode == TXL_LF || m_nCRLFMode == TXL_CR ? 1 : 2;
+        std::basic_string<tchar_t> text(brk, length);
 
         if (CheckStyle(TXS_AUTOINDENT))
         {
             TextCoord start, end;
             GetSelection(&start, &end);
             TextReader reader = m_pTextDoc->text_from_range(start.line_begin, start);
-            TCHAR      buffer[128];
+            tchar_t      buffer[128];
             uint32_t   read;
             bool       leading = true;
 
@@ -336,7 +336,7 @@ LONG TextView::OnChar(UINT nChar, UINT nFlags)
         }
 
         m_pTextDoc->undo_group_break();
-        if (EnterText(&text[0], (ULONG)text.size(), true))
+        if (EnterText(&text[0], (uint32_t)text.size(), true))
         {
             m_pTextDoc->undo_group_break();
             NotifyParent(TVN_CHANGED);
@@ -357,7 +357,7 @@ LONG TextView::OnChar(UINT nChar, UINT nFlags)
 //	Converting the whole document gives it that line format, too, and keeps the
 //	caret and the view on their lines: converting changes no line's number.
 //
-BOOL TextView::ConvertLineBreaks(UINT nLineBreak)
+bool TextView::ConvertLineBreaks(uint32_t nLineBreak)
 {
 	TextCoord  start, end, line;
 	TextChange change;
@@ -367,12 +367,12 @@ BOOL TextView::ConvertLineBreaks(UINT nLineBreak)
 	bool       whole     = !GetSelection(&start, &end);
 
 	if(m_nEditMode == MODE_READONLY || (nLineBreak != TXL_CRLF && nLineBreak != TXL_LF && nLineBreak != TXL_CR))
-		return FALSE;
+		return false;
 
 	if(whole)
 	{
 		if(!LineFromPos(m_cursorPos, &caretLine) || !LineFromPos(m_scrollVPos, &topLine))
-			return FALSE;
+			return false;
 
 		m_pTextDoc->coord_from_pos(TextPos(0), &start);
 		m_pTextDoc->coord_from_document_end(&end);
@@ -402,7 +402,7 @@ BOOL TextView::ConvertLineBreaks(UINT nLineBreak)
 	}
 
 	RefreshWindow();
-	UpdateViewState(TRUE);
+	UpdateViewState(true);
 	NotifyParent(TVN_CHANGED);
-	return TRUE;
+	return true;
 }

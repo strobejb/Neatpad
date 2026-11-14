@@ -25,7 +25,7 @@
 };*/
 
 
-bool IsKeyPressed(UINT nVirtKey)
+bool IsKeyPressed(uint32_t nVirtKey)
 {
 	return GetKeyState(nVirtKey) < 0 ? true : false;
 }
@@ -75,7 +75,7 @@ bool TextView::CoordAtNextLineStart(TextCoord *coord, TextCoord *result)
 //
 //	Move the caret to a UTF-16 position within its current line
 //
-VOID TextView::SetCursorLinePos(int charPos)
+void TextView::SetCursorLinePos(int charPos)
 {
 	TextCoord coord;
 
@@ -86,7 +86,7 @@ VOID TextView::SetCursorLinePos(int charPos)
 //
 //	Move caret up specified number of lines
 //
-VOID TextView::MoveLineUp(int numLines)
+void TextView::MoveLineUp(int numLines)
 {
 	TextLayout		* layout;
 	TextCoord		  target;
@@ -115,7 +115,7 @@ VOID TextView::MoveLineUp(int numLines)
 //
 //	Move caret down specified number of lines
 //
-VOID TextView::MoveLineDown(int numLines)
+void TextView::MoveLineDown(int numLines)
 {
 	TextLayout		* layout;
 	TextCoord		  target;
@@ -144,7 +144,7 @@ VOID TextView::MoveLineDown(int numLines)
 //
 //	Move to start of previous word (to the left)
 //
-VOID TextView::MoveWordPrev()
+void TextView::MoveWordPrev()
 {
 	LINECACHE		* lineCache;
 	TextCoord		  coord;
@@ -156,7 +156,7 @@ VOID TextView::MoveWordPrev()
 	TextLayout *layout = lineCache->layout;
 
 	// move 1 character to left
-	charPos = (int)min(m_cursorPos.column, (ULONG)lineCache->length_CRLF) - 1;
+	charPos = (int)min(m_cursorPos.column, (uint32_t)lineCache->length_CRLF) - 1;
 
 	// skip to end of *previous* line if necessary
 	if(charPos < 0)
@@ -184,7 +184,7 @@ VOID TextView::MoveWordPrev()
 //
 //	Move to start of next word
 //
-VOID TextView::MoveWordNext()
+void TextView::MoveWordNext()
 {
 	LINECACHE		* lineCache;
 	TextCoord		  coord;
@@ -195,7 +195,7 @@ VOID TextView::MoveWordNext()
 
 	TextLayout *layout = lineCache->layout;
 
-	charPos = (int)min(m_cursorPos.column, (ULONG)lineCache->length_CRLF);
+	charPos = (int)min(m_cursorPos.column, (uint32_t)lineCache->length_CRLF);
 
 	// if already at end-of-line, skip to next line
 	if(charPos == lineCache->length_CRLF)
@@ -227,7 +227,7 @@ VOID TextView::MoveWordNext()
 //
 //	Move to start of current word
 //
-VOID TextView::MoveWordStart()
+void TextView::MoveWordStart()
 {
 	LINECACHE		* lineCache;
 	int				  charPos;
@@ -237,7 +237,7 @@ VOID TextView::MoveWordStart()
 
 	TextLayout *layout = lineCache->layout;
 
-	charPos = (int)min(m_cursorPos.column, (ULONG)lineCache->length_CRLF);
+	charPos = (int)min(m_cursorPos.column, (uint32_t)lineCache->length_CRLF);
 
 	while(charPos > 0 && !layout->IsWhiteSpace(charPos-1))
 		charPos--;
@@ -248,7 +248,7 @@ VOID TextView::MoveWordStart()
 //
 //	Move to end of current word
 //
-VOID TextView::MoveWordEnd()
+void TextView::MoveWordEnd()
 {
 	LINECACHE		* lineCache;
 	int				  charPos;
@@ -258,7 +258,7 @@ VOID TextView::MoveWordEnd()
 
 	TextLayout *layout = lineCache->layout;
 
-	charPos = (int)min(m_cursorPos.column, (ULONG)lineCache->length_CRLF);
+	charPos = (int)min(m_cursorPos.column, (uint32_t)lineCache->length_CRLF);
 
 	while(charPos < lineCache->length_CRLF && !layout->IsWhiteSpace(charPos))
 		charPos++;
@@ -269,7 +269,7 @@ VOID TextView::MoveWordEnd()
 //
 //	Move to previous character
 //
-VOID TextView::MoveCharPrev()
+void TextView::MoveCharPrev()
 {
 	LINECACHE		* lineCache;
 	TextCoord		  coord;
@@ -280,7 +280,7 @@ VOID TextView::MoveCharPrev()
 
 	TextLayout *layout = lineCache->layout;
 
-	charPos = (int)min(m_cursorPos.column, (ULONG)lineCache->length_CRLF);
+	charPos = (int)min(m_cursorPos.column, (uint32_t)lineCache->length_CRLF);
 
 	// find the previous valid character-position
 	for( --charPos; charPos >= 0; charPos--)
@@ -304,7 +304,7 @@ VOID TextView::MoveCharPrev()
 //
 //	Move to next character
 //
-VOID TextView::MoveCharNext()
+void TextView::MoveCharNext()
 {
 	LINECACHE		* lineCache;
 	TextCoord		  coord;
@@ -315,7 +315,7 @@ VOID TextView::MoveCharNext()
 
 	TextLayout *layout = lineCache->layout;
 
-	charPos = (int)min(m_cursorPos.column, (ULONG)lineCache->length_CRLF);
+	charPos = (int)min(m_cursorPos.column, (uint32_t)lineCache->length_CRLF);
 
 	// find the next valid character-position
 	for( ++charPos; charPos <= lineCache->length_CRLF; charPos++)
@@ -336,12 +336,12 @@ VOID TextView::MoveCharNext()
 	SetCursorLinePos(charPos);
 }
 
-VOID TextView::MoveCurrentLineStart()
+void TextView::MoveCurrentLineStart()
 {
 	SetCursorLinePos(0);
 }
 
-VOID TextView::MoveCurrentLineEnd()
+void TextView::MoveCurrentLineEnd()
 {
 	LINECACHE *lineCache;
 
@@ -352,7 +352,7 @@ VOID TextView::MoveCurrentLineEnd()
 //
 //	Move to start of file
 //
-VOID TextView::MoveFileStart()
+void TextView::MoveFileStart()
 {
 	TextCoord coord;
 
@@ -363,7 +363,7 @@ VOID TextView::MoveFileStart()
 //
 //	Move to end of file
 //
-VOID TextView::MoveFileEnd()
+void TextView::MoveFileEnd()
 {
 	TextCoord coord;
 
@@ -378,11 +378,11 @@ VOID TextView::MoveFileEnd()
 //
 //	Process keyboard-navigation keys
 //
-LONG TextView::OnKeyDown(UINT nKeyCode, UINT nFlags)
+int32_t TextView::OnKeyDown(uint32_t nKeyCode, uint32_t nFlags)
 {
 	bool fCtrlDown	= IsKeyPressed(VK_CONTROL);
 	bool fShiftDown	= IsKeyPressed(VK_SHIFT);
-	BOOL fAdvancing = FALSE;
+	bool fAdvancing = false;
 	TextCoord oldCursor = m_cursorPos;
 
 	//
@@ -454,7 +454,7 @@ LONG TextView::OnKeyDown(UINT nKeyCode, UINT nFlags)
 		if(m_nEditMode != MODE_READONLY)
 		{
 			BackDelete();
-			fAdvancing = FALSE;
+			fAdvancing = false;
 
 			NotifyParent(TVN_CHANGED);
 		}
@@ -465,7 +465,7 @@ LONG TextView::OnKeyDown(UINT nKeyCode, UINT nFlags)
 		if(fCtrlDown)	MoveWordPrev();
 		else			MoveCharPrev();
 
-		fAdvancing = FALSE;
+		fAdvancing = false;
 		break;
 
 	case VK_RIGHT:
@@ -473,7 +473,7 @@ LONG TextView::OnKeyDown(UINT nKeyCode, UINT nFlags)
 		if(fCtrlDown)	MoveWordNext();
 		else			MoveCharNext();
 			
-		fAdvancing = TRUE;
+		fAdvancing = true;
 		break;
 
 	case VK_UP:

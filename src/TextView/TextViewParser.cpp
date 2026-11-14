@@ -16,27 +16,27 @@
 
 struct Rule
 {
-	TCHAR		ruleName[32];
-	COLORREF	fg;
-	COLORREF	bg;
+	tchar_t		ruleName[32];
+	uint32_t	fg;
+	uint32_t	bg;
 };
 
 enum TEST { testNone, testEqual, testNotEqual, testInRange, testOutRange };
 
 struct State
 {
-	TCHAR		arg1;
-	TCHAR		arg2;
+	tchar_t		arg1;
+	tchar_t		arg2;
 	TEST		test;
 	int			next;
 };
 
-bool Init(TCHAR *buf, int len)
+bool Init(tchar_t *buf, int len)
 {
 	return true;
 }
 
-void Machine(TCHAR *str, int len, int initialState)
+void Machine(tchar_t *str, int len, int initialState)
 {
 	State machine[] = 
 	{

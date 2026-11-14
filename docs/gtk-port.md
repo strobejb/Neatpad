@@ -178,7 +178,11 @@ Each step is its own commit on `main`, and moves and formatting changes stay sep
     the host, and calls `FontsChanged()` to measure again. It holds no `HWND` now.
   - **Done:** 3.4d. The `EM_*` edit-control messages are in `win32/TextViewEdit.cpp`, still a `TextView` member,
     declared only on `_WIN32`. The index-as-needed lookups they use stay in the engine, in `TextViewFile.cpp`.
-- **Next:** step 3.5, portable types in the engine. Still Win32 in the engine besides the types: `VK_*` keys and
+- **Done:** step 3.5. The engine uses `tchar_t`, `uint32_t`, `int32_t`, `bool`, `uintptr_t`, `void` and a `TextRect`
+  instead of `TCHAR`, `ULONG`, `UINT`, `LONG`, `DWORD`, `BOOL`, `COLORREF`, `RECT`, `VOID` and `UINT_PTR`. Kept on
+  purpose: `DWORD` for the filter's `WriteFile` counts, and `COLORREF` in `RealizeColour` and `MixRGB`, which `TextView.h`
+  declares for the app. `TextView.h` and the `win32/` code are unchanged.
+- **Next:** step 4, CMake, portable core tests and Ubuntu CI. Still Win32 in the engine besides the types: `VK_*` keys and
   `GetKeyState`, the `ATTR` run type from UspLib, `wsprintf` for line numbers, the filter's temp-file `HANDLE`,
   `SYSCOL` colours and `GetSysColor`, and the `TVN_*` notification structures.
 

@@ -34,11 +34,11 @@ TextDocument *TextView::FileDoc() const
 }
 
 // Set the surrounding line count, rebuilding an active filter when changed.
-UINT TextView::SetFilterContext(UINT lines)
+uint32_t TextView::SetFilterContext(uint32_t lines)
 {
-    UINT previous = m_nFilterContext;
+    uint32_t previous = m_nFilterContext;
 
-    m_nFilterContext = min(lines, (UINT)TV_MAX_FILTER_CONTEXT);
+    m_nFilterContext = min(lines, (uint32_t)TV_MAX_FILTER_CONTEXT);
     if (m_pSourceDoc && previous != m_nFilterContext)
     {
         EndFilter(true);
@@ -54,10 +54,10 @@ UINT TextView::SetFilterContext(UINT lines)
 //
 bool TextView::StartFilter()
 {
-	TCHAR		  dir[MAX_PATH];
-	TCHAR		  path[MAX_PATH];
+	tchar_t		  dir[MAX_PATH];
+	tchar_t		  path[MAX_PATH];
 	WCHAR		  bom = 0xFEFF;
-	DWORD		  written;
+	DWORD		  written;	// WriteFile's count, until the temp file is portable
 	TextDocument *filtered;
 
 	if(!GetTempPath(MAX_PATH, dir) || !GetTempFileName(dir, _T("npf"), 0, path))
@@ -100,7 +100,7 @@ bool TextView::StartFilter()
 	ShowFilteredLines();
 
     // Source line numbers become available through the existing index timer.
-    IndexFile(TRUE);
+    IndexFile(true);
     return true;
 }
 
@@ -112,7 +112,7 @@ void TextView::EndFilter(bool fKeepPlace)
 {
 	TextPos origin;
 	size_w  lineno;
-	ULONG   row = 0;
+	uint32_t   row = 0;
 
 	if(m_pSourceDoc == 0)
 		return;
@@ -149,7 +149,7 @@ void TextView::EndFilter(bool fKeepPlace)
 		m_selAnchor = m_cursorPos;
 
 		ResetLineCache();
-		UpdateViewState(TRUE);
+		UpdateViewState(true);
 		RefreshWindow();
 	}
 }
@@ -181,7 +181,7 @@ bool TextView::FilterSlice()
     do
     {
         m_filterFrom = m_pSourceDoc->filter_lines(m_sMatchText.data(), (uint32_t)m_sMatchText.size(),
-                                                  m_fMatchCase != FALSE, m_filterFrom, FILTER_CHUNK, found);
+                                                  m_fMatchCase != false, m_filterFrom, FILTER_CHUNK, found);
 
     } while (m_filterFrom.byte_offset < m_pSourceDoc->byte_length() &&
              std::chrono::steady_clock::now() - start < std::chrono::milliseconds(FILTER_SLICE_MS));
@@ -196,9 +196,9 @@ bool TextView::FilterSlice()
 void TextView::WriteFilterContext(TextPos match)
 {
     LineIterator line  = m_pSourceDoc->line_at(match);
-    UINT         count = m_nFilterContext + 1;
+    uint32_t         count = m_nFilterContext + 1;
 
-    for (UINT before = 0; before < m_nFilterContext && line.prev(); ++before)
+    for (uint32_t before = 0; before < m_nFilterContext && line.prev(); ++before)
         ++count;
 
     m_filterAfter = WriteFilterLines(line, count);
@@ -206,7 +206,7 @@ void TextView::WriteFilterContext(TextPos match)
 
 // Append only source lines not already included by an earlier match. Return
 // the context lines not yet available at EOF, for a file being followed.
-UINT TextView::WriteFilterLines(LineIterator line, UINT count)
+uint32_t TextView::WriteFilterLines(LineIterator line, uint32_t count)
 {
     while (count && line.line().line_begin.byte_offset < m_pSourceDoc->byte_length())
     {
@@ -234,24 +234,24 @@ UINT TextView::WriteFilterLines(LineIterator line, UINT count)
 void TextView::WriteFilterLine(TextPos begin, TextPos next)
 {
 	TextReader	 reader = m_pSourceDoc->text_from_range(begin, next);
-	TCHAR		 buf[0x1000];
-	TCHAR		 last = 0;
-	TCHAR		 crlf[] = _T("\r\n");
+	tchar_t		 buf[0x1000];
+	tchar_t		 last = 0;
+	tchar_t		 crlf[] = _T("\r\n");
 	uint32_t	 len;
-	DWORD		 written;
+	DWORD		 written;	// WriteFile's count
 
 	while((len = reader.read(buf, ARRAYSIZE(buf))) != 0)
 	{
-		WriteFile(m_hFilterFile, buf, len * sizeof(TCHAR), &written, 0);
+		WriteFile(m_hFilterFile, buf, len * sizeof(tchar_t), &written, 0);
 		last = buf[len - 1];
 	}
 
 	if(last != '\r' && last != '\n')
 	{
-		TCHAR *brk = m_nCRLFMode == TXL_LF ? crlf + 1 : crlf;
-		DWORD  brklen = m_nCRLFMode == TXL_LF || m_nCRLFMode == TXL_CR ? 1 : 2;
+		tchar_t *brk = m_nCRLFMode == TXL_LF ? crlf + 1 : crlf;
+		uint32_t  brklen = m_nCRLFMode == TXL_LF || m_nCRLFMode == TXL_CR ? 1 : 2;
 
-		WriteFile(m_hFilterFile, brk, brklen * sizeof(TCHAR), &written, 0);
+		WriteFile(m_hFilterFile, brk, brklen * sizeof(tchar_t), &written, 0);
 	}
 }
 
@@ -276,7 +276,7 @@ void TextView::ShowFilteredLines()
 	RefreshWindow();
 }
 
-LONG TextView::OnFilterTimer()
+int32_t TextView::OnFilterTimer()
 {
 	if(m_pSourceDoc == 0 || !FilterSlice())
 		m_pHost->StopTimer(FILTER_TIMER);

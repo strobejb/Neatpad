@@ -28,7 +28,7 @@ static const int CHANGE_MARGIN_WIDTH =
     CHANGE_MARKER_INSET + CHANGE_ICON_PADDING +
     (CHANGE_MARKER_WIDTH > CHANGE_TRIANGLE_WIDTH ? CHANGE_MARKER_WIDTH : CHANGE_TRIANGLE_WIDTH);
 
-static void PaintDeletionTriangle(TextCanvas &canvas, int x, int y, int width, int height, COLORREF colour)
+static void PaintDeletionTriangle(TextCanvas &canvas, int x, int y, int width, int height, uint32_t colour)
 {
     int middle = height / 2;
 
@@ -44,7 +44,7 @@ static void PaintDeletionTriangle(TextCanvas &canvas, int x, int y, int width, i
 //
 //	Perform a full redraw of the entire window
 //
-VOID TextView::RefreshWindow()
+void TextView::RefreshWindow()
 {
 	m_pHost->Invalidate();
 }
@@ -55,15 +55,15 @@ VOID TextView::RefreshWindow()
 //
 LINECACHE *TextView::GetLineCache(TextCoord *coord)
 {
-	TCHAR	*buff;
+	tchar_t	*buff;
 	ATTR	*attr;
-	ULONG	 buflen;
-	ULONG	 colno = 0;
+	uint32_t	 buflen;
+	uint32_t	 colno = 0;
 	int		 len;
 	int		 columns;
 
 	TextLayout *layout;
-	ULONG    lru_usage = -1;
+	uint32_t    lru_usage = -1;
 	int		 lru_index = 0;
 
 	if(coord == 0)
@@ -99,8 +99,8 @@ LINECACHE *TextView::GetLineCache(TextCoord *coord)
 	// get the text for the entire line (up to the layout limit) and apply style
 	// attributes. A line never decodes to more UTF-16 units than it has bytes.
 	//
-	buflen = (ULONG)min(coord->line_next - coord->line_begin, (size_w)LINE_LAYOUT_LIMIT);
-	buff   = new TCHAR[buflen + 1];
+	buflen = (uint32_t)min(coord->line_next - coord->line_begin, (size_w)LINE_LAYOUT_LIMIT);
+	buff   = new tchar_t[buflen + 1];
 	attr   = new ATTR[buflen + 1];
 
 	len = m_pTextDoc->getline(*coord, buff, buflen);
@@ -167,15 +167,15 @@ void TextView::ResetLineCache()
 //	Draw the rows that rcPaint covers, one line at a time. A row is drawn
 //	whole, even when only part of it needs it.
 //
-void TextView::Paint(TextCanvas &canvas, RECT *rcPaint)
+void TextView::Paint(TextCanvas &canvas, TextRect *rcPaint)
 {
-	ULONG		row;
-	ULONG		first;
-	ULONG		last;
+	uint32_t		row;
+	uint32_t		first;
+	uint32_t		last;
 	TextCoord	lineCoord;
 	LineIterator lines;
 	bool		haveLine;
-	RECT		rect;
+	TextRect		rect;
 
 	ClientRect(&rect);
 
@@ -224,7 +224,7 @@ void TextView::Paint(TextCanvas &canvas, RECT *rcPaint)
 //
 void TextView::PaintLine(TextCanvas &canvas, TextCoord *coord, int xpos)
 {
-	RECT	bounds;
+	TextRect	bounds;
 
 	// the text's part of the row, from where the line starts on-screen
 	ClientRect(&bounds);
@@ -289,7 +289,7 @@ int TextView::LeftMarginWidth()
 //
 void TextView::UpdateMarginWidth()
 {
-	TCHAR	buf[32];
+	tchar_t	buf[32];
     int     len = wsprintf(buf, LINENO_FMT, (unsigned __int64)FileDoc()->linecount());
 
     m_nLinenoWidth = m_pHost->TextWidth(buf, len);
@@ -367,7 +367,7 @@ bool TextView::DiffJoins(TextCoord *line, bool previous)
 //
 int TextView::PaintMargin(TextCanvas &canvas, TextCoord *line, int xpos, int ypos)
 {
-	RECT	rect = { xpos, ypos, xpos + LeftMarginWidth(), ypos + m_nLineHeight };
+	TextRect	rect = { xpos, ypos, xpos + LeftMarginWidth(), ypos + m_nLineHeight };
 	size_w	nLineNo = 0;
 	bool	exact = line && m_pTextDoc->lineno_from_pos(*line, &nLineNo) == TDR_OK;
 
@@ -377,7 +377,7 @@ int TextView::PaintMargin(TextCanvas &canvas, TextCoord *line, int xpos, int ypo
 	int		imgY;
 	int		selwidth = CheckStyle(TXS_SELMARGIN) ? 20 : 0;
 
-	TCHAR	ach[32];
+	tchar_t	ach[32];
 
 	//int nummaxwidth = 60;
 
@@ -441,7 +441,7 @@ int TextView::PaintMargin(TextCanvas &canvas, TextCoord *line, int xpos, int ypo
 	//
 	//	Retrieve information about this specific line
 	//
-	LINEINFO *linfo = exact && nLineNo <= (size_w)ULONG_MAX ? GetLineInfo((ULONG)nLineNo) : 0;
+	LINEINFO *linfo = exact && nLineNo <= (size_w)ULONG_MAX ? GetLineInfo((uint32_t)nLineNo) : 0;
 
 	if(images && linfo && nLineNo < m_nLineCount)
 	{
@@ -461,7 +461,7 @@ int TextView::PaintMargin(TextCanvas &canvas, TextCoord *line, int xpos, int ypo
         // precedence. Deletion-only lines use triangles in the same gutter.
         if (diff & TextDocument::diff_inserted)
         {
-            COLORREF colour = GetColour(TXC_CHANGEDLINE);
+            uint32_t colour = GetColour(TXC_CHANGEDLINE);
 
             canvas.FillRect(markerLeft, ypos, CHANGE_MARKER_WIDTH, m_nLineHeight, GetColour(TXC_CHANGEDLINEBG));
             canvas.FillRect(markerLeft, ypos, 1, m_nLineHeight, colour);
@@ -511,7 +511,7 @@ int TextView::PaintMargin(TextCanvas &canvas, TextCoord *line, int xpos, int ypo
 //
 //	Draw a line of text into the specified device-context
 //
-void TextView::PaintText(TextCanvas &canvas, TextCoord *coord, int xpos, int ypos, RECT *bounds)
+void TextView::PaintText(TextCanvas &canvas, TextCoord *coord, int xpos, int ypos, TextRect *bounds)
 {
 	TextLayout * layout;
 
@@ -528,7 +528,7 @@ void TextView::PaintText(TextCanvas &canvas, TextCoord *coord, int xpos, int ypo
 		layout->SetSelectionColours(GetColour(TXC_HIGHLIGHTTEXT2), GetColour(TXC_HIGHLIGHT2));
 
 	// update selection-attribute information for the line
-	ULONG selStart, selEnd;
+	uint32_t selStart, selEnd;
 
 	SelectionColumns(coord, layout->Length(), &selStart, &selEnd);
 	layout->SetSelection(selStart, selEnd);
@@ -540,7 +540,7 @@ void TextView::PaintText(TextCanvas &canvas, TextCoord *coord, int xpos, int ypo
 				 bounds->bottom);
 }
 
-int	TextView::ApplySelection(TextLayout *layout, TextCoord *line, ULONG nTextLen)
+int	TextView::ApplySelection(TextLayout *layout, TextCoord *line, uint32_t nTextLen)
 {
 	int selstart = 0;
 	int selend   = 0;
@@ -571,7 +571,7 @@ int	TextView::ApplySelection(TextLayout *layout, TextCoord *line, ULONG nTextLen
 //	Colour each match of the text ShowMatches was given, left to right, as
 //	finding it would match it: unit for unit, or regardless of case
 //
-void TextView::HighlightMatches(TCHAR *szText, int nTextLen, ATTR *attr)
+void TextView::HighlightMatches(tchar_t *szText, int nTextLen, ATTR *attr)
 {
 	int length = (int)m_sMatchText.size();
 	int i = 0;
@@ -579,7 +579,7 @@ void TextView::HighlightMatches(TCHAR *szText, int nTextLen, ATTR *attr)
 	while(length != 0 && i + length <= nTextLen)
 	{
 		bool match = m_fMatchCase ?
-			memcmp(szText + i, m_sMatchText.data(), length * sizeof(TCHAR)) == 0 :
+			memcmp(szText + i, m_sMatchText.data(), length * sizeof(tchar_t)) == 0 :
 			utf16_equal_nocase((const UTF16 *)(szText + i), (const UTF16 *)m_sMatchText.data(), length);
 
 		if(!match)
@@ -604,12 +604,12 @@ void TextView::HighlightMatches(TCHAR *szText, int nTextLen, ATTR *attr)
 //
 //	Returns new length of buffer if text has been modified
 //
-int TextView::ApplyTextAttributes(TextCoord *line, ULONG &nColumn, TCHAR *szText, int nTextLen, ATTR *attr)
+int TextView::ApplyTextAttributes(TextCoord *line, uint32_t &nColumn, tchar_t *szText, int nTextLen, ATTR *attr)
 {
 	int i;
 
-	ULONG selstart;
-	ULONG selend;
+	uint32_t selstart;
+	uint32_t selend;
 
 	SelectionColumns(line, nTextLen, &selstart, &selend);
 
@@ -624,7 +624,7 @@ int TextView::ApplyTextAttributes(TextCoord *line, ULONG &nColumn, TCHAR *szText
 		attr[i].reserved = 0;
 
 		// change the background if the line is too long
-		if(nColumn >= (ULONG)m_nLongLineLimit && CheckStyle(TXS_LONGLINES))
+		if(nColumn >= (uint32_t)m_nLongLineLimit && CheckStyle(TXS_LONGLINES))
 		{
 			attr[i].fg = GetColour(TXC_FOREGROUND);
 			attr[i].bg = LongColour(line);
@@ -676,7 +676,7 @@ int TextView::ApplyTextAttributes(TextCoord *line, ULONG &nColumn, TCHAR *szText
 		for(i = 0; i < nTextLen; i++)
 		{
 			// highlight uses a separate attribute-flag
-			if((ULONG)i >= selstart && (ULONG)i < selend)
+			if((uint32_t)i >= selstart && (uint32_t)i < selend)
 				attr[i].sel = 1;
 			else
 				attr[i].sel = 0;
@@ -703,16 +703,16 @@ int TextView::ApplyTextAttributes(TextCoord *line, ULONG &nColumn, TCHAR *szText
 
 	for(i = 0; i < nTextLen; i++)
 	{
-		ULONG ch = szText[i];
+		uint32_t ch = szText[i];
 		attr[i].ctrl	= ch < 0x20 ? 1 : 0;
 		if(ch == '\r' || ch == '\n')
-			attr[i].eol=TRUE;
+			attr[i].eol=true;
 	}
 
 	return nTextLen;
 }
 
-int TextView::CRLF_size(TCHAR *szText, int nLength)
+int TextView::CRLF_size(tchar_t *szText, int nLength)
 {
 	if(nLength >= 2)
 	{
@@ -733,13 +733,13 @@ int TextView::CRLF_size(TCHAR *szText, int nLength)
 //	Strip CR/LF combinations from the end of a line and
 //  replace with a single space character (for drawing purposes)
 //
-int TextView::StripCRLF(TCHAR *szText, ATTR *attr, int nLength, bool fAllow)
+int TextView::StripCRLF(tchar_t *szText, ATTR *attr, int nLength, bool fAllow)
 {
 	if(nLength >= 2)
 	{
 		if(szText[nLength-2] == '\r' && szText[nLength-1] == '\n') 
 		{
-			attr[nLength-2].eol = TRUE;
+			attr[nLength-2].eol = true;
 
 			if(m_nCRLFMode & TXL_CRLF)
 			{
@@ -758,7 +758,7 @@ int TextView::StripCRLF(TCHAR *szText, ATTR *attr, int nLength, bool fAllow)
 	{
 		if(szText[nLength-1] == '\r')
 		{
-			attr[nLength-1].eol = TRUE;
+			attr[nLength-1].eol = true;
 
 			if(m_nCRLFMode & TXL_CR)
 			{
@@ -769,7 +769,7 @@ int TextView::StripCRLF(TCHAR *szText, ATTR *attr, int nLength, bool fAllow)
 
 		if(szText[nLength-1] == '\n')
 		{
-			attr[nLength-1].eol = TRUE;
+			attr[nLength-1].eol = true;
 
 			if(m_nCRLFMode & TXL_LF)
 			{
@@ -785,7 +785,7 @@ int TextView::StripCRLF(TCHAR *szText, ATTR *attr, int nLength, bool fAllow)
 //
 //
 //
-COLORREF TextView::LineColour(TextCoord *line)
+uint32_t TextView::LineColour(TextCoord *line)
 {
 	if(line && line->line_begin == m_cursorPos.line_begin && CheckStyle(TXS_HIGHLIGHTCURLINE))
 		return GetColour(TXC_CURRENTLINE);
@@ -793,7 +793,7 @@ COLORREF TextView::LineColour(TextCoord *line)
 		return GetColour(TXC_BACKGROUND);
 }
 
-COLORREF TextView::LongColour(TextCoord *line)
+uint32_t TextView::LongColour(TextCoord *line)
 {
 	if(line->line_begin == m_cursorPos.line_begin && CheckStyle(TXS_HIGHLIGHTCURLINE))
 		return GetColour(TXC_CURRENTLINE);
@@ -812,7 +812,7 @@ COLORREF MixRGB(COLORREF rgbCol1, COLORREF rgbCol2)
 
 COLORREF RealizeColour(COLORREF col)
 {
-	COLORREF result = col;
+	uint32_t result = col;
 
 	if(col & 0x80000000)
 		result = GetSysColor(col & 0xff);
@@ -834,7 +834,7 @@ COLORREF RealizeColour(COLORREF col)
 //  of the GetSysColor COLOR_xxx indices. This allows us to use
 //	system colours without worrying about colour-scheme changes etc.
 //
-COLORREF TextView::GetColour(UINT idx)
+uint32_t TextView::GetColour(uint32_t idx)
 {
 	if(idx >= TXC_MAX_COLOURS)
 		return 0;
@@ -842,9 +842,9 @@ COLORREF TextView::GetColour(UINT idx)
 	return REALIZE_SYSCOL(m_rgbColourList[idx]);
 }
 
-COLORREF TextView::SetColour(UINT idx, COLORREF rgbColour)
+uint32_t TextView::SetColour(uint32_t idx, uint32_t rgbColour)
 {
-	COLORREF rgbOld;
+	uint32_t rgbOld;
 
 	if(idx >= TXC_MAX_COLOURS)
 		return 0;

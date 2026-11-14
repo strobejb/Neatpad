@@ -19,60 +19,60 @@
 //
 //	Paste the clipboard's text
 //
-BOOL TextView::OnPaste()
+bool TextView::OnPaste()
 {
 	if(m_nEditMode == MODE_READONLY)
-		return FALSE;
+		return false;
 
 	return m_pHost->ReadClipboard([&](const tchar_t *szText, size_t length)
 	{
-		ULONG textlen = (ULONG)length;
+		uint32_t textlen = (uint32_t)length;
 
-		EnterText((TCHAR *)szText, textlen);
+		EnterText((tchar_t *)szText, textlen);
 
 		if(textlen > 1)
 			m_pTextDoc->undo_group_break();
-	}) ? TRUE : FALSE;
+	}) ? true : false;
 }
 
 //
 //	Copy the currently selected text to the clipboard
 //
-BOOL TextView::OnCopy()
+bool TextView::OnCopy()
 {
 	TextCoord	selStart, selEnd;
 	size_w		sellen;
 
 	if(!GetSelection(&selStart, &selEnd))
-		return FALSE;
+		return false;
 
 	// a byte never decodes to more than one UTF-16 unit, so this is always enough room
 	sellen = selEnd - selStart;
 
-	// reader.read takes a ULONG, and (sellen + 1) TCHARs must not overflow the
+	// reader.read takes a uint32_t, and (sellen + 1) TCHARs must not overflow the
 	// allocation size (a 32-bit SIZE_T on Win32 wraps at 2GB of text)
-	if(sellen > (size_w)ULONG_MAX || sellen >= (size_w)((SIZE_T)-1 / sizeof(TCHAR)))
-		return FALSE;
+	if(sellen > (size_w)ULONG_MAX || sellen >= (size_w)((SIZE_T)-1 / sizeof(tchar_t)))
+		return false;
 
-	ULONG len = (ULONG)sellen;
+	uint32_t len = (uint32_t)sellen;
 
 	return m_pHost->WriteClipboard(len, [&](tchar_t *ptr) -> size_t
 	{
 		TextReader reader = m_pTextDoc->text_from_range(selStart, selEnd);
 
 		return reader.read(ptr, len);
-	}) ? TRUE : FALSE;
+	}) ? true : false;
 }
 
 //
 //	Remove current selection and copy to the clipboard
 //
-BOOL TextView::OnCut()
+bool TextView::OnCut()
 {
-	BOOL success = FALSE;
+	bool success = false;
 
 	if(m_nEditMode == MODE_READONLY)
-		return FALSE;
+		return false;
 
 	if(SelectionSize() > 0)
 	{
@@ -87,17 +87,17 @@ BOOL TextView::OnCut()
 //
 //	Remove the current selection
 //
-BOOL TextView::OnClear()
+bool TextView::OnClear()
 {
-	BOOL success = FALSE;
+	bool success = false;
 
 	if(m_nEditMode == MODE_READONLY)
-		return FALSE;
+		return false;
 
 	if(SelectionSize() > 0)
 	{
 		ForwardDelete();
-		success = TRUE;
+		success = true;
 	}
 
 	return success;

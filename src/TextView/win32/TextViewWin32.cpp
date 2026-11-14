@@ -126,8 +126,9 @@ LONG TextViewWin32::OnPaint()
     BeginPaint(m_hWnd, &ps);
 
     Win32Canvas canvas(ps.hdc, MainFont(), m_hImageList);
+    TextRect    rect = {(int)ps.rcPaint.left, (int)ps.rcPaint.top, (int)ps.rcPaint.right, (int)ps.rcPaint.bottom};
 
-    m_pView->Paint(canvas, &ps.rcPaint);
+    m_pView->Paint(canvas, &rect);
 
     EndPaint(m_hWnd, &ps);
 
@@ -140,11 +141,12 @@ LONG TextViewWin32::OnPaint()
 //
 LONG TextViewWin32::OnPrintClient(HDC hdc)
 {
-    RECT rect;
+    RECT client;
 
-    GetClientRect(m_hWnd, &rect);
+    GetClientRect(m_hWnd, &client);
 
     Win32Canvas canvas(hdc, MainFont(), m_hImageList);
+    TextRect    rect = {0, 0, (int)client.right, (int)client.bottom};
 
     m_pView->Paint(canvas, &rect);
 

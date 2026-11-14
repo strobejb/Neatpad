@@ -19,7 +19,7 @@
 //
 //	
 //
-LONG TextView::OpenFile(TCHAR *szFileName, int nEncoding, bool fReadOnly)
+int32_t TextView::OpenFile(tchar_t *szFileName, int nEncoding, bool fReadOnly)
 {
 	bool opened;
     std::unique_ptr<TextDocument> document(new TextDocument);
@@ -36,7 +36,7 @@ LONG TextView::OpenFile(TCHAR *szFileName, int nEncoding, bool fReadOnly)
         delete m_pTextDoc;
         m_pTextDoc = document.release();
         TextCoord start;
-		ULONG linebreak;
+		uint32_t linebreak;
 
 		// the first line's ending sets the line format
 		m_pTextDoc->coord_from_pos(TextPos(0), &start);
@@ -69,13 +69,13 @@ LONG TextView::OpenFile(TCHAR *szFileName, int nEncoding, bool fReadOnly)
 		if(m_fFilter)
 			m_fFilter = StartFilter();
 
-		return TRUE;
+		return true;
 	}
 
-    DWORD error = GetLastError();
+    uint32_t error = GetLastError();
     document.reset();
     SetLastError(error);
-    return FALSE;
+    return false;
 }
 
 //
@@ -83,12 +83,12 @@ LONG TextView::OpenFile(TCHAR *szFileName, int nEncoding, bool fReadOnly)
 //	Converted to another encoding or line format, the file no longer matches
 //	the text, so it's opened again, in the encoding it was written in.
 //
-LONG TextView::SaveFile(TCHAR *szFileName, UINT nEncoding, BOOL fBom, UINT nLineBreak)
+int32_t TextView::SaveFile(tchar_t *szFileName, uint32_t nEncoding, bool fBom, uint32_t nLineBreak)
 {
-	BOOL fConvert = nEncoding != (UINT)FileDoc()->getformat() || nLineBreak != 0;
+	bool fConvert = nEncoding != (uint32_t)FileDoc()->getformat() || nLineBreak != 0;
 
-	if(!FileDoc()->save(szFileName, (TEXT_ENCODING)nEncoding, fBom != FALSE, nLineBreak))
-		return FALSE;
+	if(!FileDoc()->save(szFileName, (TEXT_ENCODING)nEncoding, fBom != false, nLineBreak))
+		return false;
 
     if (fConvert)
     {
@@ -97,35 +97,35 @@ LONG TextView::SaveFile(TCHAR *szFileName, UINT nEncoding, BOOL fBom, UINT nLine
 
     ResetLineCache();
     RefreshWindow();
-    return TRUE;
+    return true;
 }
 
 //
 //	Open a file to follow as another program appends to it: read-only, with
 //	the caret at the end, where UpdateTail adds what's appended
 //
-LONG TextView::TailFile(TCHAR *szFileName)
+int32_t TextView::TailFile(tchar_t *szFileName)
 {
 	if(!OpenFile(szFileName, -1, true))
-		return FALSE;
+		return false;
 
 	MoveFileEnd();
 	m_selAnchor = m_cursorPos;
 
-	UpdateCaretCoord(&m_cursorPos, TRUE, &m_nCaretPosX);
+	UpdateCaretCoord(&m_cursorPos, true, &m_nCaretPosX);
 	m_nAnchorPosX = m_nCaretPosX;
 	RepositionCaret();
 	NotifyCursorChange();
-	return TRUE;
+	return true;
 }
 
 //
 //	Add what has been appended to a followed file since it was opened, or last
 //	updated - filtered, the lines of it that match. A caret at the end stays
-//	there, keeping the end in view. FALSE if the file has got shorter: it's
+//	there, keeping the end in view. false if the file has got shorter: it's
 //	been rewritten, and needs opening again.
 //
-BOOL TextView::UpdateTail()
+bool TextView::UpdateTail()
 {
 	size_w	   length = m_pTextDoc->byte_length();
 	bool	   atEnd  = m_cursorPos.byte_offset == length && m_selAnchor.byte_offset == length;
@@ -133,7 +133,7 @@ BOOL TextView::UpdateTail()
 	size_w	   added;
 
 	if(!FileDoc()->grow(&added))
-		return FALSE;
+		return false;
 
     if (m_pSourceDoc != 0)
     {
@@ -142,11 +142,11 @@ BOOL TextView::UpdateTail()
 
         // A completed index may need extending for newly appended source lines.
         if (added)
-            IndexFile(TRUE);
+            IndexFile(true);
     }
 
     if ((change.inserted = m_pTextDoc->byte_length() - length) == 0)
-        return TRUE;
+        return true;
 
     // it only grew at the end, so positions stay put, but the last line can be longer
 	change.at = TextPos(length);
@@ -165,19 +165,19 @@ BOOL TextView::UpdateTail()
 
 	UpdateMarginWidth();
 	SetupScrollbars();
-	UpdateCaretCoord(&m_cursorPos, TRUE, &m_nCaretPosX);
+	UpdateCaretCoord(&m_cursorPos, true, &m_nCaretPosX);
 	RepositionCaret();
 	RefreshWindow();
 
 	NotifyCursorChange();
 	NotifyParent(TVN_CHANGED);
-	return TRUE;
+	return true;
 }
 
 //
 //
 //
-LONG TextView::ClearFile()
+int32_t TextView::ClearFile()
 {
 	EndFilter(false);
 
@@ -209,7 +209,7 @@ LONG TextView::ClearFile()
 	NotifyCursorChange();
 	NotifyIndexChange();
 
-	return TRUE;
+	return true;
 }
 
 // Indexing in the background: a megabyte at a time, for this long each tick
@@ -220,7 +220,7 @@ static const int    INDEX_SLICE_MS = 15;
 //	Start or stop indexing the rest of the document. It's done a slice at a
 //	time on a timer, so the window stays responsive meanwhile.
 //
-LONG TextView::IndexFile(BOOL fIndex)
+int32_t TextView::IndexFile(bool fIndex)
 {
 	TVNINDEXINFO info;
 
@@ -237,13 +237,13 @@ LONG TextView::IndexFile(BOOL fIndex)
 	}
 
 	NotifyIndexChange();
-	return m_fIndexing == (fIndex != FALSE);
+	return m_fIndexing == (fIndex != false);
 }
 
 //
 //	Index for a few milliseconds, then show how far it's got
 //
-LONG TextView::OnIndexTimer()
+int32_t TextView::OnIndexTimer()
 {
 	bool          more;
 
@@ -271,7 +271,7 @@ LONG TextView::OnIndexTimer()
 //	indexed more: line numbers become exact as indexing passes them, and the
 //	line count nearer the truth
 //
-VOID TextView::IndexChanged()
+void TextView::IndexChanged()
 {
 	TVNINDEXINFO info;
 
@@ -302,13 +302,13 @@ VOID TextView::IndexChanged()
 //	How much of the document is indexed, from the top, and whether more is
 //	being indexed
 //
-VOID TextView::FillIndexInfo(TVNINDEXINFO *info)
+void TextView::FillIndexInfo(TVNINDEXINFO *info)
 {
 	size_w length  = FileDoc()->byte_length();
 	size_w indexed = FileDoc()->indexed_length();
 
 	// under 100 until every byte is
-	info->nPercent   = indexed >= length ? 100 : (UINT)(indexed * 100 / length);
+	info->nPercent   = indexed >= length ? 100 : (uint32_t)(indexed * 100 / length);
 	info->fIndexing  = m_fIndexing;
 	info->nLineCount = (unsigned __int64)FileDoc()->linecount();
 }
@@ -316,7 +316,7 @@ VOID TextView::FillIndexInfo(TVNINDEXINFO *info)
 //
 //	Tell the parent how far indexing has got
 //
-VOID TextView::NotifyIndexChange()
+void TextView::NotifyIndexChange()
 {
 	TVNINDEXINFO info;
 
