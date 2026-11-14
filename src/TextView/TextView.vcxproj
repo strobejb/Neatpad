@@ -131,6 +131,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="TextView.h" />
+    <ClInclude Include="TextViewDefs.h" />
     <ClInclude Include="TextViewHost.h" />
     <ClInclude Include="TextCanvas.h" />
     <ClInclude Include="TextLayout.h" />

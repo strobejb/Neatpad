@@ -71,6 +71,9 @@
     <ClInclude Include="TextViewHost.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="TextViewDefs.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="win32\TextViewWin32.h">
       <Filter>Header Files</Filter>
     </ClInclude>
