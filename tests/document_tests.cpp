@@ -93,7 +93,7 @@ void textdocument_utf16_coord_reads_line()
 {
     TextDocument doc;
     seqfilechar path[TEST_PATH_MAX];
-    const tchar_t text[] = { 0xfeff, 'a', '\r', '\n', 'b', 0xd83d, 0xde00, '\r', '\n', 'c' };
+    const char16_t text[] = { 0xfeff, 'a', '\r', '\n', 'b', 0xd83d, 0xde00, '\r', '\n', 'c' };
     TextCoord coord;
     tchar_t buf[16];
     bool exact = false;
@@ -108,15 +108,10 @@ void textdocument_utf16_coord_reads_line()
     CHECK(doc.coord_from_pos(TextPos(12), &coord));
     CHECK(coord.line_begin.byte_offset == 6);
     CHECK(coord.line_next.byte_offset == 16);
-    CHECK(coord.column == 3);
+    CHECK(coord.column == tstr(U"b\U0001F600").size());
     CHECK(doc_lineno(doc, coord, &exact) == 1);
 
-    CHECK(doc.getline(coord, buf, 16) == 5);
-    CHECK(buf[0] == 'b');
-    CHECK(buf[1] == 0xd83d);
-    CHECK(buf[2] == 0xde00);
-    CHECK(buf[3] == '\r');
-    CHECK(buf[4] == '\n');
+    CHECK(tstring(buf, doc.getline(coord, buf, 16)) == tstr(U"b\U0001F600\r\n"));
 
     doc.clear();
     delete_file(path);
@@ -153,15 +148,10 @@ void textdocument_utf16be_coord_reads_line()
     CHECK(doc.coord_from_pos(TextPos(12), &coord));
     CHECK(coord.line_begin.byte_offset == 6);
     CHECK(coord.line_next.byte_offset == 16);
-    CHECK(coord.column == 3);
+    CHECK(coord.column == tstr(U"b\U0001F600").size());
     CHECK(doc_lineno(doc, coord, &exact) == 1);
 
-    CHECK(doc.getline(coord, buf, 16) == 5);
-    CHECK(buf[0] == 'b');
-    CHECK(buf[1] == 0xd83d);
-    CHECK(buf[2] == 0xde00);
-    CHECK(buf[3] == '\r');
-    CHECK(buf[4] == '\n');
+    CHECK(tstring(buf, doc.getline(coord, buf, 16)) == tstr(U"b\U0001F600\r\n"));
 
     doc.clear();
     delete_file(path);
@@ -194,15 +184,10 @@ void textdocument_utf8_coord_reads_line()
     CHECK(doc.coord_from_pos(TextPos(8), &coord));
     CHECK(coord.line_begin.byte_offset == 3);
     CHECK(coord.line_next.byte_offset == 10);
-    CHECK(coord.column == 3);
+    CHECK(coord.column == tstr(U"b\U0001F600").size());
     CHECK(doc_lineno(doc, coord, &exact) == 1);
 
-    CHECK(doc.getline(coord, buf, 16) == 5);
-    CHECK(buf[0] == 'b');
-    CHECK(buf[1] == 0xd83d);
-    CHECK(buf[2] == 0xde00);
-    CHECK(buf[3] == '\r');
-    CHECK(buf[4] == '\n');
+    CHECK(tstring(buf, doc.getline(coord, buf, 16)) == tstr(U"b\U0001F600\r\n"));
 
     doc.clear();
     delete_file(path);
@@ -251,9 +236,9 @@ void textdocument_coord_uses_local_utf8_byte_offset()
     CHECK(coord.line_next.byte_offset == 10);
     CHECK(coord.column == 1);
 
-    // after the emoji: its four bytes are two UTF-16 units
+    // after the emoji: its four bytes are two UTF-16 units, or four UTF-8 ones
     CHECK(doc.coord_from_pos(TextPos(8), &coord));
-    CHECK(coord.column == 3);
+    CHECK(coord.column == tstr(U"b\U0001F600").size());
 
     doc.clear();
     delete_file(path);
@@ -355,9 +340,9 @@ void textdocument_coord_moves_by_local_utf8_lines()
     CHECK(line.column == 0);
 
     CHECK(doc.coord_from_pos(TextPos(3), &line));
-    CHECK(doc.coord_from_line_pos(&line, 3, &at_pos));
+    CHECK(doc.coord_from_line_pos(&line, tstr(U"b\U0001F600").size(), &at_pos));
     CHECK(at_pos.byte_offset == 8);
-    CHECK(at_pos.column == 3);
+    CHECK(at_pos.column == tstr(U"b\U0001F600").size());
 
     doc.clear();
     delete_file(path);
@@ -551,7 +536,7 @@ void textdocument_find_text_matches_unicode_case_insensitive_across_encodings()
 {
     TextDocument doc;
     seqfilechar path[TEST_PATH_MAX];
-    tchar_t cafe[] = { 'c', 'a', 'f', 0x00e9, 0 };
+    tstring cafe = tstr(U"caf\u00e9");
     size_w match = static_cast<size_w>(-1);
     size_w match_length = 0;
 
@@ -562,16 +547,16 @@ void textdocument_find_text_matches_unicode_case_insensitive_across_encodings()
     };
     CHECK(write_temp_file(utf8, sizeof(utf8), path));
     CHECK(doc.init(path));
-    CHECK(doc_find(doc, cafe, 4, 0, doc.byte_length(), false, false, &match, &match_length));
+    CHECK(doc_find(doc, cafe.c_str(), static_cast<uint32_t>(cafe.size()), 0, doc.byte_length(), false, false, &match, &match_length));
     CHECK(match == 0);
     CHECK(match_length == 5);
     doc.clear();
     delete_file(path);
 
-    const tchar_t utf16[] = { 0xfeff, 'C', 'A', 'F', 0x00c9 };
+    const char16_t utf16[] = { 0xfeff, 'C', 'A', 'F', 0x00c9 };
     CHECK(write_temp_file(reinterpret_cast<const char *>(utf16), sizeof(utf16), path));
     CHECK(doc.init(path));
-    CHECK(doc_find(doc, cafe, 4, 0, doc.byte_length(), false, false, &match, &match_length));
+    CHECK(doc_find(doc, cafe.c_str(), static_cast<uint32_t>(cafe.size()), 0, doc.byte_length(), false, false, &match, &match_length));
     CHECK(match == 0);
     CHECK(match_length == 8);
     doc.clear();
@@ -643,7 +628,7 @@ void textdocument_find_text_nocase_backwards_over_utf8()
 {
     TextDocument doc;
     seqfilechar path[TEST_PATH_MAX];
-    tchar_t cafe[] = { 'c', 'a', 'f', 0x00e9, 0 };
+    tstring cafe = tstr(U"caf\u00e9");
     size_w match = static_cast<size_w>(-1);
     size_w match_length = 0;
 
@@ -657,16 +642,16 @@ void textdocument_find_text_nocase_backwards_over_utf8()
     CHECK(write_units_file(utf8, sizeof(utf8) / sizeof(utf8[0]), 1, false, path));
     CHECK(doc.init(path));
 
-    CHECK(doc_find(doc, cafe, 4, 0, doc.byte_length(), true, false, &match, &match_length));
+    CHECK(doc_find(doc, cafe.c_str(), static_cast<uint32_t>(cafe.size()), 0, doc.byte_length(), true, false, &match, &match_length));
     CHECK(match == 6);
     CHECK(match_length == 5);
 
-    CHECK(doc_find(doc, cafe, 4, 0, 6, true, false, &match, &match_length));
+    CHECK(doc_find(doc, cafe.c_str(), static_cast<uint32_t>(cafe.size()), 0, 6, true, false, &match, &match_length));
     CHECK(match == 0);
     CHECK(match_length == 5);
 
     // ending the search between the bytes of the second accented E leaves only the first match
-    CHECK(doc_find(doc, cafe, 4, 0, 10, true, false, &match, &match_length));
+    CHECK(doc_find(doc, cafe.c_str(), static_cast<uint32_t>(cafe.size()), 0, 10, true, false, &match, &match_length));
     CHECK(match == 0);
     CHECK(match_length == 5);
 
@@ -678,7 +663,7 @@ void textdocument_find_text_nocase_matches_supplementary_chars_in_each_encoding(
 {
     TextDocument doc;
     seqfilechar path[TEST_PATH_MAX];
-    tchar_t pattern[] = { 0xd83d, 0xde00, 'a', 0 };
+    tstring pattern = tstr(U"\U0001F600a");
     size_w match = static_cast<size_w>(-1);
     size_w match_length = 0;
 
@@ -710,11 +695,11 @@ void textdocument_find_text_nocase_matches_supplementary_chars_in_each_encoding(
         CHECK(write_units_file(files[i].units, files[i].count, files[i].unit_size, files[i].big_endian, path));
         CHECK(doc.init(path));
 
-        CHECK(doc_find(doc, pattern, 3, 0, doc.byte_length(), false, false, &match, &match_length));
+        CHECK(doc_find(doc, pattern.c_str(), static_cast<uint32_t>(pattern.size()), 0, doc.byte_length(), false, false, &match, &match_length));
         CHECK(match == 0);
         CHECK(match_length == files[i].length);
 
-        CHECK(doc_find(doc, pattern, 3, 0, doc.byte_length(), true, false, &match, &match_length));
+        CHECK(doc_find(doc, pattern.c_str(), static_cast<uint32_t>(pattern.size()), 0, doc.byte_length(), true, false, &match, &match_length));
         CHECK(match == files[i].second);
         CHECK(match_length == files[i].length);
 
@@ -727,7 +712,7 @@ void textdocument_find_text_nocase_steps_over_split_surrogate_pair()
 {
     TextDocument doc;
     seqfilechar path[TEST_PATH_MAX];
-    tchar_t pattern[] = { 0xd83d, 0xde00, 'a', 0 };
+    tstring pattern = tstr(U"\U0001F600a");
     size_w match = static_cast<size_w>(-1);
     size_w match_length = 0;
 
@@ -737,12 +722,12 @@ void textdocument_find_text_nocase_steps_over_split_surrogate_pair()
     CHECK(doc.init(path));
 
     // starting after the first high surrogate, the search picks up from the lone low one
-    CHECK(doc_find(doc, pattern, 3, 2, doc.byte_length(), false, false, &match, &match_length));
+    CHECK(doc_find(doc, pattern.c_str(), static_cast<uint32_t>(pattern.size()), 2, doc.byte_length(), false, false, &match, &match_length));
     CHECK(match == 8);
     CHECK(match_length == 6);
 
     // ending after the second high surrogate, the search steps back from the lone high one
-    CHECK(doc_find(doc, pattern, 3, 0, 10, true, false, &match, &match_length));
+    CHECK(doc_find(doc, pattern.c_str(), static_cast<uint32_t>(pattern.size()), 0, 10, true, false, &match, &match_length));
     CHECK(match == 0);
     CHECK(match_length == 6);
 
@@ -750,11 +735,18 @@ void textdocument_find_text_nocase_steps_over_split_surrogate_pair()
     delete_file(path);
 }
 
+// Room for all of a document's text: a byte decodes to at most one UTF-16
+// unit, or three UTF-8 ones (as U+FFFD)
+size_t text_room(TextDocument &doc)
+{
+    return static_cast<size_t>(doc.byte_length()) * 3 + 1;
+}
+
 // The whole of the line containing offset, as the view reads it to draw
 tstring read_line(TextDocument &doc, size_w offset)
 {
     TextCoord line;
-    std::vector<tchar_t> buf(static_cast<size_t>(doc.byte_length()) + 1);
+    std::vector<tchar_t> buf(text_room(doc));
 
     CHECK(doc.coord_from_pos(TextPos(offset), &line));
     return tstring(&buf[0], doc.getline(line, &buf[0], static_cast<uint32_t>(buf.size())));
@@ -765,7 +757,7 @@ tstring read_document(TextDocument &doc)
 {
     TextCoord from;
     TextCoord to;
-    std::vector<tchar_t> buf(static_cast<size_t>(doc.byte_length()) + 1);
+    std::vector<tchar_t> buf(text_room(doc));
 
     CHECK(doc.coord_from_pos(TextPos(0), &from));
     CHECK(doc.coord_from_document_end(&to));
@@ -782,6 +774,8 @@ void textdocument_utf8_decodes_characters_across_blocks()
     TextCoord coord;
     std::vector<uint32_t> bytes;
     tstring expected(255, 'a');
+    tstring e_acute = tstr(U"\u00e9");
+    tstring zhong = tstr(U"\u4e2d");
 
     // 255 bytes of 'a' put the two bytes of an accented e either side of byte 256
     bytes.push_back(0xef);
@@ -791,7 +785,7 @@ void textdocument_utf8_decodes_characters_across_blocks()
     bytes.push_back(0xc3);
     bytes.push_back(0xa9);
     bytes.push_back('b');
-    expected += static_cast<tchar_t>(0x00e9);
+    expected += e_acute;
     expected += 'b';
 
     CHECK(write_units_file(&bytes[0], bytes.size(), 1, false, path));
@@ -801,10 +795,10 @@ void textdocument_utf8_decodes_characters_across_blocks()
     CHECK(read_document(doc) == expected);
 
     CHECK(doc.coord_from_pos(TextPos(258), &coord));
-    CHECK(coord.column == 257);
+    CHECK(coord.column == expected.size());
 
     CHECK(doc.coord_from_pos(TextPos(0), &line));
-    CHECK(doc.coord_from_line_pos(&line, 256, &coord));
+    CHECK(doc.coord_from_line_pos(&line, 255 + e_acute.size(), &coord));
     CHECK(coord.byte_offset == 257);
 
     doc.clear();
@@ -818,7 +812,9 @@ void textdocument_utf8_decodes_characters_across_blocks()
         bytes.push_back(0xb8);
         bytes.push_back(0xad);
     }
-    expected.assign(100, static_cast<tchar_t>(0x4e2d));
+    expected.clear();
+    for(int i = 0; i < 100; i++)
+        expected += zhong;
 
     CHECK(write_units_file(&bytes[0], bytes.size(), 1, false, path));
     CHECK(doc.init(path));
@@ -827,14 +823,70 @@ void textdocument_utf8_decodes_characters_across_blocks()
     CHECK(read_document(doc) == expected);
 
     CHECK(doc.coord_from_pos(TextPos(300), &coord));
-    CHECK(coord.column == 100);
+    CHECK(coord.column == 100 * zhong.size());
 
     CHECK(doc.coord_from_pos(TextPos(0), &line));
-    CHECK(doc.coord_from_line_pos(&line, 90, &coord));
+    CHECK(doc.coord_from_line_pos(&line, 90 * zhong.size(), &coord));
     CHECK(coord.byte_offset == 270);
 
     doc.clear();
     delete_file(path);
+}
+
+void textdocument_decodes_whole_characters_to_text()
+{
+    TextDocument doc;
+    seqfilechar path[TEST_PATH_MAX];
+    TextCoord line;
+    TextCoord coord;
+    std::vector<uint32_t> units(1, 0xfeff);
+    tstring expected(127, 'a');
+
+    // UTF-16 with a surrogate pair either side of the 256th byte, where the
+    // text is decoded a block at a time
+    units.insert(units.end(), 127, static_cast<uint32_t>('a'));
+    units.push_back(0xd83d);
+    units.push_back(0xde00);
+    expected += tstr(U"\U0001F600");
+
+    CHECK(write_units_file(&units[0], units.size(), 2, false, path));
+    CHECK(doc.init(path));
+    CHECK(read_line(doc, 0) == expected);
+    CHECK(doc.coord_from_pos(TextPos(258), &coord));
+    CHECK(coord.column == expected.size());
+    doc.clear();
+    delete_file(path);
+
+    // not UTF-8: each byte that isn't a character is a U+FFFD, one UTF-16 unit
+    // or three UTF-8 ones, so a line can be more units than bytes
+    CHECK(write_temp_file("a\x80\x80" "b", 4, path));
+    CHECK(doc.init(path, NCP_UTF8));
+    CHECK(read_line(doc, 0) == tstr(U"a\ufffd\ufffdb"));
+    CHECK(doc.coord_from_pos(TextPos(4), &coord));
+    CHECK(coord.column == tstr(U"a\ufffd\ufffdb").size());
+    CHECK(doc.coord_from_pos(TextPos(0), &line));
+    CHECK(doc.coord_from_line_pos(&line, tstr(U"a\ufffd\ufffd").size(), &coord));
+    CHECK(coord.byte_offset == 3);
+    doc.clear();
+    delete_file(path);
+
+#ifndef _WIN32
+    // ASCII is Latin-1 here (Windows has its ANSI code page): an accented
+    // letter is one byte but two UTF-8 units, and what Latin-1 can't hold is
+    // saved as '?'
+    tstring cafe = tstr(U"caf\u00e9");
+    tstring face = tstr(U"\U0001F600");
+
+    CHECK(write_temp_file("caf\xe9", 4, path));
+    CHECK(doc.init(path, NCP_ASCII));
+    CHECK(read_line(doc, 0) == cafe);
+    CHECK(doc.coord_from_pos(TextPos(4), &coord));
+    CHECK(coord.column == cafe.size());
+    CHECK(doc_insert(doc, 4, face.c_str(), static_cast<uint32_t>(face.size())) == 1);
+    CHECK(read_document(doc) == tstr(U"caf\u00e9?"));
+    doc.clear();
+    delete_file(path);
+#endif
 }
 
 void textdocument_utf8_edits_keep_characters_across_buffers()
@@ -843,12 +895,14 @@ void textdocument_utf8_edits_keep_characters_across_buffers()
     seqfilechar path[TEST_PATH_MAX];
     const uint32_t bom[] = { 0xef, 0xbb, 0xbf };
     tstring text(255, 'a');
-    tstring cjk(100, static_cast<tchar_t>(0x4e2d));
+    tstring cjk;
     tchar_t xy[] = TSTR("xy");
 
+    for(int i = 0; i < 100; i++)
+        cjk += tstr(U"\u4e2d");
+
     // the accented e doesn't fit in what is left of the first 256-byte buffer
-    text += static_cast<tchar_t>(0x00e9);
-    text += 'b';
+    text += tstr(U"\u00e9b");
 
     CHECK(write_units_file(bom, 3, 1, false, path));
     CHECK(doc.init(path));
@@ -882,7 +936,7 @@ void textdocument_utf32_reads_and_edits_text()
     seqfilechar path[TEST_PATH_MAX];
     tchar_t b[] = TSTR("b");
     tchar_t x[] = TSTR("x");
-    tchar_t face[] = { 0xd83d, 0xde00, 0 };
+    tstring face = tstr(U"\U0001F600");
     TextCoord coord;
     size_w match = static_cast<size_w>(-1);
     size_w match_length = 0;
@@ -908,11 +962,11 @@ void textdocument_utf32_reads_and_edits_text()
         CHECK(raw[big_endian ? 3 : 0] == 'x');
         CHECK(raw[big_endian ? 0 : 3] == 0);
 
-        // a surrogate pair is one UTF-32 unit
-        CHECK(doc_replace(doc, 8, 12, face, 2) == 4);
+        // U+1F600 is one UTF-32 unit
+        CHECK(doc_replace(doc, 8, 12, face.c_str(), static_cast<uint32_t>(face.size())) == 4);
         CHECK(read_document(doc) == tstring(TSTR("xa")) + face + TSTR("c"));
 
-        CHECK(doc_find(doc, face, 2, 0, doc.byte_length(), false, true, &match, &match_length));
+        CHECK(doc_find(doc, face.c_str(), static_cast<uint32_t>(face.size()), 0, doc.byte_length(), false, true, &match, &match_length));
         CHECK(match == 8);
         CHECK(match_length == 4);
 
@@ -990,8 +1044,10 @@ void textdocument_coord_from_line_pos_rounds_back_inside_pair()
     TextCoord line;
     TextCoord coord;
     TextCoord measured;
+    size_w face = tstr(U"\U0001F600").size();
 
-    // "a", U+1F600, "x": columns 0 a 1 [pair] 3 x 4, with column 2 between the halves
+    // "a", U+1F600, "x": columns 0 a 1 [face] 1+face x 2+face, with column 2
+    // inside the face (between the halves of its pair, in UTF-16)
     const uint32_t utf8[]  = { 0xef, 0xbb, 0xbf, 'a', 0xf0, 0x9f, 0x98, 0x80, 'x' };
     const uint32_t utf16[] = { 0xfeff, 'a', 0xd83d, 0xde00, 'x' };
     const uint32_t utf32[] = { 0xfeff, 'a', 0x1f600, 'x' };
@@ -1025,18 +1081,18 @@ void textdocument_coord_from_line_pos_rounds_back_inside_pair()
         CHECK(coord.byte_offset == files[i].after_a);
         CHECK(coord.column == 1);
 
-        // between the halves of the pair: back to the pair's start
+        // inside the face: back to its start
         CHECK(doc.coord_from_line_pos(&line, 2, &coord));
         CHECK(coord.byte_offset == files[i].after_a);
         CHECK(coord.column == 1);
 
-        CHECK(doc.coord_from_line_pos(&line, 3, &coord));
+        CHECK(doc.coord_from_line_pos(&line, 1 + face, &coord));
         CHECK(coord.byte_offset == files[i].after_face);
-        CHECK(coord.column == 3);
+        CHECK(coord.column == 1 + face);
 
-        CHECK(doc.coord_from_line_pos(&line, 4, &coord));
+        CHECK(doc.coord_from_line_pos(&line, 2 + face, &coord));
         CHECK(coord.byte_offset == files[i].after_x);
-        CHECK(coord.column == 4);
+        CHECK(coord.column == 2 + face);
 
         // a coordinate's column always matches its position
         CHECK(doc.coord_from_pos(coord, &measured));
@@ -1092,6 +1148,8 @@ void textreader_reads_whole_characters()
     seqfilechar path[TEST_PATH_MAX];
     tchar_t buf[4];
     TextReader reader;
+    tstring face = tstr(U"\U0001F600");
+    uint32_t room = static_cast<uint32_t>(face.size());
 
     // "a", U+1F600, "b"
     const uint32_t utf8[]  = { 0xef, 0xbb, 0xbf, 'a', 0xf0, 0x9f, 0x98, 0x80, 'b' };
@@ -1128,17 +1186,16 @@ void textreader_reads_whole_characters()
 
         reader = doc.text_from_range(TextPos(0), TextPos(doc.byte_length()));
 
-        // room for "a" and half the pair: only "a" is read
-        CHECK(reader.read(buf, 2) == 1);
+        // room for "a" and part of the face: only "a" is read
+        CHECK(reader.read(buf, room) == 1);
         CHECK(buf[0] == 'a');
         CHECK(reader.pos() == TextPos(files[i].after_a));
 
-        // no room for the pair at all: nothing is read, but there is more to come
+        // no room for the face at all: nothing is read, but there is more to come
         CHECK(reader.read(buf, 1) == 0);
         CHECK(!reader.at_end());
 
-        CHECK(reader.read(buf, 2) == 2);
-        CHECK(buf[0] == 0xd83d && buf[1] == 0xde00);
+        CHECK(tstring(buf, reader.read(buf, room)) == face);
         CHECK(reader.pos() == TextPos(files[i].after_face));
 
         CHECK(reader.read(buf, 4) == 1);
@@ -1611,10 +1668,7 @@ void textdocument_save_converts_the_encoding()
     const std::string utf8 = "Xa\r\n\xc3\xa9\xf0\x9f\x98\x80";
     const char utf32be[] = { 0, 0, '\xfe', '\xff', 0, 0, 0, 'X', 0, 0, 0, 'a', 0, 0, 0, '\r', 0, 0, 0, '\n',
                              0, 0, 0, '\xe9', 0, 1, '\xf6', 0 };
-    tstring text(1, 'X');
-
-    for(size_t i = 1; i < sizeof(units) / sizeof(units[0]); i++)
-        text += static_cast<tchar_t>(units[i]);
+    tstring text = tstr(U"Xa\r\n\u00e9\U0001F600");
 
     CHECK(write_units_file(units, sizeof(units) / sizeof(units[0]), 2, false, path));
     CHECK(doc.init(path));
@@ -1720,7 +1774,7 @@ void textdocument_init_in_a_given_encoding()
     CHECK(doc.init(path, NCP_UTF8));
     CHECK(doc.getformat() == NCP_UTF8);
     CHECK(!doc.has_bom());
-    CHECK(read_document(doc) == tstring(TSTR("caf")) + static_cast<tchar_t>(0xfffd));
+    CHECK(read_document(doc) == tstr(U"caf\ufffd"));
 
     CHECK(!doc.init(path, static_cast<TEXT_ENCODING>(99)));
 
@@ -1756,7 +1810,7 @@ void textdocument_init_in_a_given_encoding()
     delete_file(path);
 }
 
-// All of a document's text, as UTF-16
+// All of a document's text, as tchar_t text
 tstring document_text(TextDocument &doc)
 {
     tstring text;
@@ -1773,7 +1827,7 @@ tstring document_text(TextDocument &doc)
 void textdocument_replace_linebreaks_makes_them_one_kind()
 {
     // CRLF, LF, CR, and an LF then a CR, which is two line breaks
-    const tchar_t mixed[] = TSTR("a\r\nb\nc\rd\n\re");
+    const char32_t mixed[] = U"a\r\nb\nc\rd\n\re";
     const TEXT_ENCODING encodings[] = { NCP_UTF8, NCP_UTF16, NCP_UTF32 };
     struct { uint32_t linebreak; const tchar_t *expected; } cases[] =
     {
@@ -1799,7 +1853,7 @@ void textdocument_replace_linebreaks_makes_them_one_kind()
 
             // one undo step brings the mix back
             CHECK(doc.undo(&change));
-            CHECK(document_text(doc) == mixed);
+            CHECK(document_text(doc) == tstr(mixed));
 
             doc.clear();
             delete_file(path);
@@ -1856,7 +1910,7 @@ void textdocument_detects_utf8_without_a_bom()
     CHECK(doc.init(path));
     CHECK(doc.getformat() == NCP_UTF8);
     CHECK(!doc.has_bom());
-    CHECK(read_document(doc) == tstring(TSTR("caf")) + static_cast<tchar_t>(0xe9));
+    CHECK(read_document(doc) == tstr(U"caf\u00e9"));
     doc.clear();
     delete_file(path);
 
@@ -1897,7 +1951,7 @@ void textdocument_new_document_is_utf8()
     TextDocument doc;
     seqfilechar path[TEST_PATH_MAX];
     seqfilechar newpath[TEST_PATH_MAX];
-    const tchar_t text[] = { 'a', 0xe9, '\n', 'b' };
+    const tstring text = tstr(U"a\u00e9\nb");
 
     // after a UTF-16 file, none of which should be left behind
     CHECK(write_textdocument_file("x\ny", DOC_UTF16LE_BOM, path));
@@ -1906,7 +1960,7 @@ void textdocument_new_document_is_utf8()
 
     CHECK(doc.getformat() == NCP_UTF8);
     CHECK(!doc.has_bom());
-    CHECK(doc_insert(doc, 0, text, 4) == 5);
+    CHECK(doc_insert(doc, 0, text.c_str(), static_cast<uint32_t>(text.size())) == 5);
     CHECK(doc.linecount() == 2);
 
     CHECK(temp_name(newpath));
@@ -2103,17 +2157,19 @@ void textdocument_diff_maps_encoded_insertions_to_utf16_columns()
     {
         TextDocument doc;
         seqfilechar  path[TEST_PATH_MAX];
-        std::string  bytes = encode_text(TSTR("first\r\na\x00e9\xd83d\xde00z\r\nlast"), encoding);
+        std::string  bytes = encode_text(U"first\r\na\u00e9\U0001F600z\r\nlast", encoding);
         TextCoord    line;
         TextCoord    at;
         TextChange   change;
+        size_w       column = tstr(U"a\u00e9\U0001F600").size();
+        tstring      text   = tstr(U"\U0001F600!");
 
         CHECK(write_temp_file(bytes.data(), bytes.size(), path));
         CHECK(doc.init(path));
         CHECK(doc.coord_from_lineno(1, &line) == TDR_OK);
         CHECK(!doc.line_diff(line));
-        CHECK(doc.coord_from_line_pos(&line, 4, &at));
-        CHECK(doc.insert_text(at, TSTR("\xd83d\xde00!"), 3, &change) > 0);
+        CHECK(doc.coord_from_line_pos(&line, column, &at));
+        CHECK(doc.insert_text(at, text.c_str(), static_cast<uint32_t>(text.size()), &change) > 0);
         CHECK(doc.coord_from_lineno(1, &line) == TDR_OK);
 
         std::vector<std::pair<size_w, size_w>> inserted;
@@ -2123,9 +2179,9 @@ void textdocument_diff_maps_encoded_insertions_to_utf16_columns()
         };
 
         CHECK(doc.line_diff(line, collect));
-        CHECK(inserted.size() == 1 && inserted[0].first == 4 && inserted[0].second == 3);
+        CHECK(inserted.size() == 1 && inserted[0].first == column && inserted[0].second == text.size());
         inserted.clear();
-        CHECK(doc.line_diff(line, collect, 5)); // never colour half a surrogate pair
+        CHECK(doc.line_diff(line, collect, column + 1)); // never colour part of a character
         CHECK(inserted.empty());
         CHECK(doc.save(path, encoding, encoding != NCP_UTF8, 0));
         CHECK(!doc.line_diff(line));
@@ -2224,6 +2280,7 @@ const test_case tests[] =
     { "textdocument_find_text_nocase_matches_supplementary_chars_in_each_encoding", textdocument_find_text_nocase_matches_supplementary_chars_in_each_encoding },
     { "textdocument_find_text_nocase_steps_over_split_surrogate_pair", textdocument_find_text_nocase_steps_over_split_surrogate_pair },
     { "textdocument_utf8_decodes_characters_across_blocks", textdocument_utf8_decodes_characters_across_blocks },
+    { "textdocument_decodes_whole_characters_to_text", textdocument_decodes_whole_characters_to_text },
     { "textdocument_utf8_edits_keep_characters_across_buffers", textdocument_utf8_edits_keep_characters_across_buffers },
     { "textdocument_utf32_reads_and_edits_text", textdocument_utf32_reads_and_edits_text },
     { "textdocument_find_text_matchcase_stays_on_code_units", textdocument_find_text_matchcase_stays_on_code_units },

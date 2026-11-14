@@ -71,7 +71,7 @@ bool TextDocument::line_bounds_from_offset(size_w offset_bytes, size_w *line_beg
 }
 
 //
-//	Fill coord with the position 'column' UTF-16 units into the line
+//	Fill coord with the position 'column' tchar_t units into the line
 //	[line_begin, line_next), stopping at the end of the line. A column part way
 //	through a character moves back to the character's start.
 //
@@ -80,9 +80,10 @@ void TextDocument::coord_in_line(size_w line_begin, size_w line_next, size_w col
 	size_w linelen_bytes = line_next >= line_begin ? line_next - line_begin : 0;
 	size_w offset_bytes;
 
-	// a code unit always takes at least one byte, so this just bounds the scan
-	if(column > linelen_bytes)
-		column = linelen_bytes;
+	// a byte is at most one UTF-16 unit, or three UTF-8 ones (as U+FFFD), so
+	// this just bounds the scan
+	if(column > linelen_bytes * (TCHAR_UTF8 ? 3 : 1))
+		column = linelen_bytes * (TCHAR_UTF8 ? 3 : 1);
 
 	offset_bytes = count_chars(line_begin, &column);
 
@@ -462,9 +463,9 @@ bool TextDocument::unit_before(size_w offset_bytes, uint32_t *ch, uint32_t *size
 }
 
 //
-//	The number of bytes taken by up to *length_chars UTF-16 units of text from
-//	offset_bytes. Only whole characters are counted: a surrogate pair the count
-//	would split is left out. On return *length_chars holds the units counted.
+//	The number of bytes taken by up to *length_chars tchar_t units of text from
+//	offset_bytes. Only whole characters are counted: one the count would split
+//	is left out. On return *length_chars holds the units counted.
 //
 size_w TextDocument::count_chars(size_w offset_bytes, size_w *length_chars)
 {
@@ -474,26 +475,30 @@ size_w TextDocument::count_chars(size_w offset_bytes, size_w *length_chars)
 	size_w offset_start = offset_bytes;
 	uint32_t ch32;
 
-	switch(m_nFileFormat)
+	// to UTF-16 text, an ASCII byte is a unit, and so is a UTF-16 one
+	if(!TCHAR_UTF8)
 	{
-	case NCP_ASCII:
-		return wanted;
-
-	case NCP_UTF16:
-	case NCP_UTF16BE:
-		offset_bytes += wanted * sizeof(UTF16);
-
-		// ending between the halves of a pair? leave the pair out
-		if(wanted > 0 && decode_char(offset_bytes - sizeof(UTF16), 2 * sizeof(UTF16), &ch32) == 2 * sizeof(UTF16))
+		switch(m_nFileFormat)
 		{
-			offset_bytes -= sizeof(UTF16);
-			*length_chars = wanted - 1;
+		case NCP_ASCII:
+			return wanted;
+
+		case NCP_UTF16:
+		case NCP_UTF16BE:
+			offset_bytes += wanted * sizeof(UTF16);
+
+			// ending between the halves of a pair? leave the pair out
+			if(wanted > 0 && decode_char(offset_bytes - sizeof(UTF16), 2 * sizeof(UTF16), &ch32) == 2 * sizeof(UTF16))
+			{
+				offset_bytes -= sizeof(UTF16);
+				*length_chars = wanted - 1;
+			}
+
+			return offset_bytes - offset_start;
+
+		default:
+			break;
 		}
-
-		return offset_bytes - offset_start;
-
-	default:
-		break;
 	}
 
 	while(remaining && offset_bytes < rawLength)
@@ -502,7 +507,7 @@ size_w TextDocument::count_chars(size_w offset_bytes, size_w *length_chars)
 		uint32_t charlen = (uint32_t)min_of(remaining, (size_w)0x100);
 		size_w   bytelen = decode_text(offset_bytes, rawLength - offset_bytes, buf, &charlen);
 
-		// nothing fits: the next character is a surrogate pair and one unit is left
+		// nothing fits: the next character takes more units than are left
 		if(bytelen == 0 || charlen == 0)
 			break;
 

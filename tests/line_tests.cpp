@@ -1486,7 +1486,7 @@ void textdocument_sequence_index_matches_utf16le()
 {
     TextDocument doc;
     seqfilechar path[TEST_PATH_MAX];
-    const tchar_t text[] = { 0xfeff, 'a', '\r', '\n', 'b', 0xd83d, 0xde00, '\r', '\n', 'c' };
+    const char16_t text[] = { 0xfeff, 'a', '\r', '\n', 'b', 0xd83d, 0xde00, '\r', '\n', 'c' };
 
     CHECK(write_temp_file(reinterpret_cast<const char *>(text), sizeof(text), path));
     CHECK(doc.init(path));

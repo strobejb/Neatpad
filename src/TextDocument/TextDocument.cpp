@@ -366,22 +366,12 @@ bool TextDocument::clear()
 }
 
 //
-//	Return a UTF-32 character value
+//	The UTF-32 value of the character that starts raw data in an encoding.
+//	Returns the bytes it takes, or 0 if they aren't all there.
 //
-size_w TextDocument::decode_char(size_w offset, size_t lenbytes, uint32_t *pch32)
+static size_t decode_raw_char(TEXT_ENCODING encoding, const uint8_t *rawdata, size_t lenbytes, uint32_t *pch32)
 {
-//	uint8_t	*rawdata   = (uint8_t *)(buffer + offset + m_nHeaderSize);
-	uint8_t	rawdata[16];
-	size_w	rendered;
-
-	lenbytes = min_of(sizeof(rawdata), lenbytes);
-	rendered = m_seq.render(offset + m_nHeaderSize, rawdata, lenbytes);
-	lenbytes = min_of(lenbytes, (size_t)rendered);
-
-	if(lenbytes == 0 || pch32 == 0)
-		return 0;
-
-	switch(m_nFileFormat)
+	switch(encoding)
 	{
 	case NCP_ASCII:
 		{
@@ -395,7 +385,7 @@ size_w TextDocument::decode_char(size_w offset, size_t lenbytes, uint32_t *pch32
 
 	case NCP_UTF16:
 		return utf16_to_utf32_char(rawdata, lenbytes, pch32);
-		
+
 	case NCP_UTF16BE:
 		return utf16be_to_utf32_char(rawdata, lenbytes, pch32);
 
@@ -411,6 +401,25 @@ size_w TextDocument::decode_char(size_w offset, size_t lenbytes, uint32_t *pch32
 	default:
 		return 0;
 	}
+}
+
+//
+//	Return a UTF-32 character value
+//
+size_w TextDocument::decode_char(size_w offset, size_t lenbytes, uint32_t *pch32)
+{
+//	uint8_t	*rawdata   = (uint8_t *)(buffer + offset + m_nHeaderSize);
+	uint8_t	rawdata[16];
+	size_w	rendered;
+
+	lenbytes = min_of(sizeof(rawdata), lenbytes);
+	rendered = m_seq.render(offset + m_nHeaderSize, rawdata, lenbytes);
+	lenbytes = min_of(lenbytes, (size_t)rendered);
+
+	if(lenbytes == 0 || pch32 == 0)
+		return 0;
+
+	return decode_raw_char(m_nFileFormat, rawdata, lenbytes, pch32);
 }
 
 //
@@ -514,11 +523,11 @@ size_w TextDocument::decode_text(size_w offset, size_w lenbytes, tchar_t *buf, u
 				rendered = whole;
 		}
 
-		// convert to UTF-16 
+		// convert to tchar_t text
 		size_t tmplen = *buflen;
-		rawlen = rawdata_to_utf16(rawdata, (size_t)rendered, buf, &tmplen);
+		rawlen = rawdata_to_text(rawdata, (size_t)rendered, buf, &tmplen);
 
-		// Stop before consuming a raw character that will not fit in the UTF-16 output buffer.
+		// Stop before consuming a raw character that will not fit in the output buffer.
 		if(rawlen == 0 && tmplen == 0)
 			break;
 
@@ -531,10 +540,11 @@ size_w TextDocument::decode_text(size_w offset, size_w lenbytes, tchar_t *buf, u
 		chars_copied	+= (uint32_t)tmplen;
 	}
 
-	// A UTF-16 file is copied a unit at a time, so a full buffer can end between
-	// the halves of a pair: leave the first half for next time. (The other
-	// encodings only ever convert whole characters.)
-	if((m_nFileFormat == NCP_UTF16 || m_nFileFormat == NCP_UTF16BE) && chars_copied > 0 && lenbytes >= sizeof(UTF16))
+	// A UTF-16 file is copied to UTF-16 text a unit at a time, so a full buffer
+	// can end between the halves of a pair: leave the first half for next time.
+	// (Everything else converts only whole characters.)
+	if(!TCHAR_UTF8 && (m_nFileFormat == NCP_UTF16 || m_nFileFormat == NCP_UTF16BE) && chars_copied > 0 &&
+	   lenbytes >= sizeof(UTF16))
 	{
 		uint32_t ch32;
 
@@ -702,16 +712,60 @@ uint32_t TextDocument::line_diff(const TextCoord &line, const std::function<void
 }
 
 //
-//	Convert the RAW buffer in underlying file-format to UTF-16
+//	Convert raw data in an encoding to UTF-8, as many whole characters as fit.
+//	A broken character becomes U+FFFD.
 //
-//	
-//	utf16len	- [in/out]	on input holds size of utf16str buffer, 
-//							on output holds number of utf16 characters stored
+//	utf8len	- [in/out]	on input holds size of utf8str buffer,
+//						on output holds number of bytes stored
 //
 //	returns bytes processed from rawdata
 //
-size_t TextDocument::rawdata_to_utf16(uint8_t *rawdata, size_t rawlen, tchar_t *utf16str, size_t *utf16len)
+static size_t decode_utf8(TEXT_ENCODING encoding, const uint8_t *rawdata, size_t rawlen, UTF8 *utf8str, size_t *utf8len)
 {
+	size_t used   = 0;
+	size_t stored = 0;
+
+	while(used < rawlen)
+	{
+		uint32_t ch32;
+		UTF8     ch8[4];
+		size_t   len   = decode_raw_char(encoding, rawdata + used, rawlen - used, &ch32);
+		size_t   len8;
+
+		if(len == 0)
+			break;
+
+		len8 = utf32_to_utf8(ch8, sizeof(ch8), ch32);
+
+		if(len8 == 0 || stored + len8 > *utf8len)
+			break;
+
+		memcpy(utf8str + stored, ch8, len8);
+		stored += len8;
+		used   += len;
+	}
+
+	*utf8len = stored;
+	return used;
+}
+
+//
+//	Convert the RAW buffer in underlying file-format to tchar_t text
+//
+//
+//	textlen	- [in/out]	on input holds size of text buffer,
+//						on output holds number of units stored
+//
+//	returns bytes processed from rawdata
+//
+size_t TextDocument::rawdata_to_text(uint8_t *rawdata, size_t rawlen, tchar_t *text, size_t *textlen)
+{
+	UTF16  *utf16str = (UTF16 *)text;
+	size_t *utf16len = textlen;
+
+	if(TCHAR_UTF8)
+		return decode_utf8(m_nFileFormat, rawdata, rawlen, (UTF8 *)text, textlen);
+
 	switch(m_nFileFormat)
 	{
 	// convert from ANSI->UNICODE
@@ -756,10 +810,19 @@ size_t TextDocument::rawdata_complete_length(uint8_t *rawdata, size_t rawlen)
 	case NCP_UTF8:
 		return utf8_complete_length(rawdata, rawlen);
 
-	// whole code units: the halves of a surrogate pair convert separately
+	// whole code units: to UTF-16 text, the halves of a surrogate pair convert
+	// separately; to UTF-8, a pair is one character, so it stays whole
 	case NCP_UTF16:
 	case NCP_UTF16BE:
-		return rawlen & ~(size_t)1;
+		{
+			size_t  len  = rawlen & ~(size_t)1;
+			uint8_t high = len < 2 ? 0 : rawdata[m_nFileFormat == NCP_UTF16 ? len - 1 : len - 2];
+
+			if(TCHAR_UTF8 && high >= 0xD8 && high <= 0xDB)
+				len -= 2;
+
+			return len;
+		}
 
 	case NCP_UTF32:
 	case NCP_UTF32BE:
@@ -772,14 +835,106 @@ size_t TextDocument::rawdata_complete_length(uint8_t *rawdata, size_t rawlen)
 }
 
 //
-//	Converts specified UTF16 string to an encoding's RAW format
+//	A character in an encoding's raw form, in out. Returns the bytes it takes.
+//	What the encoding can't hold becomes '?' in ASCII (Latin-1) and U+FFFD in
+//	the others.
+//
+static size_t encode_raw_char(TEXT_ENCODING encoding, uint32_t ch32, uint8_t out[4])
+{
+	if(ch32 > UNI_MAX_LEGAL_UTF32 || (ch32 >= UNI_SUR_HIGH_START && ch32 <= UNI_SUR_LOW_END))
+		ch32 = UNI_REPLACEMENT_CHAR;
+
+	switch(encoding)
+	{
+	case NCP_ASCII:
+		out[0] = ch32 < 0x100 ? (uint8_t)ch32 : '?';
+		return 1;
+
+	case NCP_UTF8:
+		return utf32_to_utf8(out, 4, ch32);
+
+	case NCP_UTF16:
+	case NCP_UTF16BE:
+		{
+			uint32_t units[2] = { ch32, 0 };
+			size_t   count    = 1;
+
+			if(ch32 > UNI_MAX_BMP)
+			{
+				units[0] = UNI_SUR_HIGH_START + ((ch32 - 0x10000) >> 10);
+				units[1] = UNI_SUR_LOW_START + ((ch32 - 0x10000) & 0x3FF);
+				count    = 2;
+			}
+
+			for(size_t i = 0; i < count; i++)
+			{
+				uint8_t lo = (uint8_t)units[i];
+				uint8_t hi = (uint8_t)(units[i] >> 8);
+
+				out[i * 2]     = encoding == NCP_UTF16 ? lo : hi;
+				out[i * 2 + 1] = encoding == NCP_UTF16 ? hi : lo;
+			}
+
+			return count * 2;
+		}
+
+	case NCP_UTF32:
+	case NCP_UTF32BE:
+		for(size_t i = 0; i < 4; i++)
+			out[encoding == NCP_UTF32 ? i : 3 - i] = (uint8_t)(ch32 >> (i * 8));
+
+		return 4;
+
+	default:
+		return 0;
+	}
+}
+
+//
+//	Converts UTF-8 text to an encoding's RAW format, as many whole characters
+//	as fit
+//
+//	returns number of bytes processed from utf8str
+//
+static size_t encode_utf8(TEXT_ENCODING encoding, const UTF8 *utf8str, size_t utf8len, uint8_t *rawdata, size_t *rawlen)
+{
+	size_t used   = 0;
+	size_t stored = 0;
+
+	while(used < utf8len)
+	{
+		uint32_t ch32;
+		uint8_t  out[4];
+		size_t   len    = utf8_to_utf32(utf8str + used, utf8len - used, &ch32);
+		size_t   outlen = encode_raw_char(encoding, ch32, out);
+
+		if(len == 0 || outlen == 0 || stored + outlen > *rawlen)
+			break;
+
+		memcpy(rawdata + stored, out, outlen);
+		stored += outlen;
+		used   += len;
+	}
+
+	*rawlen = stored;
+	return used;
+}
+
+//
+//	Converts tchar_t text to an encoding's RAW format
 //	(i.e. UTF-16 -> UTF-8
 //		  UTF-16 -> UTF-32 etc)
 //
-//	returns number of WCHARs processed from utf16str
+//	returns number of units processed from text
 //
-static size_t encode_utf16(TEXT_ENCODING encoding, const tchar_t *utf16str, size_t utf16len, uint8_t *rawdata, size_t *rawlen)
+static size_t encode_text(TEXT_ENCODING encoding, const tchar_t *text, size_t textlen, uint8_t *rawdata, size_t *rawlen)
 {
+	const UTF16 *utf16str = (const UTF16 *)text;
+	size_t       utf16len = textlen;
+
+	if(TCHAR_UTF8)
+		return encode_utf8(encoding, (const UTF8 *)text, textlen, rawdata, rawlen);
+
 	switch(encoding)
 	{
 	// convert from UTF16 -> ASCII
@@ -819,11 +974,11 @@ static size_t encode_utf16(TEXT_ENCODING encoding, const tchar_t *utf16str, size
 }
 
 //
-//	Converts specified UTF16 string to the underlying RAW format of the text-document
+//	Converts tchar_t text to the underlying RAW format of the text-document
 //
-size_t TextDocument::utf16_to_rawdata(const tchar_t *utf16str, size_t utf16len, uint8_t *rawdata, size_t *rawlen)
+size_t TextDocument::text_to_rawdata(const tchar_t *text, size_t textlen, uint8_t *rawdata, size_t *rawlen)
 {
-	return encode_utf16(m_nFileFormat, utf16str, utf16len, rawdata, rawlen);
+	return encode_text(m_nFileFormat, text, textlen, rawdata, rawlen);
 }
 
 //
@@ -864,7 +1019,7 @@ static size_t convert_linebreaks(const tchar_t *text, size_t length, uint32_t li
 
 //
 //	Write the text in another encoding, and with every line break made
-//	linebreak (unless that is 0). It goes through UTF-16, as it's displayed.
+//	linebreak (unless that is 0). It goes through tchar_t text, as it's displayed.
 //
 bool TextDocument::write_converted(SaveFile &file, TEXT_ENCODING encoding, uint32_t linebreak)
 {
@@ -872,7 +1027,7 @@ bool TextDocument::write_converted(SaveFile &file, TEXT_ENCODING encoding, uint3
 
 	std::vector<tchar_t> text(CHUNK);
 	std::vector<tchar_t> lines(CHUNK * 2);		// each line break can become two
-	std::vector<uint8_t>  raw(CHUNK * 2 * 4);	// four bytes a UTF-16 unit at most, as UTF-32
+	std::vector<uint8_t>  raw(CHUNK * 2 * 4);	// four bytes a unit at most, as UTF-32
 	TextReader reader = text_from_range(TextPos(0), TextPos(byte_length()));
 	bool       after_cr = false;
 
@@ -893,7 +1048,7 @@ bool TextDocument::write_converted(SaveFile &file, TEXT_ENCODING encoding, uint3
 		}
 
 		// raw holds the most any encoding makes of it, so it all goes at once
-		if(encode_utf16(encoding, src, len, &raw[0], &rawlen) != len || !file.write(&raw[0], rawlen))
+		if(encode_text(encoding, src, len, &raw[0], &rawlen) != len || !file.write(&raw[0], rawlen))
 			return false;
 	}
 
@@ -902,7 +1057,7 @@ bool TextDocument::write_converted(SaveFile &file, TEXT_ENCODING encoding, uint3
 
 //
 //	Make every line break in a range the same, as one edit. Like a converting
-//	save, the text goes through UTF-16, as it's displayed.
+//	save, the text goes through tchar_t text, as it's displayed.
 //
 size_w TextDocument::replace_linebreaks(TextPos from, TextPos to, uint32_t linebreak, TextChange *change)
 {
@@ -936,7 +1091,7 @@ size_w TextDocument::replace_linebreaks(TextPos from, TextPos to, uint32_t lineb
 }
 
 //
-//	Insert UTF-16 text at specified uint8_t offset
+//	Insert tchar_t text at specified uint8_t offset
 //
 //	returns number of BYTEs stored
 //
@@ -951,7 +1106,7 @@ size_w TextDocument::insert_raw(size_w offset_bytes, const tchar_t *text, uint32
 	while(length)
 	{
 		buflen = 0x100;
-		copied = utf16_to_rawdata(text, length, buf, &buflen);
+		copied = text_to_rawdata(text, length, buf, &buflen);
 
 		// do the piece-table insertion!
 		if(!m_seq.insert(offset, buf, buflen))
@@ -977,7 +1132,7 @@ size_w TextDocument::replace_raw(size_w offset_bytes, const tchar_t *text, uint3
 	while(length)
 	{
 		buflen = 0x100;
-		copied = utf16_to_rawdata(text, length, buf, &buflen);
+		copied = text_to_rawdata(text, length, buf, &buflen);
 
 		// do the piece-table replacement!
 		if(!m_seq.replace(offset, buf, buflen, erase_bytes))

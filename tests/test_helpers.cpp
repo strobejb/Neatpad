@@ -289,48 +289,113 @@ std::string utf8_text(size_t length)
 
 // Text as a file in an encoding: UTF-8 without a byte-order mark, UTF-16 or
 // UTF-32 with one
-std::string encode_text(const tchar_t *text, TEXT_ENCODING encoding)
+std::string encode_text(const char32_t *text, TEXT_ENCODING encoding)
 {
-    size_t length = tstrlen(text);
-    size_t out = length * 4;
     std::string bytes;
 
     switch(encoding)
     {
     case NCP_UTF16:
         bytes.assign("\xff\xfe", 2);
-        bytes.append(reinterpret_cast<const char *>(text), length * sizeof(tchar_t));
         break;
 
     case NCP_UTF16BE:
         bytes.assign("\xfe\xff", 2);
-        for (size_t i = 0; i < length; ++i)
-        {
-            bytes.push_back(static_cast<char>(text[i] >> 8));
-            bytes.push_back(static_cast<char>(text[i]));
-        }
-        break;
-
-    case NCP_UTF32BE:
-        bytes.assign("\0\0\xfe\xff", 4);
-        bytes.resize(4 + out);
-        utf16_to_utf32be(reinterpret_cast<const UTF16 *>(text), length, reinterpret_cast<UTF8 *>(&bytes[4]), &out);
-        bytes.resize(4 + out);
         break;
 
     case NCP_UTF32:
         bytes.assign("\xff\xfe\0\0", 4);
-        bytes.resize(4 + out);
-        utf16_to_utf32le(reinterpret_cast<const UTF16 *>(text), length, reinterpret_cast<UTF8 *>(&bytes[4]), &out);
-        bytes.resize(4 + out);
+        break;
+
+    case NCP_UTF32BE:
+        bytes.assign("\0\0\xfe\xff", 4);
         break;
 
     default:
-        bytes.resize(out);
-        utf16_to_utf8(reinterpret_cast<const UTF16 *>(text), length, reinterpret_cast<UTF8 *>(&bytes[0]), &out);
-        bytes.resize(out);
         break;
     }
 
+    for(; *text; text++)
+    {
+        UTF32  ch = *text;
+        UTF16  units[2];
+        UTF8   utf8[4];
+        size_t len = 2;
+
+        switch(encoding)
+        {
+        case NCP_UTF16:
+        case NCP_UTF16BE:
+            utf32_to_utf16(&ch, 1, units, &len);
+
+            for(size_t i = 0; i < len; i++)
+            {
+                char lo = static_cast<char>(units[i]);
+                char hi = static_cast<char>(units[i] >> 8);
+
+                bytes.push_back(encoding == NCP_UTF16 ? lo : hi);
+                bytes.push_back(encoding == NCP_UTF16 ? hi : lo);
+            }
+            break;
+
+        case NCP_UTF32:
+        case NCP_UTF32BE:
+            for(int i = 0; i < 4; i++)
+                bytes.push_back(static_cast<char>(ch >> (encoding == NCP_UTF32 ? i * 8 : 24 - i * 8)));
+            break;
+
+        default:
+            len = utf32_to_utf8(utf8, 4, ch);
+            bytes.append(reinterpret_cast<const char *>(utf8), len);
+            break;
+        }
+    }
+
     return bytes;
+}
+
+#ifdef _WIN32
+std::string encode_text(const wchar_t *text, TEXT_ENCODING encoding)
+{
+    size_t             length = wcslen(text);
+    size_t             count  = length;
+    std::vector<UTF32> utf32(length + 1);
+
+    utf16_to_utf32(reinterpret_cast<const UTF16 *>(text), length, &utf32[0], &count);
+    utf32[count] = 0;
+
+    return encode_text(reinterpret_cast<const char32_t *>(&utf32[0]), encoding);
+}
+#endif
+
+// Text in the build's text unit, from code points: tstr(U"caf\u00e9")
+tstring tstr(const char32_t *text)
+{
+    tstring result;
+
+    for(; *text; text++)
+    {
+        UTF32 ch = *text;
+
+        if(TCHAR_UTF8)
+        {
+            UTF8   bytes[4];
+            size_t len = utf32_to_utf8(bytes, 4, ch);
+
+            for(size_t i = 0; i < len; i++)
+                result.push_back(static_cast<tchar_t>(bytes[i]));
+        }
+        else
+        {
+            UTF16  units[2];
+            size_t len = 2;
+
+            utf32_to_utf16(&ch, 1, units, &len);
+
+            for(size_t i = 0; i < len; i++)
+                result.push_back(static_cast<tchar_t>(units[i]));
+        }
+    }
+
+    return result;
 }

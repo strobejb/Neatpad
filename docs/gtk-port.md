@@ -100,7 +100,9 @@ Each build uses its toolkit's own text unit, `tchar_t`: UTF-16 on Win32, UTF-8 o
 - **Why not one unit everywhere:** UTF-16 everywhere needs an offset map in `PangoTextLayout`. UTF-8 everywhere needs maps for Uniscribe, Qt and the Win32 messages. A unit per build needs none.
 - **UTF-8 is not the old 8-bit `TCHAR` build.** That was single-byte ANSI. A UTF-8 character is 1–4 bytes, so the surrogate-pair handling becomes one character-boundary helper that works for both widths.
 - **Where the width matters today:** 17 casts to `UTF16 *` (12 in TextDocument's two conversion functions, 4 in find, 1 in paint) and 7 surrogate-pair spots, mostly in `TextDocumentCoord.cpp`. With `tchar_t = char` the core already compiles, but the casts hide the width, so it would be wrong.
-- **Columns:** Win32 counts UTF-16 units, as the EDIT control does. GTK counts characters, not bytes.
+- **Columns:** `TextCoord::column` counts `tchar_t` units, as the view lays a line out: UTF-16 units on Win32, as the
+  EDIT control does, and UTF-8 bytes on GTK, as Pango does. The GTK status bar shows characters, not bytes, so it
+  converts. Character offsets (`charoffset_from_pos`) are UTF-16 units in every build, as the sequence indexes them.
 - **Pango** positions are UTF-8 byte offsets, so they match. Cursor and word stops come one per character, so `PangoTextLayout` spreads them out to bytes.
 - **`tchar_t` and `TCHAR` never mix in the core or the engine.** `TCHAR` stays in Win32 code and the C API. Both are `wchar_t` on Windows, so only the Linux build catches a mix-up.
 - **`wchar_t` is 32-bit on Linux,** so a UTF-16 build there (Qt) uses `char16_t`.
@@ -196,9 +198,16 @@ Each step is its own commit on `main`, and moves and formatting changes stay sep
   - **Done:** 4c. `Unicode.c` has POSIX fallbacks: 8-bit text is taken as Latin-1, and case is compared with
     `towlower_l` in the C.UTF-8 locale, one UTF-16 unit at a time. `build.yml` has a `linux` job on ubuntu-24.04
     that builds with CMake and runs `ctest`.
-- **Next:** step 5.
-- **Step 5** flips `TSTR` to plain `"..."` along with `tchar_t = char`. The tests that spell out UTF-16 units
-  (surrogate pairs, `{ 0xd83d, 0xde00 }`) need UTF-8 versions then.
+- **Done:** step 5. Off Windows `tchar_t` is `char`, holding UTF-8, and `TCHAR_UTF8` says so. Each UTF-16 path in
+  the core has a UTF-8 one beside it, compiled in both builds, so Windows CI builds the UTF-8 code too:
+  - Reading decodes a character at a time to UTF-8 (`decode_utf8`), and edits and saves encode it back
+    (`encode_utf8`). What isn't a character becomes U+FFFD; what ASCII (Latin-1) can't hold is saved as `?`.
+  - A UTF-16 decode block never ends on a high surrogate, so a pair stays whole.
+  - Case-insensitive find converts a UTF-8 pattern to UTF-16 and searches as before.
+  - Column shortcuts for ASCII and UTF-16 files only apply to UTF-16 text.
+  - The tests are the same in both builds: `tstr(U"...")` makes text in the build's units, `encode_text` takes code
+    points, and UTF-16 file data is `char16_t`. Ubuntu CI runs them in UTF-8 and Windows CI in UTF-16.
+- **Next:** step 6, the engine on Linux.
 - Still Win32 in the engine besides the types: `VK_*` keys and
   `GetKeyState`, the `ATTR` run type from UspLib, `wsprintf` for line numbers, the filter's temp-file `HANDLE`,
   `SYSCOL` colours and `GetSysColor`, and the `TVN_*` notification structures.

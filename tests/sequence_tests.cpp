@@ -572,7 +572,7 @@ void checkpoint_preserves_unicode_indexes_and_empty_sequences()
     {
         checkpoint_store store;
         sequence         seq, copy;
-        std::string      text = encode_text(TSTR("first\r\n\x00e9\x20ac\nlast"), encoding);
+        std::string      text = encode_text(U"first\r\n\u00e9\u20ac\nlast", encoding);
         CHECK(seq.init((const seqchar *)text.data(), text.size()));
         sequence::line_scan_mode mode = encoding == NCP_UTF8      ? sequence::line_scan_utf8
                                         : encoding == NCP_UTF16   ? sequence::line_scan_utf16le

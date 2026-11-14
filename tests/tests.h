@@ -27,11 +27,12 @@
 #include "../src/TextDocument/TextDocument.h"
 #include "../src/TextDocument/Unicode.h"
 
-// Test text in the build's text unit, tchar_t
+// Test text in the build's text unit, tchar_t: UTF-16 on Windows, UTF-8
+// elsewhere. Only ASCII belongs in a TSTR; tstr() makes the rest.
 #ifdef _WIN32
 #define TSTR(s) L##s
 #else
-#define TSTR(s) u##s
+#define TSTR(s) s
 #endif
 
 typedef std::basic_string<tchar_t> tstring;
@@ -176,6 +177,13 @@ std::string utf8_text(size_t length);
 
 // Text as a file in an encoding: UTF-8 without a byte-order mark, UTF-16 or
 // UTF-32 with one
-std::string encode_text(const tchar_t *text, TEXT_ENCODING encoding);
+std::string encode_text(const char32_t *text, TEXT_ENCODING encoding);
+
+#ifdef _WIN32
+std::string encode_text(const wchar_t *text, TEXT_ENCODING encoding);
+#endif
+
+// Text in the build's text unit, from code points: tstr(U"caf\u00e9")
+tstring tstr(const char32_t *text);
 
 #endif

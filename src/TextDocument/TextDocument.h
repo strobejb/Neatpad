@@ -9,17 +9,18 @@
 #include "sequence.h"
 
 //
-//	A unit of the UTF-16 text TextDocument reads and writes. On Windows it is a
-//	wchar_t, so the view's WCHAR buffers pass straight in; elsewhere it is a
-//	char16_t, which is what Qt's QString holds.
+//	A unit of the text TextDocument reads and writes, in the toolkit's own form.
+//	On Windows it is a UTF-16 wchar_t, so the view's WCHAR buffers pass straight
+//	in; elsewhere it is a UTF-8 char, as GTK and Pango hold text.
 //
 #ifdef _WIN32
 typedef wchar_t	 tchar_t;
 #else
-typedef char16_t tchar_t;
+typedef char	 tchar_t;
 #endif
 
-static_assert(sizeof(tchar_t) == 2, "tchar_t must be a UTF-16 code unit");
+// Whether text is UTF-8 rather than UTF-16
+const bool TCHAR_UTF8 = sizeof(tchar_t) == 1;
 
 class TextDocument;
 class TextDocumentLineIndexProbe;
@@ -30,7 +31,7 @@ class SaveFile;
 //
 //	Positions are TextPos: byte offsets into the document's text. A TextCoord is
 //	a position with its line cached, as TextView lays it out. Text is decoded to
-//	UTF-16 for the view and encoded back to the file's format on edit.
+//	tchar_t units for the view and encoded back to the file's format on edit.
 //
 //	sequence stores raw bytes. It does not know about the display encoding,
 //	the caret, or the TextView line layout.
@@ -76,9 +77,10 @@ struct TextCoord : TextPos
 	TextPos line_begin;
 	TextPos line_next;
 
-	// UTF-16 code units from line_begin to the position, as the status bar's "Col"
-	// and Qt's QTextCursor::columnNumber() count them: a surrogate pair is two,
-	// a tab is one. Never between the halves of a pair.
+	// tchar_t units from line_begin to the position, as the view lays the line
+	// out. In UTF-16 a surrogate pair is two, as the status bar's "Col" and Qt's
+	// QTextCursor::columnNumber() count them; in UTF-8 a character is 1-4. A tab
+	// is one. Never part way through a character.
 	size_w  column;
 };
 
@@ -97,8 +99,8 @@ struct TextChange
 };
 
 //
-//	Reads a stretch of the document as UTF-16, front to back. Each read ends on
-//	a whole character, never between the halves of a surrogate pair. Like a
+//	Reads a stretch of the document as tchar_t text, front to back. Each read
+//	ends on a whole character, never part way through one. Like a
 //	TextCoord, only valid until the document changes.
 //
 class TextReader
@@ -107,8 +109,8 @@ public:
 	// A reader with nothing to read
 	TextReader();
 
-	// Read up to buflen units: returns how many, or 0 at the end. A surrogate pair
-	// needs room for 2.
+	// Read up to buflen units: returns how many, or 0 at the end. A character
+	// needs room for 2 units in UTF-16 (a surrogate pair), 4 in UTF-8.
 	uint32_t read(tchar_t *buf, uint32_t buflen);
 
 	TextPos pos() const;		// where the next read starts
@@ -225,8 +227,8 @@ public:
 	// then), and one the document doesn't have TDR_FAILED.
 	TEXT_RESULT coord_from_lineno(size_w lineno, TextCoord *coord);
 
-	// The coordinate at a UTF-16 column of a line. A column part way through a
-	// character (between the halves of a surrogate pair) moves back to its start.
+	// The coordinate at a column of a line. A column part way through a
+	// character moves back to its start.
 	bool  coord_from_line_pos(const TextCoord *line, size_w column, TextCoord *coord);
 	bool  previous_line_from_coord(const TextCoord *coord, uint32_t num_lines, TextCoord *line);
 	bool  next_line_from_coord(const TextCoord *coord, uint32_t num_lines, TextCoord *line);
@@ -240,9 +242,10 @@ public:
 	// is TDR_PENDING_INDEX, with an estimate - for drawing and scrolling.
 	TEXT_RESULT lineno_from_pos(TextPos pos, size_w *lineno);
 
-	// UTF-16 offset of a position from the start of the document. UTF-8 and
-	// UTF-32 count it from the index, so past the indexed part of the document
-	// it is TDR_PENDING_INDEX; ASCII and UTF-16 always answer.
+	// UTF-16 offset of a position from the start of the document, in every
+	// build, as an edit control counts it. UTF-8 and UTF-32 count it from the
+	// index, so past the indexed part of the document it is TDR_PENDING_INDEX;
+	// ASCII and UTF-16 always answer.
 	TEXT_RESULT charoffset_from_pos(TextPos pos, size_w *offset_chars);
 
 	// The coordinate of a UTF-16 offset, the other way: pending in the same
@@ -265,7 +268,7 @@ public:
         diff_erased_after  = 4
     };
 
-    // Saved-document differences on this line. Pass inserted UTF-16 column
+    // Saved-document differences on this line. Pass inserted column
     // ranges to inserted, up to columns (the view's layout limit). Deletions
     // mark the top of their surviving line, or the bottom when at a nonempty
     // EOF line's end. Unavailable recovery baselines report no changes.
@@ -340,14 +343,14 @@ private:
 	bool find_text_nocase(const tchar_t *text, uint32_t length, size_w from, size_w to, bool backwards, size_w *match, size_w *match_length);
 
 	//
-	//	UTF-16 / backing-byte conversion
+	//	tchar_t text / backing-byte conversion
 	//
 	size_w      count_chars           (size_w offset_bytes, size_w *length_chars);
 	size_w      count_code_units      (size_w offset_bytes, size_w  length_bytes);
 	TEXT_RESULT charoffset_from_bytes (size_w offset_bytes, size_w *offset_chars);
 
-	size_t utf16_to_rawdata(const tchar_t *utf16str, size_t utf16len, uint8_t *rawdata, size_t *rawlen);
-	size_t rawdata_to_utf16(uint8_t *rawdata, size_t rawlen, tchar_t *utf16str, size_t *utf16len);
+	size_t text_to_rawdata(const tchar_t *text, size_t textlen, uint8_t *rawdata, size_t *rawlen);
+	size_t rawdata_to_text(uint8_t *rawdata, size_t rawlen, tchar_t *text, size_t *textlen);
 	size_t rawdata_complete_length(uint8_t *rawdata, size_t rawlen);
 
 	bool   write_converted(SaveFile &file, TEXT_ENCODING encoding, uint32_t linebreak);

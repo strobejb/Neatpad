@@ -14,7 +14,8 @@
 //
 //	Case-insensitive search, one character at a time. Each character is
 //	decoded to UTF-16 and added to a window holding the last 'length' units,
-//	which is compared with the pattern every time it moves.
+//	which is compared with the pattern every time it moves. UTF-8 text is
+//	searched for as UTF-16 too.
 //
 //	The window is a ring buffer stored twice over, so the 'length' units
 //	starting at any slot are contiguous and nothing has to be shifted.
@@ -29,18 +30,33 @@ bool TextDocument::find_text_nocase(const tchar_t *text, uint32_t length, size_w
 	size_w    bytes;
 
 	uint32_t  ch32;
-	tchar_t  units[2];
+	UTF16     units[2];
 	size_t    unitCount;
 	
 	uint32_t  slot = 0;
 	uint32_t  used = 0;
 	bool   matched = false;
 
-	tchar_t  *window = 0;
+	UTF16    *window = 0;
 	size_w *edges  = 0;
+
+	const UTF16       *pattern = (const UTF16 *)text;
+	std::vector<UTF16> pattern16;
 
 	if(text == 0 || length == 0 || match == 0 || match_length == 0)
 		return false;
+
+	// UTF-8 is never fewer bytes than its UTF-16 has units
+	if(TCHAR_UTF8)
+	{
+		size_t len16 = length;
+
+		pattern16.resize(length);
+		utf8_to_utf16((const UTF8 *)text, length, pattern16.data(), &len16);
+
+		pattern = pattern16.data();
+		length  = (uint32_t)len16;
+	}
 
 	from = min_of(from, docLength);
 	to   = min_of(to, docLength);
@@ -49,7 +65,7 @@ bool TextDocument::find_text_nocase(const tchar_t *text, uint32_t length, size_w
 	if(from == to || length > INT_MAX)
 		return false;
 
-	window = new tchar_t[length * 2];
+	window = new UTF16[length * 2];
 	edges  = new size_w[length];
 
 	if(window == 0 || edges == 0)
@@ -70,7 +86,7 @@ bool TextDocument::find_text_nocase(const tchar_t *text, uint32_t length, size_w
 				break;
 
 			unitCount = 2;
-			utf32_to_utf16(&ch32, 1, (UTF16 *)units, &unitCount);
+			utf32_to_utf16(&ch32, 1, units, &unitCount);
 
 			// add to the front of the window, last unit first
 			for(size_t i = unitCount; i > 0 && !matched; i--)
@@ -86,7 +102,7 @@ bool TextDocument::find_text_nocase(const tchar_t *text, uint32_t length, size_w
 				edges[slot]  = offset;
 				used         = min_of(used + 1, length);
 
-				if(used == length && utf16_equal_nocase((const UTF16 *)(window + slot), (const UTF16 *)text, length))
+				if(used == length && utf16_equal_nocase(window + slot, pattern, length))
 				{
 					lastSlot = slot == 0 ? length - 1 : slot - 1;
 
@@ -113,7 +129,7 @@ bool TextDocument::find_text_nocase(const tchar_t *text, uint32_t length, size_w
 			}
 
 			unitCount = 2;
-			utf32_to_utf16(&ch32, 1, (UTF16 *)units, &unitCount);
+			utf32_to_utf16(&ch32, 1, units, &unitCount);
 
 			// add to the back of the window, leaving slot at the oldest unit
 			for(size_t i = 0; i < unitCount && !matched; i++)
@@ -127,7 +143,7 @@ bool TextDocument::find_text_nocase(const tchar_t *text, uint32_t length, size_w
 
 				used = min_of(used + 1, length);
 
-				if(used == length && utf16_equal_nocase((const UTF16 *)(window + slot), (const UTF16 *)text, length))
+				if(used == length && utf16_equal_nocase(window + slot, pattern, length))
 				{
 					*match        = edges[slot];
 					*match_length = offset + bytes - *match;
@@ -214,7 +230,7 @@ bool TextDocument::find_text(const tchar_t *text, uint32_t length, TextPos from_
 		return false;
 
 	rawLength = rawCapacity;
-	copied = utf16_to_rawdata(text, length, pattern, &rawLength);
+	copied = text_to_rawdata(text, length, pattern, &rawLength);
 
 	if(copied != length || rawLength == 0 || rawLength > (size_t)MAX_SEQUENCE_LENGTH)
 	{
