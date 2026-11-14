@@ -191,8 +191,8 @@ Each step is its own commit on `main`, and moves and formatting changes stay sep
     `TSTR("...")` literals and `tstring`, and paths are `seqfilechar`; neither `TCHAR` nor `wchar_t` is left. Files
     are made, read and deleted with `std::filesystem` and stdio, so `SequenceTests.vcxproj` builds as C++17.
     Windows-only, behind `_WIN32`: the share-mode tests (locked files, a writer appending, growth), read-only
-    attributes, the NTFS stream, the ANSI code page and the creation-time check. The Windows build of this is not
-    yet checked.
+    attributes, the NTFS stream, the ANSI code page and the creation-time check. Windows CI builds it and
+    `SequenceTests.exe` passes.
   - **Partly done:** 4c. `Unicode.c` has POSIX fallbacks: 8-bit text is taken as Latin-1, and case is compared
     with `towlower_l` in the C.UTF-8 locale, one UTF-16 unit at a time. **Next:** the Ubuntu CI job.
 - **Step 5** flips `TSTR` to plain `"..."` along with `tchar_t = char`. The tests that spell out UTF-16 units
