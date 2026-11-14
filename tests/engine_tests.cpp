@@ -433,58 +433,58 @@ size_w columns(const char32_t *text)
 
 void engine_arrows_step_over_whole_characters()
 {
-    EngineView v(U"aé\U0001F600b");
+    EngineView v(U"a\u00e9\U0001F600b");
 
     CHECK(v.column() == 0);
 
     v.key(TVK_RIGHT);
     CHECK(v.column() == columns(U"a"));
     v.key(TVK_RIGHT);
-    CHECK(v.column() == columns(U"aé"));
+    CHECK(v.column() == columns(U"a\u00e9"));
     v.key(TVK_RIGHT);
-    CHECK(v.column() == columns(U"aé\U0001F600"));
+    CHECK(v.column() == columns(U"a\u00e9\U0001F600"));
     v.key(TVK_RIGHT);
-    CHECK(v.column() == columns(U"aé\U0001F600b"));
+    CHECK(v.column() == columns(U"a\u00e9\U0001F600b"));
 
     v.key(TVK_LEFT);
-    CHECK(v.column() == columns(U"aé\U0001F600"));
+    CHECK(v.column() == columns(U"a\u00e9\U0001F600"));
     v.key(TVK_LEFT);
-    CHECK(v.column() == columns(U"aé"));
+    CHECK(v.column() == columns(U"a\u00e9"));
 
     v.key(TVK_HOME);
     CHECK(v.column() == 0);
     v.key(TVK_END);
-    CHECK(v.column() == columns(U"aé\U0001F600b"));
+    CHECK(v.column() == columns(U"a\u00e9\U0001F600b"));
 }
 
 void engine_word_moves_stop_between_characters()
 {
-    EngineView v(U"été café x");
+    EngineView v(U"\u00e9t\u00e9 caf\u00e9 x");
 
     v.key(TVK_RIGHT, TextViewHost::TVMOD_CTRL);
-    CHECK(v.column() == columns(U"été "));
+    CHECK(v.column() == columns(U"\u00e9t\u00e9 "));
     v.key(TVK_RIGHT, TextViewHost::TVMOD_CTRL);
-    CHECK(v.column() == columns(U"été café "));
+    CHECK(v.column() == columns(U"\u00e9t\u00e9 caf\u00e9 "));
     v.key(TVK_LEFT, TextViewHost::TVMOD_CTRL);
-    CHECK(v.column() == columns(U"été "));
+    CHECK(v.column() == columns(U"\u00e9t\u00e9 "));
     v.key(TVK_LEFT, TextViewHost::TVMOD_CTRL);
     CHECK(v.column() == 0);
 }
 
 void engine_deletes_whole_characters()
 {
-    EngineView v(U"aé\U0001F600b");
+    EngineView v(U"a\u00e9\U0001F600b");
 
     // backspace from the end: b, then the face, as a whole
     v.key(TVK_END);
     v.key(TVK_BACK);
     v.key(TVK_BACK);
-    CHECK(v.text() == tstr(U"aé"));
+    CHECK(v.text() == tstr(U"a\u00e9"));
 
     // delete from the start: a, then the e
     v.key(TVK_HOME);
     v.key(TVK_DELETE);
-    CHECK(v.text() == tstr(U"é"));
+    CHECK(v.text() == tstr(U"\u00e9"));
     v.key(TVK_DELETE);
     CHECK(v.text() == tstr(U""));
 }
@@ -492,52 +492,52 @@ void engine_deletes_whole_characters()
 void engine_selects_and_copies_whole_characters()
 {
     // UTF-16 text decodes to more UTF-8 units than its bytes: the copy has room
-    EngineView v(U"中中\U0001F600", NCP_UTF16);
+    EngineView v(U"\u4e2d\u4e2d\U0001F600", NCP_UTF16);
 
     v.key(TVK_RIGHT, TextViewHost::TVMOD_SHIFT);
     CHECK(v.view->SelectionSize() == 2);
 
     v.view->SelectAll();
     CHECK(v.view->OnCopy());
-    CHECK(v.host.clipboard == tstr(U"中中\U0001F600"));
+    CHECK(v.host.clipboard == tstr(U"\u4e2d\u4e2d\U0001F600"));
 
     // and pasted at the end, it's all there twice
     v.key(TVK_END);
     CHECK(v.view->OnPaste());
-    CHECK(v.text() == tstr(U"中中\U0001F600中中\U0001F600"));
+    CHECK(v.text() == tstr(U"\u4e2d\u4e2d\U0001F600\u4e2d\u4e2d\U0001F600"));
 }
 
 void engine_overwrites_a_character_with_a_character()
 {
     EngineView v(U"abc");
-    tstring    e_acute = tstr(U"é");
+    tstring    e_acute = tstr(U"\u00e9");
     tstring    face    = tstr(U"\U0001F600");
 
     v.view->SetEditMode(MODE_OVERWRITE);
 
     // typed in place of one character each, however many units they take
     v.view->OnText(e_acute.c_str(), (uint32_t)e_acute.size());
-    CHECK(v.text() == tstr(U"ébc"));
+    CHECK(v.text() == tstr(U"\u00e9bc"));
     v.view->OnText(face.c_str(), (uint32_t)face.size());
-    CHECK(v.text() == tstr(U"é\U0001F600c"));
-    CHECK(v.column() == columns(U"é\U0001F600"));
+    CHECK(v.text() == tstr(U"\u00e9\U0001F600c"));
+    CHECK(v.column() == columns(U"\u00e9\U0001F600"));
 }
 
 void engine_tab_spaces_count_characters()
 {
-    EngineView v(U"éé");
+    EngineView v(U"\u00e9\u00e9");
 
     // two characters in, a tab stop every 4: two spaces reach it
     v.view->SetStyle(TXS_INSERTSPACES, TXS_INSERTSPACES);
     v.key(TVK_END);
     v.view->OnText(TSTR("\t"), 1);
-    CHECK(v.text() == tstr(U"éé  "));
+    CHECK(v.text() == tstr(U"\u00e9\u00e9  "));
 }
 
 void engine_types_and_tells_its_host()
 {
     EngineView v(U"");
-    tstring    text = tstr(U"café");
+    tstring    text = tstr(U"caf\u00e9");
 
     v.view->OnText(text.c_str(), (uint32_t)text.size());
     CHECK(v.text() == text);
@@ -548,7 +548,7 @@ void engine_types_and_tells_its_host()
 
 void engine_paints_every_line()
 {
-    EngineView v(U"one\r\né\t\U0001F600\r\n中中");
+    EngineView v(U"one\r\n\u00e9\t\U0001F600\r\n\u4e2d\u4e2d");
     FakeCanvas canvas;
     TextRect   rect = {0, 0, 640, 480};
 
