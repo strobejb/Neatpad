@@ -154,7 +154,7 @@
     <ClCompile Include="..\src\TextDocument\Unicode.c" />
     <ClCompile Include="..\src\TextView\TextView.cpp" />
     <ClCompile Include="..\src\TextView\TextViewClipboard.cpp" />
-    <ClCompile Include="..\src\TextView\TextViewEdit.cpp" />
+    <ClCompile Include="..\src\TextView\win32\TextViewEdit.cpp" />
     <ClCompile Include="..\src\TextView\TextViewFilter.cpp" />
     <ClCompile Include="..\src\TextView\TextViewFile.cpp" />
     <ClCompile Include="..\src\TextView\TextViewRecovery.cpp" />

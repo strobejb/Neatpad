@@ -123,7 +123,9 @@ public:
 	BOOL		CanUndo();
 	BOOL		CanRedo();
 	TextDocument *FileDoc() const;
-	LRESULT		EditMessage(UINT msg, WPARAM wParam, LPARAM lParam);
+#ifdef _WIN32
+	LRESULT		EditMessage(UINT msg, WPARAM wParam, LPARAM lParam);	// win32/TextViewEdit.cpp
+#endif
 	LONG		OpenFile(TCHAR *szFileName, int nEncoding, bool fReadOnly);	// -1 for its byte-order mark to say
     BOOL        SaveState(TEXTVIEWRECOVERY *state);
     BOOL        LoadState(TEXTVIEWRECOVERY *state);
@@ -168,7 +170,7 @@ private:
 	VOID		NotifyIndexChange();
 
 	//
-	//	Win32 EDIT control messages (TextViewEdit.cpp). They must answer, so
+	//	Lookups for the EDIT control messages (TextViewFile.cpp). They must answer, so
 	//	their lookups index as far as they need.
 	//
 	TEXT_RESULT	IndexUntilKnown(const std::function<TEXT_RESULT()> &lookup);

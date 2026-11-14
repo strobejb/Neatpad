@@ -176,8 +176,11 @@ Each step is its own commit on `main`, and moves and formatting changes stay sep
   - **Done:** 3.4c. `TextViewWin32` holds the fonts (`USPFONT`) and the image list, makes the layouts, and handles
     WM_PAINT and WM_PRINTCLIENT with a `Win32Canvas`. The engine reads font metrics, text width and image size from
     the host, and calls `FontsChanged()` to measure again. It holds no `HWND` now.
-  - **Next:** 3.4d.
-    The `EM_*` edit-control messages (`TextViewEdit.cpp`) move to `win32/`.
+  - **Done:** 3.4d. The `EM_*` edit-control messages are in `win32/TextViewEdit.cpp`, still a `TextView` member,
+    declared only on `_WIN32`. The index-as-needed lookups they use stay in the engine, in `TextViewFile.cpp`.
+- **Next:** step 3.5, portable types in the engine. Still Win32 in the engine besides the types: `VK_*` keys and
+  `GetKeyState`, the `ATTR` run type from UspLib, `wsprintf` for line numbers, the filter's temp-file `HANDLE`,
+  `SYSCOL` colours and `GetSysColor`, and the `TVN_*` notification structures.
 
 ## Open decisions
 

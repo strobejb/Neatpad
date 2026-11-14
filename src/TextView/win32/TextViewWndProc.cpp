@@ -161,7 +161,7 @@ LRESULT TextViewWin32::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
     case WM_CLEAR:
         return view->OnClear();
 
-    // the Win32 EDIT control messages (TextViewEdit.cpp)
+    // the Win32 EDIT control messages (win32/TextViewEdit.cpp)
     case WM_GETTEXT:
     case WM_GETTEXTLENGTH:
     case EM_GETLINE:

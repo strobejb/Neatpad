@@ -8,8 +8,8 @@
 //	NOTES:		www.catch22.net
 //
 //				An edit control always answers, so these messages never wait for
-//				background indexing: a lookup past the indexed part of the
-//				document indexes as far as it needs, there and then.
+//				background indexing: their lookups (TextViewFile.cpp) index as far
+//				as they need, there and then.
 //
 
 #define STRICT
@@ -17,11 +17,8 @@
 
 #include <windows.h>
 #include <tchar.h>
-#include "TextView.h"
-#include "TextViewInternal.h"
-
-// How much more of the document to index at a time, while a lookup waits
-static const size_w EDIT_INDEX_CHUNK = 0x1000000;
+#include "../TextView.h"
+#include "../TextViewInternal.h"
 
 //
 //	An edit message's offset or line number. They're 32-bit, so one past that
@@ -38,53 +35,6 @@ static LRESULT EditResult(size_w value)
 static size_w BreakChars(uint32_t linebreak)
 {
 	return linebreak == TXL_CRLF ? 2 : linebreak != 0 ? 1 : 0;
-}
-
-//
-//	Run a lookup, indexing more of the document while it's pending
-//
-TEXT_RESULT TextView::IndexUntilKnown(const std::function<TEXT_RESULT()> &lookup)
-{
-	size_w      before = m_pTextDoc->indexed_length();
-	TEXT_RESULT result;
-	bool        more = true;
-
-	// until the lookup can answer, or there's no more to index
-	while((result = lookup()) == TDR_PENDING_INDEX && more)
-		more = m_pTextDoc->index_next(EDIT_INDEX_CHUNK);
-
-	// a line lookup a little past the indexed part indexes there itself, too
-	if(m_pTextDoc->indexed_length() != before)
-		IndexChanged();
-
-	return result;
-}
-
-bool TextView::CharFromPos(const TextPos &pos, size_w *chars)
-{
-	return IndexUntilKnown([&] { return m_pTextDoc->charoffset_from_pos(pos, chars); }) == TDR_OK;
-}
-
-//
-//	A character offset past the end of the text is its end, as an edit
-//	control has it
-//
-bool TextView::PosFromChar(size_w chars, TextCoord *coord)
-{
-	if(IndexUntilKnown([&] { return m_pTextDoc->coord_from_charoffset(chars, coord); }) == TDR_OK)
-		return true;
-
-	return m_pTextDoc->coord_from_document_end(coord);
-}
-
-bool TextView::LineFromPos(const TextPos &pos, size_w *lineno)
-{
-	return IndexUntilKnown([&] { return m_pTextDoc->lineno_from_pos(pos, lineno); }) == TDR_OK;
-}
-
-bool TextView::LineStart(size_w lineno, TextCoord *coord)
-{
-	return IndexUntilKnown([&] { return m_pTextDoc->coord_from_lineno(lineno, coord); }) == TDR_OK;
 }
 
 //
