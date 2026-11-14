@@ -10,6 +10,8 @@
 #include <windows.h>
 
 #include "TextViewWin32.h"
+#include "UspTextLayout.h"
+#include "Win32Canvas.h"
 #include "racursor.h"
 #include "../TextViewInternal.h"
 
@@ -90,16 +92,132 @@ static uint64_t GetScrollPos64(HWND hwnd, int nBar, UINT fMask, uint64_t nMax64)
 
 TextViewWin32::TextViewWin32(HWND hwnd)
     : m_hWnd(hwnd), m_pView(0), m_hTheme(OpenThemeData(hwnd, L"edit")), m_hUserMenu(0),
-      m_hMarginCursor(CreateCursor(GetModuleHandle(0), 21, 5, 32, 32, XORMask, ANDMask))
+      m_hMarginCursor(CreateCursor(GetModuleHandle(0), 21, 5, 32, 32, XORMask, ANDMask)), m_nNumFonts(1),
+      m_hImageList(0)
 {
-    m_pView = new TextView(hwnd, this);
+    memset(m_fonts, 0, sizeof(m_fonts));
+
+    // the default font, which the view measures itself in as it starts
+    SetFont(0, (HFONT)GetStockObject(ANSI_FIXED_FONT));
+
+    m_pView = new TextView(this);
 }
 
 TextViewWin32::~TextViewWin32()
 {
     delete m_pView;
+
+    for (int i = 0; i < m_nNumFonts; i++)
+    {
+        UspFreeFont(&m_fonts[i]);
+    }
+
     DestroyCursor(m_hMarginCursor);
     CloseThemeData(m_hTheme);
+}
+
+//
+//	Painting procedure for TextView objects
+//
+LONG TextViewWin32::OnPaint()
+{
+    PAINTSTRUCT ps;
+
+    BeginPaint(m_hWnd, &ps);
+
+    Win32Canvas canvas(ps.hdc, MainFont(), m_hImageList);
+
+    m_pView->Paint(canvas, &ps.rcPaint);
+
+    EndPaint(m_hWnd, &ps);
+
+    return 0;
+}
+
+//
+//	WM_PRINTCLIENT: draw the whole client area into hdc, as WM_PAINT draws it
+//	when the whole window needs updating
+//
+LONG TextViewWin32::OnPrintClient(HDC hdc)
+{
+    RECT rect;
+
+    GetClientRect(m_hWnd, &rect);
+
+    Win32Canvas canvas(hdc, MainFont(), m_hImageList);
+
+    m_pView->Paint(canvas, &rect);
+
+    return 0;
+}
+
+//
+//	Set one of the fonts
+//
+void TextViewWin32::SetFont(int idx, HFONT hFont)
+{
+    // need a DC to query font data
+    HDC hdc = GetDC(m_hWnd);
+
+    // Initialize the font for USPLIB
+    UspFreeFont(&m_fonts[idx]);
+    UspInitFont(&m_fonts[idx], hdc, hFont);
+
+    ReleaseDC(m_hWnd, hdc);
+}
+
+//
+//	Add a secondary font
+//
+LONG TextViewWin32::AddFont(HFONT hFont)
+{
+    int idx;
+
+    if (m_nNumFonts >= MAX_FONTS)
+    {
+        return -1;
+    }
+
+    idx = m_nNumFonts++;
+    SetFont(idx, hFont);
+    m_pView->FontsChanged();
+
+    return idx;
+}
+
+LONG TextViewWin32::AddFontFallback(int slot, HFONT hFont)
+{
+    HDC  hdc;
+    LONG result;
+
+    if (slot < 0 || slot >= m_nNumFonts)
+    {
+        return FALSE;
+    }
+
+    hdc    = GetDC(m_hWnd);
+    result = UspAddFontFallback(&m_fonts[slot], hdc, hFont);
+    ReleaseDC(m_hWnd, hdc);
+
+    if (result)
+    {
+        m_pView->FontsChanged();
+    }
+
+    return result;
+}
+
+LONG TextViewWin32::ClearFontFallbacks(int slot)
+{
+    if (slot < 0 || slot >= m_nNumFonts)
+    {
+        return FALSE;
+    }
+
+    UspClearFontFallbacks(&m_fonts[slot]);
+    m_pView->FontsChanged();
+
+    return TRUE;
 }
 
 void TextViewWin32::Invalidate()
@@ -271,6 +389,46 @@ int TextViewWin32::WheelScrollLines()
 
     SystemParametersInfo(SPI_GETWHEELSCROLLLINES, 0, &lines, 0);
     return (int)lines;
+}
+
+int TextViewWin32::FontCount()
+{
+    return m_nNumFonts;
+}
+
+void TextViewWin32::GetFontMetrics(int font, FontMetrics *metrics)
+{
+    // always include a font's external-leading
+    metrics->height       = m_fonts[font].tm.tmHeight + m_fonts[font].tm.tmExternalLeading;
+    metrics->ascent       = m_fonts[font].tm.tmAscent;
+    metrics->averageWidth = m_fonts[font].tm.tmAveCharWidth;
+}
+
+int TextViewWin32::TextWidth(const tchar_t *text, int length)
+{
+    HDC     hdc      = GetDC(m_hWnd);
+    HGDIOBJ hOldFont = SelectObject(hdc, MainFont());
+    SIZE    sz       = {0, 0};
+
+    GetTextExtentPoint32W(hdc, text, length, &sz);
+
+    SelectObject(hdc, hOldFont);
+    ReleaseDC(m_hWnd, hdc);
+
+    return sz.cx;
+}
+
+bool TextViewWin32::MarginImageSize(int *width, int *height)
+{
+    *width  = 0;
+    *height = 0;
+
+    return m_hImageList && ImageList_GetIconSize(m_hImageList, width, height);
+}
+
+TextLayout *TextViewWin32::CreateLayout()
+{
+    return new UspTextLayout(m_hWnd, m_fonts);
 }
 
 bool TextViewWin32::ReadClipboard(const std::function<void(const tchar_t *text, size_t length)> &use)

@@ -18,7 +18,6 @@
 
 #include "TextView.h"
 #include "TextViewInternal.h"
-#include "win32/UspTextLayout.h"
 
 
 #if !defined(UNICODE)
@@ -29,13 +28,11 @@
 //	Constructor for TextView class. Its host owns it, and it calls the host
 //	from here on.
 //
-TextView::TextView(HWND hwnd, TextViewHost *host)
+TextView::TextView(TextViewHost *host)
 {
-	m_hWnd  = hwnd;
 	m_pHost = host;
 
 	// Font-related data
-	m_nNumFonts		= 1;
 	m_nHeightAbove	= 0;
 	m_nHeightBelow	= 0;
 	
@@ -63,7 +60,7 @@ TextView::TextView(HWND hwnd, TextViewHost *host)
 	{
 		m_lineCache[i].usage   = 0;
 		m_lineCache[i].line_begin = TextPos();
-		m_lineCache[i].layout  = CreateLayout();
+		m_lineCache[i].layout  = m_pHost->CreateLayout();
 	}
 
 	m_nCaretWidth = m_pHost->CaretWidth();
@@ -100,7 +97,6 @@ TextView::TextView(HWND hwnd, TextViewHost *host)
 	m_fIndexing			= false;
 	m_nIndexPercent		= 100;
 	m_fHideCaret		= false;
-	m_hImageList		= 0;
 	
 	m_nSelectionType	= SEL_NONE;
 
@@ -117,10 +113,8 @@ TextView::TextView(HWND hwnd, TextViewHost *host)
 	//	start calling member-functions
 	//
 
-	memset(m_uspFontList, 0, sizeof(m_uspFontList));
-
-	// Set the default font
-	OnSetFont((HFONT)GetStockObject(ANSI_FIXED_FONT));
+	// Measure the host's fonts
+	FontsChanged();
 
 	UpdateMetrics();
 	UpdateMarginWidth();
@@ -136,22 +130,10 @@ TextView::~TextView()
 	if(m_pTextDoc)
 		delete m_pTextDoc;
 
-	for(int i = 0; i < m_nNumFonts; i++)
-		UspFreeFont(&m_uspFontList[i]);
-
 	for(int i = 0; i < LINE_CACHE_SIZE; i++)
 		delete m_lineCache[i].layout;
 
 	delete[] m_lineCache;
-}
-
-//
-//	A layout for a line, in the view's fonts. The host will make these once it
-//	holds the fonts.
-//
-TextLayout *TextView::CreateLayout()
-{
-	return new UspTextLayout(m_hWnd, m_uspFontList);
 }
 
 LRESULT TextView::NotifyParent(UINT nNotifyCode, NMHDR *optional)
@@ -197,7 +179,7 @@ VOID TextView::UpdateMetrics()
 	RepositionCaret();
 }
 
-LONG TextView::OnSetFocus(HWND hwndOld)
+LONG TextView::OnSetFocus()
 {
 	m_pHost->CreateCaret(m_nCaretWidth, m_nLineHeight);
 	RepositionCaret();
@@ -207,7 +189,7 @@ LONG TextView::OnSetFocus(HWND hwndOld)
 	return 0;
 }
 
-LONG TextView::OnKillFocus(HWND hwndNew)
+LONG TextView::OnKillFocus()
 {
 	// if we are making a selection when we lost focus then
 	// stop the selection logic
@@ -263,12 +245,6 @@ int TextView::SetCaretWidth(int nWidth)
 	m_nCaretWidth  = nWidth;
 
 	return oldwidth;
-}
-
-BOOL TextView::SetImageList(HIMAGELIST hImgList)
-{
-	m_hImageList = hImgList;
-	return TRUE;
 }
 
 LONG TextView::SetLongLine(int nLength)

@@ -9,6 +9,8 @@
 
 #include "../TextDocument/TextDocument.h" // tchar_t
 
+class TextLayout;
+
 //
 //	TextViewHost - what the TextView engine asks of the window it lives in.
 //	The engine reaches its platform through this: redraws, scrolling, the
@@ -97,6 +99,29 @@ class TextViewHost
     // how many lines one notch of the mouse wheel scrolls
     virtual int CaretWidth()       = 0;
     virtual int WheelScrollLines() = 0;
+
+    //
+    //	Fonts. The host holds them, and a layout's runs choose one by index.
+    //	Font 0 is the main font, which the margin uses too.
+    //
+    struct FontMetrics
+    {
+        int height; // a line of it, with its external leading
+        int ascent;
+        int averageWidth;
+    };
+
+    virtual int  FontCount()                                    = 0;
+    virtual void GetFontMetrics(int font, FontMetrics *metrics) = 0;
+
+    // How wide text is in the main font
+    virtual int TextWidth(const tchar_t *text, int length) = 0;
+
+    // The size of the images the margin shows, or false if it has none
+    virtual bool MarginImageSize(int *width, int *height) = 0;
+
+    // A new layout, for a line in the host's fonts
+    virtual TextLayout *CreateLayout() = 0;
 
     //
     //	The clipboard, as text in the build's text units, without copying it

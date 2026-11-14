@@ -4,9 +4,11 @@
 #define NEATPAD_TEXTVIEW_WIN32_INCLUDED
 
 #include <windows.h>
+#include <commctrl.h>
 #include <uxtheme.h>
 
 #include "../TextViewHost.h"
+#include "UspLib/usplib.h"
 
 class TextView;
 
@@ -26,6 +28,17 @@ class TextViewWin32 : public TextViewHost
     TextView *View() const
     {
         return m_pView;
+    }
+
+    // What the margin is drawn with
+    HFONT MainFont() const
+    {
+        return m_fonts[0].hFont;
+    }
+
+    HIMAGELIST Images() const
+    {
+        return m_hImageList;
     }
 
     void Invalidate() override;
@@ -57,12 +70,24 @@ class TextViewWin32 : public TextViewHost
     int  CaretWidth() override;
     int  WheelScrollLines() override;
 
+    int         FontCount() override;
+    void        GetFontMetrics(int font, FontMetrics *metrics) override;
+    int         TextWidth(const tchar_t *text, int length) override;
+    bool        MarginImageSize(int *width, int *height) override;
+    TextLayout *CreateLayout() override;
+
     bool ReadClipboard(const std::function<void(const tchar_t *text, size_t length)> &use) override;
     bool WriteClipboard(size_t length, const std::function<size_t(tchar_t *buffer)> &fill) override;
 
     intptr_t Notify(unsigned code, void *info) override;
 
   private:
+    LONG  OnPaint();
+    LONG  OnPrintClient(HDC hdc);
+    void  SetFont(int idx, HFONT hFont);
+    LONG  AddFont(HFONT hFont);
+    LONG  AddFontFallback(int slot, HFONT hFont);
+    LONG  ClearFontFallbacks(int slot);
     LONG  OnNcPaint(HRGN hrgnUpdate);
     LONG  OnContextMenu(HWND hwndParam, int x, int y);
     HMENU CreateContextMenu();
@@ -72,6 +97,13 @@ class TextViewWin32 : public TextViewHost
     HTHEME    m_hTheme;
     HMENU     m_hUserMenu;     // the context menu the parent gave, if any
     HCURSOR   m_hMarginCursor; // the margin's right-pointing arrow
+
+    // fonts, the first the main one, and the margin's images
+    static const int MAX_FONTS = 32;
+
+    USPFONT    m_fonts[MAX_FONTS];
+    int        m_nNumFonts;
+    HIMAGELIST m_hImageList;
 };
 
 #endif

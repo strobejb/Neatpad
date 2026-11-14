@@ -55,14 +55,16 @@ LRESULT TextViewWin32::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
         return OnNcPaint((HRGN)wParam);
 
     case WM_PAINT:
-        return view->OnPaint();
+        return OnPaint();
 
     case WM_PRINTCLIENT:
-        return view->OnPrintClient((HDC)wParam);
+        return OnPrintClient((HDC)wParam);
 
-    // Set a new font
+    // Set a new font: the default font is always #0
     case WM_SETFONT:
-        return view->OnSetFont((HFONT)wParam);
+        SetFont(0, (HFONT)wParam);
+        view->FontsChanged();
+        return 0;
 
     case WM_SIZE:
         return view->OnSize((UINT)wParam, LOWORD(lParam), HIWORD(lParam));
@@ -91,10 +93,10 @@ LRESULT TextViewWin32::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
         return view->OnMouseWheel((short)HIWORD(wParam));
 
     case WM_SETFOCUS:
-        return view->OnSetFocus((HWND)wParam);
+        return view->OnSetFocus();
 
     case WM_KILLFOCUS:
-        return view->OnKillFocus((HWND)wParam);
+        return view->OnKillFocus();
 
     // make sure we get arrow-keys, enter, tab, etc when hosted inside a dialog
     case WM_GETDLGCODE:
@@ -206,13 +208,13 @@ LRESULT TextViewWin32::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
         return view->SetLineSpacing((int)wParam, (int)lParam);
 
     case TXM_ADDFONT:
-        return view->AddFont((HFONT)wParam);
+        return AddFont((HFONT)wParam);
 
     case TXM_ADDFONTFALLBACK:
-        return view->AddFontFallback((int)wParam, (HFONT)lParam);
+        return AddFontFallback((int)wParam, (HFONT)lParam);
 
     case TXM_CLEARFONTFALLBACKS:
-        return view->ClearFontFallbacks((int)wParam);
+        return ClearFontFallbacks((int)wParam);
 
     case TXM_SETCOLOR:
         return view->SetColour((UINT)wParam, (COLORREF)lParam);
@@ -224,7 +226,8 @@ LRESULT TextViewWin32::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
         return view->SetCaretWidth((int)wParam);
 
     case TXM_SETIMAGELIST:
-        return view->SetImageList((HIMAGELIST)wParam);
+        m_hImageList = (HIMAGELIST)wParam;
+        return TRUE;
 
     case TXM_SETLONGLINE:
         return view->SetLongLine((int)lParam);

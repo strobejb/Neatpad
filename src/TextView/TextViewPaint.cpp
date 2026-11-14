@@ -15,7 +15,6 @@
 #include "TextView.h"
 #include "TextViewInternal.h"
 #include "../TextDocument/Unicode.h"
-#include "win32/Win32Canvas.h"
 
 extern "C" COLORREF MixRGB(COLORREF, COLORREF);
 
@@ -165,61 +164,6 @@ void TextView::ResetLineCache()
 }
 
 //
-//	Painting procedure for TextView objects
-//
-LONG TextView::OnPaint()
-{
-	PAINTSTRUCT ps;
-	HRGN		hrgnUpdate;
-
-	//
-	// get update region *before* BeginPaint validates the window
-	//
-	hrgnUpdate = CreateRectRgn(0,0,1,1);
-	GetUpdateRgn(m_hWnd, hrgnUpdate, FALSE);
-
-	BeginPaint(m_hWnd, &ps);
-
-	TextCanvas *canvas = CreateCanvas(ps.hdc);
-
-	Paint(*canvas, &ps.rcPaint);
-	delete canvas;
-
-	EndPaint(m_hWnd, &ps);
-
-	DeleteObject(hrgnUpdate);
-
-	return 0;
-}
-
-//
-//	WM_PRINTCLIENT: draw the whole client area into hdc, as WM_PAINT draws it
-//	when the whole window needs updating
-//
-LONG TextView::OnPrintClient(HDC hdc)
-{
-	RECT rect;
-
-	ClientRect(&rect);
-
-	TextCanvas *canvas = CreateCanvas(hdc);
-
-	Paint(*canvas, &rect);
-	delete canvas;
-
-	return 0;
-}
-
-//
-//	A canvas over hdc, with the view's main font for line numbers. The host
-//	will make these once it holds the fonts.
-//
-TextCanvas *TextView::CreateCanvas(HDC hdc)
-{
-	return new Win32Canvas(hdc, m_uspFontList[0].hFont, m_hImageList);
-}
-
-//
 //	Draw the rows that rcPaint covers, one line at a time. A row is drawn
 //	whole, even when only part of it needs it.
 //
@@ -310,8 +254,7 @@ int TextView::LeftMarginWidth()
 	int cy		= 0;
 
 	// get dimensions of imagelist icons
-	if(m_hImageList)
-		ImageList_GetIconSize(m_hImageList, &cx, &cy);
+	m_pHost->MarginImageSize(&cx, &cy);
 
 	if(CheckStyle(TXS_LINENUMBERS))
 	{		
@@ -346,16 +289,10 @@ int TextView::LeftMarginWidth()
 //
 void TextView::UpdateMarginWidth()
 {
-	HDC		hdc		 = GetDC(m_hWnd);
-	HANDLE	hOldFont = SelectObject(hdc, m_uspFontList[0].hFont);
-
 	TCHAR	buf[32];
     int     len = wsprintf(buf, LINENO_FMT, (unsigned __int64)FileDoc()->linecount());
 
-    m_nLinenoWidth = TextWidth(hdc, buf, len);
-
-	SelectObject(hdc, hOldFont);
-	ReleaseDC(m_hWnd, hdc);
+    m_nLinenoWidth = m_pHost->TextWidth(buf, len);
 }
 
 // Filtered text is a UTF-16 copy. Compare its source line instead, so both
@@ -444,10 +381,11 @@ int TextView::PaintMargin(TextCanvas &canvas, TextCoord *line, int xpos, int ypo
 
 	//int nummaxwidth = 60;
 
-	if(m_hImageList && selwidth > 0)
+	bool	images = m_pHost->MarginImageSize(&imgWidth, &imgHeight);
+
+	if(images && selwidth > 0)
 	{
 		// selection margin must include imagelists
-		ImageList_GetIconSize(m_hImageList, &imgWidth, &imgHeight);
 
 		imgX = xpos + (selwidth		 - imgWidth) / 2;
 		imgY = ypos + (m_nLineHeight - imgHeight) / 2;
@@ -476,7 +414,7 @@ int TextView::PaintMargin(TextCanvas &canvas, TextCoord *line, int xpos, int ypo
 
         rect.right = rect.left + m_nLinenoWidth;
 
-        if (CheckStyle(TXS_SELMARGIN) && m_hImageList)
+        if (CheckStyle(TXS_SELMARGIN) && images)
         {
             imgX        = rect.right;
             rect.right += imgWidth + 4;
@@ -487,7 +425,7 @@ int TextView::PaintMargin(TextCanvas &canvas, TextCoord *line, int xpos, int ypo
 		}
 		
 		canvas.DrawMarginText(rect.left + m_nLinenoWidth - width,
-							  rect.top  + NeatTextYOffset(&m_uspFontList[0]),
+							  rect.top  + NeatTextYOffset(0),
 							  ach,
 							  len,
 							  GetColour(TXC_LINENUMBERTEXT),
@@ -505,7 +443,7 @@ int TextView::PaintMargin(TextCanvas &canvas, TextCoord *line, int xpos, int ypo
 	//
 	LINEINFO *linfo = exact && nLineNo <= (size_w)ULONG_MAX ? GetLineInfo((ULONG)nLineNo) : 0;
 
-	if(m_hImageList && linfo && nLineNo < m_nLineCount)
+	if(images && linfo && nLineNo < m_nLineCount)
 	{
 		canvas.DrawMarginImage(linfo->nImageIdx, imgX, imgY, imgWidth, imgHeight);
 	}

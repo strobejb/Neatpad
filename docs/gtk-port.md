@@ -173,9 +173,11 @@ Each step is its own commit on `main`, and moves and formatting changes stay sep
   - **Done:** 3.4b. The host gives the view's size, focus and active state, mouse capture, the cursor shape, the caret
     width and wheel lines; the margin cursor (`racursor.h`) is in `win32/`. The index and filter slices are timed
     with `std::chrono`. Modifier keys still come from `GetKeyState`, and keys are still `VK_*` codes.
-  - **Next:** 3.4c.
-    Fonts and the image list move to the host, which creates layouts and canvases and handles WM_PAINT.
-  - 3.4d. The `EM_*` edit-control messages (`TextViewEdit.cpp`) move to `win32/`.
+  - **Done:** 3.4c. `TextViewWin32` holds the fonts (`USPFONT`) and the image list, makes the layouts, and handles
+    WM_PAINT and WM_PRINTCLIENT with a `Win32Canvas`. The engine reads font metrics, text width and image size from
+    the host, and calls `FontsChanged()` to measure again. It holds no `HWND` now.
+  - **Next:** 3.4d.
+    The `EM_*` edit-control messages (`TextViewEdit.cpp`) move to `win32/`.
 
 ## Open decisions
 

@@ -15,20 +15,14 @@
 #include "TextViewInternal.h"
 
 //
-//	TextView::
+//	How far below a row's top text in a font starts, to share the row's baseline
 //
-int TextView::NeatTextYOffset(USPFONT *font)
+int TextView::NeatTextYOffset(int font)
 {
-	return m_nMaxAscent + m_nHeightAbove - font->tm.tmAscent;
-}
+	TextViewHost::FontMetrics metrics;
 
-int TextView::TextWidth(HDC hdc, TCHAR *buf, int len)
-{
-	SIZE sz;
-	if(len == -1)
-		len = lstrlen(buf);
-	GetTextExtentPoint32(hdc, buf, len, &sz);
-	return sz.cx;
+	m_pHost->GetFontMetrics(font, &metrics);
+	return m_nMaxAscent + m_nHeightAbove - metrics.ascent;
 }
 
 //
@@ -40,14 +34,14 @@ VOID TextView::RecalcLineHeight()
 	m_nMaxAscent	= 0;
 
 	// find the tallest font in the TextView
-	for(int i = 0; i < m_nNumFonts; i++)
+	for(int i = 0; i < m_pHost->FontCount(); i++)
 	{
-		// always include a font's external-leading
-		int fontheight = m_uspFontList[i].tm.tmHeight +
-						 m_uspFontList[i].tm.tmExternalLeading;
+		TextViewHost::FontMetrics metrics;
 
-		m_nLineHeight = max(m_nLineHeight, fontheight);
-		m_nMaxAscent  = max(m_nMaxAscent, m_uspFontList[i].tm.tmAscent);
+		m_pHost->GetFontMetrics(i, &metrics);
+
+		m_nLineHeight = max(m_nLineHeight, metrics.height);
+		m_nMaxAscent  = max(m_nMaxAscent, metrics.ascent);
 	}
 
 	// add on the above+below spacings
@@ -56,101 +50,29 @@ VOID TextView::RecalcLineHeight()
 	// force caret resize if we've got the focus
 	if(m_pHost->HasFocus())
 	{
-		OnKillFocus(0);
-		OnSetFocus(0);
+		OnKillFocus();
+		OnSetFocus();
 	}
 }
 
 //
-//	Set a font for the TextView
+//	The host's fonts have changed: measure the lines and the margin again
 //
-LONG TextView::SetFont(HFONT hFont, int idx)
+VOID TextView::FontsChanged()
 {
-	USPFONT *uspFont = &m_uspFontList[idx];
-
-	// need a DC to query font data
-	HDC hdc  = GetDC(m_hWnd);
-
-	// Initialize the font for USPLIB
-	UspFreeFont(uspFont);
-	UspInitFont(uspFont, hdc, hFont);
-
-	ReleaseDC(m_hWnd, hdc);
+	TextViewHost::FontMetrics metrics;
 
 	// calculate new line metrics
-	m_nFontWidth = m_uspFontList[0].tm.tmAveCharWidth;
+	m_pHost->GetFontMetrics(0, &metrics);
+	m_nFontWidth = metrics.averageWidth;
 
 	// lines are measured again in the new font
 	m_nLongestLine = 0;
 
 	RecalcLineHeight();
 	UpdateMarginWidth();
-
 	ResetLineCache();
-
-	return 0;
-}
-
-//
-//	Add a secondary font to the TextView
-//
-LONG TextView::AddFont(HFONT hFont)
-{
-	int idx;
-
-	if(m_nNumFonts >= MAX_FONTS)
-		return -1;
-
-	idx = m_nNumFonts++;
-	SetFont(hFont, idx);
 	UpdateMetrics();
-
-	return idx;
-}
-
-LONG TextView::AddFontFallback(int slot, HFONT hFont)
-{
-	HDC hdc;
-	LONG result;
-
-	if(slot < 0 || slot >= m_nNumFonts)
-		return FALSE;
-
-	hdc = GetDC(m_hWnd);
-	result = UspAddFontFallback(&m_uspFontList[slot], hdc, hFont);
-	ReleaseDC(m_hWnd, hdc);
-
-	if(result)
-	{
-		RecalcLineHeight();
-		UpdateMetrics();
-		ResetLineCache();
-	}
-
-	return result;
-}
-
-LONG TextView::ClearFontFallbacks(int slot)
-{
-	if(slot < 0 || slot >= m_nNumFonts)
-		return FALSE;
-
-	UspClearFontFallbacks(&m_uspFontList[slot]);
-	RecalcLineHeight();
-	UpdateMetrics();
-	ResetLineCache();
-	return TRUE;
-}
-//
-//	WM_SETFONT handler: set a new default font
-//
-LONG TextView::OnSetFont(HFONT hFont)
-{
-	// default font is always #0
-	SetFont(hFont, 0);
-	UpdateMetrics();
-
-	return 0;
 }
 
 //

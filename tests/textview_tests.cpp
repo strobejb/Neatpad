@@ -257,7 +257,8 @@ class TextViewMarginProbe
         bool      haveLine = lineno != UINT64_MAX && view->m_pTextDoc->coord_from_lineno(lineno, &line) == TDR_OK;
         CHECK(lineno == UINT64_MAX || haveLine);
         memset(pixels, 0, width * height * sizeof(uint32_t));
-        Win32Canvas canvas(dc, view->m_uspFontList[0].hFont, view->m_hImageList);
+        TextViewWin32 *host = (TextViewWin32 *)GetWindowLongPtr(hwnd, 0);
+        Win32Canvas    canvas(dc, host->MainFont(), host->Images());
 
         view->PaintMargin(canvas, haveLine ? &line : 0, 0, 0);
         GdiFlush();

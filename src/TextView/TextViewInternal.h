@@ -67,9 +67,6 @@ typedef int (__cdecl * COMPAREPROC) (const void *, const void *);
 // maximum number of lines that we can hold info for at one time
 #define MAX_LINE_INFO 128	
 
-// maximum fonts that a TextView can hold
-#define MAX_FONTS 32
-
 enum SELMODE { SEL_NONE, SEL_NORMAL, SEL_MARGIN, SEL_BLOCK };
 
 typedef struct
@@ -88,15 +85,14 @@ class TextView
 
 public:
 
-	TextView(HWND hwnd, TextViewHost *host);
+	TextView(TextViewHost *host);
 	~TextView();
 
 	//
 	//	Input, painting and timers, which the platform passes on
 	//
-	LONG OnPaint();
-	LONG OnPrintClient(HDC hdc);
-	LONG OnSetFont(HFONT hFont);
+	void Paint(TextCanvas &canvas, RECT *rcPaint);
+	void FontsChanged();
 	LONG OnSize(UINT nFlags, int width, int height);
 	LONG OnVScroll(UINT nSBCode, UINT nPos);
 	LONG OnHScroll(UINT nSBCode, UINT nPos);
@@ -111,8 +107,8 @@ public:
 	LONG OnKeyDown(UINT nKeyCode, UINT nFlags);
 	LONG OnChar(UINT nChar, UINT nFlags);
 
-	LONG OnSetFocus(HWND hwndOld);
-	LONG OnKillFocus(HWND hwndNew);
+	LONG OnSetFocus();
+	LONG OnKillFocus();
 
 	BOOL OnCut();
 	BOOL OnCopy();
@@ -136,13 +132,9 @@ public:
 	LONG		SaveFile(TCHAR *szFileName, UINT nEncoding, BOOL fBom, UINT nLineBreak);
 	LONG		ClearFile();
 	LONG		SetLineSpacing(int nAbove, int nBelow);
-	LONG		AddFont(HFONT);
-	LONG		AddFontFallback(int slot, HFONT hFont);
-	LONG		ClearFontFallbacks(int slot);
 	COLORREF	SetColour(UINT idx, COLORREF rgbColour);
 	ULONG		SetStyle(ULONG uMask, ULONG uStyles);
 	int			SetCaretWidth(int nWidth);
-    BOOL		SetImageList(HIMAGELIST hImgList);
 	LONG		SetLongLine(int nLength);
 	int			SetLineImage(ULONG nLineNo, ULONG nImageIdx);
     UINT        SetTabWidth(UINT width);
@@ -210,8 +202,6 @@ private:
 	//	Painting support
 	//
 	void		RefreshWindow();
-	TextCanvas *CreateCanvas(HDC hdc);
-	void		Paint(TextCanvas &canvas, RECT *rcPaint);
 	void		PaintLine(TextCanvas &canvas, TextCoord *coord, int x);
 	void		PaintText(TextCanvas &canvas, TextCoord *coord, int x, int y, RECT *bounds);
 	int			PaintMargin(TextCanvas &canvas, TextCoord *line, int x, int y);
@@ -233,13 +223,11 @@ private:
 	//
 	//	Font support
 	//
-	LONG		SetFont(HFONT, int idx);
 	
 	//
 	//	
 	//
-	int			NeatTextYOffset(USPFONT *font);
-	int			TextWidth(HDC hdc, TCHAR *buf, int len);
+	int			NeatTextYOffset(int font);
 	//int		TabWidth();
 	int			LeftMarginWidth();
 	void		UpdateMarginWidth();
@@ -329,7 +317,6 @@ private:
 	// ------ Internal TextView State ------
 	//
 
-	HWND		m_hWnd;
 	TextViewHost *m_pHost;		// redraws, scrolling, the caret, timers, clipboard, notifications
 	ULONG		m_uStyleFlags;
 
@@ -338,8 +325,6 @@ private:
 	size_w		m_nLineCount;
 
 	// Font-related data	
-	USPFONT		m_uspFontList[MAX_FONTS];
-	int			m_nNumFonts;
 	int			m_nFontWidth;
 	int			m_nMaxAscent;
 	int			m_nLineHeight;
@@ -408,11 +393,9 @@ private:
 	UINT		m_nIndexPercent;	// as the parent was last told
 	bool		m_fHideCaret;
 	//bool		m_fTransparent;
-	HIMAGELIST	m_hImageList;
 
 	// The lines laid out most recently
 	LINECACHE   *m_lineCache;
-	TextLayout	*CreateLayout();
 	TextLayout	*GetLayout(TextCoord *coord);
 	LINECACHE   *GetLineCache(TextCoord *coord);
 
