@@ -23,7 +23,11 @@ namespace
 {
 const test_group *const groups[] =
 {
-    &sequence_tests, &line_tests, &char_tests, &document_tests, &textview_tests
+    &sequence_tests, &line_tests, &char_tests, &document_tests,
+#ifdef NEATPAD_TEXTVIEW_TESTS
+    // the Win32 TextView's tests, which SequenceTests.vcxproj builds in
+    &textview_tests,
+#endif
 };
 
 // Whether the command line asks for a group: every group, if it names none
