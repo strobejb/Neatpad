@@ -12,7 +12,7 @@
 #include <tchar.h>
 #include <commctrl.h>
 #include "Neatpad.h"
-#include "..\TextView\TextView.h"
+#include "../../TextView/TextView.h"
 #include "resource.h"
 
 extern HWND g_hwndSearchDlg;

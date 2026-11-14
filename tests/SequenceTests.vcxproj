@@ -137,7 +137,7 @@
     <ClCompile Include="char_tests.cpp" />
     <ClCompile Include="document_tests.cpp" />
     <ClCompile Include="textview_tests.cpp" />
-    <ClCompile Include="..\src\Neatpad\Recovery.c">
+    <ClCompile Include="..\src\Neatpad\win32\Recovery.c">
       <PreprocessorDefinitions>RECOVERY_TESTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <ClCompile Include="test_helpers.cpp" />

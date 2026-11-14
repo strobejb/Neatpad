@@ -14,7 +14,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "Neatpad.h"
-#include "..\TextView\TextView.h"
+#include "../../TextView/TextView.h"
 #include "resource.h"
 
 // While the dialog is open it checks on indexing this often

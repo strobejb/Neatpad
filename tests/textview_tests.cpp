@@ -8,7 +8,7 @@
 #include "../src/TextView/TextViewInternal.h"
 #include <tchar.h>
 #include <shellapi.h>
-#include "../src/Neatpad/Neatpad.h"
+#include "../src/Neatpad/win32/Neatpad.h"
 
 // Minimal host for the real C recovery controller. Controls remain hidden,
 // and RECOVERY_TESTS routes all store I/O to a disposable test directory.

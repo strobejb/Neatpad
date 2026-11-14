@@ -18,7 +18,7 @@
 #include <stdarg.h>
 #include <commctrl.h>
 #include "Neatpad.h"
-#include "..\TextView\TextView.h"
+#include "../../TextView/TextView.h"
 #include "resource.h"
 
 static BOOL g_fFirstTime = TRUE;

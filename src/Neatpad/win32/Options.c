@@ -14,7 +14,7 @@
 #include <shlobj.h>
 #include "resource.h"
 #include "Neatpad.h"
-#include "..\TextView\TextView.h"
+#include "../../TextView/TextView.h"
 
 #pragma comment(lib, "comctl32.lib")
 

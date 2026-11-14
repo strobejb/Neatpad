@@ -6,7 +6,7 @@
 #include <tchar.h>
 #include <stdint.h>
 #include <stdlib.h>
-#include "../TextView/TextView.h"
+#include "../../TextView/TextView.h"
 #include "Neatpad.h"
 #include "resource.h"
 

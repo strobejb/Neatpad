@@ -13,7 +13,7 @@
 #include <windows.h>
 #include <tchar.h>
 #include <commctrl.h>
-#include "..\TextView\TextView.h"
+#include "../../TextView/TextView.h"
 #include "Neatpad.h"
 #include "resource.h"
 

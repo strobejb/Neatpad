@@ -186,13 +186,13 @@
     <Manifest Include="Neatpad.exe.manifest" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\TextDocument\TextDocument.vcxproj">
+    <ProjectReference Include="..\..\TextDocument\TextDocument.vcxproj">
       <Project>{841A9BB3-5A3C-45B6-A1F7-CDA3F8F55FE2}</Project>
     </ProjectReference>
-    <ProjectReference Include="..\TextView\TextView.vcxproj">
+    <ProjectReference Include="..\..\TextView\TextView.vcxproj">
       <Project>{9D2C0B3C-26B9-4F43-B950-4550B8D21850}</Project>
     </ProjectReference>
-    <ProjectReference Include="..\UspLib\UspLib.vcxproj">
+    <ProjectReference Include="..\..\UspLib\UspLib.vcxproj">
       <Project>{5E7AC3D0-6E3B-4BF1-9DD6-B68A47376C83}</Project>
     </ProjectReference>
   </ItemGroup>

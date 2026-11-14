@@ -14,7 +14,7 @@
 #include <tchar.h>
 #include "Neatpad.h"
 #include "resource.h"
-#include "..\TextView\TextView.h"
+#include "../../TextView/TextView.h"
 
 //
 //	Dialogbox procedure for the FONT pane

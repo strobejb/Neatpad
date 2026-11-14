@@ -12,7 +12,7 @@
 #include <tchar.h>
 #include <commctrl.h>
 #include <uxtheme.h>
-#include "..\TextView\TextView.h"
+#include "../../TextView/TextView.h"
 #include "Neatpad.h"
 #include "resource.h"
 

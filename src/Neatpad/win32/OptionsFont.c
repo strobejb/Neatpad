@@ -15,7 +15,7 @@
 #include <commctrl.h>
 #include <shellapi.h>
 #include "Neatpad.h"
-#include "..\TextView\TextView.h"
+#include "../../TextView/TextView.h"
 #include "resource.h"
 
 
