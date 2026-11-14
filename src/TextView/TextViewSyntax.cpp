@@ -147,6 +147,18 @@ typedef struct
 
 } SYNTAX_NODE;
 
+// Compare two strings of tchar_t text, as lstrcmp does
+static int tstrcmp(const tchar_t *a, const tchar_t *b)
+{
+	while(*a && *a == *b)
+	{
+		a++;
+		b++;
+	}
+
+	return *a < *b ? -1 : *a > *b ? 1 : 0;
+}
+
 int TextView::SyntaxColour(tchar_t *szText, uint32_t nTextLen, ATTR *attr)
 {
 	tchar_t tok[128];
@@ -161,13 +173,13 @@ int TextView::SyntaxColour(tchar_t *szText, uint32_t nTextLen, ATTR *attr)
 
 	while((ptr2 = gettok(ptr1, tok, 128)) != 0)
 	{
-		if(isdigit(tok[0]))
+		if(tok[0] >= '0' && tok[0] <= '9')
 		{
 			//xSetStyle(attr, ptr1 - szText, ptr2-ptr1, RGB(200,0,0), RGB(255,255,255), 0);
 			xSetStyle(attr, TextOffset(szText, ptr1), TextLength(ptr1, ptr2), RGB(255,80,80), RGB(255,255,255), 0);
 		}
-		else if(memcmp(tok, _T("if"), 2) == 0 || 
-			memcmp(tok, _T("for"), 3) == 0)
+		else if(memcmp(tok, TSTR("if"), 2) == 0 || 
+			memcmp(tok, TSTR("for"), 3) == 0)
 		{
 			//xSetStyle(attr, ptr1 - szText, ptr2-ptr1, RGB(0,0,128), RGB(255,255,255), 1);
 			xSetStyle(attr, TextOffset(szText, ptr1), TextLength(ptr1, ptr2), RGB(240,240,240), RGB(255,255,255), 1);
@@ -183,11 +195,11 @@ int TextView::SyntaxColour(tchar_t *szText, uint32_t nTextLen, ATTR *attr)
 			//xSetStyle(attr, ptr1 - szText, ptr2-ptr1, RGB(65,102,190), RGB(255,255,255));
 			xSetStyle(attr, TextOffset(szText, ptr1), TextLength(ptr1, ptr2), RGB(100,150,200), RGB(255,255,255));
 		}		
-		else if(lstrcmp(tok, _T("ULONG")) == 0)
+		else if(tstrcmp(tok, TSTR("ULONG")) == 0)
 		{
 			xSetStyle(attr, TextOffset(szText, ptr1), TextLength(ptr1, ptr2), RGB(100,200,255), RGB(255,255,255));
 		}
-		else if(lstrcmp(tok, _T("//")) == 0)
+		else if(tstrcmp(tok, TSTR("//")) == 0)
 		{
 			//xSetStyle(attr, ptr1 - szText, nTextLen - (ptr1-szText), RGB(128,90,20), RGB(255,255,255));
 			xSetStyle(attr, TextOffset(szText, ptr1), (uint32_t)(nTextLen - (ptr1-szText)), RGB(128,110,90), RGB(255,255,255));

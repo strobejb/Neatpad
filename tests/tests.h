@@ -28,13 +28,7 @@
 #include "../src/TextDocument/Unicode.h"
 
 // Test text in the build's text unit, tchar_t: UTF-16 on Windows, UTF-8
-// elsewhere. Only ASCII belongs in a TSTR; tstr() makes the rest.
-#ifdef _WIN32
-#define TSTR(s) L##s
-#else
-#define TSTR(s) s
-#endif
-
+// elsewhere. Only ASCII belongs in a TSTR (TextDocument.h); tstr() makes the rest.
 typedef std::basic_string<tchar_t> tstring;
 
 inline size_t tstrlen(const tchar_t *text)

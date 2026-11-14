@@ -40,8 +40,8 @@ void TextView::RecalcLineHeight()
 
 		m_pHost->GetFontMetrics(i, &metrics);
 
-		m_nLineHeight = max(m_nLineHeight, metrics.height);
-		m_nMaxAscent  = max(m_nMaxAscent, metrics.ascent);
+		m_nLineHeight = max_of(m_nLineHeight, metrics.height);
+		m_nMaxAscent  = max_of(m_nMaxAscent, metrics.ascent);
 	}
 
 	// add on the above+below spacings

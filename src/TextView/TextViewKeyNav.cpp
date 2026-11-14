@@ -156,7 +156,7 @@ void TextView::MoveWordPrev()
 	TextLayout *layout = lineCache->layout;
 
 	// move 1 character to left
-	charPos = (int)min(m_cursorPos.column, (uint32_t)lineCache->length_CRLF) - 1;
+	charPos = (int)min_of(m_cursorPos.column, (size_w)lineCache->length_CRLF) - 1;
 
 	// skip to end of *previous* line if necessary
 	if(charPos < 0)
@@ -195,7 +195,7 @@ void TextView::MoveWordNext()
 
 	TextLayout *layout = lineCache->layout;
 
-	charPos = (int)min(m_cursorPos.column, (uint32_t)lineCache->length_CRLF);
+	charPos = (int)min_of(m_cursorPos.column, (size_w)lineCache->length_CRLF);
 
 	// if already at end-of-line, skip to next line
 	if(charPos == lineCache->length_CRLF)
@@ -237,7 +237,7 @@ void TextView::MoveWordStart()
 
 	TextLayout *layout = lineCache->layout;
 
-	charPos = (int)min(m_cursorPos.column, (uint32_t)lineCache->length_CRLF);
+	charPos = (int)min_of(m_cursorPos.column, (size_w)lineCache->length_CRLF);
 
 	while(charPos > 0 && !layout->IsWhiteSpace(charPos-1))
 		charPos--;
@@ -258,7 +258,7 @@ void TextView::MoveWordEnd()
 
 	TextLayout *layout = lineCache->layout;
 
-	charPos = (int)min(m_cursorPos.column, (uint32_t)lineCache->length_CRLF);
+	charPos = (int)min_of(m_cursorPos.column, (size_w)lineCache->length_CRLF);
 
 	while(charPos < lineCache->length_CRLF && !layout->IsWhiteSpace(charPos))
 		charPos++;
@@ -280,7 +280,7 @@ void TextView::MoveCharPrev()
 
 	TextLayout *layout = lineCache->layout;
 
-	charPos = (int)min(m_cursorPos.column, (uint32_t)lineCache->length_CRLF);
+	charPos = (int)min_of(m_cursorPos.column, (size_w)lineCache->length_CRLF);
 
 	// find the previous valid character-position
 	for( --charPos; charPos >= 0; charPos--)
@@ -315,7 +315,7 @@ void TextView::MoveCharNext()
 
 	TextLayout *layout = lineCache->layout;
 
-	charPos = (int)min(m_cursorPos.column, (uint32_t)lineCache->length_CRLF);
+	charPos = (int)min_of(m_cursorPos.column, (size_w)lineCache->length_CRLF);
 
 	// find the next valid character-position
 	for( ++charPos; charPos <= lineCache->length_CRLF; charPos++)

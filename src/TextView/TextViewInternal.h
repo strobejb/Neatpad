@@ -11,7 +11,6 @@
 #define SCROLL_TIMER	1
 #define INDEX_TIMER		2
 #define FILTER_TIMER	3
-#define LINENO_FMT  _T(" %I64u ")
 #define LINENO_PAD	 8
 
 #include <windows.h>
@@ -73,7 +72,20 @@ typedef struct
 
 } LINEINFO;
 
-typedef int (__cdecl * COMPAREPROC) (const void *, const void *);
+// The smaller and larger of two values of one type (windows.h has min and
+// max macros, which std::min and std::max trip over)
+template <class T> inline T min_of(T a, T b)
+{
+    return a < b ? a : b;
+}
+
+template <class T> inline T max_of(T a, T b)
+{
+    return a < b ? b : a;
+}
+
+// A line number as the margin shows it, " 123 ": returns its length
+int FormatLineNumber(tchar_t *buf, uint64_t lineno);
 
 // maximum number of lines that we can hold info for at one time
 #define MAX_LINE_INFO 128	

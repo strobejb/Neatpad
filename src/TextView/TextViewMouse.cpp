@@ -614,7 +614,7 @@ bool TextView::TextCoordToX(TextCoord *coord, bool fTrailing, int *x)
 
 	// Provisional lazy offsets can disagree slightly; keep the caret
 	// position relative to the analyzed line instead of wrapping.
-	off_chars = min(off_chars, (size_w)layout->Length());
+	off_chars = min_of(off_chars, (size_w)layout->Length());
 
 	if(fTrailing && off_chars > 0)
 		*x = layout->OffsetToX((int)(off_chars - 1), true);

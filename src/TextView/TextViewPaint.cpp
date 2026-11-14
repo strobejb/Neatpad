@@ -99,7 +99,7 @@ LINECACHE *TextView::GetLineCache(TextCoord *coord)
 	// get the text for the entire line (up to the layout limit) and apply style
 	// attributes. A line never decodes to more UTF-16 units than it has bytes.
 	//
-	buflen = (uint32_t)min(coord->line_next - coord->line_begin, (size_w)LINE_LAYOUT_LIMIT);
+	buflen = (uint32_t)min_of(coord->line_next - coord->line_begin, (size_w)LINE_LAYOUT_LIMIT);
 	buff   = new tchar_t[buflen + 1];
 	attr   = new ATTR[buflen + 1];
 
@@ -284,13 +284,40 @@ int TextView::LeftMarginWidth()
 }
 
 //
+//	A line number as the margin shows it, " 123 ": returns its length. buf
+//	holds 23 units, enough for any 64-bit number.
+//
+int FormatLineNumber(tchar_t *buf, uint64_t lineno)
+{
+	tchar_t digits[20];
+	int     count = 0;
+	int     len   = 0;
+
+	do
+	{
+		digits[count++] = (tchar_t)(TSTR('0') + lineno % 10);
+		lineno /= 10;
+	}
+	while(lineno);
+
+	buf[len++] = TSTR(' ');
+
+	while(count)
+		buf[len++] = digits[--count];
+
+	buf[len++] = TSTR(' ');
+	buf[len]   = 0;
+	return len;
+}
+
+//
 //	This must be called whenever the number of lines changes
 //  (probably easier to call it when the file-size changes)
 //
 void TextView::UpdateMarginWidth()
 {
 	tchar_t	buf[32];
-    int     len = wsprintf(buf, LINENO_FMT, (unsigned __int64)FileDoc()->linecount());
+    int     len = FormatLineNumber(buf, FileDoc()->linecount());
 
     m_nLinenoWidth = m_pHost->TextWidth(buf, len);
 }
@@ -409,7 +436,7 @@ int TextView::PaintMargin(TextCanvas &canvas, TextCoord *line, int xpos, int ypo
 
         // Leave pending source numbers and the filtered file's synthetic final
         // empty line blank. Painting must not force the source to be indexed.
-        int len   = known ? wsprintf(ach, LINENO_FMT, (unsigned __int64)(number + 1)) : 0;
+        int len   = known ? FormatLineNumber(ach, number + 1) : 0;
         int width = canvas.MarginTextWidth(ach, len);
 
         rect.right = rect.left + m_nLinenoWidth;
@@ -454,7 +481,7 @@ int TextView::PaintMargin(TextCanvas &canvas, TextCoord *line, int xpos, int ypo
         int      right       = xpos + LeftMarginWidth();
         int      markerRight = right - CHANGE_MARKER_INSET;
         int      markerLeft  = markerRight - CHANGE_MARKER_WIDTH;
-        int      triangle    = min(CHANGE_TRIANGLE_HEIGHT, max(1, m_nLineHeight - 2));
+        int      triangle    = min_of(CHANGE_TRIANGLE_HEIGHT, max_of(1, m_nLineHeight - 2));
         uint32_t diff        = LineDiff(line);
 
         // Mixed insertion/deletion is a modification: its outline takes
@@ -482,7 +509,7 @@ int TextView::PaintMargin(TextCanvas &canvas, TextCoord *line, int xpos, int ypo
             // Keep a sharp centre point and room for two deletion boundaries.
             if ((diff & TextDocument::diff_erased_before) && (diff & TextDocument::diff_erased_after))
             {
-                triangle = min(triangle, max(1, (m_nLineHeight - 1) / 2));
+                triangle = min_of(triangle, max_of(1, (m_nLineHeight - 1) / 2));
             }
             if (triangle > 1 && triangle % 2 == 0)
             {
@@ -653,7 +680,7 @@ int TextView::ApplyTextAttributes(TextCoord *line, uint32_t &nColumn, tchar_t *s
             line,
             [&](size_w column, size_w length)
             {
-                size_w end = min(column + length, (size_w)nTextLen);
+                size_w end = min_of(column + length, (size_w)nTextLen);
 
                 for (size_w changed = column; changed < end; ++changed)
                 {

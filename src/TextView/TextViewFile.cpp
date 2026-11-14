@@ -310,7 +310,7 @@ void TextView::FillIndexInfo(TVNINDEXINFO *info)
 	// under 100 until every byte is
 	info->nPercent   = indexed >= length ? 100 : (uint32_t)(indexed * 100 / length);
 	info->fIndexing  = m_fIndexing;
-	info->nLineCount = (unsigned __int64)FileDoc()->linecount();
+	info->nLineCount = (uint64_t)FileDoc()->linecount();
 }
 
 //

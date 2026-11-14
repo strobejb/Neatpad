@@ -38,7 +38,7 @@ uint32_t TextView::SetFilterContext(uint32_t lines)
 {
     uint32_t previous = m_nFilterContext;
 
-    m_nFilterContext = min(lines, (uint32_t)TV_MAX_FILTER_CONTEXT);
+    m_nFilterContext = min_of(lines, (uint32_t)TV_MAX_FILTER_CONTEXT);
     if (m_pSourceDoc && previous != m_nFilterContext)
     {
         EndFilter(true);
@@ -60,7 +60,7 @@ bool TextView::StartFilter()
 	DWORD		  written;	// WriteFile's count, until the temp file is portable
 	TextDocument *filtered;
 
-	if(!GetTempPath(MAX_PATH, dir) || !GetTempFileName(dir, _T("npf"), 0, path))
+	if(!GetTempPath(MAX_PATH, dir) || !GetTempFileName(dir, TSTR("npf"), 0, path))
 		return false;
 
 	m_hFilterFile = CreateFile(path, GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, 0,
@@ -236,7 +236,7 @@ void TextView::WriteFilterLine(TextPos begin, TextPos next)
 	TextReader	 reader = m_pSourceDoc->text_from_range(begin, next);
 	tchar_t		 buf[0x1000];
 	tchar_t		 last = 0;
-	tchar_t		 crlf[] = _T("\r\n");
+	tchar_t		 crlf[] = TSTR("\r\n");
 	uint32_t	 len;
 	DWORD		 written;	// WriteFile's count
 

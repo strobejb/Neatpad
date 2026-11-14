@@ -80,7 +80,7 @@ uint32_t TextView::EnterText(tchar_t *szText, uint32_t nLength, bool forceInsert
 				endPos = selStart.column + nLength;
 			}
 
-			if(!m_pTextDoc->coord_from_line_pos(&selStart, min(endPos, lineEnd), &selEnd))
+			if(!m_pTextDoc->coord_from_line_pos(&selStart, min_of(endPos, lineEnd), &selEnd))
 				return 0;
 		}
 
@@ -250,7 +250,7 @@ uint32_t TextView::SetTabWidth(uint32_t width)
 {
     uint32_t previous = (uint32_t)m_nTabWidthChars;
 
-    m_nTabWidthChars = (int)max(1U, min(width, (uint32_t)TV_MAX_TAB_WIDTH));
+    m_nTabWidthChars = (int)max_of(1U, min_of(width, (uint32_t)TV_MAX_TAB_WIDTH));
     if ((uint32_t)m_nTabWidthChars != previous)
     {
         m_nLongestLine = 0;
@@ -293,7 +293,7 @@ int32_t TextView::OnChar(uint32_t nChar, uint32_t nFlags)
         GetSelection(&start, &end);
         uint32_t                     width  = (uint32_t)m_nTabWidthChars;
         size_w                   column = TabColumn(m_pTextDoc, start, width);
-        std::basic_string<tchar_t> spaces(width - column % width, _T(' '));
+        std::basic_string<tchar_t> spaces(width - column % width, TSTR(' '));
 
         if (EnterText(&spaces[0], (uint32_t)spaces.size()))
             NotifyParent(TVN_CHANGED);
@@ -304,7 +304,7 @@ int32_t TextView::OnChar(uint32_t nChar, uint32_t nFlags)
     // leading whitespace before the selection's start. Treat it as one edit.
     if (nChar == '\r' || nChar == '\n')
     {
-        tchar_t                    crlf[] = _T("\r\n");
+        tchar_t                    crlf[] = TSTR("\r\n");
         tchar_t                   *brk    = m_nCRLFMode == TXL_LF ? crlf + 1 : crlf;
         uint32_t                    length = m_nCRLFMode == TXL_LF || m_nCRLFMode == TXL_CR ? 1 : 2;
         std::basic_string<tchar_t> text(brk, length);
@@ -323,7 +323,7 @@ int32_t TextView::OnChar(uint32_t nChar, uint32_t nFlags)
                 for (uint32_t i = 0; i < read; ++i)
                 {
                     if (buffer[i] == '\t' && CheckStyle(TXS_INSERTSPACES))
-                        text.append(m_nTabWidthChars - (text.size() - length) % m_nTabWidthChars, _T(' '));
+                        text.append(m_nTabWidthChars - (text.size() - length) % m_nTabWidthChars, TSTR(' '));
                     else if (buffer[i] == ' ' || buffer[i] == '\t')
                         text.push_back(buffer[i]);
                     else

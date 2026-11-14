@@ -22,6 +22,13 @@ typedef char	 tchar_t;
 // Whether text is UTF-8 rather than UTF-16
 const bool TCHAR_UTF8 = sizeof(tchar_t) == 1;
 
+// A tchar_t string or character literal, of ASCII: TSTR("abc"), TSTR('a')
+#ifdef _WIN32
+#define TSTR(s) L##s
+#else
+#define TSTR(s) s
+#endif
+
 class TextDocument;
 class TextDocumentLineIndexProbe;
 class SaveFile;

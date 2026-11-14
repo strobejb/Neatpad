@@ -39,7 +39,7 @@ void TextView::SetupScrollbars()
 	pageEnd = ViewportLineFromRow(m_nWindowLines, &belowWindow) ? belowWindow.line_begin.byte_offset : docBytes;
 
 	m_pHost->SetVScroll(docBytes ? docBytes - 1 : 0, m_scrollVPos.line_begin.byte_offset,
-		max(pageEnd - m_scrollVPos.line_begin.byte_offset, (size_w)1));
+		max_of(pageEnd - m_scrollVPos.line_begin.byte_offset, (size_w)1));
 
 	//
 	//	Horizontal scrollbar: the thumb is the first column shown, the page the
@@ -280,13 +280,13 @@ bool TextView::ScrollRgn(int dx, int dy, bool fReturnUpdateRgn, TextRect *scroll
 	// scroll left
 	if(dx < 0)
 	{
-		dx = -(int)min(-dx, m_nHScrollPos);
+		dx = -(int)min_of(-dx, m_nHScrollPos);
 		clip.left = -dx * m_nFontWidth * 4;
 	}
 	// scroll right
 	else if(dx > 0)
 	{
-		dx = min((unsigned)dx, (unsigned)m_nHScrollMax-m_nHScrollPos);
+		dx = min_of((unsigned)dx, (unsigned)m_nHScrollMax-m_nHScrollPos);
 		clip.right = (m_nWindowColumns - dx - 4) * m_nFontWidth ;
 	}
 

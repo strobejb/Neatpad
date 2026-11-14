@@ -254,8 +254,11 @@ int32_t TextView::SetLongLine(int nLength)
 	return oldlen;
 }
 
-int CompareLineInfo(LINEINFO *elem1, LINEINFO *elem2)
+static int CompareLineInfo(const void *e1, const void *e2)
 {
+	const LINEINFO *elem1 = (const LINEINFO *)e1;
+	const LINEINFO *elem2 = (const LINEINFO *)e2;
+
 	if(elem1->nLineNo < elem2->nLineNo)
 		return -1;
 	if(elem1->nLineNo > elem2->nLineNo)
@@ -284,7 +287,7 @@ int TextView::SetLineImage(uint32_t nLineNo, uint32_t nImageIdx)
 			m_LineInfo, 
 			m_nLineInfoCount, 
 			sizeof(LINEINFO), 
-			(COMPAREPROC)CompareLineInfo
+			CompareLineInfo
 			);
 
 	}
@@ -301,7 +304,7 @@ LINEINFO* TextView::GetLineInfo(uint32_t nLineNo)
 							m_LineInfo,
 							m_nLineInfoCount, 
 							sizeof(LINEINFO), 
-							(COMPAREPROC)CompareLineInfo
+							CompareLineInfo
 							);
 }
 
@@ -327,7 +330,7 @@ static uint32_t LineColumn(TextCoord *line, TextCoord *pos, uint32_t lineLen)
 		return 0;
 
 	if(pos->line_begin == line->line_begin)
-		return (uint32_t)min(pos->column, (size_w)lineLen);
+		return (uint32_t)min_of(pos->column, (size_w)lineLen);
 
 	return lineLen;
 }
@@ -587,7 +590,7 @@ bool TextView::GetDocStats(TEXTVIEWDOCSTATS *stats)
 	if(stats == 0)
 		return false;
 
-	stats->byte_count = (unsigned __int64)FileDoc()->file_length();
+	stats->byte_count = (uint64_t)FileDoc()->file_length();
 	stats->char_count = 0;
 	stats->char_count_known = false;
 	stats->sel_byte_count = 0;
@@ -596,20 +599,20 @@ bool TextView::GetDocStats(TEXTVIEWDOCSTATS *stats)
 
 	if(FileDoc()->charcount(&chars) == TDR_OK)
 	{
-		stats->char_count = (unsigned __int64)chars;
+		stats->char_count = (uint64_t)chars;
 		stats->char_count_known = true;
 	}
 
 	// the selection, counted the same way
 	if(GetSelection(&selStart, &selEnd))
 	{
-		stats->sel_byte_count = (unsigned __int64)(selEnd - selStart);
+		stats->sel_byte_count = (uint64_t)(selEnd - selStart);
 
 		if(stats->char_count_known &&
 			m_pTextDoc->charoffset_from_pos(selStart, &startChars) == TDR_OK &&
 			m_pTextDoc->charoffset_from_pos(selEnd, &endChars) == TDR_OK)
 		{
-			stats->sel_char_count = (unsigned __int64)(endChars - startChars);
+			stats->sel_char_count = (uint64_t)(endChars - startChars);
 		}
 	}
 
