@@ -8,12 +8,6 @@
 //	NOTES:		www.catch22.net
 //
 
-#define STRICT
-#define WIN32_LEAN_AND_MEAN
-
-#include <windows.h>
-#include <tchar.h>
-#include "TextView.h"
 #include "TextViewInternal.h"
 
 //
@@ -46,12 +40,13 @@ bool TextView::OnCopy()
 	if(!GetSelection(&selStart, &selEnd))
 		return false;
 
-	// a byte never decodes to more than one UTF-16 unit, so this is always enough room
-	sellen = selEnd - selStart;
+	// a byte never decodes to more than one UTF-16 unit, or three UTF-8 ones (as
+	// U+FFFD), so this is always enough room
+	sellen = (selEnd - selStart) * (TCHAR_UTF8 ? 3 : 1);
 
-	// reader.read takes a uint32_t, and (sellen + 1) TCHARs must not overflow the
-	// allocation size (a 32-bit SIZE_T on Win32 wraps at 2GB of text)
-	if(sellen > (size_w)ULONG_MAX || sellen >= (size_w)((SIZE_T)-1 / sizeof(tchar_t)))
+	// reader.read takes a uint32_t, and (sellen + 1) units must not overflow the
+	// allocation size (a 32-bit size_t on Win32 wraps at 2GB of text)
+	if(sellen > (size_w)UINT32_MAX || sellen >= (size_w)((size_t)-1 / sizeof(tchar_t)))
 		return false;
 
 	uint32_t len = (uint32_t)sellen;

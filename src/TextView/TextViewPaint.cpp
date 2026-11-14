@@ -6,13 +6,8 @@
 //	NOTES:		www.catch22.net
 //
 
-#define STRICT
-#define WIN32_LEAN_AND_MEAN
-
-#include <windows.h>
 #include <limits.h>
-#include <tchar.h>
-#include "TextView.h"
+#include <string.h>
 #include "TextViewInternal.h"
 #include "../TextDocument/Unicode.h"
 
@@ -95,9 +90,10 @@ LINECACHE *TextView::GetLineCache(TextCoord *coord)
 
 	//
 	// get the text for the entire line (up to the layout limit) and apply style
-	// attributes. A line never decodes to more UTF-16 units than it has bytes.
+	// attributes. A byte never decodes to more than one UTF-16 unit, or three
+	// UTF-8 ones (as U+FFFD).
 	//
-	buflen = (uint32_t)min_of(coord->line_next - coord->line_begin, (size_w)LINE_LAYOUT_LIMIT);
+	buflen = (uint32_t)min_of((coord->line_next - coord->line_begin) * (TCHAR_UTF8 ? 3 : 1), (size_w)LINE_LAYOUT_LIMIT);
 	buff   = new tchar_t[buflen + 1];
 	attr   = new TextRun[buflen + 1];
 
@@ -724,7 +720,6 @@ int TextView::ApplyTextAttributes(TextCoord *line, uint32_t &nColumn, tchar_t *s
 	//
 	//	Finally identify control-characters (after CR/LF has been changed to 'space')
 	//
-
 
 	for(i = 0; i < nTextLen; i++)
 	{

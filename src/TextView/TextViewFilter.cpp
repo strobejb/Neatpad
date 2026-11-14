@@ -13,13 +13,7 @@
 //				disk as it's needed too. The file goes when it's closed.
 //
 
-#define STRICT
-#define WIN32_LEAN_AND_MEAN
-
 #include <chrono>
-#include <windows.h>
-#include <tchar.h>
-#include "TextView.h"
 #include "TextViewInternal.h"
 
 // Filtering in the background: a megabyte at a time, for this long each tick

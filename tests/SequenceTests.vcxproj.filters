@@ -24,6 +24,9 @@
     <ClCompile Include="document_tests.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="engine_tests.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="textview_tests.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>

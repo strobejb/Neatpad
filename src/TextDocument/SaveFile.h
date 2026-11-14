@@ -31,6 +31,21 @@ private:
 };
 
 //
+//	Keeps the system's last error (errno, and GetLastError on Windows) over
+//	cleanup that could change it, so it still says why something failed
+//
+class KeepLastError
+{
+public:
+	KeepLastError();
+	~KeepLastError();
+
+private:
+	int		 m_errno;
+	uint32_t m_error;
+};
+
+//
 //	A temporary file written at its end while a TextDocument reads it, as the
 //	view's filter writes the lines it finds. Others can read it as it grows,
 //	and it's gone once it's closed and nothing else has it open.

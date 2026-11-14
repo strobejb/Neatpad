@@ -1,6 +1,6 @@
 //
 //	Run the tests: every group, or the groups named on the command line -
-//	sequence, lines, chars, document or textview
+//	sequence, lines, chars, document, engine or textview
 //
 #include "tests.h"
 #ifdef _MSC_VER
@@ -23,7 +23,7 @@ namespace
 {
 const test_group *const groups[] =
 {
-    &sequence_tests, &line_tests, &char_tests, &document_tests,
+    &sequence_tests, &line_tests, &char_tests, &document_tests, &engine_tests,
 #ifdef NEATPAD_TEXTVIEW_TESTS
     // the Win32 TextView's tests, which SequenceTests.vcxproj builds in
     &textview_tests,

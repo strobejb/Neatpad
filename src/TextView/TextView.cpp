@@ -5,24 +5,10 @@
 //
 //	NOTES:		www.catch22.net
 //
-#define _WIN32_WINNT 0x501
-#define STRICT
-#define WIN32_LEAN_AND_MEAN
 
-#include <windows.h>
-#include <tchar.h>
 #include <stdio.h>
 
-// for the EM_xxx message constants
-#include <richedit.h>
-
-#include "TextView.h"
 #include "TextViewInternal.h"
-
-
-#if !defined(UNICODE)
-#error "Please build as Unicode only!"
-#endif
 
 //
 //	Constructor for TextView class. Its host owns it, and it calls the host
@@ -88,7 +74,6 @@ TextView::TextView(TextViewHost *host)
     m_rgbColourList[TXC_CHANGEDTEXT]   = TV_RGB(190, 55, 55);
     m_rgbColourList[TXC_CHANGEDLINE]   = TV_RGB(88, 132, 164);
     m_rgbColourList[TXC_CHANGEDLINEBG] = SYSCOL(TVSC_3DFACE);
-
 
 	// Runtime data
 	m_nSelectionMode	= SEL_NONE;

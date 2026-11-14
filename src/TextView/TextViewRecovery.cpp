@@ -1,11 +1,6 @@
 // Recovery at the view boundary. Sequence persistence stays independent of
 // encoding, filenames and caret/selection/scroll positions.
-#define STRICT
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
-#include <tchar.h>
 #include <memory>
-#include "TextView.h"
 #include "TextViewInternal.h"
 #include "../TextDocument/sequence_state.h"
 

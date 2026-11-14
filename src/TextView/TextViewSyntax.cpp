@@ -6,12 +6,7 @@
 //	NOTES:		www.catch22.net
 //
 
-#define STRICT
-#define WIN32_LEAN_AND_MEAN
-
-#include <windows.h>
-#include <tchar.h>
-#include "TextView.h"
+#include <string.h>
 #include "TextViewInternal.h"
 
 #define COOKIE_BEGIN 0
@@ -57,7 +52,6 @@ uint32_t lexer(uint32_t cookie, tchar_t *buf, uint32_t len, TextRun *attr)
 	{
 
 	}
-
 
 	//switc
 	return COOKIE_END;	
@@ -107,9 +101,7 @@ tchar_t *gettok(tchar_t *ptr, tchar_t *buf, int buflen)
 
 			buf[i++] = ch;
 
-
 			if(ch = *ptr) ptr++;
-
 
 		}
 	}

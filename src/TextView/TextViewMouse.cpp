@@ -6,12 +6,6 @@
 //	NOTES:		www.catch22.net
 //
 
-#define STRICT
-#define WIN32_LEAN_AND_MEAN
-
-#include <windows.h>
-#include <tchar.h>
-#include "TextView.h"
 #include "TextViewInternal.h"
 
 int ScrollDir(int counter, int dir);
@@ -687,6 +681,4 @@ int ScrollDir(int counter, int distance)
 
 	return 0;
 }
-
-
 

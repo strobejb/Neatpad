@@ -56,7 +56,10 @@ class TextLayout
     virtual int SnapXToOffset(int x, int *snappedX) = 0;
 
     // Where the caret can stop, where words start, and which units are white
-    // space. The end of the line is a cursor stop and a word stop.
+    // space. The end of the line is a cursor stop and a word stop. None of
+    // them is ever true part way through a character, such as the second
+    // half of a surrogate pair or the second byte of a UTF-8 sequence: the
+    // engine steps a unit at a time and stops where these say.
     virtual bool IsCursorStop(int offset) = 0;
     virtual bool IsWordStop(int offset)   = 0;
     virtual bool IsWhiteSpace(int offset) = 0;

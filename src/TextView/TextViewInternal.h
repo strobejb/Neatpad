@@ -13,11 +13,19 @@
 #define FILTER_TIMER	3
 #define LINENO_PAD	 8
 
-#include <windows.h>
-#include <commctrl.h>
-#include <uxtheme.h>
+#include <functional>
+#include <stdint.h>
 #include <string>
 #include <vector>
+
+#ifdef _WIN32
+// EditMessage's types: the edit-control messages are Windows' alone
+// (win32/TextViewEdit.cpp). Nothing else in the engine uses the platform.
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#endif
 
 /*HTHEME  (WINAPI * OpenThemeData_Proc)(HWND hwnd, LPCWSTR pszClassList);
 bool    (WINAPI * CloseThemeData_Proc)(HTHEME hTheme);
@@ -27,7 +35,7 @@ HRESULT (WINAPI * DrawThemeBackground_Proc)(HTHEME hTheme, HDC hdc, int, int, co
 
 #include "../TextDocument/TextDocument.h"
 #include "../TextDocument/SaveFile.h"
-#include "TextView.h"
+#include "TextViewDefs.h"
 #include "TextViewHost.h"
 #include "TextLayout.h"
 #include "TextCanvas.h"
@@ -209,6 +217,7 @@ public:
 
 	int32_t OnKeyDown(uint32_t nKeyCode, uint32_t nFlags);
 	int32_t OnChar(uint32_t nChar, uint32_t nFlags);
+	int32_t OnText(const tchar_t *text, uint32_t length);
 
 	int32_t OnSetFocus();
 	int32_t OnKillFocus();

@@ -6,12 +6,6 @@
 //	NOTES:		www.catch22.net
 //
 
-#define STRICT
-#define WIN32_LEAN_AND_MEAN
-
-#include <windows.h>
-#include <tchar.h>
-#include "TextView.h"
 #include "TextViewInternal.h"
 
 /*struct SCRIPT_LOGATTR
@@ -23,7 +17,6 @@
   BYTE fInvalid		:1; 
   BYTE fReserved	:3; 
 };*/
-
 
 //
 //	Get the layout for the line containing coord
@@ -368,7 +361,6 @@ void TextView::MoveFileEnd()
 	ScrollToDocumentEnd();
 	RefreshWindow();
 }
-
 
 //
 //	Process keyboard-navigation keys

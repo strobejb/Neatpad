@@ -6,14 +6,8 @@
 //	NOTES:		www.catch22.net
 //
 
-#define STRICT
-#define WIN32_LEAN_AND_MEAN
-
 #include <chrono>
-#include <windows.h>
-#include <tchar.h>
 #include <memory>
-#include "TextView.h"
 #include "TextViewInternal.h"
 
 //
@@ -72,9 +66,12 @@ int32_t TextView::OpenFile(const seqfilechar *szFileName, int nEncoding, bool fR
 		return true;
 	}
 
-    uint32_t error = GetLastError();
-    document.reset();
-    SetLastError(error);
+    {
+        KeepLastError keep;	// it says why the file didn't open
+
+        document.reset();
+    }
+
     return false;
 }
 

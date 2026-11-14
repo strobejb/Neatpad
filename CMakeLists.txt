@@ -40,7 +40,26 @@ add_library(TextDocument STATIC
 
 target_include_directories(TextDocument PUBLIC src/TextDocument)
 
-# The core's tests: the sequence, line and character indexes, and TextDocument
+# The TextView engine: the editor, without its platform's window
+add_library(TextViewEngine STATIC
+    src/TextView/TextView.cpp
+    src/TextView/TextViewClipboard.cpp
+    src/TextView/TextViewFile.cpp
+    src/TextView/TextViewFilter.cpp
+    src/TextView/TextViewFont.cpp
+    src/TextView/TextViewKeyInput.cpp
+    src/TextView/TextViewKeyNav.cpp
+    src/TextView/TextViewMouse.cpp
+    src/TextView/TextViewPaint.cpp
+    src/TextView/TextViewRecovery.cpp
+    src/TextView/TextViewScroll.cpp
+    src/TextView/TextViewSyntax.cpp
+)
+
+target_link_libraries(TextViewEngine PUBLIC TextDocument)
+
+# The portable tests: the sequence, line and character indexes, TextDocument,
+# and the TextView engine with a fake host
 add_executable(CoreTests
     tests/main.cpp
     tests/test_helpers.cpp
@@ -48,9 +67,10 @@ add_executable(CoreTests
     tests/line_tests.cpp
     tests/char_tests.cpp
     tests/document_tests.cpp
+    tests/engine_tests.cpp
 )
 
-target_link_libraries(CoreTests PRIVATE TextDocument)
+target_link_libraries(CoreTests PRIVATE TextDocument TextViewEngine)
 
 enable_testing()
 add_test(NAME CoreTests COMMAND CoreTests)

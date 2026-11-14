@@ -6,14 +6,7 @@
 //	NOTES:		www.catch22.net
 //
 
-#define STRICT
-#define WIN32_LEAN_AND_MEAN
-
-#include <windows.h>
-#include <tchar.h>
-#include "TextView.h"
 #include "TextViewInternal.h"
-
 
 //
 //	Set scrollbar positions and range
@@ -275,7 +268,6 @@ bool TextView::ScrollRgn(int dx, int dy, bool fReturnUpdateRgn, TextRect *scroll
 		clip.bottom = (m_nWindowLines -dy) * m_nLineHeight;
 	}
 
-
 	// scroll left
 	if(dx < 0)
 	{
@@ -508,7 +500,6 @@ int32_t TextView::OnVScroll(uint32_t nSBCode, uint32_t nPos)
 		SetupScrollbars();
 		RepositionCaret();
 	}
-
 
 	return 0;
 }

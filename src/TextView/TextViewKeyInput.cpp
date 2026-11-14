@@ -6,13 +6,28 @@
 //	NOTES:		www.catch22.net
 //
 
-#define STRICT
-#define WIN32_LEAN_AND_MEAN
+#include <type_traits>
 
-#include <windows.h>
-#include <tchar.h>
-#include "TextView.h"
 #include "TextViewInternal.h"
+#include "../TextDocument/Unicode.h"
+
+//
+//	Whether text is one character: a unit, a UTF-16 surrogate pair, or one
+//	UTF-8 sequence
+//
+static bool IsOneCharacter(const tchar_t *text, uint32_t length)
+{
+	UTF32 ch32;
+
+	if(length == 1)
+		return true;
+
+	if(TCHAR_UTF8)
+		return utf8_to_utf32((const UTF8 *)text, length, &ch32) == length;
+
+	return length == 2 && (uint32_t)text[0] >= UNI_SUR_HIGH_START && (uint32_t)text[0] <= UNI_SUR_HIGH_END &&
+		   (uint32_t)text[1] >= UNI_SUR_LOW_START && (uint32_t)text[1] <= UNI_SUR_LOW_END;
+}
 
 //
 //	TextView::EnterText
@@ -69,7 +84,7 @@ uint32_t TextView::EnterText(tchar_t *szText, uint32_t nLength, bool forceInsert
 
 			// single-character overwrite - must behave like 'forward delete'
 			// and remove a whole character-cluster (i.e. maybe more than 1 char)
-			if(nLength == 1)
+			if(IsOneCharacter(szText, nLength))
 			{
 				MoveCharNext();
 				endPos = m_cursorPos.line_begin == selStart.line_begin ? m_cursorPos.column : lineEnd;
@@ -262,8 +277,9 @@ uint32_t TextView::SetTabWidth(uint32_t width)
     return previous;
 }
 
-// TextCoord columns count UTF-16 units. Expand existing tabs while counting the
+// TextCoord columns count text units. Expand existing tabs while counting the
 // prefix so a typed Tab still reaches the correct tab stop after earlier tabs.
+// A UTF-8 character is one column, however many bytes it takes.
 static size_w TabColumn(TextDocument *document, const TextCoord &at, uint32_t width)
 {
     TextReader reader = document->text_from_range(at.line_begin, at);
@@ -274,10 +290,35 @@ static size_w TabColumn(TextDocument *document, const TextCoord &at, uint32_t wi
     while ((length = reader.read(buffer, sizeof(buffer) / sizeof(buffer[0]))) != 0)
     {
         for (uint32_t i = 0; i < length; ++i)
-            column += buffer[i] == '\t' ? width - column % width : 1;
+        {
+            if (buffer[i] == '\t')
+                column += width - column % width;
+            else if (!TCHAR_UTF8 || ((uint8_t)buffer[i] & 0xC0) != 0x80)
+                column++;
+        }
     }
 
     return column;
+}
+
+//
+//	Typed text that comes as a string, as an input method gives it: a single
+//	unit is a character, which OnChar sees, so Tab and Enter work as typed
+//
+int32_t TextView::OnText(const tchar_t *text, uint32_t length)
+{
+	typedef std::make_unsigned<tchar_t>::type unit;
+
+	if(length == 1)
+		return OnChar((unit)text[0], 0);
+
+	if(m_nEditMode == MODE_READONLY || length == 0)
+		return 0;
+
+	if(EnterText((tchar_t *)text, length))
+		NotifyParent(TVNOTIFY_CHANGED);
+
+	return 0;
 }
 
 int32_t TextView::OnChar(uint32_t nChar, uint32_t nFlags)

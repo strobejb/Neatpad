@@ -98,6 +98,7 @@ extern const test_group sequence_tests;
 extern const test_group line_tests;
 extern const test_group char_tests;
 extern const test_group document_tests;
+extern const test_group engine_tests;
 extern const test_group textview_tests;
 
 //

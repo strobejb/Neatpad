@@ -8,10 +8,24 @@
 #include "SaveFile.h"
 
 // File access that differs between systems (at the end of the file)
+static uint32_t last_error();
+static void     restore_last_error(uint32_t error);
 static FILE *create_new(const seqfilechar *filename);
 static bool  sync_to_disk(FILE *fp);
 static bool  replace_file(const seqfilechar *from, const seqfilechar *to);
 static void  remove_file(const seqfilechar *filename);
+
+KeepLastError::KeepLastError()
+{
+	m_errno = errno;
+	m_error = last_error();
+}
+
+KeepLastError::~KeepLastError()
+{
+	errno = m_errno;
+	restore_last_error(m_error);
+}
 
 TempAppendFile::TempAppendFile()
 {
@@ -168,6 +182,16 @@ static void remove_file(const seqfilechar *filename)
 	SetLastError(err);
 }
 
+static uint32_t last_error()
+{
+	return GetLastError();
+}
+
+static void restore_last_error(uint32_t error)
+{
+	SetLastError(error);
+}
+
 //
 //	The temporary file goes when its last handle closes. Others may read,
 //	write and delete it, so a document can read it as it's written.
@@ -245,6 +269,16 @@ static bool replace_file(const seqfilechar *from, const seqfilechar *to)
 static void remove_file(const seqfilechar *filename)
 {
 	remove(filename);
+}
+
+// errno is all there is
+static uint32_t last_error()
+{
+	return 0;
+}
+
+static void restore_last_error(uint32_t)
+{
 }
 
 //

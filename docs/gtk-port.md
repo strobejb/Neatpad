@@ -207,10 +207,25 @@ Each step is its own commit on `main`, and moves and formatting changes stay sep
   - Column shortcuts for ASCII and UTF-16 files only apply to UTF-16 text.
   - The tests are the same in both builds: `tstr(U"...")` makes text in the build's units, `encode_text` takes code
     points, and UTF-16 file data is `char16_t`. Ubuntu CI runs them in UTF-8 and Windows CI in UTF-16.
-- **Next:** step 6, the engine on Linux.
-- Still Win32 in the engine besides the types: `VK_*` keys and
-  `GetKeyState`, the `ATTR` run type from UspLib, `wsprintf` for line numbers, the filter's temp-file `HANDLE`,
-  `SYSCOL` colours and `GetSysColor`, and the `TVN_*` notification structures.
+- **Done:** step 6. The engine builds on Linux as the CMake library `TextViewEngine`, and its tests run there:
+  - The engine includes no platform headers. On `_WIN32` `TextViewInternal.h` still includes `windows.h`, for the
+    types of `EditMessage`, which `win32/TextViewEdit.cpp` defines.
+  - Its own types replace Win32's: `TextRun` (for UspLib's `ATTR`), `TVK_*` keys and `TVSB_*` scroll actions
+    (Win32's values), `TextViewFind`, `TextViewDocStats`, `TextViewRecovery`, `TextViewCursorInfo` and
+    `TextViewIndexInfo`, and `TVNOTIFY_*` codes. The Win32 window converts its `TXM_*` structures, and its host
+    sends `TVN_*` notifications as before. `TextViewDefs.h` holds the definitions both share, for C too.
+  - The host gives the modifier keys (`Modifiers`) and system colours (`SystemColour`, by `TVSC_*` index: Win32's
+    `COLOR_*` numbers). `RealizeColour` stays exported for the application, in `win32/`.
+  - The filter's temp file is `TempAppendFile` (`SaveFile.h`): the same file on Windows, `mkstemp` elsewhere, in the
+    build's own text. `KeepLastError` keeps `errno` and `GetLastError` over cleanup.
+  - `OnText` takes typed text as a string, as an input method gives it.
+  - The audit for unit steps: the engine's character and word moves stop where the layout says, and
+    `TextLayout.h` now says that no stop is ever inside a character. Fixed for UTF-8: the line cache's and the
+    clipboard's buffers (a byte can be 3 UTF-8 units), overwrite replacing one character with one typed character
+    of any length (also a surrogate pair on Windows), and Tab-to-spaces counting characters.
+  - `tests/engine_tests.cpp` drives the engine through a fake host, layout and canvas, in both builds: Ubuntu CI in
+    UTF-8, Windows CI in UTF-16.
+- **Next:** step 8, `TextViewGtk` and `NeatpadTextView`. Step 7, the Pango spike, is optional.
 
 ## Open decisions
 
