@@ -479,7 +479,7 @@ size_w TextDocument::decode_prev_char(size_w offset, size_w lower_bound, uint32_
 //
 //	returns  - number of bytes processed
 //
-size_w TextDocument::decode_text(size_w offset, size_w lenbytes, textchar *buf, uint32_t *buflen)
+size_w TextDocument::decode_text(size_w offset, size_w lenbytes, tchar_t *buf, uint32_t *buflen)
 {
 //	uint8_t	*rawdata = (uint8_t *)(buffer + offset + m_nHeaderSize);
 
@@ -590,7 +590,7 @@ TextReader::TextReader(TextDocument *doc, TextPos from, TextPos to)
 {
 }
 
-uint32_t TextReader::read(textchar *buf, uint32_t buflen)
+uint32_t TextReader::read(tchar_t *buf, uint32_t buflen)
 {
 	size_w bytes;
 
@@ -616,7 +616,7 @@ bool TextReader::at_end() const
 //
 //	Retrieve the whole of a coordinate's line
 //
-uint32_t TextDocument::getline(const TextCoord &line, textchar *buf, uint32_t buflen)
+uint32_t TextDocument::getline(const TextCoord &line, tchar_t *buf, uint32_t buflen)
 {
 	size_w begin     = line.line_begin.byte_offset;
 	size_w len_bytes = line.line_next >= line.line_begin ? line.line_next - line.line_begin : 0;
@@ -710,7 +710,7 @@ uint32_t TextDocument::line_diff(const TextCoord &line, const std::function<void
 //
 //	returns bytes processed from rawdata
 //
-size_t TextDocument::rawdata_to_utf16(uint8_t *rawdata, size_t rawlen, textchar *utf16str, size_t *utf16len)
+size_t TextDocument::rawdata_to_utf16(uint8_t *rawdata, size_t rawlen, tchar_t *utf16str, size_t *utf16len)
 {
 	switch(m_nFileFormat)
 	{
@@ -778,7 +778,7 @@ size_t TextDocument::rawdata_complete_length(uint8_t *rawdata, size_t rawlen)
 //
 //	returns number of WCHARs processed from utf16str
 //
-static size_t encode_utf16(TEXT_ENCODING encoding, const textchar *utf16str, size_t utf16len, uint8_t *rawdata, size_t *rawlen)
+static size_t encode_utf16(TEXT_ENCODING encoding, const tchar_t *utf16str, size_t utf16len, uint8_t *rawdata, size_t *rawlen)
 {
 	switch(encoding)
 	{
@@ -821,7 +821,7 @@ static size_t encode_utf16(TEXT_ENCODING encoding, const textchar *utf16str, siz
 //
 //	Converts specified UTF16 string to the underlying RAW format of the text-document
 //
-size_t TextDocument::utf16_to_rawdata(const textchar *utf16str, size_t utf16len, uint8_t *rawdata, size_t *rawlen)
+size_t TextDocument::utf16_to_rawdata(const tchar_t *utf16str, size_t utf16len, uint8_t *rawdata, size_t *rawlen)
 {
 	return encode_utf16(m_nFileFormat, utf16str, utf16len, rawdata, rawlen);
 }
@@ -831,13 +831,13 @@ size_t TextDocument::utf16_to_rawdata(const textchar *utf16str, size_t utf16len,
 //	or TXL_CRLF. dest holds twice length. A CR that ends one piece of text and
 //	an LF that starts the next are one CRLF; *after_cr carries that between them.
 //
-static size_t convert_linebreaks(const textchar *text, size_t length, uint32_t linebreak, textchar *dest, bool *after_cr)
+static size_t convert_linebreaks(const tchar_t *text, size_t length, uint32_t linebreak, tchar_t *dest, bool *after_cr)
 {
 	size_t n = 0;
 
 	for(size_t i = 0; i < length; i++)
 	{
-		textchar ch = text[i];
+		tchar_t ch = text[i];
 		bool     lf_of_crlf = ch == '\n' && *after_cr;
 
 		*after_cr = ch == '\r';
@@ -870,8 +870,8 @@ bool TextDocument::write_converted(SaveFile &file, TEXT_ENCODING encoding, uint3
 {
 	const uint32_t CHUNK = 0x4000;
 
-	std::vector<textchar> text(CHUNK);
-	std::vector<textchar> lines(CHUNK * 2);		// each line break can become two
+	std::vector<tchar_t> text(CHUNK);
+	std::vector<tchar_t> lines(CHUNK * 2);		// each line break can become two
 	std::vector<uint8_t>  raw(CHUNK * 2 * 4);	// four bytes a UTF-16 unit at most, as UTF-32
 	TextReader reader = text_from_range(TextPos(0), TextPos(byte_length()));
 	bool       after_cr = false;
@@ -879,7 +879,7 @@ bool TextDocument::write_converted(SaveFile &file, TEXT_ENCODING encoding, uint3
 	while(!reader.at_end())
 	{
 		size_t          len    = reader.read(&text[0], CHUNK);
-		const textchar *src    = &text[0];
+		const tchar_t *src    = &text[0];
 		size_t          rawlen = raw.size();
 
 		// nothing read short of the end: the text can't be read
@@ -908,8 +908,8 @@ size_w TextDocument::replace_linebreaks(TextPos from, TextPos to, uint32_t lineb
 {
 	const uint32_t CHUNK = 0x4000;
 
-	std::vector<textchar> text(CHUNK);
-	std::vector<textchar> lines;
+	std::vector<tchar_t> text(CHUNK);
+	std::vector<tchar_t> lines;
 	TextReader reader = text_from_range(from, to);
 	bool       after_cr = false;
 	size_w     inserted;
@@ -940,7 +940,7 @@ size_w TextDocument::replace_linebreaks(TextPos from, TextPos to, uint32_t lineb
 //
 //	returns number of BYTEs stored
 //
-size_w TextDocument::insert_raw(size_w offset_bytes, const textchar *text, uint32_t length)
+size_w TextDocument::insert_raw(size_w offset_bytes, const tchar_t *text, uint32_t length)
 {
 	uint8_t  buf[0x100];
 	size_t buflen;
@@ -966,7 +966,7 @@ size_w TextDocument::insert_raw(size_w offset_bytes, const textchar *text, uint3
 	return rawlen;
 }
 
-size_w TextDocument::replace_raw(size_w offset_bytes, const textchar *text, uint32_t length, size_w erase_bytes)
+size_w TextDocument::replace_raw(size_w offset_bytes, const tchar_t *text, uint32_t length, size_w erase_bytes)
 {
 	uint8_t  buf[0x100];
 	size_t buflen;
@@ -997,7 +997,7 @@ size_w TextDocument::replace_raw(size_w offset_bytes, const textchar *text, uint
 //
 //	Insert text at a position
 //
-size_w TextDocument::insert_text(TextPos at, const textchar *text, uint32_t length, TextChange *change)
+size_w TextDocument::insert_text(TextPos at, const tchar_t *text, uint32_t length, TextChange *change)
 {
 	size_w old_size = m_seq.size();
 	size_w rawlen   = insert_raw(at.byte_offset, text, length);
@@ -1018,7 +1018,7 @@ size_w TextDocument::insert_text(TextPos at, const textchar *text, uint32_t leng
 //	text before each one is then still in one piece, so the sequence finds it
 //	at once, however many matches there are.
 //
-size_w TextDocument::replace_all(const textchar *text, uint32_t length, bool matchcase, const textchar *replace, uint32_t replace_length)
+size_w TextDocument::replace_all(const tchar_t *text, uint32_t length, bool matchcase, const tchar_t *replace, uint32_t replace_length)
 {
 	struct match { TextPos begin, end; };
 
@@ -1053,7 +1053,7 @@ size_w TextDocument::replace_all(const textchar *text, uint32_t length, bool mat
 //
 //	Replace the text between two positions
 //
-size_w TextDocument::replace_text(TextPos from, TextPos to, const textchar *text, uint32_t length, TextChange *change)
+size_w TextDocument::replace_text(TextPos from, TextPos to, const tchar_t *text, uint32_t length, TextChange *change)
 {
 	TextPos begin      = min_of(from, to);
 	size_w erase_bytes = max_of(from, to) - begin;
