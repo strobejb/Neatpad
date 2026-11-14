@@ -186,6 +186,9 @@
     <Manifest Include="Neatpad.exe.manifest" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\TextDocument\TextDocument.vcxproj">
+      <Project>{841A9BB3-5A3C-45B6-A1F7-CDA3F8F55FE2}</Project>
+    </ProjectReference>
     <ProjectReference Include="..\TextView\TextView.vcxproj">
       <Project>{9D2C0B3C-26B9-4F43-B950-4550B8D21850}</Project>
     </ProjectReference>

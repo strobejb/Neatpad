@@ -4,7 +4,7 @@
 //
 #include "tests.h"
 #include <tchar.h>
-#include "../src/TextView/sequence_state.h"
+#include "../src/TextDocument/sequence_state.h"
 
 // Inspect buffer ownership without adding a public sequence API for tests.
 class SequenceBufferProbe

@@ -4,7 +4,7 @@
 //	never shown.
 //
 #include "tests.h"
-#include "../src/TextView/sequence_state.h"
+#include "../src/TextDocument/sequence_state.h"
 #include "../src/TextView/TextViewInternal.h"
 #include <tchar.h>
 #include <shellapi.h>

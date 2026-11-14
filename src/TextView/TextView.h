@@ -5,7 +5,7 @@
 #ifndef TEXTVIEW_INCLUDED
 #define TEXTVIEW_INCLUDED
 
-#include "codepages.h"
+#include "../TextDocument/codepages.h"
 
 #ifdef __cplusplus
 extern "C" {

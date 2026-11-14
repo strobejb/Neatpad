@@ -14,7 +14,7 @@
 #include <commctrl.h>
 #include <uxtheme.h>
 #include "Neatpad.h"
-#include "..\TextView\codepages.h"
+#include "../TextDocument/codepages.h"
 #include "..\TextView\TextView.h"
 #include "resource.h"
 

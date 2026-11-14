@@ -26,7 +26,7 @@ HRESULT (WINAPI * DrawThemeBackground_Proc)(HTHEME hTheme, HDC hdc, int, int, co
 */
 
 
-#include "TextDocument.h"
+#include "../TextDocument/TextDocument.h"
 #include "TextView.h"
 
 #include "..\UspLib\usplib.h"

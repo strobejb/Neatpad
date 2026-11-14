@@ -111,16 +111,6 @@
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="SaveFile.cpp" />
-    <ClCompile Include="sequence.cpp" />
-    <ClCompile Include="sequence_diff.cpp" />
-    <ClCompile Include="sequence_state.cpp" />
-    <ClCompile Include="sequence_buf.cpp" />
-    <ClCompile Include="sequence_chars.cpp" />
-    <ClCompile Include="sequence_lines.cpp" />
-    <ClCompile Include="TextDocument.cpp" />
-    <ClCompile Include="TextDocumentCoord.cpp" />
-    <ClCompile Include="TextDocumentFind.cpp" />
     <ClCompile Include="TextView.cpp" />
     <ClCompile Include="TextViewClipboard.cpp" />
     <ClCompile Include="TextViewEdit.cpp" />
@@ -134,19 +124,15 @@
     <ClCompile Include="TextViewPaint.cpp" />
     <ClCompile Include="TextViewScroll.cpp" />
     <ClCompile Include="TextViewSyntax.cpp" />
-    <ClCompile Include="Unicode.c" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="codepages.h" />
-    <ClInclude Include="SaveFile.h" />
-    <ClInclude Include="sequence.h" />
-    <ClInclude Include="sequence_state.h" />
-    <ClInclude Include="TextDocument.h" />
     <ClInclude Include="TextView.h" />
     <ClInclude Include="TextViewInternal.h" />
-    <ClInclude Include="Unicode.h" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\TextDocument\TextDocument.vcxproj">
+      <Project>{841A9BB3-5A3C-45B6-A1F7-CDA3F8F55FE2}</Project>
+    </ProjectReference>
     <ProjectReference Include="..\UspLib\UspLib.vcxproj">
       <Project>{5E7AC3D0-6E3B-4BF1-9DD6-B68A47376C83}</Project>
     </ProjectReference>

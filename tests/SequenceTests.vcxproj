@@ -141,17 +141,17 @@
       <PreprocessorDefinitions>RECOVERY_TESTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <ClCompile Include="test_helpers.cpp" />
-    <ClCompile Include="..\src\TextView\TextDocument.cpp" />
-    <ClCompile Include="..\src\TextView\TextDocumentCoord.cpp" />
-    <ClCompile Include="..\src\TextView\TextDocumentFind.cpp" />
-    <ClCompile Include="..\src\TextView\SaveFile.cpp" />
-    <ClCompile Include="..\src\TextView\sequence.cpp" />
-    <ClCompile Include="..\src\TextView\sequence_diff.cpp" />
-    <ClCompile Include="..\src\TextView\sequence_state.cpp" />
-    <ClCompile Include="..\src\TextView\sequence_buf.cpp" />
-    <ClCompile Include="..\src\TextView\sequence_chars.cpp" />
-    <ClCompile Include="..\src\TextView\sequence_lines.cpp" />
-    <ClCompile Include="..\src\TextView\Unicode.c" />
+    <ClCompile Include="..\src\TextDocument\TextDocument.cpp" />
+    <ClCompile Include="..\src\TextDocument\TextDocumentCoord.cpp" />
+    <ClCompile Include="..\src\TextDocument\TextDocumentFind.cpp" />
+    <ClCompile Include="..\src\TextDocument\SaveFile.cpp" />
+    <ClCompile Include="..\src\TextDocument\sequence.cpp" />
+    <ClCompile Include="..\src\TextDocument\sequence_diff.cpp" />
+    <ClCompile Include="..\src\TextDocument\sequence_state.cpp" />
+    <ClCompile Include="..\src\TextDocument\sequence_buf.cpp" />
+    <ClCompile Include="..\src\TextDocument\sequence_chars.cpp" />
+    <ClCompile Include="..\src\TextDocument\sequence_lines.cpp" />
+    <ClCompile Include="..\src\TextDocument\Unicode.c" />
     <ClCompile Include="..\src\TextView\TextView.cpp" />
     <ClCompile Include="..\src\TextView\TextViewClipboard.cpp" />
     <ClCompile Include="..\src\TextView\TextViewEdit.cpp" />
@@ -173,13 +173,13 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="tests.h" />
-    <ClInclude Include="..\src\TextView\codepages.h" />
-    <ClInclude Include="..\src\TextView\SaveFile.h" />
-    <ClInclude Include="..\src\TextView\sequence.h" />
-    <ClInclude Include="..\src\TextView\sequence_state.h" />
-    <ClInclude Include="..\src\TextView\TextDocument.h" />
+    <ClInclude Include="..\src\TextDocument\codepages.h" />
+    <ClInclude Include="..\src\TextDocument\SaveFile.h" />
+    <ClInclude Include="..\src\TextDocument\sequence.h" />
+    <ClInclude Include="..\src\TextDocument\sequence_state.h" />
+    <ClInclude Include="..\src\TextDocument\TextDocument.h" />
     <ClInclude Include="..\src\TextView\TextView.h" />
-    <ClInclude Include="..\src\TextView\Unicode.h" />
+    <ClInclude Include="..\src\TextDocument\Unicode.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>

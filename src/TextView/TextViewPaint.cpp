@@ -14,7 +14,7 @@
 #include <tchar.h>
 #include "TextView.h"
 #include "TextViewInternal.h"
-#include "Unicode.h"
+#include "../TextDocument/Unicode.h"
 
 void	PaintRect(HDC hdc, int x, int y, int width, int height, COLORREF fill);
 void	PaintRect(HDC hdc, RECT *rect, COLORREF fill);

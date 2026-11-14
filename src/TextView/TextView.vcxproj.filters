@@ -12,34 +12,6 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="SaveFile.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="sequence.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="sequence_diff.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="sequence_state.cpp"><Filter>Source Files</Filter></ClCompile>
-    <ClCompile Include="sequence_buf.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="sequence_chars.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="sequence_lines.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="TextDocument.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="TextDocumentCoord.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="TextDocumentFind.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="TextView.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -76,35 +48,16 @@
     <ClCompile Include="TextViewSyntax.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="Unicode.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="codepages.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="SaveFile.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="sequence.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="TextDocument.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="TextView.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="TextViewInternal.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="Unicode.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="TextViewRecovery.cpp"><Filter>Source Files</Filter></ClCompile>
-    <ClInclude Include="sequence_state.h"><Filter>Header Files</Filter></ClInclude>
   </ItemGroup>
 </Project>

@@ -30,35 +30,35 @@
     <ClCompile Include="test_helpers.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\src\TextView\SaveFile.cpp">
+    <ClCompile Include="..\src\TextDocument\SaveFile.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\src\TextView\sequence.cpp">
+    <ClCompile Include="..\src\TextDocument\sequence.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\src\TextView\sequence_diff.cpp">
+    <ClCompile Include="..\src\TextDocument\sequence_diff.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\src\TextView\sequence_state.cpp"><Filter>Source Files</Filter></ClCompile>
-    <ClCompile Include="..\src\TextView\sequence_buf.cpp">
+    <ClCompile Include="..\src\TextDocument\sequence_state.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="..\src\TextDocument\sequence_buf.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\src\TextView\sequence_chars.cpp">
+    <ClCompile Include="..\src\TextDocument\sequence_chars.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\src\TextView\sequence_lines.cpp">
+    <ClCompile Include="..\src\TextDocument\sequence_lines.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\src\TextView\TextDocument.cpp">
+    <ClCompile Include="..\src\TextDocument\TextDocument.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\src\TextView\TextDocumentCoord.cpp">
+    <ClCompile Include="..\src\TextDocument\TextDocumentCoord.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\src\TextView\TextDocumentFind.cpp">
+    <ClCompile Include="..\src\TextDocument\TextDocumentFind.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\src\TextView\Unicode.c">
+    <ClCompile Include="..\src\TextDocument\Unicode.c">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="..\src\TextView\TextView.cpp">
@@ -102,28 +102,28 @@
     <ClInclude Include="tests.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\src\TextView\codepages.h">
+    <ClInclude Include="..\src\TextDocument\codepages.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\src\TextView\SaveFile.h">
+    <ClInclude Include="..\src\TextDocument\SaveFile.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\src\TextView\sequence.h">
+    <ClInclude Include="..\src\TextDocument\sequence.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\src\TextView\TextDocument.h">
+    <ClInclude Include="..\src\TextDocument\TextDocument.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\src\TextView\TextView.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\src\TextView\Unicode.h">
+    <ClInclude Include="..\src\TextDocument\Unicode.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\src\TextView\TextViewRecovery.cpp"><Filter>Source Files</Filter></ClCompile>
-    <ClInclude Include="..\src\TextView\sequence_state.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="..\src\TextDocument\sequence_state.h"><Filter>Header Files</Filter></ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\src\Neatpad\Recovery.c"><Filter>Source Files</Filter></ClCompile>

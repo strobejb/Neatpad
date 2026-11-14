@@ -7,7 +7,7 @@
 #include <memory>
 #include "TextView.h"
 #include "TextViewInternal.h"
-#include "sequence_state.h"
+#include "../TextDocument/sequence_state.h"
 
 namespace
 {

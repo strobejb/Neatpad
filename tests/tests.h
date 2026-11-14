@@ -16,11 +16,11 @@
 #include <string>
 #include <vector>
 
-#include "../src/TextView/sequence.h"
-#include "../src/TextView/SaveFile.h"
-#include "../src/TextView/TextDocument.h"
+#include "../src/TextDocument/sequence.h"
+#include "../src/TextDocument/SaveFile.h"
+#include "../src/TextDocument/TextDocument.h"
 #include "../src/TextView/TextView.h"
-#include "../src/TextView/Unicode.h"
+#include "../src/TextDocument/Unicode.h"
 
 // Test access to a document's insides: its sequence, for line-number lookups
 // (such as where line N starts) that TextDocument itself doesn't offer, and
