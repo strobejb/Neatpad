@@ -34,8 +34,9 @@ class UspTextLayout : public TextLayout
     void SetSelection(int start, int end) override;
     void SetSelectionColours(uint32_t fg, uint32_t bg) override;
 
-    // Draw the line into hdc, clipped to bounds. TextCanvas will take this over.
-    void Draw(HDC hdc, int x, int y, int lineHeight, int adjustY, RECT *bounds);
+    // Draw on a Win32Canvas
+    void Draw(TextCanvas &canvas, int x, int y, int lineHeight, int adjustY, int clipLeft, int clipTop, int clipRight,
+              int clipBottom) override;
 
   private:
     const SCRIPT_LOGATTR *LogAttr(int offset);

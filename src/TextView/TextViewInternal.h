@@ -30,6 +30,7 @@ HRESULT (WINAPI * DrawThemeBackground_Proc)(HTHEME hTheme, HDC hdc, int, int, co
 #include "TextView.h"
 #include "TextViewHost.h"
 #include "TextLayout.h"
+#include "TextCanvas.h"
 
 #include "win32/UspLib/usplib.h"
 
@@ -189,10 +190,11 @@ private:
 	//	Painting support
 	//
 	void		RefreshWindow();
-	void		PaintRows(HDC hdc, RECT *rcPaint, HRGN hrgnUpdate);
-	void		PaintLine(HDC hdc, TextCoord *coord, ULONG row, int x, int y, HRGN hrgnUpdate);
-	void		PaintText(HDC hdc, TextCoord *coord, int x, int y, RECT *bounds);
-	int			PaintMargin(HDC hdc, TextCoord *line, int x, int y);
+	TextCanvas *CreateCanvas(HDC hdc);
+	void		Paint(TextCanvas &canvas, RECT *rcPaint);
+	void		PaintLine(TextCanvas &canvas, TextCoord *coord, int x);
+	void		PaintText(TextCanvas &canvas, TextCoord *coord, int x, int y, RECT *bounds);
+	int			PaintMargin(TextCanvas &canvas, TextCoord *line, int x, int y);
     uint32_t    LineDiff(TextCoord *line, const std::function<void(size_w, size_w)> &inserted = {},
                          size_w columns = (size_w)-1);
     bool        DiffJoins(TextCoord *line, bool previous);

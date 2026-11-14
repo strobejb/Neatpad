@@ -7,6 +7,8 @@
 
 #include "../TextDocument/TextDocument.h" // tchar_t
 
+class TextCanvas;
+
 // A line's colour and font runs, one per text unit. UspLib defines it for now.
 typedef struct _ATTR ATTR;
 
@@ -50,6 +52,12 @@ class TextLayout
     // when the layout is.
     virtual void SetSelection(int start, int end)              = 0;
     virtual void SetSelectionColours(uint32_t fg, uint32_t bg) = 0;
+
+    // Draw the line on a canvas the same platform's host made, at x, y in a
+    // row lineHeight high, with the text adjustY below its top. What falls
+    // outside the clip rectangle can be left undrawn.
+    virtual void Draw(TextCanvas &canvas, int x, int y, int lineHeight, int adjustY, int clipLeft, int clipTop,
+                      int clipRight, int clipBottom) = 0;
 };
 
 #endif

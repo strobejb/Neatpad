@@ -9,6 +9,7 @@
 #include <windows.h>
 
 #include "UspTextLayout.h"
+#include "Win32Canvas.h"
 
 UspTextLayout::UspTextLayout(HWND hwnd, USPFONT *fonts) : m_hWnd(hwnd), m_fonts(fonts), m_uspData(UspAllocate())
 {
@@ -128,7 +129,15 @@ void UspTextLayout::SetSelectionColours(uint32_t fg, uint32_t bg)
     UspSetSelColor(m_uspData, fg, bg);
 }
 
-void UspTextLayout::Draw(HDC hdc, int x, int y, int lineHeight, int adjustY, RECT *bounds)
+void UspTextLayout::Draw(TextCanvas &canvas, int x, int y, int lineHeight, int adjustY, int clipLeft, int clipTop,
+                         int clipRight, int clipBottom)
 {
-    UspTextOut(m_uspData, hdc, x, y, lineHeight, adjustY, bounds);
+    RECT bounds = {clipLeft, clipTop, clipRight, clipBottom};
+    HDC  hdc    = static_cast<Win32Canvas &>(canvas).Target();
+
+    // UspTextOut clips to the selection as it draws, and leaves a clip region
+    // behind when there wasn't one before, so start and finish with none
+    SelectClipRgn(hdc, NULL);
+    UspTextOut(m_uspData, hdc, x, y, lineHeight, adjustY, &bounds);
+    SelectClipRgn(hdc, NULL);
 }

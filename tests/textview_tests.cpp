@@ -6,6 +6,7 @@
 #include "tests.h"
 #include "../src/TextDocument/sequence_state.h"
 #include "../src/TextView/TextViewInternal.h"
+#include "../src/TextView/win32/Win32Canvas.h"
 #include <tchar.h>
 #include <shellapi.h>
 #include "../src/Neatpad/win32/Neatpad.h"
@@ -250,7 +251,9 @@ class TextViewMarginProbe
         bool      haveLine = lineno != UINT64_MAX && view->m_pTextDoc->coord_from_lineno(lineno, &line) == TDR_OK;
         CHECK(lineno == UINT64_MAX || haveLine);
         memset(pixels, 0, width * height * sizeof(uint32_t));
-        view->PaintMargin(dc, haveLine ? &line : 0, 0, 0);
+        Win32Canvas canvas(dc, view->m_uspFontList[0].hFont, view->m_hImageList);
+
+        view->PaintMargin(canvas, haveLine ? &line : 0, 0, 0);
         GdiFlush();
         std::vector<uint32_t> result((uint32_t *)pixels, (uint32_t *)pixels + width * height);
 
@@ -2433,6 +2436,35 @@ void textview_paints_the_same_text_alike_in_every_encoding()
     CHECK(hashes[0] == hashes[2]);
 }
 
+void textview_paints_the_margin_on_every_row()
+{
+    // the margin is drawn after each line's text, so nothing the text leaves
+    // behind may stop it
+    EditPair pair = {};
+
+    CHECK(open_edit_pair(&pair, paint_text, NCP_UTF8));
+    paint_styles(pair.view);
+    TextView_SetColor(pair.view, TXC_LINENUMBER, RGB(0x21, 0x43, 0x65));
+    SendMessage(pair.view, EM_SETSEL, 4, 27);
+
+    Picture  picture = print_client(pair.view);
+    uint32_t margin  = dib_pixel(RGB(0x21, 0x43, 0x65));
+
+    // the rows of the four lines
+    const DWORD starts[] = {0, 24, 35, 37};
+    int         height   = char_pos(pair.view, 24).y;
+
+    for (DWORD start : starts)
+    {
+        int y = char_pos(pair.view, start).y;
+
+        CHECK(picture.at(1, y + height / 2) == margin);
+        CHECK(picture.at(1, y + height - 1) == margin);
+    }
+
+    close_edit_pair(&pair);
+}
+
 void textview_paints_the_selection_over_exactly_its_characters()
 {
     // U+1F600 and the e with its accent (units 13 to 18), "cafe" and "Hel", all
@@ -2662,6 +2694,7 @@ const test_case tests[] = {
     {"textview_paints_the_same_text_alike_in_every_encoding", textview_paints_the_same_text_alike_in_every_encoding},
     {"textview_paints_the_selection_over_exactly_its_characters",
      textview_paints_the_selection_over_exactly_its_characters},
+    {"textview_paints_the_margin_on_every_row", textview_paints_the_margin_on_every_row},
     {"textview_paints_the_same_after_scrolling_away_and_back", textview_paints_the_same_after_scrolling_away_and_back},
     {"textview_paint_hashes_are_repeatable", textview_paint_hashes_are_repeatable},
 };

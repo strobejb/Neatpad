@@ -51,6 +51,9 @@
     <ClCompile Include="win32\TextViewWin32.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="win32\Win32Canvas.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="win32\UspTextLayout.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -66,6 +69,12 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="win32\TextViewWin32.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="TextCanvas.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="win32\Win32Canvas.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="TextLayout.h">

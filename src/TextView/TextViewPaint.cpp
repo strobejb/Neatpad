@@ -15,11 +15,7 @@
 #include "TextView.h"
 #include "TextViewInternal.h"
 #include "../TextDocument/Unicode.h"
-#include "win32/UspTextLayout.h"
-
-void	PaintRect(HDC hdc, int x, int y, int width, int height, COLORREF fill);
-void	PaintRect(HDC hdc, RECT *rect, COLORREF fill);
-void	DrawCheckedRect(HDC hdc, RECT *rect, COLORREF fg, COLORREF bg);
+#include "win32/Win32Canvas.h"
 
 extern "C" COLORREF MixRGB(COLORREF, COLORREF);
 
@@ -33,7 +29,7 @@ static const int CHANGE_MARGIN_WIDTH =
     CHANGE_MARKER_INSET + CHANGE_ICON_PADDING +
     (CHANGE_MARKER_WIDTH > CHANGE_TRIANGLE_WIDTH ? CHANGE_MARKER_WIDTH : CHANGE_TRIANGLE_WIDTH);
 
-static void PaintDeletionTriangle(HDC hdc, int x, int y, int width, int height, COLORREF colour)
+static void PaintDeletionTriangle(TextCanvas &canvas, int x, int y, int width, int height, COLORREF colour)
 {
     int middle = height / 2;
 
@@ -42,7 +38,7 @@ static void PaintDeletionTriangle(HDC hdc, int x, int y, int width, int height, 
         int distance = row > middle ? row - middle : middle - row;
         int extent   = middle ? 1 + (width - 1) * (middle - distance) / middle : width;
 
-        PaintRect(hdc, x, y + row, extent, 1, colour);
+        canvas.FillRect(x, y + row, extent, 1, colour);
     }
 }
 
@@ -183,7 +179,12 @@ LONG TextView::OnPaint()
 	GetUpdateRgn(m_hWnd, hrgnUpdate, FALSE);
 
 	BeginPaint(m_hWnd, &ps);
-	PaintRows(ps.hdc, &ps.rcPaint, hrgnUpdate);
+
+	TextCanvas *canvas = CreateCanvas(ps.hdc);
+
+	Paint(*canvas, &ps.rcPaint);
+	delete canvas;
+
 	EndPaint(m_hWnd, &ps);
 
 	DeleteObject(hrgnUpdate);
@@ -198,23 +199,31 @@ LONG TextView::OnPaint()
 LONG TextView::OnPrintClient(HDC hdc)
 {
 	RECT rect;
-	HRGN hrgnUpdate;
 
 	GetClientRect(m_hWnd, &rect);
-	hrgnUpdate = CreateRectRgnIndirect(&rect);
 
-	PaintRows(hdc, &rect, hrgnUpdate);
+	TextCanvas *canvas = CreateCanvas(hdc);
 
-	DeleteObject(hrgnUpdate);
+	Paint(*canvas, &rect);
+	delete canvas;
 
 	return 0;
 }
 
 //
-//	Draw the rows that rcPaint covers into hdc, one line at a time through a
-//	memory DC
+//	A canvas over hdc, with the view's main font for line numbers. The host
+//	will make these once it holds the fonts.
 //
-void TextView::PaintRows(HDC hdc, RECT *rcPaint, HRGN hrgnUpdate)
+TextCanvas *TextView::CreateCanvas(HDC hdc)
+{
+	return new Win32Canvas(hdc, m_uspFontList[0].hFont, m_hImageList);
+}
+
+//
+//	Draw the rows that rcPaint covers, one line at a time. A row is drawn
+//	whole, even when only part of it needs it.
+//
+void TextView::Paint(TextCanvas &canvas, RECT *rcPaint)
 {
 	ULONG		row;
 	ULONG		first;
@@ -222,20 +231,9 @@ void TextView::PaintRows(HDC hdc, RECT *rcPaint, HRGN hrgnUpdate)
 	TextCoord	lineCoord;
 	LineIterator lines;
 	bool		haveLine;
-
-	HDC			hdcMem;
-	HBITMAP		hbmMem;
 	RECT		rect;
 
-	//
-	// create a memoryDC the same size a single line, for double-buffering
-	//
 	GetClientRect(m_hWnd, &rect);
-
-	hdcMem = CreateCompatibleDC(hdc);
-	hbmMem = CreateCompatibleBitmap(hdc, rect.right-rect.left, m_nLineHeight);
-
-	SelectObject(hdcMem, hbmMem);
 
 	//
 	// figure out which lines to redraw
@@ -252,20 +250,19 @@ void TextView::PaintRows(HDC hdc, RECT *rcPaint, HRGN hrgnUpdate)
 	//
 	for(row = first; row <= last; row++)
 	{
-		int sx		= 0;
 		int sy		= row * m_nLineHeight;
 		int width	= rect.right-rect.left;
 		TextCoord *line = haveLine ? &lineCoord : 0;
 
+		canvas.BeginRow(sy, width, m_nLineHeight);
+
 		// prep the background
-		PaintRect(hdcMem, 0, 0, width, m_nLineHeight, LineColour(line));
-		//PaintRect(hdcMem, m_cpBlockStart.xpos+LeftMarginWidth(), 0, m_cpBlockEnd.xpos-m_cpBlockStart.xpos, m_nLineHeight,GetColour(TXC_HIGHLIGHT));
+		canvas.FillRect(0, 0, width, m_nLineHeight, LineColour(line));
 
-		// draw each line into the offscreen buffer
-		PaintLine(hdcMem, line, row, -m_nHScrollPos * m_nFontWidth, 0, hrgnUpdate);
+		// draw the line, then its margin
+		PaintLine(canvas, line, -m_nHScrollPos * m_nFontWidth);
 
-		// transfer to screen
-		BitBlt(	hdc, sx, sy, width, m_nLineHeight, hdcMem, 0, 0, SRCCOPY);
+		canvas.EndRow();
 
 		// step down to the next line, if there is one
 		if(haveLine)
@@ -275,56 +272,31 @@ void TextView::PaintRows(HDC hdc, RECT *rcPaint, HRGN hrgnUpdate)
 		}
 	}
 
-	//
-	//	Cleanup
-	//
-	DeleteDC(hdcMem);
-	DeleteObject(hbmMem);
 }
 
 //
-//	Draw the specified line (including margins etc) to the specified location.
-//	coord is 0 for rows past the end of the document.
+//	Draw the specified line (including margins etc) in the current row, with
+//	the text starting at xpos. coord is 0 for rows past the end of the document.
 //
-void TextView::PaintLine(HDC hdc, TextCoord *coord, ULONG row, int xpos, int ypos, HRGN hrgnUpdate)
+void TextView::PaintLine(TextCanvas &canvas, TextCoord *coord, int xpos)
 {
 	RECT	bounds;
-	HRGN	hrgnBounds = NULL;
 
+	// the text's part of the row, from where the line starts on-screen
 	GetClientRect(m_hWnd, &bounds);
-	SelectClipRgn(hdc, NULL);
 
-	// no point in drawing outside the window-update-region
-	if(hrgnUpdate != NULL)
-	{
-		// work out where the line would have been on-screen
-		bounds.left     = (long)(-m_nHScrollPos * m_nFontWidth + LeftMarginWidth());
-		bounds.top		= (long)(row * m_nLineHeight);
-		bounds.right	= (long)(bounds.right);
-		bounds.bottom	= (long)(bounds.top + m_nLineHeight);
-		
-		//	clip the window update-region with the line's bounding rectangle
-		hrgnBounds = CreateRectRgnIndirect(&bounds);
-		CombineRgn(hrgnBounds, hrgnUpdate, hrgnBounds, RGN_AND);
-		
-		// work out the bounding-rectangle of this intersection
-		GetRgnBox(hrgnBounds, &bounds);
-		bounds.top		= 0;
-		bounds.bottom	= m_nLineHeight;
-	}
+	bounds.left		= (long)(-m_nHScrollPos * m_nFontWidth + LeftMarginWidth());
+	bounds.top		= 0;
+	bounds.bottom	= m_nLineHeight;
 
-	PaintText(hdc, coord, xpos + LeftMarginWidth(), ypos, &bounds);
-
-	if(hrgnBounds)
-		DeleteObject(hrgnBounds);
-	SelectClipRgn(hdc, NULL);
+	PaintText(canvas, coord, xpos + LeftMarginWidth(), 0, &bounds);
 
 	//
 	//	draw the margin straight over the top
 	//
 	if(LeftMarginWidth() > 0)
 	{
-		PaintMargin(hdc, coord, 0, 0);
+		PaintMargin(canvas, coord, 0, 0);
 	}
 }
 
@@ -456,7 +428,7 @@ bool TextView::DiffJoins(TextCoord *line, bool previous)
 //
 //	Draw the specified line's margin into the area described by *margin*
 //
-int TextView::PaintMargin(HDC hdc, TextCoord *line, int xpos, int ypos)
+int TextView::PaintMargin(TextCanvas &canvas, TextCoord *line, int xpos, int ypos)
 {
 	RECT	rect = { xpos, ypos, xpos + LeftMarginWidth(), ypos + m_nLineHeight };
 	size_w	nLineNo = 0;
@@ -483,10 +455,8 @@ int TextView::PaintMargin(HDC hdc, TextCoord *line, int xpos, int ypos)
 
 	if(CheckStyle(TXS_LINENUMBERS))
 	{
-		HANDLE hOldFont = SelectObject(hdc, m_uspFontList[0].hFont);
-
         // One continuous background for numbers, icons and change markers.
-        PaintRect(hdc, &rect, GetColour(TXC_LINENUMBER));
+        canvas.FillRect(rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top, GetColour(TXC_LINENUMBER));
 
         size_w number = nLineNo;
         bool   known  = exact && nLineNo < m_nLineCount;
@@ -502,7 +472,7 @@ int TextView::PaintMargin(HDC hdc, TextCoord *line, int xpos, int ypos)
         // Leave pending source numbers and the filtered file's synthetic final
         // empty line blank. Painting must not force the source to be indexed.
         int len   = known ? wsprintf(ach, LINENO_FMT, (unsigned __int64)(number + 1)) : 0;
-        int width = TextWidth(hdc, ach, len);
+        int width = canvas.MarginTextWidth(ach, len);
 
         rect.right = rect.left + m_nLinenoWidth;
 
@@ -516,23 +486,18 @@ int TextView::PaintMargin(HDC hdc, TextCoord *line, int xpos, int ypos)
 			rect.right += 20;
 		}
 		
-		SetTextColor(hdc, GetColour(TXC_LINENUMBERTEXT));
-		SetBkColor(hdc,   GetColour(TXC_LINENUMBER));
-
-		ExtTextOut(	hdc, 
-					rect.left + m_nLinenoWidth - width,
-					rect.top  + NeatTextYOffset(&m_uspFontList[0]),
-					ETO_OPAQUE | ETO_CLIPPED,
-					&rect,
-					ach,
-					len,
-					0);
-
-		SelectObject(hdc, hOldFont);
+		canvas.DrawMarginText(rect.left + m_nLinenoWidth - width,
+							  rect.top  + NeatTextYOffset(&m_uspFontList[0]),
+							  ach,
+							  len,
+							  GetColour(TXC_LINENUMBERTEXT),
+							  GetColour(TXC_LINENUMBER),
+							  rect.left, rect.top, rect.right, rect.bottom);
 	}
 	else
 	{
-		DrawCheckedRect(hdc, &rect, GetColour(TXC_SELMARGIN1), GetColour(TXC_SELMARGIN2));
+		canvas.FillChecked(rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top,
+						   GetColour(TXC_SELMARGIN1), GetColour(TXC_SELMARGIN2));
 	}
 
 	//
@@ -542,18 +507,7 @@ int TextView::PaintMargin(HDC hdc, TextCoord *line, int xpos, int ypos)
 
 	if(m_hImageList && linfo && nLineNo < m_nLineCount)
 	{
-		ImageList_DrawEx(
-					  m_hImageList,
-					  linfo->nImageIdx,
-					  hdc, 
-					  imgX,
-					  imgY,
-					  imgWidth,
-					  imgHeight,
-					  CLR_NONE,
-					  CLR_NONE,
-					  ILD_TRANSPARENT
-					  );
+		canvas.DrawMarginImage(linfo->nImageIdx, imgX, imgY, imgWidth, imgHeight);
 	}
 
     // The margin background above also clears markers after Save or a style change.
@@ -571,18 +525,18 @@ int TextView::PaintMargin(HDC hdc, TextCoord *line, int xpos, int ypos)
         {
             COLORREF colour = GetColour(TXC_CHANGEDLINE);
 
-            PaintRect(hdc, markerLeft, ypos, CHANGE_MARKER_WIDTH, m_nLineHeight, GetColour(TXC_CHANGEDLINEBG));
-            PaintRect(hdc, markerLeft, ypos, 1, m_nLineHeight, colour);
-            PaintRect(hdc, markerRight - 1, ypos, 1, m_nLineHeight, colour);
+            canvas.FillRect(markerLeft, ypos, CHANGE_MARKER_WIDTH, m_nLineHeight, GetColour(TXC_CHANGEDLINEBG));
+            canvas.FillRect(markerLeft, ypos, 1, m_nLineHeight, colour);
+            canvas.FillRect(markerRight - 1, ypos, 1, m_nLineHeight, colour);
 
             if (!DiffJoins(line, true))
             {
-                PaintRect(hdc, markerLeft, ypos, CHANGE_MARKER_WIDTH, 1, colour);
+                canvas.FillRect(markerLeft, ypos, CHANGE_MARKER_WIDTH, 1, colour);
             }
 
             if (!DiffJoins(line, false))
             {
-                PaintRect(hdc, markerLeft, ypos + m_nLineHeight - 1, CHANGE_MARKER_WIDTH, 1, colour);
+                canvas.FillRect(markerLeft, ypos + m_nLineHeight - 1, CHANGE_MARKER_WIDTH, 1, colour);
             }
         }
         else
@@ -601,13 +555,13 @@ int TextView::PaintMargin(HDC hdc, TextCoord *line, int xpos, int ypos)
 
             if (diff & TextDocument::diff_erased_before)
             {
-                PaintDeletionTriangle(hdc, triangleLeft, ypos, CHANGE_TRIANGLE_WIDTH, triangle,
+                PaintDeletionTriangle(canvas, triangleLeft, ypos, CHANGE_TRIANGLE_WIDTH, triangle,
                                       GetColour(TXC_CHANGEDTEXT));
             }
 
             if (diff & TextDocument::diff_erased_after)
             {
-                PaintDeletionTriangle(hdc, triangleLeft, ypos + m_nLineHeight - triangle, CHANGE_TRIANGLE_WIDTH,
+                PaintDeletionTriangle(canvas, triangleLeft, ypos + m_nLineHeight - triangle, CHANGE_TRIANGLE_WIDTH,
                                       triangle, GetColour(TXC_CHANGEDTEXT));
             }
         }
@@ -635,7 +589,7 @@ static bool HasAppFocus(HWND hwnd)
 //
 //	Draw a line of text into the specified device-context
 //
-void TextView::PaintText(HDC hdc, TextCoord *coord, int xpos, int ypos, RECT *bounds)
+void TextView::PaintText(TextCanvas &canvas, TextCoord *coord, int xpos, int ypos, RECT *bounds)
 {
 	TextLayout * layout;
 
@@ -659,8 +613,9 @@ void TextView::PaintText(HDC hdc, TextCoord *coord, int xpos, int ypos, RECT *bo
 
 	ApplySelection(layout, coord, layout->Length());
 
-	// draw the text! Win32 only, until TextCanvas
-	static_cast<UspTextLayout *>(layout)->Draw(hdc, xpos, ypos, m_nLineHeight, m_nHeightAbove, bounds);
+	// draw the text!
+	layout->Draw(canvas, xpos, ypos, m_nLineHeight, m_nHeightAbove, bounds->left, bounds->top, bounds->right,
+				 bounds->bottom);
 }
 
 int	TextView::ApplySelection(TextLayout *layout, TextCoord *line, ULONG nTextLen)
@@ -835,22 +790,6 @@ int TextView::ApplyTextAttributes(TextCoord *line, ULONG &nColumn, TCHAR *szText
 	return nTextLen;
 }
 
-void PaintRect(HDC hdc, int x, int y, int width, int height, COLORREF fill)
-{
-	RECT rect = { x, y, x+width, y+height };
-
-	fill = SetBkColor(hdc, fill);
-	ExtTextOut(hdc, 0, 0, ETO_OPAQUE, &rect, 0, 0, 0);
-	SetBkColor(hdc, fill);
-}
-
-void PaintRect(HDC hdc, RECT *rect, COLORREF fill)
-{
-	fill = SetBkColor(hdc, fill);
-	ExtTextOut(hdc, 0, 0, ETO_OPAQUE, rect, 0, 0, 0);	
-	SetBkColor(hdc, fill);
-}
-
 int TextView::CRLF_size(TCHAR *szText, int nLength)
 {
 	if(nLength >= 2)
@@ -996,42 +935,7 @@ COLORREF TextView::SetColour(UINT idx, COLORREF rgbColour)
 	return rgbOld;
 }
 
-//
-//	Paint a checkered rectangle, with each alternate
-//	pixel being assigned a different colour
-//
-void DrawCheckedRect(HDC hdc, RECT *rect, COLORREF fg, COLORREF bg)
-{
-	static WORD wCheckPat[8] = 
-	{ 
-		0xaaaa, 0x5555, 0xaaaa, 0x5555, 0xaaaa, 0x5555, 0xaaaa, 0x5555 
-	};
 
-	HBITMAP hbmp;
-	HBRUSH  hbr, hbrold;
-	COLORREF fgold, bgold;
-
-	hbmp = CreateBitmap(8, 8, 1, 1, wCheckPat);
-	hbr  = CreatePatternBrush(hbmp);
-
-	SetBrushOrgEx(hdc, rect->left, 0, 0);
-	hbrold = (HBRUSH)SelectObject(hdc, hbr);
-
-	fgold = SetTextColor(hdc, fg);
-	bgold = SetBkColor(hdc, bg);
-	
-	PatBlt(hdc, rect->left, rect->top, 
-				rect->right - rect->left, 
-				rect->bottom - rect->top, 
-				PATCOPY);
-	
-	SetBkColor(hdc, bgold);
-	SetTextColor(hdc, fgold);
-	
-	SelectObject(hdc, hbrold);
-	DeleteObject(hbr);
-	DeleteObject(hbmp);
-}
 
 #include <uxtheme.h>
 #include <vssym32.h>

@@ -161,7 +161,12 @@ Each step is its own commit on `main`, and moves and formatting changes stay sep
   The line cache (`LINECACHE`) holds layouts, and navigation, the mouse, the caret and painting use them. Still to
   move: drawing (`UspTextLayout::Draw` until `TextCanvas`), the `ATTR` run type, and the fonts, so for now the
   engine creates its layouts rather than the host.
-- **Next:** step 3.3, introduce `TextCanvas`.
+- **Done:** step 3.3. `TextCanvas` (`src/TextView/TextCanvas.h`) is what painting draws on: rows, filled and checked
+  rectangles, margin text and margin images. `Win32Canvas` in `src/TextView/win32` draws each row into a memory bitmap
+  and copies it across, as before, and `TextLayout::Draw` takes a canvas. Painting draws whole rows rather than
+  clipping to the update region. `OnPaint` and `OnPrintClient` make the canvas for now, and the line-number width
+  is still measured outside painting with a window DC.
+- **Next:** step 3.4, move the HWND, WndProc and message code into `src/TextView/win32/`.
 
 ## Open decisions
 
