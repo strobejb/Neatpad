@@ -97,6 +97,9 @@
     <ClCompile Include="..\src\TextView\TextViewSyntax.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\src\TextView\win32\TextViewWin32.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="tests.h">
@@ -115,6 +118,12 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\src\TextView\TextView.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\TextView\TextViewHost.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\TextView\win32\TextViewWin32.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\src\TextDocument\Unicode.h">

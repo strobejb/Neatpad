@@ -28,6 +28,7 @@ HRESULT (WINAPI * DrawThemeBackground_Proc)(HTHEME hTheme, HDC hdc, int, int, co
 
 #include "../TextDocument/TextDocument.h"
 #include "TextView.h"
+#include "TextViewHost.h"
 
 #include "win32/UspLib/usplib.h"
 
@@ -84,7 +85,7 @@ class TextView
 
 public:
 
-	TextView(HWND hwnd);
+	TextView(HWND hwnd, TextViewHost *host);
 	~TextView();
 
 	LRESULT WINAPI WndProc(UINT msg, WPARAM wParam, LPARAM lParam);
@@ -276,7 +277,8 @@ private:
 	//
 	//	Scrolling
 	//
-	HRGN		ScrollRgn(int dx, int dy, bool fReturnUpdateRgn);
+	bool		ScrollRgn(int dx, int dy, bool fReturnUpdateRgn, RECT *scrolled);
+	void		InvalidateOutside(const RECT &inside);
 	void		Scroll(int dx, int dy);
 	bool		SetScrollCoord(TextCoord *coord);
 	bool		LastScrollCoord(TextCoord *top);
@@ -321,6 +323,7 @@ private:
 	//
 
 	HWND		m_hWnd;
+	TextViewHost *m_pHost;		// redraws, scrolling, the caret, timers, clipboard, notifications
 	HTHEME		m_hTheme;
 	ULONG		m_uStyleFlags;
 

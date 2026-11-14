@@ -19,6 +19,7 @@
 #include "TextView.h"
 #include "TextViewInternal.h"
 #include "racursor.h"
+#include "win32/TextViewWin32.h"
 
 
 #ifndef SPI_GETCARETWIDTH
@@ -35,11 +36,12 @@
 #pragma comment(lib, "comctl32.lib")
 
 //
-//	Constructor for TextView class
+//	Constructor for TextView class. It owns host, and calls it from here on.
 //
-TextView::TextView(HWND hwnd)
+TextView::TextView(HWND hwnd, TextViewHost *host)
 {
-	m_hWnd = hwnd;
+	m_hWnd  = hwnd;
+	m_pHost = host;
 
 	m_hTheme = OpenThemeData(hwnd, L"edit");
 
@@ -157,21 +159,13 @@ TextView::~TextView()
 		UspFree(m_uspCache[i].uspData);
 
 	CloseThemeData(m_hTheme);
+
+	delete m_pHost;
 }
 
 LRESULT TextView::NotifyParent(UINT nNotifyCode, NMHDR *optional)
 {
-	UINT  nCtrlId = GetWindowLong(m_hWnd, GWL_ID);
-	NMHDR nmhdr   = { m_hWnd, nCtrlId, nNotifyCode };
-	NMHDR *nmptr  = &nmhdr;  
-	
-	if(optional)
-	{
-		nmptr  = optional;
-		*nmptr = nmhdr;
-	}
-
-	return SendMessage(GetParent(m_hWnd), WM_NOTIFY, (WPARAM)nCtrlId, (LPARAM)nmptr);
+	return m_pHost->Notify(nNotifyCode, optional);
 }
 
 //
@@ -223,10 +217,10 @@ VOID TextView::UpdateMetrics()
 
 LONG TextView::OnSetFocus(HWND hwndOld)
 {
-	CreateCaret(m_hWnd, (HBITMAP)NULL, m_nCaretWidth, m_nLineHeight);
+	m_pHost->CreateCaret(m_nCaretWidth, m_nLineHeight);
 	RepositionCaret();
 
-	ShowCaret(m_hWnd);
+	m_pHost->ShowCaret();
 	RefreshWindow();
 	return 0;
 }
@@ -240,8 +234,8 @@ LONG TextView::OnKillFocus(HWND hwndNew)
 		OnLButtonUp(0, 0, 0);
 	}
 
-	HideCaret(m_hWnd);
-	DestroyCaret();
+	m_pHost->HideCaret();
+	m_pHost->DestroyCaret();
 	RefreshWindow();
 	return 0;
 }
@@ -901,7 +895,7 @@ LRESULT WINAPI TextViewWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
 	// and store pointer to it in our extra-window-bytes
 	case WM_NCCREATE:
 
-		if((ptv = new TextView(hwnd)) == 0)
+		if((ptv = new TextView(hwnd, new TextViewWin32(hwnd))) == 0)
 			return FALSE;
 
 		SetWindowLongPtr(hwnd, 0, (LONG_PTR)ptv);

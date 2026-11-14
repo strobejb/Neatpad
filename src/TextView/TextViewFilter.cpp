@@ -94,7 +94,7 @@ bool TextView::StartFilter()
 	SetScrollCoord(&m_cursorPos);
 
 	if(FilterSlice())
-		SetTimer(m_hWnd, FILTER_TIMER, USER_TIMER_MINIMUM, 0);
+		m_pHost->StartTimer(FILTER_TIMER, 0);
 
 	ShowFilteredLines();
 
@@ -116,7 +116,7 @@ void TextView::EndFilter(bool fKeepPlace)
 	if(m_pSourceDoc == 0)
 		return;
 
-	KillTimer(m_hWnd, FILTER_TIMER);
+	m_pHost->StopTimer(FILTER_TIMER);
 
 	if(fKeepPlace && m_pTextDoc->lineno_from_pos(m_cursorPos, &lineno) == TDR_OK && lineno < m_filterOrigins.size())
 	{
@@ -281,7 +281,7 @@ void TextView::ShowFilteredLines()
 LONG TextView::OnFilterTimer()
 {
 	if(m_pSourceDoc == 0 || !FilterSlice())
-		KillTimer(m_hWnd, FILTER_TIMER);
+		m_pHost->StopTimer(FILTER_TIMER);
 
 	if(m_pSourceDoc != 0)
 		ShowFilteredLines();

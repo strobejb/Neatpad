@@ -50,7 +50,7 @@ static void PaintDeletionTriangle(HDC hdc, int x, int y, int width, int height, 
 //
 VOID TextView::RefreshWindow()
 {
-	InvalidateRect(m_hWnd, NULL, FALSE);
+	m_pHost->Invalidate();
 }
 
 //

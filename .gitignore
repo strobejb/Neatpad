@@ -12,6 +12,8 @@ Unicode_Release/
 DebugVerify/
 x64/
 Win32/
+# but not the platform source folders
+!src/**/win32/
 
 # Compiler and linker intermediates
 *.aps

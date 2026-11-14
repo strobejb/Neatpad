@@ -137,7 +137,7 @@ BOOL TextView::UpdateTail()
     if (m_pSourceDoc != 0)
     {
         if (FilterSlice())
-            SetTimer(m_hWnd, FILTER_TIMER, USER_TIMER_MINIMUM, 0);
+            m_pHost->StartTimer(FILTER_TIMER, 0);
 
         // A completed index may need extending for newly appended source lines.
         if (added)
@@ -183,7 +183,7 @@ LONG TextView::ClearFile()
 	// whatever was being indexed has gone
 	if(m_fIndexing)
 	{
-		KillTimer(m_hWnd, INDEX_TIMER);
+		m_pHost->StopTimer(INDEX_TIMER);
 		m_fIndexing = false;
 	}
 
@@ -227,11 +227,11 @@ LONG TextView::IndexFile(BOOL fIndex)
 
 	if(fIndex && !m_fIndexing && info.nPercent < 100)
 	{
-		m_fIndexing = SetTimer(m_hWnd, INDEX_TIMER, USER_TIMER_MINIMUM, 0) != 0;
+		m_fIndexing = m_pHost->StartTimer(INDEX_TIMER, 0);
 	}
 	else if(!fIndex && m_fIndexing)
 	{
-		KillTimer(m_hWnd, INDEX_TIMER);
+		m_pHost->StopTimer(INDEX_TIMER);
 		m_fIndexing = false;
 	}
 
@@ -260,7 +260,7 @@ LONG TextView::OnIndexTimer()
 	// done, or no more can be read
 	if(!more)
 	{
-		KillTimer(m_hWnd, INDEX_TIMER);
+		m_pHost->StopTimer(INDEX_TIMER);
 		m_fIndexing = false;
 	}
 

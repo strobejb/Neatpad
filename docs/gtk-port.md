@@ -152,7 +152,11 @@ Each step is its own commit on `main`, and moves and formatting changes stay sep
   surrogate pairs and combining marks, click-to-caret and margin clicks, and painting through `WM_PRINTCLIENT`, which
   TextView now handles. Paint hashes depend on the machine's fonts, so the tests compare paintings with each other
   rather than with stored hashes. Set `NEATPAD_PAINT_HASHES=1` to print a few, to compare builds on one machine.
-- **Next:** step 3.1, introduce `TextViewHost`.
+- **Done:** step 3.1. `TextViewHost` (`src/TextView/TextViewHost.h`) carries redraws, scrolling and scrollbars, the caret,
+  timers, the mouse position for drag-scrolling, the clipboard and notifications. `TextViewWin32` implements it in
+  `src/TextView/win32`. Until step 3.4 the engine is still the window's object and owns its host. Client size, fonts
+  and DCs, focus, mouse capture and cursors, the theme and the context menu still call Win32 directly.
+- **Next:** step 3.2, introduce `TextLayout` with `UspTextLayout`.
 
 ## Open decisions
 

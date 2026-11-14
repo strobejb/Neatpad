@@ -165,6 +165,7 @@
     <ClCompile Include="..\src\TextView\TextViewPaint.cpp" />
     <ClCompile Include="..\src\TextView\TextViewScroll.cpp" />
     <ClCompile Include="..\src\TextView\TextViewSyntax.cpp" />
+    <ClCompile Include="..\src\TextView\win32\TextViewWin32.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\src\TextView\win32\UspLib\UspLib.vcxproj">
@@ -179,6 +180,8 @@
     <ClInclude Include="..\src\TextDocument\sequence_state.h" />
     <ClInclude Include="..\src\TextDocument\TextDocument.h" />
     <ClInclude Include="..\src\TextView\TextView.h" />
+    <ClInclude Include="..\src\TextView\TextViewHost.h" />
+    <ClInclude Include="..\src\TextView\win32\TextViewWin32.h" />
     <ClInclude Include="..\src\TextDocument\Unicode.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

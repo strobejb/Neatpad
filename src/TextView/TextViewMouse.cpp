@@ -205,7 +205,7 @@ LONG TextView::OnLButtonUp(UINT nFlags, int mx, int my)
 		// cancel the scroll-timer if it is still running
 		if(m_nScrollTimer != 0)
 		{
-			KillTimer(m_hWnd, m_nScrollTimer);
+			m_pHost->StopTimer(SCROLL_TIMER);
 			m_nScrollTimer = 0;
 		}
 
@@ -300,7 +300,7 @@ LONG TextView::OnMouseMove(UINT nFlags, int mx, int my)
 		{
 			if(m_nScrollTimer != 0)
 			{
-				KillTimer(m_hWnd, m_nScrollTimer);
+				m_pHost->StopTimer(SCROLL_TIMER);
 				m_nScrollTimer = 0;
 			}
 		}
@@ -311,7 +311,7 @@ LONG TextView::OnMouseMove(UINT nFlags, int mx, int my)
 			if(m_nScrollTimer == 0)
 			{
 				m_nScrollCounter = 0;
-				m_nScrollTimer   = SetTimer(m_hWnd, SCROLL_TIMER, 30, 0);
+				m_nScrollTimer   = m_pHost->StartTimer(SCROLL_TIMER, 30) ? SCROLL_TIMER : 0;
 			}
 		}
 
@@ -405,8 +405,11 @@ LONG TextView::OnTimer(UINT_PTR nTimerId)
 	rect.left   += LeftMarginWidth();
 
 	// get the mouse's client-coordinates
-	GetCursorPos(&pt);
-	ScreenToClient(m_hWnd, &pt);
+	int mx, my;
+
+	m_pHost->MousePosition(&mx, &my);
+	pt.x = mx;
+	pt.y = my;
 
 	//
 	// scrolling up / down??
@@ -431,13 +434,13 @@ LONG TextView::OnTimer(UINT_PTR nTimerId)
 	// areas - we will do this manually after we have 
 	// repositioned the caret
 	//
-	HRGN hrgnUpdate = ScrollRgn(dx, dy, true);
+	RECT scrolled;
 
 	//
-	// do the redraw now that the selection offsets are all 
+	// do the redraw now that the selection offsets are all
 	// pointing to the right places and the scroll positions are valid.
 	//
-	if(hrgnUpdate != NULL)
+	if(ScrollRgn(dx, dy, true, &scrolled))
 	{
 		// We perform a "fake" WM_MOUSEMOVE for two reasons:
 		//
@@ -450,13 +453,12 @@ LONG TextView::OnTimer(UINT_PTR nTimerId)
 		//
 		OnMouseMove(0, pt.x, pt.y);
 
-		// invalidate the area returned by ScrollRegion
-		InvalidateRgn(m_hWnd, hrgnUpdate, FALSE);
-		DeleteObject(hrgnUpdate);
+		// invalidate the area that didn't scroll
+		InvalidateOutside(scrolled);
 
-		// the next time we process WM_PAINT everything 
+		// the next time we process WM_PAINT everything
 		// should get drawn correctly!!
-		UpdateWindow(m_hWnd);
+		m_pHost->UpdateNow();
 	}
 	
 	// keep track of how many WM_TIMERs we process because
@@ -554,7 +556,7 @@ LONG TextView::InvalidateLine(TextCoord *line, bool forceAnalysis)
 		rect.top    = row * m_nLineHeight;
 		rect.bottom = rect.top + m_nLineHeight;
 
-		InvalidateRect(m_hWnd, &rect, FALSE);
+		m_pHost->InvalidateRect(rect.left, rect.top, rect.right, rect.bottom);
 	}
 
 	if(forceAnalysis)
@@ -604,7 +606,7 @@ LONG TextView::InvalidateRange(TextCoord *startCoord, TextCoord *finishCoord)
 			rect.left -= m_nHScrollPos * m_nFontWidth;
 			rect.left += LeftMarginWidth();
 
-			InvalidateRect(m_hWnd, &rect, FALSE);
+			m_pHost->InvalidateRect(rect.left, rect.top, rect.right, rect.bottom);
 		}
 
 		if(lineEnd > finish)
@@ -659,18 +661,18 @@ VOID TextView::UpdateCaretXY(int xpos, TextCoord *coord)
 	if(visible == false && m_fHideCaret == false)
 	{
 		m_fHideCaret = true;
-		HideCaret(m_hWnd);
+		m_pHost->HideCaret();
 	}
 	// show caret if it was previously hidden
 	else if(visible == true && m_fHideCaret == true)
 	{
 		m_fHideCaret = false;
-		ShowCaret(m_hWnd);
+		m_pHost->ShowCaret();
 	}
 
 	// set caret position if within window viewport
 	if(m_fHideCaret == false)
-		SetCaretPos(xpos, row * m_nLineHeight);
+		m_pHost->SetCaretPos(xpos, row * m_nLineHeight);
 }
 
 //

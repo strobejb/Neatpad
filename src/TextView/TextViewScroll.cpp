@@ -17,75 +17,10 @@
 bool IsKeyPressed(UINT nVirtKey);
 
 //
-//	64-bit scrollbars (www.catch22.net/tuts/win32/64bit-scrollbars): a range that
-//	fits a 32-bit scrollbar is used as it is, and a larger one is scaled down to
-//	0..WIN16_SCROLLBAR_MAX by a whole-number divisor
-//
-#define WIN16_SCROLLBAR_MAX 0x7fff
-#define WIN32_SCROLLBAR_MAX 0x7fffffff
-
-//
-//	Wrapper around SetScrollInfo, performs scaling to allow massive 64bit scroll
-//	ranges. The page is in the same units as the range (bytes), so it is scaled too.
-//
-static BOOL SetScrollInfo64(HWND hwnd, int nBar, UINT fMask, size_w nMax64, size_w nPos64, size_w nPage64, BOOL fRedraw)
-{
-	SCROLLINFO si = { sizeof(si), fMask };
-
-	// normal scroll range requires no adjustment
-	if(nMax64 <= WIN32_SCROLLBAR_MAX)
-	{
-		si.nMin  = 0;
-		si.nMax  = (int)nMax64;
-		si.nPage = (UINT)nPage64;
-		si.nPos  = (int)nPos64;
-	}
-	// scale the scroll range down into allowed bounds
-	else
-	{
-		size_w unit = nMax64 / WIN16_SCROLLBAR_MAX;
-
-		si.nMin  = 0;
-		si.nMax  = WIN16_SCROLLBAR_MAX;
-		si.nPage = (UINT)max(nPage64 / unit, (size_w)1);
-		si.nPos  = (int)min(nPos64 / unit, (size_w)WIN16_SCROLLBAR_MAX);
-	}
-
-	return SetScrollInfo(hwnd, nBar, &si, fRedraw);
-}
-
-//
-//	Wrapper around GetScrollInfo, returns 64bit scrollbar position.
-//	fMask must be either SIF_POS or SIF_TRACKPOS
-//
-static size_w GetScrollPos64(HWND hwnd, int nBar, UINT fMask, size_w nMax64)
-{
-	SCROLLINFO si = { sizeof(si), fMask | SIF_PAGE };
-	size_w nPos32;
-
-	if(!GetScrollInfo(hwnd, nBar, &si))
-		return 0;
-
-	nPos32 = (fMask & SIF_TRACKPOS) ? si.nTrackPos : si.nPos;
-
-	// normal scroll range requires no adjustment
-	if(nMax64 <= WIN32_SCROLLBAR_MAX)
-		return nPos32;
-
-	// special-case: the thumb at the very end shows the end of the document
-	if(nPos32 >= WIN16_SCROLLBAR_MAX - si.nPage + 1)
-		return nMax64;
-
-	// adjust the scroll position to be relative to maximum value
-	return nPos32 * (nMax64 / WIN16_SCROLLBAR_MAX);
-}
-
-//
 //	Set scrollbar positions and range
 //
 VOID TextView::SetupScrollbars()
 {
-	SCROLLINFO si = { sizeof(si) };
 	ULONG windowColumns = m_nWindowColumns > 0 ? (ULONG)m_nWindowColumns : 0;
 	ULONG longestLine = m_nLongestLine > 0 ? (ULONG)m_nLongestLine : 0;
 	size_w docBytes = m_pTextDoc->byte_length();
@@ -97,26 +32,20 @@ VOID TextView::SetupScrollbars()
 	if(m_nHScrollPos > m_nHScrollMax)
 		m_nHScrollPos = m_nHScrollMax;
 
-	si.fMask = SIF_PAGE | SIF_POS | SIF_RANGE | SIF_DISABLENOSCROLL;
-
 	//
 	//	Vertical scrollbar, in bytes: the thumb is the top line's offset and the
 	//	page is the text shown in the window, so a document that fits needs no scrolling
 	//
 	pageEnd = ViewportLineFromRow(m_nWindowLines, &belowWindow) ? belowWindow.line_begin.byte_offset : docBytes;
 
-	SetScrollInfo64(m_hWnd, SB_VERT, si.fMask, docBytes ? docBytes - 1 : 0, m_scrollVPos.line_begin.byte_offset,
-		max(pageEnd - m_scrollVPos.line_begin.byte_offset, (size_w)1), TRUE);
+	m_pHost->SetVScroll(docBytes ? docBytes - 1 : 0, m_scrollVPos.line_begin.byte_offset,
+		max(pageEnd - m_scrollVPos.line_begin.byte_offset, (size_w)1));
 
 	//
-	//	Horizontal scrollbar
+	//	Horizontal scrollbar: the thumb is the first column shown, the page the
+	//	columns in the window, and the range the widest line laid out so far
 	//
-	si.nPos  = m_nHScrollPos;		// scrollbar thumb position
-	si.nPage = windowColumns;		// number of columns in a page
-	si.nMin  = 0;
-	si.nMax  = longestLine ? (int)longestLine - 1 : 0;	// widest line laid out so far
-
-	SetScrollInfo(m_hWnd, SB_HORZ, &si, TRUE);
+	m_pHost->SetHScroll(longestLine ? (int)longestLine - 1 : 0, m_nHScrollPos, (int)windowColumns);
 }
 
 //
@@ -306,13 +235,14 @@ LONG TextView::OnSize(UINT nFlags, int width, int height)
 //
 //	ScrollRgn
 //
-//	Scrolls the viewport in specified direction. If fReturnUpdateRgn is true, 
-//	then a HRGN is returned which holds the client-region that must be redrawn 
-//	manually. This region must be deleted by the caller using DeleteObject.
+//	Scrolls the viewport in specified direction. If fReturnUpdateRgn is true,
+//	it returns true when it scrolled, with the rectangle that scrolled in
+//	*scrolled: everything outside it must be redrawn by the caller, with
+//	InvalidateOutside.
 //
-//  Otherwise ScrollRgn returns NULL and updates the entire window 
+//  Otherwise ScrollRgn returns false and updates the entire window
 //
-HRGN TextView::ScrollRgn(int dx, int dy, bool fReturnUpdateRgn)
+bool TextView::ScrollRgn(int dx, int dy, bool fReturnUpdateRgn, RECT *scrolled)
 {
 	RECT clip;
 
@@ -362,38 +292,15 @@ HRGN TextView::ScrollRgn(int dx, int dy, bool fReturnUpdateRgn)
 	// perform the scroll
 	if(dx != 0 || dy != 0)
 	{
-		// do the scroll!
-		ScrollWindowEx(
-			m_hWnd, 
-			-dx * m_nFontWidth,					// scale up to pixel coords
-			-dy * m_nLineHeight,
-			NULL,								// scroll entire window
-			&clip,								// clip the non-scrolling part
-			0, 
-			0, 
-			SW_INVALIDATE
-			);
+		// do the scroll! scaled up to pixels, and clipped to the part that scrolls
+		m_pHost->ScrollPixels(-dx * m_nFontWidth, -dy * m_nLineHeight, clip.left, clip.top, clip.right, clip.bottom);
 
 		SetupScrollbars();
 
 		if(fReturnUpdateRgn)
 		{
-			RECT client;
-
-			GetClientRect(m_hWnd, &client);
-
-			//clip.left -= LeftMarginWidth();
-
-			HRGN hrgnClient  = CreateRectRgnIndirect(&client);
-			HRGN hrgnUpdate  = CreateRectRgnIndirect(&clip);
-
-			// create a region that represents the area outside the
-			// clipping rectangle (i.e. the part that is never scrolled)
-			CombineRgn(hrgnUpdate, hrgnClient, hrgnUpdate, RGN_XOR);
-
-			DeleteObject(hrgnClient);
-
-			return hrgnUpdate;
+			*scrolled = clip;
+			return true;
 		}
 	}
 
@@ -401,11 +308,33 @@ HRGN TextView::ScrollRgn(int dx, int dy, bool fReturnUpdateRgn)
 	{
 		GetClientRect(m_hWnd, &clip);
 		clip.right = LeftMarginWidth();
-		//ScrollWindow(m_hWnd, 0, -dy * m_nLineHeight, 0, &clip);
-		InvalidateRect(m_hWnd, &clip, 0);
+		m_pHost->InvalidateRect(clip.left, clip.top, clip.right, clip.bottom);
 	}
 
-	return NULL;
+	return false;
+}
+
+//
+//	Redraw everything in the window outside a rectangle (the part that is never
+//	scrolled): above, below, and to either side of it
+//
+void TextView::InvalidateOutside(const RECT &inside)
+{
+	RECT client;
+
+	GetClientRect(m_hWnd, &client);
+
+	if(inside.top > client.top)
+		m_pHost->InvalidateRect(client.left, client.top, client.right, inside.top);
+
+	if(inside.bottom < client.bottom)
+		m_pHost->InvalidateRect(client.left, inside.bottom, client.right, client.bottom);
+
+	if(inside.left > client.left)
+		m_pHost->InvalidateRect(client.left, inside.top, inside.left, inside.bottom);
+
+	if(inside.right < client.right)
+		m_pHost->InvalidateRect(inside.right, inside.top, client.right, inside.bottom);
 }
 
 //
@@ -415,7 +344,7 @@ VOID TextView::Scroll(int dx, int dy)
 {
 	// do a "normal" scroll - don't worry about invalid regions,
 	// just scroll the whole window 
-	ScrollRgn(dx, dy, false);
+	ScrollRgn(dx, dy, false, 0);
 }
 
 //
@@ -513,13 +442,6 @@ VOID TextView::ScrollToDocumentEnd()
 	SetupScrollbars();
 }
 
-LONG GetTrackPos32(HWND hwnd, int nBar)
-{
-	SCROLLINFO si = { sizeof(si), SIF_TRACKPOS };
-	GetScrollInfo(hwnd, nBar, &si);
-	return si.nTrackPos;
-}
-
 //
 //	Vertical scrollbar support
 //
@@ -564,7 +486,7 @@ LONG TextView::OnVScroll(UINT nSBCode, UINT nPos)
 
 		// the thumb is a byte offset, which can fall part way through a character:
 		// only the line containing it is used, to show that line
-		if(m_pTextDoc->coord_from_pos(TextPos(GetScrollPos64(m_hWnd, SB_VERT, SIF_TRACKPOS, docBytes ? docBytes - 1 : 0)), &coord))
+		if(m_pTextDoc->coord_from_pos(TextPos(m_pHost->VScrollTrackPos(docBytes ? docBytes - 1 : 0)), &coord))
 			SetScrollCoord(&coord);
 
 		RefreshWindow();
@@ -619,7 +541,7 @@ LONG TextView::OnHScroll(UINT nSBCode, UINT nPos)
 	case SB_THUMBPOSITION:
 	case SB_THUMBTRACK:
 
-		m_nHScrollPos = GetTrackPos32(m_hWnd, SB_HORZ);
+		m_nHScrollPos = m_pHost->HScrollTrackPos();
 		RefreshWindow();
 		break;
 	}

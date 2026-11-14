@@ -16,54 +16,32 @@
 #include "TextView.h"
 #include "TextViewInternal.h"
 
-#ifdef UNICODE
-#define CF_TCHARTEXT CF_UNICODETEXT
-#else
-#define CF_TCHARTEXT CF_TEXT
-#endif
-
 //
-//	Paste any CF_TEXT/CF_UNICODE text from the clipboard
+//	Paste the clipboard's text
 //
 BOOL TextView::OnPaste()
 {
-	BOOL success = FALSE;
-
 	if(m_nEditMode == MODE_READONLY)
 		return FALSE;
 
-	if(OpenClipboard(m_hWnd))
+	return m_pHost->ReadClipboard([&](const tchar_t *szText, size_t length)
 	{
-		HANDLE hMem		= GetClipboardData(CF_TCHARTEXT);
-		TCHAR *szText	= (TCHAR *)GlobalLock(hMem);
+		ULONG textlen = (ULONG)length;
 
-		if(szText)
-		{
-			ULONG textlen = lstrlen(szText);
-			EnterText(szText, textlen);
+		EnterText((TCHAR *)szText, textlen);
 
-			if(textlen > 1)
-				m_pTextDoc->undo_group_break();
-
-			GlobalUnlock(hMem);
-			
-			success = TRUE;
-		}
-
-		CloseClipboard();
-	}
-
-	return success;
+		if(textlen > 1)
+			m_pTextDoc->undo_group_break();
+	}) ? TRUE : FALSE;
 }
 
 //
-//	Copy the currently selected text to the clipboard as CF_TEXT/CF_UNICODE
+//	Copy the currently selected text to the clipboard
 //
 BOOL TextView::OnCopy()
 {
 	TextCoord	selStart, selEnd;
 	size_w		sellen;
-	BOOL		success		= FALSE;
 
 	if(!GetSelection(&selStart, &selEnd))
 		return FALSE;
@@ -76,33 +54,14 @@ BOOL TextView::OnCopy()
 	if(sellen > (size_w)ULONG_MAX || sellen >= (size_w)((SIZE_T)-1 / sizeof(TCHAR)))
 		return FALSE;
 
-	if(OpenClipboard(m_hWnd))
+	ULONG len = (ULONG)sellen;
+
+	return m_pHost->WriteClipboard(len, [&](tchar_t *ptr) -> size_t
 	{
-		HANDLE hMem;
-		TCHAR  *ptr;
-		ULONG  len = (ULONG)sellen;
+		TextReader reader = m_pTextDoc->text_from_range(selStart, selEnd);
 
-		if((hMem = GlobalAlloc(GPTR, ((SIZE_T)len + 1) * sizeof(TCHAR))) != 0)
-		{
-			if((ptr = (TCHAR *)GlobalLock(hMem)) != 0)
-			{
-				TextReader reader = m_pTextDoc->text_from_range(selStart, selEnd);
-
-				EmptyClipboard();
-
-				ptr[reader.read(ptr, len)] = 0;
-
-				SetClipboardData(CF_TCHARTEXT, hMem);
-				success = TRUE;
-
-				GlobalUnlock(hMem);
-			}
-		}
-
-		CloseClipboard();
-	}
-
-	return success;
+		return reader.read(ptr, len);
+	}) ? TRUE : FALSE;
 }
 
 //

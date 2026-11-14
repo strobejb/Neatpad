@@ -124,10 +124,13 @@
     <ClCompile Include="TextViewPaint.cpp" />
     <ClCompile Include="TextViewScroll.cpp" />
     <ClCompile Include="TextViewSyntax.cpp" />
+    <ClCompile Include="win32\TextViewWin32.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="TextView.h" />
+    <ClInclude Include="TextViewHost.h" />
     <ClInclude Include="TextViewInternal.h" />
+    <ClInclude Include="win32\TextViewWin32.h" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\TextDocument\TextDocument.vcxproj">
