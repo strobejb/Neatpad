@@ -296,7 +296,7 @@ int32_t TextView::OnChar(uint32_t nChar, uint32_t nFlags)
         std::basic_string<tchar_t> spaces(width - column % width, TSTR(' '));
 
         if (EnterText(&spaces[0], (uint32_t)spaces.size()))
-            NotifyParent(TVN_CHANGED);
+            NotifyParent(TVNOTIFY_CHANGED);
         return 0;
     }
 
@@ -339,14 +339,14 @@ int32_t TextView::OnChar(uint32_t nChar, uint32_t nFlags)
         if (EnterText(&text[0], (uint32_t)text.size(), true))
         {
             m_pTextDoc->undo_group_break();
-            NotifyParent(TVN_CHANGED);
+            NotifyParent(TVNOTIFY_CHANGED);
         }
 
         return 0;
     }
 
     if (EnterText(&ch, 1))
-        NotifyParent(TVN_CHANGED);
+        NotifyParent(TVNOTIFY_CHANGED);
 
     return 0;
 }
@@ -403,6 +403,6 @@ bool TextView::ConvertLineBreaks(uint32_t nLineBreak)
 
 	RefreshWindow();
 	UpdateViewState(true);
-	NotifyParent(TVN_CHANGED);
+	NotifyParent(TVNOTIFY_CHANGED);
 	return true;
 }

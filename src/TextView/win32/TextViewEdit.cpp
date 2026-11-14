@@ -234,7 +234,7 @@ LRESULT TextView::EditMessage(UINT msg, WPARAM wParam, LPARAM lParam)
 		m_pTextDoc->undo_group_break();
 		m_nEditMode = mode;
 
-		NotifyParent(TVN_CHANGED);
+		NotifyParent(TVNOTIFY_CHANGED);
 		return 0;
 	}
 

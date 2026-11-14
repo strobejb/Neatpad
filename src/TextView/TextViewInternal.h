@@ -26,6 +26,7 @@ HRESULT (WINAPI * DrawThemeBackground_Proc)(HTHEME hTheme, HDC hdc, int, int, co
 
 
 #include "../TextDocument/TextDocument.h"
+#include "../TextDocument/SaveFile.h"
 #include "TextView.h"
 #include "TextViewHost.h"
 #include "TextLayout.h"
@@ -130,6 +131,47 @@ int FormatLineNumber(tchar_t *buf, uint64_t lineno);
 
 enum SELMODE { SEL_NONE, SEL_NORMAL, SEL_MARGIN, SEL_BLOCK };
 
+//
+//	The view's API in the engine's own terms, without the platform's types.
+//	The Win32 host turns its messages' structures into these, and back.
+//
+
+// What to find, and what to replace it with
+struct TextViewFind
+{
+	const tchar_t *text;
+	uint32_t       length;
+	bool           backwards;
+	bool           wrap;
+	bool           matchcase;
+	const tchar_t *replace;
+	uint32_t       replacelength;
+};
+
+// The document's size and the selection's, in bytes, and in UTF-16 units where
+// those are counted
+struct TextViewDocStats
+{
+	uint64_t byte_count;
+	uint64_t char_count;
+	bool     char_count_known;		// also covers sel_char_count
+	uint64_t sel_byte_count;
+	uint64_t sel_char_count;
+	uint32_t linebreaks_seen;		// TXL_* kinds of line break found so far
+};
+
+// Recovery state: where it's kept, and the file it's for
+struct TextViewRecovery
+{
+	const seqfilechar             *directory;
+	std::basic_string<seqfilechar> filename;			// input on save, output on successful restore
+	bool                           originalUnavailable;	// failed restore: original changed or cannot be opened
+	bool                           preserveSources;		// save input: retain bases before replacing originals
+};
+
+// The longest file name recovery keeps, in units
+const size_t TV_RECOVERY_NAME_MAX = 259;
+
 typedef struct
 {
 	TextPos	line_begin;		// the line's start
@@ -187,12 +229,12 @@ public:
 #ifdef _WIN32
 	LRESULT		EditMessage(uint32_t msg, WPARAM wParam, LPARAM lParam);	// win32/TextViewEdit.cpp
 #endif
-	int32_t		OpenFile(tchar_t *szFileName, int nEncoding, bool fReadOnly);	// -1 for its byte-order mark to say
-    bool        SaveState(TEXTVIEWRECOVERY *state);
-    bool        LoadState(TEXTVIEWRECOVERY *state);
-	int32_t		TailFile(tchar_t *szFileName);
+	int32_t		OpenFile(const seqfilechar *szFileName, int nEncoding, bool fReadOnly);	// -1 for its byte-order mark to say
+    bool        SaveState(TextViewRecovery *state);
+    bool        LoadState(TextViewRecovery *state);
+	int32_t		TailFile(const seqfilechar *szFileName);
 	bool		UpdateTail();
-	int32_t		SaveFile(tchar_t *szFileName, uint32_t nEncoding, bool fBom, uint32_t nLineBreak);
+	int32_t		SaveFile(const seqfilechar *szFileName, uint32_t nEncoding, bool fBom, uint32_t nLineBreak);
 	int32_t		ClearFile();
 	int32_t		SetLineSpacing(int nAbove, int nBelow);
 	uint32_t	SetColour(uint32_t idx, uint32_t rgbColour);
@@ -207,18 +249,18 @@ public:
 	uint32_t		SelectAll();
     int32_t		IndexFile(bool fIndex);
 	TEXT_RESULT	GotoLine(size_w lineno, bool fMove);
-	void		FillIndexInfo(TVNINDEXINFO *info);
-	void		FillCursorInfo(TVNCURSORINFO *info);
-	uint32_t		FindText(TEXTVIEWFIND *find);
-	int32_t		ShowMatches(TEXTVIEWFIND *find, bool fFilter);
-	size_w		ReplaceText(TEXTVIEWFIND *find, bool fAll);
+	void		FillIndexInfo(TextViewIndexInfo *info);
+	void		FillCursorInfo(TextViewCursorInfo *info);
+	uint32_t		FindText(const TextViewFind *find);
+	int32_t		ShowMatches(const TextViewFind *find, bool fFilter);
+	size_w		ReplaceText(const TextViewFind *find, bool fAll);
 	TEXT_RESULT	CursorOffset(size_w *chars);
 	TEXT_RESULT	CursorLine(size_w *lineno);
 	size_w		CursorColumn();
 	int			LineFormat();
 	uint32_t		GetEditMode();
 	uint32_t		SetEditMode(uint32_t mode);
-	bool		GetDocStats(TEXTVIEWDOCSTATS *stats);
+	bool		GetDocStats(TextViewDocStats *stats);
 	
 private:
 
@@ -372,7 +414,7 @@ private:
 	//
 	//	Miscallaneous
 	//
-	LRESULT		NotifyParent(uint32_t nNotifyCode, NMHDR *optional = 0);
+	intptr_t	NotifyParent(uint32_t nNotifyCode, void *info = 0);
 	void		NotifyCursorChange();
 
 
@@ -442,7 +484,7 @@ private:
 	// holds the whole document. Each line's start in it is kept, to go back to.
 	bool		m_fFilter = false;
 	TextDocument *m_pSourceDoc = 0;
-	HANDLE		m_hFilterFile = INVALID_HANDLE_VALUE;
+	TempAppendFile	m_filterFile;
 	TextPos		m_filterFrom;					// how far through m_pSourceDoc filtering has got
 	std::vector<TextPos> m_filterOrigins;
     TextPos              m_filterWrittenTo;     // end of the last source line included

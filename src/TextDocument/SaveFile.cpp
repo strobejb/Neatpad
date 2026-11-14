@@ -13,6 +13,21 @@ static bool  sync_to_disk(FILE *fp);
 static bool  replace_file(const seqfilechar *from, const seqfilechar *to);
 static void  remove_file(const seqfilechar *filename);
 
+TempAppendFile::TempAppendFile()
+{
+	m_file = -1;
+}
+
+TempAppendFile::~TempAppendFile()
+{
+	close();
+}
+
+const seqfilechar *TempAppendFile::path() const
+{
+	return m_path.c_str();
+}
+
 SaveFile::SaveFile()
 {
 	m_fp = 0;
@@ -153,8 +168,55 @@ static void remove_file(const seqfilechar *filename)
 	SetLastError(err);
 }
 
+//
+//	The temporary file goes when its last handle closes. Others may read,
+//	write and delete it, so a document can read it as it's written.
+//
+bool TempAppendFile::create()
+{
+	wchar_t dir[MAX_PATH];
+	wchar_t path[MAX_PATH];
+	HANDLE  file;
+
+	close();
+
+	if(!GetTempPathW(MAX_PATH, dir) || !GetTempFileNameW(dir, L"npf", 0, path))
+		return false;
+
+	file = CreateFileW(path, GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, 0,
+					   CREATE_ALWAYS, FILE_ATTRIBUTE_TEMPORARY | FILE_FLAG_DELETE_ON_CLOSE, 0);
+
+	if(file == INVALID_HANDLE_VALUE)
+	{
+		DeleteFileW(path);
+		return false;
+	}
+
+	m_path = path;
+	m_file = (intptr_t)file;
+	return true;
+}
+
+bool TempAppendFile::write(const void *data, size_t length)
+{
+	DWORD written = 0;
+
+	return m_file != -1 && length <= MAXDWORD && WriteFile((HANDLE)m_file, data, (DWORD)length, &written, 0) &&
+		   written == length;
+}
+
+void TempAppendFile::close()
+{
+	if(m_file != -1)
+		CloseHandle((HANDLE)m_file);
+
+	m_file = -1;
+	m_path.clear();
+}
+
 #else
 
+#include <stdlib.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -183,6 +245,62 @@ static bool replace_file(const seqfilechar *from, const seqfilechar *to)
 static void remove_file(const seqfilechar *filename)
 {
 	remove(filename);
+}
+
+//
+//	The temporary file is unlinked when it's closed: a document that still
+//	has it open keeps reading it until it closes it too
+//
+bool TempAppendFile::create()
+{
+	const char *dir = getenv("TMPDIR");
+	std::string path;
+	int         fd;
+
+	close();
+
+	path = std::string(dir && *dir ? dir : "/tmp") + "/npfXXXXXX";
+	fd   = mkstemp(&path[0]);
+
+	if(fd == -1)
+		return false;
+
+	m_path = path;
+	m_file = fd;
+	return true;
+}
+
+bool TempAppendFile::write(const void *data, size_t length)
+{
+	const char *bytes = (const char *)data;
+
+	while(m_file != -1 && length > 0)
+	{
+		ssize_t written = ::write((int)m_file, bytes, length);
+
+		if(written < 0 && errno == EINTR)
+			continue;
+
+		if(written <= 0)
+			return false;
+
+		bytes  += written;
+		length -= (size_t)written;
+	}
+
+	return m_file != -1;
+}
+
+void TempAppendFile::close()
+{
+	if(m_file != -1)
+	{
+		::close((int)m_file);
+		unlink(m_path.c_str());
+	}
+
+	m_file = -1;
+	m_path.clear();
 }
 
 #endif

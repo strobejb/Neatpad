@@ -8,9 +8,30 @@
 #include <uxtheme.h>
 
 #include "../TextViewHost.h"
+#include "../TextView.h"
 #include "UspLib/usplib.h"
 
 class TextView;
+
+//
+//	The engine's notification structures as the Win32 API's, for TVN_*
+//	notifications and the TXM_* messages that fill them
+//
+inline void ToWin32(const TextViewCursorInfo &from, TVNCURSORINFO *to)
+{
+    to->nLineNo      = from.nLineNo;
+    to->nColumnNo    = from.nColumnNo;
+    to->nOffset      = from.nOffset;
+    to->fLineNoKnown = from.fLineNoKnown;
+    to->fOffsetKnown = from.fOffsetKnown;
+}
+
+inline void ToWin32(const TextViewIndexInfo &from, TVNINDEXINFO *to)
+{
+    to->nPercent   = from.nPercent;
+    to->fIndexing  = from.fIndexing;
+    to->nLineCount = from.nLineCount;
+}
 
 //
 //	TextViewWin32 - the TextView window. The window holds it, and it holds the

@@ -393,7 +393,7 @@ int32_t TextView::OnKeyDown(uint32_t nKeyCode, uint32_t nFlags)
 	case 'z': case 'Z':
 		
 		if(fCtrlDown && Undo())
-			NotifyParent(TVN_CHANGED);
+			NotifyParent(TVNOTIFY_CHANGED);
 
 		return 0;
 
@@ -401,7 +401,7 @@ int32_t TextView::OnKeyDown(uint32_t nKeyCode, uint32_t nFlags)
 	case 'y': case 'Y':
 		
 		if(fCtrlDown && Redo()) 
-			NotifyParent(TVN_CHANGED);
+			NotifyParent(TVNOTIFY_CHANGED);
 
 		return 0;
 
@@ -411,12 +411,12 @@ int32_t TextView::OnKeyDown(uint32_t nKeyCode, uint32_t nFlags)
 		if(fCtrlDown)
 		{
 			OnCopy();
-			NotifyParent(TVN_CHANGED);
+			NotifyParent(TVNOTIFY_CHANGED);
 		}
 		else if(fShiftDown)
 		{
 			OnPaste();
-			NotifyParent(TVN_CHANGED);
+			NotifyParent(TVNOTIFY_CHANGED);
 		}
 		else
 		{
@@ -426,7 +426,7 @@ int32_t TextView::OnKeyDown(uint32_t nKeyCode, uint32_t nFlags)
 			else if(m_nEditMode == MODE_OVERWRITE)
 				m_nEditMode = MODE_INSERT;
 
-			NotifyParent(TVN_EDITMODE_CHANGE);
+			NotifyParent(TVNOTIFY_EDITMODE_CHANGE);
 		}
 
 		return 0;
@@ -440,7 +440,7 @@ int32_t TextView::OnKeyDown(uint32_t nKeyCode, uint32_t nFlags)
 			else
 				ForwardDelete();
 
-			NotifyParent(TVN_CHANGED);
+			NotifyParent(TVNOTIFY_CHANGED);
 		}
 		return 0;
 
@@ -451,7 +451,7 @@ int32_t TextView::OnKeyDown(uint32_t nKeyCode, uint32_t nFlags)
 			BackDelete();
 			fAdvancing = false;
 
-			NotifyParent(TVN_CHANGED);
+			NotifyParent(TVNOTIFY_CHANGED);
 		}
 		return 0;
 

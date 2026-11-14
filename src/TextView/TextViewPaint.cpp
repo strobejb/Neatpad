@@ -320,7 +320,7 @@ void TextView::UpdateMarginWidth()
     m_nLinenoWidth = m_pHost->TextWidth(buf, len);
 }
 
-// Filtered text is a UTF-16 copy. Compare its source line instead, so both
+// Filtered text is a copy in the build's text. Compare its source line instead, so both
 // the colours and the gutter retain the original document's saved baseline.
 uint32_t TextView::LineDiff(TextCoord *line, const std::function<void(size_w, size_w)> &inserted, size_w columns)
 {

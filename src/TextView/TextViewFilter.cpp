@@ -5,8 +5,9 @@
 //
 //	NOTES:		www.catch22.net
 //
-//				The lines are written, as they're found, to a temp file: UTF-16,
-//				whatever the document's encoding, so it reads back the same. A
+//				The lines are written, as they're found, to a temp file in the
+//				build's own text (UTF-16 or UTF-8), whatever the document's
+//				encoding, so it reads back the same. A
 //				read-only document of its own shows it, growing with it as a
 //				tailed file does, so a filter of a huge document is read from
 //				disk as it's needed too. The file goes when it's closed.
@@ -54,31 +55,21 @@ uint32_t TextView::SetFilterContext(uint32_t lines)
 //
 bool TextView::StartFilter()
 {
-	tchar_t		  dir[MAX_PATH];
-	tchar_t		  path[MAX_PATH];
-	WCHAR		  bom = 0xFEFF;
-	DWORD		  written;	// WriteFile's count, until the temp file is portable
-	TextDocument *filtered;
+	// the text's own byte-order mark, so the document reads it as written
+	const uint16_t bom16  = 0xFEFF;
+	const void	  *bom    = TCHAR_UTF8 ? (const void *)"\xEF\xBB\xBF" : (const void *)&bom16;
+	size_t		   bomlen = TCHAR_UTF8 ? 3 : sizeof(bom16);
+	TextDocument  *filtered;
 
-	if(!GetTempPath(MAX_PATH, dir) || !GetTempFileName(dir, TSTR("npf"), 0, path))
+	if(!m_filterFile.create())
 		return false;
-
-	m_hFilterFile = CreateFile(path, GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, 0,
-							   CREATE_ALWAYS, FILE_ATTRIBUTE_TEMPORARY | FILE_FLAG_DELETE_ON_CLOSE, 0);
-
-	if(m_hFilterFile == INVALID_HANDLE_VALUE)
-	{
-		DeleteFile(path);
-		return false;
-	}
 
 	filtered = new TextDocument();
 
-	if(!WriteFile(m_hFilterFile, &bom, sizeof(bom), &written, 0) || !filtered->init(path, true))
+	if(!m_filterFile.write(bom, bomlen) || !filtered->init(m_filterFile.path(), true))
 	{
 		delete filtered;
-		CloseHandle(m_hFilterFile);
-		m_hFilterFile = INVALID_HANDLE_VALUE;
+		m_filterFile.close();
 		return false;
 	}
 
@@ -126,11 +117,10 @@ void TextView::EndFilter(bool fKeepPlace)
 	}
 
 	delete m_pTextDoc;
-	CloseHandle(m_hFilterFile);
+	m_filterFile.close();
 
 	m_pTextDoc	  = m_pSourceDoc;
 	m_pSourceDoc  = 0;
-	m_hFilterFile = INVALID_HANDLE_VALUE;
 	m_nEditMode	  = m_nFilterEditMode;
 	std::vector<TextPos>().swap(m_filterOrigins);
 
@@ -238,11 +228,10 @@ void TextView::WriteFilterLine(TextPos begin, TextPos next)
 	tchar_t		 last = 0;
 	tchar_t		 crlf[] = TSTR("\r\n");
 	uint32_t	 len;
-	DWORD		 written;	// WriteFile's count
 
 	while((len = reader.read(buf, sizeof(buf) / sizeof(buf[0]))) != 0)
 	{
-		WriteFile(m_hFilterFile, buf, len * sizeof(tchar_t), &written, 0);
+		m_filterFile.write(buf, len * sizeof(tchar_t));
 		last = buf[len - 1];
 	}
 
@@ -251,7 +240,7 @@ void TextView::WriteFilterLine(TextPos begin, TextPos next)
 		tchar_t *brk = m_nCRLFMode == TXL_LF ? crlf + 1 : crlf;
 		uint32_t  brklen = m_nCRLFMode == TXL_LF || m_nCRLFMode == TXL_CR ? 1 : 2;
 
-		WriteFile(m_hFilterFile, brk, brklen * sizeof(tchar_t), &written, 0);
+		m_filterFile.write(brk, brklen * sizeof(tchar_t));
 	}
 }
 

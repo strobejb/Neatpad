@@ -37,6 +37,75 @@ static LRESULT ResultFromSize(size_w value)
     return value > (size_w)MAXLONG_PTR ? MAXLONG_PTR : (LRESULT)value;
 }
 
+// A TEXTVIEWFIND as the engine's TextViewFind, or 0 for none
+static const TextViewFind *FindFrom(const TEXTVIEWFIND *from, TextViewFind *to)
+{
+    if (from == 0)
+        return 0;
+
+    to->text          = from->text;
+    to->length        = from->length;
+    to->backwards     = from->backwards != FALSE;
+    to->wrap          = from->wrap != FALSE;
+    to->matchcase     = from->matchcase != FALSE;
+    to->replace       = from->replace;
+    to->replacelength = from->replacelength;
+    return to;
+}
+
+static BOOL DocStatsMessage(TextView *view, TEXTVIEWDOCSTATS *to)
+{
+    TextViewDocStats stats;
+
+    if (to == 0 || !view->GetDocStats(&stats))
+        return FALSE;
+
+    to->byte_count       = stats.byte_count;
+    to->char_count       = stats.char_count;
+    to->char_count_known = stats.char_count_known;
+    to->sel_byte_count   = stats.sel_byte_count;
+    to->sel_char_count   = stats.sel_char_count;
+    to->linebreaks_seen  = stats.linebreaks_seen;
+    return TRUE;
+}
+
+//
+//	Save or restore recovery state through a TEXTVIEWRECOVERY: its file name
+//	goes to the engine and, after a restore, comes back
+//
+static BOOL RecoveryState(TextView *view, TEXTVIEWRECOVERY *state, bool save)
+{
+    TextViewRecovery recovery;
+    size_t           length = 0;
+    bool             done;
+
+    if (state == 0 || state->directory == 0)
+        return FALSE;
+
+    while (length < MAX_PATH && state->filename[length])
+        ++length;
+
+    recovery.directory           = state->directory;
+    recovery.filename.assign(state->filename, length);
+    recovery.originalUnavailable = false;
+    recovery.preserveSources     = state->preserveSources != FALSE;
+
+    done = save ? view->SaveState(&recovery) : view->LoadState(&recovery);
+
+    state->originalUnavailable = recovery.originalUnavailable;
+
+    // a restored name always fits: recovery keeps no longer one
+    if (done && !save)
+    {
+        for (size_t i = 0; i < recovery.filename.size(); ++i)
+            state->filename[i] = recovery.filename[i];
+
+        state->filename[recovery.filename.size()] = 0;
+    }
+
+    return done;
+}
+
 //
 //	The window's own messages, and the TXM_* and EM_* messages of its API
 //
@@ -187,10 +256,8 @@ LRESULT TextViewWin32::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
         return view->OpenFile((TCHAR *)lParam, -1, false);
 
     case TXM_SAVESTATE:
-        return view->SaveState((TEXTVIEWRECOVERY *)lParam);
-
     case TXM_LOADSTATE:
-        return view->LoadState((TEXTVIEWRECOVERY *)lParam);
+        return RecoveryState(view, (TEXTVIEWRECOVERY *)lParam, msg == TXM_SAVESTATE);
 
     case TXM_TAILFILE:
         return view->TailFile((TCHAR *)lParam);
@@ -294,16 +361,21 @@ LRESULT TextViewWin32::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
     }
 
     case TXM_GETDOCSTATS:
-        return view->GetDocStats((TEXTVIEWDOCSTATS *)lParam);
+        return DocStatsMessage(view, (TEXTVIEWDOCSTATS *)lParam);
 
     case TXM_GETCURSORINFO:
+    {
+        TextViewCursorInfo info;
+
         if (lParam == 0)
         {
             return FALSE;
         }
 
-        view->FillCursorInfo((TVNCURSORINFO *)lParam);
+        view->FillCursorInfo(&info);
+        ToWin32(info, (TVNCURSORINFO *)lParam);
         return TRUE;
+    }
 
     case TXM_INDEXFILE:
         return view->IndexFile((BOOL)wParam);
@@ -314,22 +386,39 @@ LRESULT TextViewWin32::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
         return view->GotoLine((size_w)(DWORD)wParam | ((size_w)(DWORD)lParam << 32), msg == TXM_GOTOLINE);
 
     case TXM_GETINDEXINFO:
+    {
+        TextViewIndexInfo info;
+
         if (lParam == 0)
         {
             return FALSE;
         }
 
-        view->FillIndexInfo((TVNINDEXINFO *)lParam);
+        view->FillIndexInfo(&info);
+        ToWin32(info, (TVNINDEXINFO *)lParam);
         return TRUE;
+    }
 
     case TXM_FINDTEXT:
-        return view->FindText((TEXTVIEWFIND *)lParam);
+    {
+        TextViewFind find;
+
+        return view->FindText(FindFrom((TEXTVIEWFIND *)lParam, &find));
+    }
 
     case TXM_SHOWMATCHES:
-        return view->ShowMatches((TEXTVIEWFIND *)lParam, (BOOL)wParam);
+    {
+        TextViewFind find;
+
+        return view->ShowMatches(FindFrom((TEXTVIEWFIND *)lParam, &find), (BOOL)wParam);
+    }
 
     case TXM_REPLACETEXT:
-        return ResultFromSize(view->ReplaceText((TEXTVIEWFIND *)lParam, (BOOL)wParam));
+    {
+        TextViewFind find;
+
+        return ResultFromSize(view->ReplaceText(FindFrom((TEXTVIEWFIND *)lParam, &find), (BOOL)wParam));
+    }
 
     case TXM_SETEDITMODE:
         return view->SetEditMode((UINT)wParam);

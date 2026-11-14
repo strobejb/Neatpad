@@ -12,6 +12,39 @@
 class TextLayout;
 
 //
+//	What the view tells whoever holds it, through TextViewHost::Notify. These
+//	are in the order of Win32's TVN_* codes, which its host makes of them.
+//
+enum TextViewNotification
+{
+    TVNOTIFY_CURSOR_CHANGE,    // with a TextViewCursorInfo
+    TVNOTIFY_SELECTION_CHANGE,
+    TVNOTIFY_EDITMODE_CHANGE,
+    TVNOTIFY_CHANGED,
+    TVNOTIFY_INDEX_CHANGE      // with a TextViewIndexInfo
+};
+
+// The caret: its line (an estimate past the counted part of a large file), its
+// column in text units, and its offset in UTF-16 units where that's counted
+struct TextViewCursorInfo
+{
+    uint64_t nLineNo;
+    uint64_t nColumnNo;
+    uint64_t nOffset;
+    bool     fLineNoKnown;
+    bool     fOffsetKnown;
+};
+
+// How far indexing has got: the percentage of the document indexed from the
+// top, whether it's running, and the line count (exact once all is indexed)
+struct TextViewIndexInfo
+{
+    uint32_t nPercent;
+    bool     fIndexing;
+    uint64_t nLineCount;
+};
+
+//
 //	TextViewHost - what the TextView engine asks of the window it lives in.
 //	The engine reaches its platform through this: redraws, scrolling, the
 //	caret, timers, the clipboard and notifications. Positions are pixels in
@@ -149,8 +182,8 @@ class TextViewHost
     virtual bool WriteClipboard(size_t length, const std::function<size_t(tchar_t *buffer)> &fill) = 0;
 
     //
-    //	Notifications: tell whoever holds the view that code happened. info is
-    //	the notification's own structure, starting with its header, or 0.
+    //	Notifications: tell whoever holds the view that code (a
+    //	TextViewNotification) happened. info is its structure, or 0.
     //
     virtual intptr_t Notify(unsigned code, void *info) = 0;
 };

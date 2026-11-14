@@ -1,6 +1,7 @@
 #ifndef SAVEFILE_INCLUDED
 #define SAVEFILE_INCLUDED
 
+#include <stdint.h>
 #include <stdio.h>
 #include <string>
 #include "sequence.h"		// seqfilechar
@@ -27,6 +28,28 @@ private:
 	std::basic_string<seqfilechar> m_target;
 	std::basic_string<seqfilechar> m_tempname;	// empty until the new file exists
 	FILE   *m_fp;
+};
+
+//
+//	A temporary file written at its end while a TextDocument reads it, as the
+//	view's filter writes the lines it finds. Others can read it as it grows,
+//	and it's gone once it's closed and nothing else has it open.
+//
+class TempAppendFile
+{
+public:
+	TempAppendFile();
+	~TempAppendFile();					// closes it
+
+	bool	create();					// a new, empty file, closing any before
+	bool	write(const void *data, size_t length);
+	void	close();
+
+	const seqfilechar *path() const;
+
+private:
+	std::basic_string<seqfilechar> m_path;
+	intptr_t m_file;					// the system's handle or descriptor, or -1
 };
 
 #endif

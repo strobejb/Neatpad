@@ -27,7 +27,7 @@ uint64_t get(const std::vector<uint8_t> &in, size_t &at, unsigned bytes)
 }
 } // namespace
 
-bool TextView::SaveState(TEXTVIEWRECOVERY *state)
+bool TextView::SaveState(TextViewRecovery *state)
 {
     if (!state || !state->directory)
         return false;
@@ -35,12 +35,9 @@ bool TextView::SaveState(TEXTVIEWRECOVERY *state)
     try
     {
         std::vector<uint8_t> context;
-        size_t               length = 0;
+        size_t               length = state->filename.size();
 
-        while (length < MAX_PATH && state->filename[length])
-            ++length;
-
-        if (length == MAX_PATH)
+        if (length > TV_RECOVERY_NAME_MAX)
             return false;
 
         put(context, 0x5756504e, 4);
@@ -65,7 +62,7 @@ bool TextView::SaveState(TEXTVIEWRECOVERY *state)
     }
 }
 
-bool TextView::LoadState(TEXTVIEWRECOVERY *state)
+bool TextView::LoadState(TextViewRecovery *state)
 {
     if (!state || !state->directory)
         return false;
@@ -88,19 +85,18 @@ bool TextView::LoadState(TEXTVIEWRECOVERY *state)
         size_t   length = (size_t)get(context, at, 4);
         uint64_t cursor = get(context, at, 8), anchor = get(context, at, 8), top = get(context, at, 8);
 
-        if (length >= MAX_PATH || context.size() != at + length * 2 ||
+        if (length > TV_RECOVERY_NAME_MAX || context.size() != at + length * 2 ||
             (crlf != TXL_CR && crlf != TXL_LF && crlf != TXL_CRLF))
             return false;
 
-        tchar_t filename[MAX_PATH];
+        std::basic_string<seqfilechar> filename(length, 0);
 
         for (size_t i = 0; i < length; ++i)
         {
-            filename[i] = (tchar_t)get(context, at, 2);
+            filename[i] = (seqfilechar)get(context, at, 2);
             if (!filename[i])
                 return false;
         }
-        filename[length] = 0;
 
         std::unique_ptr<TextDocument> document(new TextDocument);
 
@@ -145,8 +141,8 @@ bool TextView::LoadState(TEXTVIEWRECOVERY *state)
         RefreshWindow();
         NotifyCursorChange();
         NotifyIndexChange();
-        NotifyParent(TVN_CHANGED);
-        lstrcpy(state->filename, filename);
+        NotifyParent(TVNOTIFY_CHANGED);
+        state->filename = filename;
 
         return true;
     }

@@ -497,17 +497,31 @@ bool TextViewWin32::WriteClipboard(size_t length, const std::function<size_t(tch
     return success;
 }
 
+//
+//	The engine's notification as its TVN_* one, with its structure
+//
 intptr_t TextViewWin32::Notify(unsigned code, void *info)
 {
-    UINT   nCtrlId = GetWindowLong(m_hWnd, GWL_ID);
-    NMHDR  nmhdr   = {m_hWnd, nCtrlId, code};
-    NMHDR *nmptr   = &nmhdr;
+    UINT          nCtrlId = GetWindowLong(m_hWnd, GWL_ID);
+    TVNCURSORINFO cursor  = {};
+    TVNINDEXINFO  index   = {};
+    NMHDR         nmhdr   = {};
+    NMHDR        *nmptr   = &nmhdr;
 
-    if (info)
+    if (code == TVNOTIFY_CURSOR_CHANGE && info)
     {
-        nmptr  = (NMHDR *)info;
-        *nmptr = nmhdr;
+        ToWin32(*(TextViewCursorInfo *)info, &cursor);
+        nmptr = &cursor.hdr;
     }
+    else if (code == TVNOTIFY_INDEX_CHANGE && info)
+    {
+        ToWin32(*(TextViewIndexInfo *)info, &index);
+        nmptr = &index.hdr;
+    }
+
+    nmptr->hwndFrom = m_hWnd;
+    nmptr->idFrom   = nCtrlId;
+    nmptr->code     = TVN_BASE + code;
 
     return SendMessage(GetParent(m_hWnd), WM_NOTIFY, (WPARAM)nCtrlId, (LPARAM)nmptr);
 }

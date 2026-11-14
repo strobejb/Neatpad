@@ -19,7 +19,7 @@
 //
 //	
 //
-int32_t TextView::OpenFile(tchar_t *szFileName, int nEncoding, bool fReadOnly)
+int32_t TextView::OpenFile(const seqfilechar *szFileName, int nEncoding, bool fReadOnly)
 {
 	bool opened;
     std::unique_ptr<TextDocument> document(new TextDocument);
@@ -83,7 +83,7 @@ int32_t TextView::OpenFile(tchar_t *szFileName, int nEncoding, bool fReadOnly)
 //	Converted to another encoding or line format, the file no longer matches
 //	the text, so it's opened again, in the encoding it was written in.
 //
-int32_t TextView::SaveFile(tchar_t *szFileName, uint32_t nEncoding, bool fBom, uint32_t nLineBreak)
+int32_t TextView::SaveFile(const seqfilechar *szFileName, uint32_t nEncoding, bool fBom, uint32_t nLineBreak)
 {
 	bool fConvert = nEncoding != (uint32_t)FileDoc()->getformat() || nLineBreak != 0;
 
@@ -104,7 +104,7 @@ int32_t TextView::SaveFile(tchar_t *szFileName, uint32_t nEncoding, bool fBom, u
 //	Open a file to follow as another program appends to it: read-only, with
 //	the caret at the end, where UpdateTail adds what's appended
 //
-int32_t TextView::TailFile(tchar_t *szFileName)
+int32_t TextView::TailFile(const seqfilechar *szFileName)
 {
 	if(!OpenFile(szFileName, -1, true))
 		return false;
@@ -170,7 +170,7 @@ bool TextView::UpdateTail()
 	RefreshWindow();
 
 	NotifyCursorChange();
-	NotifyParent(TVN_CHANGED);
+	NotifyParent(TVNOTIFY_CHANGED);
 	return true;
 }
 
@@ -222,7 +222,7 @@ static const int    INDEX_SLICE_MS = 15;
 //
 int32_t TextView::IndexFile(bool fIndex)
 {
-	TVNINDEXINFO info;
+	TextViewIndexInfo info;
 
 	FillIndexInfo(&info);
 
@@ -273,7 +273,7 @@ int32_t TextView::OnIndexTimer()
 //
 void TextView::IndexChanged()
 {
-	TVNINDEXINFO info;
+	TextViewIndexInfo info;
 
 	FillIndexInfo(&info);
 
@@ -302,7 +302,7 @@ void TextView::IndexChanged()
 //	How much of the document is indexed, from the top, and whether more is
 //	being indexed
 //
-void TextView::FillIndexInfo(TVNINDEXINFO *info)
+void TextView::FillIndexInfo(TextViewIndexInfo *info)
 {
 	size_w length  = FileDoc()->byte_length();
 	size_w indexed = FileDoc()->indexed_length();
@@ -318,11 +318,11 @@ void TextView::FillIndexInfo(TVNINDEXINFO *info)
 //
 void TextView::NotifyIndexChange()
 {
-	TVNINDEXINFO info;
+	TextViewIndexInfo info;
 
 	FillIndexInfo(&info);
 	m_nIndexPercent = info.nPercent;
-	NotifyParent(TVN_INDEX_CHANGE, (NMHDR *)&info);
+	NotifyParent(TVNOTIFY_INDEX_CHANGE, &info);
 }
 
 // How much more of the document to index at a time, while a lookup waits

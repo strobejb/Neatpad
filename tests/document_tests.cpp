@@ -1415,6 +1415,40 @@ bool save_bytes(const seqfilechar *path, const char *text)
     return file.open(path) && file.write(text, strlen(text)) && file.commit();
 }
 
+// The view's filter writes its lines to one of these as a document reads it
+void tempappendfile_grows_under_a_document()
+{
+    TempAppendFile         file;
+    TextDocument           doc;
+    std::filesystem::path  path;
+    std::string            bom  = encode_text(U"\ufeff", TCHAR_UTF8 ? NCP_UTF8 : NCP_UTF16).substr(TCHAR_UTF8 ? 0 : 2);
+    tstring                one  = tstr(U"one\u00e9\r\n");
+    tstring                two  = tstr(U"two\U0001F600\r\n");
+    size_w                 added = 0;
+
+    CHECK(file.create());
+    path = file.path();
+    CHECK(file_exists(path));
+
+    // the build's own byte-order mark, then text as the build holds it
+    CHECK(file.write(bom.data(), bom.size()));
+    CHECK(file.write(one.data(), one.size() * sizeof(tchar_t)));
+    CHECK(doc.init(file.path(), true));
+    CHECK(read_document(doc) == one);
+
+    // what's written later shows when the document grows
+    CHECK(file.write(two.data(), two.size() * sizeof(tchar_t)));
+    CHECK(doc.grow(&added));
+    CHECK(added == two.size() * sizeof(tchar_t));
+    CHECK(read_document(doc) == one + two);
+
+    // closed, and no longer read, it's gone
+    doc.clear();
+    file.close();
+    CHECK(!file_exists(path));
+    CHECK(!file.write("x", 1));
+}
+
 void savefile_writes_a_new_file()
 {
     seqfilechar path[TEST_PATH_MAX];
@@ -2296,6 +2330,7 @@ const test_case tests[] =
     { "textdocument_open_file_can_be_replaced_but_not_written", textdocument_open_file_can_be_replaced_but_not_written },
     { "textdocument_reads_files_under_the_limit_into_memory", textdocument_reads_files_under_the_limit_into_memory },
 #endif
+    { "tempappendfile_grows_under_a_document", tempappendfile_grows_under_a_document },
     { "savefile_writes_a_new_file", savefile_writes_a_new_file },
     { "savefile_steps_past_a_file_in_the_way", savefile_steps_past_a_file_in_the_way },
     { "savefile_leaves_the_file_as_it_was_until_committed", savefile_leaves_the_file_as_it_was_until_committed },

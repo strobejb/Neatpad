@@ -136,16 +136,16 @@ TextView::~TextView()
 	delete[] m_lineCache;
 }
 
-LRESULT TextView::NotifyParent(uint32_t nNotifyCode, NMHDR *optional)
+intptr_t TextView::NotifyParent(uint32_t nNotifyCode, void *info)
 {
-	return m_pHost->Notify(nNotifyCode, optional);
+	return m_pHost->Notify(nNotifyCode, info);
 }
 
 //
 //	Describe the caret: its line (an estimate past the counted part of a large
 //	file), its column, and its offset in the document where that is cheap
 //
-void TextView::FillCursorInfo(TVNCURSORINFO *info)
+void TextView::FillCursorInfo(TextViewCursorInfo *info)
 {
 	size_w lineno = 0;
 	size_w offset_chars = 0;
@@ -162,10 +162,10 @@ void TextView::FillCursorInfo(TVNCURSORINFO *info)
 //
 void TextView::NotifyCursorChange()
 {
-	TVNCURSORINFO ci;
+	TextViewCursorInfo ci;
 
 	FillCursorInfo(&ci);
-	NotifyParent(TVN_CURSOR_CHANGE, (NMHDR *)&ci);
+	NotifyParent(TVNOTIFY_CURSOR_CHANGE, &ci);
 }
 
 void TextView::UpdateMetrics()
@@ -369,7 +369,7 @@ uint32_t TextView::SelectAll()
 	return 0;
 }
 
-uint32_t TextView::FindText(TEXTVIEWFIND *find)
+uint32_t TextView::FindText(const TextViewFind *find)
 {
 	TextCoord selStart;
 	TextCoord selEnd;
@@ -417,7 +417,7 @@ uint32_t TextView::FindText(TEXTVIEWFIND *find)
 //	showing only the lines that hold one, with fFilter. Lines are laid out
 //	again, to colour them.
 //
-int32_t TextView::ShowMatches(TEXTVIEWFIND *find, bool fFilter)
+int32_t TextView::ShowMatches(const TextViewFind *find, bool fFilter)
 {
 	// other matches, or none, start from the whole document again
 	EndFilter(true);
@@ -445,7 +445,7 @@ int32_t TextView::ShowMatches(TEXTVIEWFIND *find, bool fFilter)
 //	in the document, as one undo step, keeping the caret and the view on their
 //	lines. Returns how many matches it replaced.
 //
-size_w TextView::ReplaceText(TEXTVIEWFIND *find, bool fAll)
+size_w TextView::ReplaceText(const TextViewFind *find, bool fAll)
 {
 	TextCoord  start, end, line;
 	TextPos    matchBegin, matchEnd;
@@ -503,7 +503,7 @@ size_w TextView::ReplaceText(TEXTVIEWFIND *find, bool fAll)
 
 	RefreshWindow();
 	UpdateViewState(true);
-	NotifyParent(TVN_CHANGED);
+	NotifyParent(TVNOTIFY_CHANGED);
 	return count;
 }
 
@@ -582,7 +582,7 @@ uint32_t TextView::SetEditMode(uint32_t mode)
 //	The document's size and the selection's, in bytes and in characters where
 //	those are counted
 //
-bool TextView::GetDocStats(TEXTVIEWDOCSTATS *stats)
+bool TextView::GetDocStats(TextViewDocStats *stats)
 {
 	TextCoord selStart, selEnd;
 	size_w chars, startChars, endChars;
