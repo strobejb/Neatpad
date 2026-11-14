@@ -27,3 +27,17 @@ jobs:
         run: |
           & "build/$env:PLATFORM/$env:CONFIGURATION/SequenceTests.exe"
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
+
+  linux:
+    # The portable parts, built with CMake: TextDocument and the core tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build
+        run: |
+          cmake -S . -B build/cmake -G Ninja -DCMAKE_BUILD_TYPE=$CONFIGURATION
+          cmake --build build/cmake
+
+      - name: Test
+        run: ctest --test-dir build/cmake --output-on-failure
