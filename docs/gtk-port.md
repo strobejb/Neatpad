@@ -242,7 +242,7 @@ Each step is its own commit on `main`, and moves and formatting changes stay sep
   - `tests/gtk/textview_demo.c` shows the widget in a window; `--screenshot FILE.png` saves what it draws.
     `tests/gtk/gtk_tests.cpp` tests the Pango layout's stops and the widget, with real fonts: Ubuntu CI runs them
     under Xvfb.
-  - Not yet: the theme's colours (a light palette for now), margin images, a blinking caret, the input method's
+  - Not yet: the theme's colours (a light palette for now), margin images, the input method's
     preedit text and cursor location, the context menu, more than one font, and saving.
 - **Done:** step 9, the GTK app: `src/Neatpad/gtk/neatpad.c`, built as `neatpad` where libadwaita is found.
   Step 7, the Pango spike, wasn't needed.
@@ -287,8 +287,12 @@ Each step is its own commit on `main`, and moves and formatting changes stay sep
     Win32's: 10% steps from 10% to 500%, Ctrl and the wheel, plus, minus or 0. Preferences can hide the status bar.
   - Printing isn't planned: the Win32 app doesn't print either. If it's wanted, both apps can add it together,
     drawing pages with the engine's painting.
-- **Next:** smaller gaps, as wanted: a blinking caret, the context menu from the keyboard, input-method preedit,
-  line endings and encoding when saving, a filter in the find bar, and a `.desktop` file and icon.
+  - **Done:** the caret blinks as GNOME's settings say (`gtk-cursor-blink`, its time and timeout), shown again as
+    it moves. `scripts/install-dev-desktop.sh` installs a desktop entry and icon for the build in this checkout,
+    named for the app ID (`net.catch22.Neatpad`), so GNOME shows it in the app grid, the dock and Open With. The
+    icon, `data/neatpad.png`, is the Win32 app's, 48 pixels: a larger one would look sharper in the app grid.
+- **Next:** smaller gaps, as wanted: the context menu from the keyboard, input-method preedit, line endings and
+  encoding when saving, and a filter in the find bar.
 
 ## Open decisions
 

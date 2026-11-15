@@ -1875,6 +1875,7 @@ static void action_about(GSimpleAction *action, GVariant *parameter, gpointer da
 
     about = adw_about_dialog_new();
     adw_about_dialog_set_application_name(ADW_ABOUT_DIALOG(about), "Neatpad");
+    adw_about_dialog_set_application_icon(ADW_ABOUT_DIALOG(about), APP_ID);
     adw_about_dialog_set_developer_name(ADW_ABOUT_DIALOG(about), "J Brown");
     adw_about_dialog_set_website(ADW_ABOUT_DIALOG(about), "https://www.catch22.net/tuts/neatpad");
     adw_about_dialog_set_license_type(ADW_ABOUT_DIALOG(about), GTK_LICENSE_MIT_X11);
@@ -2257,6 +2258,9 @@ int main(int argc, char *argv[])
 
     // the name recent files are recorded under
     g_set_application_name("Neatpad");
+
+    // the icon scripts/install-dev-desktop.sh installs, named for the app
+    gtk_window_set_default_icon_name(APP_ID);
 
     app = adw_application_new(APP_ID, G_APPLICATION_HANDLES_OPEN);
     g_signal_connect(app, "startup", G_CALLBACK(on_startup), 0);

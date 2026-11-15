@@ -16,7 +16,8 @@ TextViewGtk::TextViewGtk(GtkWidget *widget)
       m_font(pango_font_description_from_string("Monospace 11")), m_measure(pango_layout_new(m_context)),
       m_metrics(), m_view(0), m_windowColour(TV_RGB(255, 255, 255)), m_textColour(TV_RGB(0, 0, 0)),
       m_caretColour(TV_RGB(0, 0, 0)), m_width(0), m_height(0), m_caretCreated(false), m_caretHidden(1), m_caretX(0),
-      m_caretY(0), m_caretWidth(0), m_caretHeight(0), m_vadjust(0), m_hadjust(0), m_settingScroll(false),
+      m_caretY(0), m_caretWidth(0), m_caretHeight(0), m_caretOn(true),
+      m_blinkTimer(0), m_blinkUntil(0), m_vadjust(0), m_hadjust(0), m_settingScroll(false),
       m_painting(false), m_vpending(), m_hpending(), m_scrollIdle(0), m_modifiers(0), m_mouseX(0), m_mouseY(0)
 {
     // the engine works in whole pixels: so do glyphs, so an x always finds the
@@ -35,6 +36,7 @@ TextViewGtk::~TextViewGtk()
         g_source_remove(i->second);
 
     m_timers.clear();
+    StopBlink();
 
     if (m_scrollIdle)
         g_source_remove(m_scrollIdle);
@@ -157,7 +159,7 @@ void TextViewGtk::Snapshot(GtkSnapshot *snapshot)
     m_view->Paint(canvas, &rect);
     m_painting = false;
 
-    if (m_caretCreated && m_caretHidden == 0 && HasFocus())
+    if (m_caretCreated && m_caretHidden == 0 && m_caretOn && HasFocus())
     {
         GdkRGBA colour = RgbaFromColour(m_caretColour);
 
@@ -316,11 +318,13 @@ void TextViewGtk::CreateCaret(int width, int height)
     m_caretHidden  = 1;
     m_caretWidth   = width;
     m_caretHeight  = height;
+    RestartBlink();
 }
 
 void TextViewGtk::DestroyCaret()
 {
     m_caretCreated = false;
+    StopBlink();
     gtk_widget_queue_draw(m_widget);
 }
 
@@ -329,6 +333,7 @@ void TextViewGtk::ShowCaret()
     if (m_caretHidden > 0)
         m_caretHidden--;
 
+    RestartBlink();
     gtk_widget_queue_draw(m_widget);
 }
 
@@ -340,9 +345,62 @@ void TextViewGtk::HideCaret()
 
 void TextViewGtk::SetCaretPos(int x, int y)
 {
+    // shown as it moves; refreshed where it is, it blinks on
+    if (x != m_caretX || y != m_caretY)
+        RestartBlink();
+
     m_caretX = x;
     m_caretY = y;
     gtk_widget_queue_draw(m_widget);
+}
+
+// Shown, and blinking from now on: GTK's settings say whether it blinks, how
+// fast (a whole on-and-off), and for how many seconds
+void TextViewGtk::RestartBlink()
+{
+    gboolean blink   = TRUE;
+    int      time    = 1200;
+    int      timeout = 10;
+
+    StopBlink();
+    m_caretOn = true;
+
+    g_object_get(gtk_widget_get_settings(m_widget), "gtk-cursor-blink", &blink, "gtk-cursor-blink-time", &time,
+                 "gtk-cursor-blink-timeout", &timeout, NULL);
+
+    if (!m_caretCreated || !blink || time <= 0)
+        return;
+
+    m_blinkUntil = g_get_monotonic_time() + (gint64)timeout * G_TIME_SPAN_SECOND;
+    m_blinkTimer = g_timeout_add((guint)(time / 2), OnBlink, this);
+}
+
+void TextViewGtk::StopBlink()
+{
+    if (m_blinkTimer)
+    {
+        g_source_remove(m_blinkTimer);
+        m_blinkTimer = 0;
+    }
+
+    m_caretOn = true;
+}
+
+gboolean TextViewGtk::OnBlink(gpointer data)
+{
+    TextViewGtk *host = static_cast<TextViewGtk *>(data);
+
+    host->m_caretOn = !host->m_caretOn;
+    gtk_widget_queue_draw(host->m_widget);
+
+    // it stops when it's shown
+    if (host->m_caretOn && g_get_monotonic_time() >= host->m_blinkUntil)
+    {
+        host->m_blinkTimer = 0;
+        return G_SOURCE_REMOVE;
+    }
+
+    return G_SOURCE_CONTINUE;
 }
 
 //

@@ -110,9 +110,12 @@ class TextViewGtk : public TextViewHost
     };
 
     static gboolean OnTimer(gpointer data);
+    static gboolean OnBlink(gpointer data);
     static gboolean OnPaintedScroll(gpointer data);
 
     void Measure();
+    void RestartBlink();
+    void StopBlink();
 
     GtkWidget            *m_widget;
     PangoContext         *m_context;
@@ -135,6 +138,12 @@ class TextViewGtk : public TextViewHost
     int  m_caretY;
     int  m_caretWidth;
     int  m_caretHeight;
+
+    // It blinks as GNOME's settings say, shown again as it moves, and stops
+    // blinking (shown) once the user has done nothing for a while
+    bool   m_caretOn;
+    guint  m_blinkTimer;
+    gint64 m_blinkUntil;
 
     GtkAdjustment *m_vadjust;
     GtkAdjustment *m_hadjust;
