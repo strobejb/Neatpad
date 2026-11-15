@@ -10,7 +10,8 @@ declarations and assignments, and a 120-column limit.
 - Keep blank lines between declarations and executable code, and between
   distinct steps. Keep related assignment groups aligned.
 - Preserve include order: Neatpad's Win32 headers have ordering dependencies.
-- Keep Neatpad's existing CRLF line endings, as required by `.gitattributes`.
+- Use LF line endings, except for Windows-only files (`.rc`, `.sln`, `.vcxproj`,
+  `.filters`, `.bat`, `.cmd`), which are CRLF, as `.gitattributes` says.
 - Format new files and edited regions; do not reformat unrelated existing code.
 - Keep formatting changes separate from behavior changes. Preserve the user's
   in-progress edits.

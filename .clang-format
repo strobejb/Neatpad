@@ -19,7 +19,7 @@ AllowShortLoopsOnASingleLine: false
 
 ColumnLimit: 120
 # Keep Neatpad's existing .gitattributes policy.
-LineEnding: CRLF
+LineEnding: LF
 
 # Keep intentional constant/member assignment blocks readable.
 AlignConsecutiveAssignments:

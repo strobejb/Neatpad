@@ -1,16 +1,15 @@
-* text=auto
+# LF everywhere, as the repo stores it; CRLF only for Windows-only files,
+# which Visual Studio writes that way
+* text=auto eol=lf
 
-*.c text eol=crlf
-*.cpp text eol=crlf
-*.h text eol=crlf
 *.rc text eol=crlf
-*.dsp text eol=crlf
-*.dsw text eol=crlf
 *.sln text eol=crlf
 *.vcxproj text eol=crlf
 *.filters text eol=crlf
-*.md text eol=crlf
-*.txt text eol=crlf
+*.dsp text eol=crlf
+*.dsw text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
 /tests/samples/*.[tT][xX][tT] binary
 
 *.bmp binary
