@@ -556,6 +556,11 @@ void engine_types_into_a_new_view()
     view.OnSize(0, 640, 480);
     view.OnText(text.c_str(), (uint32_t)text.size());
     CHECK(view.FileDoc()->byte_length() == 5);
+
+    if (view.FileDoc()->byte_length() != 5)
+        printf("::error::new view: %d bytes, %d lines, column %d, %d units typed\n",
+               (int)view.FileDoc()->byte_length(), (int)view.FileDoc()->linecount(),
+               (int)view.CursorColumn(), (int)text.size());
 }
 
 void engine_paints_every_line()
