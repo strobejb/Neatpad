@@ -9,6 +9,7 @@
 #include <adwaita.h>
 
 #include "NeatpadTextView.h"
+#include "palette.h"
 #include "recovery.h"
 
 #define APP_ID      "net.catch22.Neatpad"
@@ -77,7 +78,8 @@ typedef void (*EditorThen)(Editor *editor);
 //
 typedef struct
 {
-    char    *style; // "follow", "light" or "dark"
+    char    *style;   // "follow", "light" or "dark"
+    char    *palette; // the text's colours: a palette's id (palette.h)
     gboolean system_font;
     char    *font;
     gboolean restore_session;
@@ -131,6 +133,7 @@ static void load_settings(void)
     g_key_file_load_from_file(file, path, G_KEY_FILE_NONE, 0);
 
     settings.style             = read_string(file, "style", "follow");
+    settings.palette           = read_string(file, "palette", PALETTE_DEFAULT);
     settings.system_font       = read_boolean(file, "use-system-font", TRUE);
     settings.font              = read_string(file, "font", "Monospace 11");
     settings.restore_session   = read_boolean(file, "restore-session", TRUE);
@@ -169,6 +172,7 @@ static void save_settings(void)
     char     *folder = g_path_get_dirname(path);
 
     g_key_file_set_string(file, "editor", "style", settings.style);
+    g_key_file_set_string(file, "editor", "palette", settings.palette);
     g_key_file_set_boolean(file, "editor", "use-system-font", settings.system_font);
     g_key_file_set_string(file, "editor", "font", settings.font);
     g_key_file_set_boolean(file, "editor", "restore-session", settings.restore_session);
@@ -353,8 +357,8 @@ static void apply_settings_everywhere(void)
     }
 }
 
-// The text's colours follow the style: light or dark, and the accent colour
-// where libadwaita has one (1.6)
+// The text's colours are the palette's, which follow the style: light or dark,
+// and the accent colour where libadwaita has one (1.6)
 static void apply_scheme(Editor *editor)
 {
     AdwStyleManager *manager = adw_style_manager_get_default();
@@ -364,7 +368,7 @@ static void apply_scheme(Editor *editor)
     accent = adw_style_manager_get_accent_color_rgba(manager);
 #endif
 
-    neatpad_text_view_set_scheme(editor->view, adw_style_manager_get_dark(manager), accent);
+    palette_apply(settings.palette, editor->view, adw_style_manager_get_dark(manager), accent);
 
     if (accent)
         gdk_rgba_free(accent);
@@ -2160,6 +2164,67 @@ static void on_spin_row(GObject *row, GParamSpec *spec, gpointer setting)
     apply_settings_everywhere();
 }
 
+// A palette chosen: every window's text in its colours
+static void on_palette(GObject *row, GParamSpec *spec, gpointer data)
+{
+    GPtrArray *palettes = g_object_get_data(row, "palettes");
+    guint      selected = adw_combo_row_get_selected(ADW_COMBO_ROW(row));
+    GList     *windows  = gtk_application_get_windows(GTK_APPLICATION(g_application_get_default()));
+
+    (void)spec;
+    (void)data;
+
+    if (selected >= palettes->len)
+        return;
+
+    g_free(settings.palette);
+    settings.palette = g_strdup(((PaletteInfo *)palettes->pdata[selected])->id);
+    save_settings();
+
+    for (GList *w = windows; w; w = w->next)
+    {
+        if (editor_of(w->data))
+            apply_scheme(editor_of(w->data));
+    }
+}
+
+// The palettes to choose from, and where the user's own go
+static GtkWidget *palette_row(void)
+{
+    GtkWidget     *row      = adw_combo_row_new();
+    GPtrArray     *palettes = palette_list();
+    GtkStringList *names    = gtk_string_list_new(0);
+    char          *folder   = palette_folder();
+    char          *home     = g_strconcat(g_get_home_dir(), "/", NULL);
+    char          *subtitle = g_strdup_printf("Add your own as .palette files in %s%s",
+                                              g_str_has_prefix(folder, home) ? "~/" : "",
+                                              g_str_has_prefix(folder, home) ? folder + strlen(home) : folder);
+    guint          selected = 0;
+
+    for (guint i = 0; i < palettes->len; i++)
+    {
+        PaletteInfo *info = palettes->pdata[i];
+
+        gtk_string_list_append(names, info->name);
+
+        if (g_str_equal(info->id, settings.palette))
+            selected = i;
+    }
+
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(row), "Palette");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(row), subtitle);
+    adw_combo_row_set_model(ADW_COMBO_ROW(row), G_LIST_MODEL(names));
+    adw_combo_row_set_selected(ADW_COMBO_ROW(row), selected);
+    g_object_set_data_full(G_OBJECT(row), "palettes", palettes, (GDestroyNotify)g_ptr_array_unref);
+    g_signal_connect(row, "notify::selected", G_CALLBACK(on_palette), 0);
+
+    g_object_unref(names);
+    g_free(subtitle);
+    g_free(home);
+    g_free(folder);
+    return row;
+}
+
 static void on_font(GObject *button, GParamSpec *spec, gpointer data)
 {
     PangoFontDescription *font = gtk_font_dialog_button_get_font_desc(GTK_FONT_DIALOG_BUTTON(button));
@@ -2230,8 +2295,9 @@ static void action_preferences(GSimpleAction *action, GVariant *parameter, gpoin
     adw_preferences_page_set_title(ADW_PREFERENCES_PAGE(page), "Editor");
     adw_preferences_page_set_icon_name(ADW_PREFERENCES_PAGE(page), "document-edit-symbolic");
 
-    // the font
-    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(fonts), "Font");
+    // the colours, then the font
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(fonts), "Appearance");
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(fonts), palette_row());
     adw_preferences_row_set_title(ADW_PREFERENCES_ROW(font_row), "Editor Font");
     gtk_font_dialog_set_filter(chooser, monospace);
     gtk_font_dialog_button_set_level(GTK_FONT_DIALOG_BUTTON(font_button), GTK_FONT_LEVEL_FONT);

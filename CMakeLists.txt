@@ -88,7 +88,7 @@ if(GTK4_FOUND)
 
     # The app, where libadwaita is too
     if(ADWAITA_FOUND)
-        add_executable(neatpad src/Neatpad/gtk/neatpad.c src/Neatpad/gtk/recovery.c)
+        add_executable(neatpad src/Neatpad/gtk/neatpad.c src/Neatpad/gtk/palette.c src/Neatpad/gtk/recovery.c)
         target_link_libraries(neatpad PRIVATE TextViewGtk PkgConfig::ADWAITA)
         target_compile_definitions(neatpad PRIVATE NEATPAD_VERSION="${PROJECT_VERSION}")
     endif()

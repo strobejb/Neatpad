@@ -299,8 +299,13 @@ Each step is its own commit on `main`, and moves and formatting changes stay sep
     every match as it's typed, and Filter shows only the lines that match, with Preferences' context lines round
     them, as Win32's search bar does. Matches regardless of case are highlighted in UTF-8 too: the engine compares
     them as UTF-16, as find does.
+  - **Done:** palettes, in place of Win32's colour for each display item: Preferences picks one, as Text Editor
+    picks a style scheme. Adwaita (following the style and the accent colour), Classic (Win32 Neatpad's colours)
+    and Solarized are built in, and `.palette` files in `~/.config/catch22/neatpad/palettes` add more: a key file
+    with `[light]` and `[dark]` colours, as `src/Neatpad/gtk/palette.h` describes. What a palette leaves out is
+    Adwaita's.
 - **Next:** smaller gaps, as wanted: the context menu from the keyboard, input-method preedit, line endings and
-  encoding when saving, and colours of one's own.
+  encoding when saving.
 
 ## Open decisions
 

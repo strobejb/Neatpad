@@ -134,6 +134,12 @@ void neatpad_text_view_set_tab_width(NeatpadTextView *view, guint width);
 // selection in the accent colour (Adwaita blue when accent is NULL)
 void neatpad_text_view_set_scheme(NeatpadTextView *view, gboolean dark, const GdkRGBA *accent);
 
+// One colour in place of the scheme's, after neatpad_text_view_set_scheme: a
+// TXC_* index, or NEATPAD_COLOUR_CARET. Colours are 0x00BBGGRR, as TV_RGB makes.
+#define NEATPAD_COLOUR_CARET TXC_MAX_COLOURS
+
+void neatpad_text_view_set_colour(NeatpadTextView *view, guint index, guint32 colour);
+
 // The caret's line (from 0; an estimate past the indexed part of a large file)
 // and its column, in characters from the line's start
 void neatpad_text_view_get_cursor(NeatpadTextView *view, guint64 *line, guint64 *column, gboolean *line_known);

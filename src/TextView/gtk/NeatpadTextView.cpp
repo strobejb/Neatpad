@@ -943,6 +943,31 @@ void neatpad_text_view_set_scheme(NeatpadTextView *view, gboolean dark, const Gd
     view->host->SetPalette(background, text, dark ? TV_RGB(0xc0, 0xbf, 0xbc) : TV_RGB(0x77, 0x76, 0x7b));
 }
 
+void neatpad_text_view_set_colour(NeatpadTextView *view, guint index, guint32 colour)
+{
+    uint32_t window;
+    uint32_t text;
+    uint32_t caret;
+
+    g_return_if_fail(NEATPAD_IS_TEXT_VIEW(view));
+    g_return_if_fail(index <= NEATPAD_COLOUR_CARET);
+
+    // the text and its background are the padding's and the system colours too
+    view->host->PaletteColours(&window, &text, &caret);
+
+    if (index == TXC_BACKGROUND)
+        window = colour;
+    else if (index == TXC_FOREGROUND)
+        text = colour;
+    else if (index == NEATPAD_COLOUR_CARET)
+        caret = colour;
+
+    if (index < TXC_MAX_COLOURS)
+        view_of(view)->SetColour(index, colour);
+
+    view->host->SetPalette(window, text, caret);
+}
+
 void neatpad_text_view_set_style(NeatpadTextView *view, guint mask, guint styles)
 {
     g_return_if_fail(NEATPAD_IS_TEXT_VIEW(view));

@@ -111,6 +111,13 @@ void TextViewGtk::SetPalette(uint32_t window, uint32_t text, uint32_t caret)
     gtk_widget_queue_draw(m_widget);
 }
 
+void TextViewGtk::PaletteColours(uint32_t *window, uint32_t *text, uint32_t *caret) const
+{
+    *window = m_windowColour;
+    *text   = m_textColour;
+    *caret  = m_caretColour;
+}
+
 void TextViewGtk::EnginePoint(double x, double y, int *engineX, int *engineY) const
 {
     *engineX = (int)floor(x) - PAD_X;
