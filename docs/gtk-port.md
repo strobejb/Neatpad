@@ -229,7 +229,7 @@ Each step is its own commit on `main`, and moves and formatting changes stay sep
   - `NeatpadTextView` is the widget, with a C API (`NeatpadTextView.h`): open a file, the font, `TXS_*` styles, the
     caret, undo and redo, the clipboard, and signals for the engine's notifications. It holds `TextViewGtk`. It's a
     `GtkScrollable`, so a `GtkScrolledWindow` round it has the scrollbars: GNOME's overlay scrollbars, or always
-    shown as Accessibility says. Its adjustments are bytes down (where the top line starts) and pixels across.
+    shown as Accessibility says. Its adjustments are bytes down (where the top line starts) and characters across.
   - `TextViewGtk` is the host. Timers are GLib sources, the caret is drawn over the text, and redraws are the whole
     widget. Scroll ranges set while painting wait until the frame is drawn, as GTK can't resize the scrolled window
     part way through drawing it. Paste reads the clipboard first (GTK reads it asynchronously), then the engine pastes it.
@@ -254,7 +254,8 @@ Each step is its own commit on `main`, and moves and formatting changes stay sep
   - Rows start and end on whole device pixels, so a fractional display scale draws no lines between them.
   - **Done:** the first UX pass. Padding round the text (12px across, 6px down; GNOME Text Editor's 12px margins
     scroll with the text, which the line-based scroll model can't do cheaply). Open is a split button with recent
-    files (GNOME's list, those Neatpad opened or saved). The main menu has Find, Replace and Go to Line in a
+    files (GNOME's list, those Neatpad opened or saved), each with its folder and a button to remove it, as Text
+    Editor shows them. The main menu has Find, Replace and Go to Line in a
     section. The view has a context menu as on Win32, without its two edit-control items that do nothing.
     Replace is a second row in the find bar; Go to Line (Ctrl+I, as Text Editor) is a bar of its own.
   - **Done:** the style and preferences. The text takes the colours of GtkSourceView's Adwaita and Adwaita Dark

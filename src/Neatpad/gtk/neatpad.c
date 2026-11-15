@@ -24,7 +24,8 @@ typedef struct
     AdwToastOverlay *toasts;
     AdwBanner       *banner;
     int              notice; // what the banner says: NOTICE_*
-    GMenu           *recent; // the Open button's menu
+    GtkWidget       *recent_popover; // the Open button's recent files
+    GtkListBox      *recent_list;
     char            *recent_uri; // the recent file being opened
     GtkSearchBar    *search_bar;
     GtkSearchEntry  *search_entry;
@@ -201,7 +202,6 @@ static void editor_free(gpointer data)
     }
 
     g_clear_object(&editor->file);
-    g_clear_object(&editor->recent);
     g_free(editor->recent_uri);
     g_free(editor);
 }
@@ -570,21 +570,88 @@ static int newest_first(gconstpointer a, gconstpointer b)
                                gtk_recent_info_get_modified((GtkRecentInfo *)a));
 }
 
-// A menu label shows a file's name as it is: an underline is doubled, or it
-// would mark a mnemonic
-static char *menu_label(const char *name)
+// Where a file is, as Text Editor shows it: its folder, home as ~
+static char *recent_folder(GtkRecentInfo *info)
 {
-    GString *label = g_string_new(0);
+    GFile *file   = g_file_new_for_uri(gtk_recent_info_get_uri(info));
+    GFile *parent = g_file_get_parent(file);
+    char  *path   = parent ? g_file_get_path(parent) : 0;
+    char  *folder;
 
-    for (const char *c = name; *c; c++)
-    {
-        if (*c == '_')
-            g_string_append_c(label, '_');
+    if (!path)
+        folder = parent ? g_file_get_parse_name(parent) : g_strdup("");
+    else if (g_str_has_prefix(path, g_get_home_dir()) &&
+             (path[strlen(g_get_home_dir())] == '/' || path[strlen(g_get_home_dir())] == 0))
+        folder = g_strconcat("~", path + strlen(g_get_home_dir()), NULL);
+    else
+        folder = g_strdup(path);
 
-        g_string_append_c(label, *c);
-    }
+    g_free(path);
+    g_clear_object(&parent);
+    g_object_unref(file);
+    return folder;
+}
 
-    return g_string_free(label, FALSE);
+static void on_recent_activated(GtkListBox *list, GtkListBoxRow *row, gpointer data)
+{
+    Editor     *editor = data;
+    const char *uri    = g_object_get_data(G_OBJECT(row), "uri");
+
+    (void)list;
+
+    if (!uri)
+        return;
+
+    gtk_popover_popdown(GTK_POPOVER(editor->recent_popover));
+    gtk_widget_activate_action(GTK_WIDGET(editor->window), "win.open-recent", "s", uri);
+}
+
+// The row's close button: the file leaves the list, in every window
+static void on_recent_remove(GtkButton *button, gpointer data)
+{
+    (void)data;
+
+    gtk_recent_manager_remove_item(gtk_recent_manager_get_default(), g_object_get_data(G_OBJECT(button), "uri"), 0);
+}
+
+static GtkWidget *recent_row(GtkRecentInfo *info)
+{
+    GtkWidget *row    = gtk_list_box_row_new();
+    GtkWidget *box    = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+    GtkWidget *labels = gtk_box_new(GTK_ORIENTATION_VERTICAL, 2);
+    GtkWidget *name   = gtk_label_new(gtk_recent_info_get_display_name(info));
+    char      *where  = recent_folder(info);
+    GtkWidget *folder = gtk_label_new(where);
+    GtkWidget *remove = gtk_button_new_from_icon_name("window-close-symbolic");
+    char      *uri    = g_strdup(gtk_recent_info_get_uri(info));
+
+    gtk_label_set_xalign(GTK_LABEL(name), 0);
+    gtk_label_set_ellipsize(GTK_LABEL(name), PANGO_ELLIPSIZE_END);
+    gtk_label_set_xalign(GTK_LABEL(folder), 0);
+    gtk_label_set_ellipsize(GTK_LABEL(folder), PANGO_ELLIPSIZE_MIDDLE);
+    gtk_widget_add_css_class(folder, "dim-label");
+    gtk_widget_add_css_class(folder, "caption");
+    gtk_label_set_max_width_chars(GTK_LABEL(name), 40);
+    gtk_label_set_max_width_chars(GTK_LABEL(folder), 40);
+    gtk_widget_set_hexpand(labels, TRUE);
+    gtk_box_append(GTK_BOX(labels), name);
+    gtk_box_append(GTK_BOX(labels), folder);
+
+    gtk_widget_add_css_class(remove, "flat");
+    gtk_widget_add_css_class(remove, "circular");
+    gtk_widget_set_valign(remove, GTK_ALIGN_CENTER);
+    gtk_widget_set_tooltip_text(remove, "Remove From Recent Files");
+    g_object_set_data_full(G_OBJECT(remove), "uri", g_strdup(uri), g_free);
+    g_signal_connect(remove, "clicked", G_CALLBACK(on_recent_remove), 0);
+
+    gtk_box_append(GTK_BOX(box), labels);
+    gtk_box_append(GTK_BOX(box), remove);
+    gtk_list_box_row_set_child(GTK_LIST_BOX_ROW(row), box);
+    gtk_widget_set_tooltip_text(row, where);
+    g_object_set_data_full(G_OBJECT(row), "uri", uri, g_free);
+
+    g_free(where);
+    return row;
 }
 
 static void update_recent(Editor *editor)
@@ -592,31 +659,32 @@ static void update_recent(Editor *editor)
     GList *items = gtk_recent_manager_get_items(gtk_recent_manager_get_default());
     int    count = 0;
 
-    g_menu_remove_all(editor->recent);
+    gtk_list_box_remove_all(editor->recent_list);
     items = g_list_sort(items, newest_first);
 
     for (GList *i = items; i && count < RECENT_MAX; i = i->next)
     {
         GtkRecentInfo *info = i->data;
-        GMenuItem     *item;
-        char          *label;
 
         if (!gtk_recent_info_has_application(info, g_get_application_name()) || !gtk_recent_info_exists(info))
             continue;
 
-        label = menu_label(gtk_recent_info_get_display_name(info));
-        item  = g_menu_item_new(label, 0);
-        g_menu_item_set_action_and_target(item, "win.open-recent", "s", gtk_recent_info_get_uri(info));
-        g_menu_append_item(editor->recent, item);
-
-        g_object_unref(item);
-        g_free(label);
+        gtk_list_box_append(editor->recent_list, recent_row(info));
         count++;
     }
 
-    // without an action, it's shown disabled
     if (count == 0)
-        g_menu_append(editor->recent, "No Recent Files", 0);
+    {
+        GtkWidget *row   = gtk_list_box_row_new();
+        GtkWidget *label = gtk_label_new("No Recent Files");
+
+        gtk_widget_add_css_class(label, "dim-label");
+        gtk_widget_set_margin_top(label, 6);
+        gtk_widget_set_margin_bottom(label, 6);
+        gtk_list_box_row_set_child(GTK_LIST_BOX_ROW(row), label);
+        gtk_list_box_row_set_activatable(GTK_LIST_BOX_ROW(row), FALSE);
+        gtk_list_box_append(editor->recent_list, row);
+    }
 
     g_list_free_full(items, (GDestroyNotify)gtk_recent_info_unref);
 }
@@ -1146,6 +1214,7 @@ static void show_find(Editor *editor, gboolean replacing)
 {
     gtk_search_bar_set_search_mode(editor->goto_bar, FALSE);
     gtk_widget_set_visible(editor->replace_row, replacing);
+    gtk_widget_set_visible(GTK_WIDGET(editor->search_bar), TRUE);
     gtk_search_bar_set_search_mode(editor->search_bar, TRUE);
     gtk_widget_grab_focus(GTK_WIDGET(editor->search_entry));
     gtk_editable_select_region(GTK_EDITABLE(editor->search_entry), 0, -1);
@@ -1154,6 +1223,7 @@ static void show_find(Editor *editor, gboolean replacing)
 static void show_goto(Editor *editor)
 {
     gtk_search_bar_set_search_mode(editor->search_bar, FALSE);
+    gtk_widget_set_visible(GTK_WIDGET(editor->goto_bar), TRUE);
     gtk_search_bar_set_search_mode(editor->goto_bar, TRUE);
     gtk_widget_grab_focus(GTK_WIDGET(editor->goto_entry));
     gtk_editable_select_region(GTK_EDITABLE(editor->goto_entry), 0, -1);
@@ -1256,6 +1326,17 @@ static void on_banner_clicked(AdwBanner *banner, gpointer data)
         load(editor, file);
         g_object_unref(file);
     }
+}
+
+// A closed bar is hidden: even folded away, a search bar takes a little room
+// below the text
+static void on_search_mode(GObject *bar, GParamSpec *spec, gpointer data)
+{
+    (void)spec;
+    (void)data;
+
+    if (!gtk_search_bar_get_search_mode(GTK_SEARCH_BAR(bar)))
+        gtk_widget_set_visible(GTK_WIDGET(bar), FALSE);
 }
 
 //
@@ -1489,7 +1570,7 @@ static GMenuModel *primary_menu(void)
 //	The style switcher: follow the system, light or dark, as round swatches,
 //	as GNOME Text Editor has them. Each is a radio button on app.style.
 //
-static const char style_css[] = ".style-switcher { margin: 6px 0; }"
+static const char app_css[] = ".style-switcher { margin: 6px 0; }"
                                 ".style-switcher button { min-width: 40px; min-height: 40px; padding: 0;"
                                 "  border-radius: 9999px; border: 1px solid alpha(black, 0.15); box-shadow: none; }"
                                 ".style-switcher button.follow {"
@@ -1497,7 +1578,14 @@ static const char style_css[] = ".style-switcher { margin: 6px 0; }"
                                 ".style-switcher button.light { background: #ffffff; }"
                                 ".style-switcher button.dark { background: #1d1d20; }"
                                 ".style-switcher button:checked {"
-                                "  outline: 2px solid @accent_bg_color; outline-offset: 2px; }";
+                                "  outline: 2px solid @accent_bg_color; outline-offset: 2px; }"
+                                // hairlines above the text and the status bar, in libadwaita's
+                                // border colour
+                                ".neatpad-text { border-top: 1px solid alpha(currentColor, 0.15); }"
+                                ".neatpad-status { border-top: 1px solid alpha(currentColor, 0.15);"
+                                "  padding: 7px 12px; }"
+                                ".recent-files { min-width: 300px; }"
+                                ".recent-files row { padding: 4px 4px 4px 10px; }";
 
 static GtkWidget *style_switcher(void)
 {
@@ -1538,11 +1626,18 @@ static GtkWidget *header_bar(Editor *editor)
     GtkWidget  *menu   = gtk_menu_button_new();
     GMenuModel *model  = primary_menu();
 
-    // Open, with the recent files below its arrow
-    editor->recent = g_menu_new();
+    // Open, with the recent files below its arrow: each its name and folder,
+    // and a button to remove it, as Text Editor's
+    editor->recent_list    = GTK_LIST_BOX(gtk_list_box_new());
+    editor->recent_popover = gtk_popover_new();
+    gtk_list_box_set_selection_mode(editor->recent_list, GTK_SELECTION_NONE);
+    gtk_widget_add_css_class(GTK_WIDGET(editor->recent_list), "navigation-sidebar");
+    gtk_widget_add_css_class(GTK_WIDGET(editor->recent_list), "recent-files");
+    g_signal_connect(editor->recent_list, "row-activated", G_CALLBACK(on_recent_activated), editor);
+    gtk_popover_set_child(GTK_POPOVER(editor->recent_popover), GTK_WIDGET(editor->recent_list));
     adw_split_button_set_label(ADW_SPLIT_BUTTON(open), "_Open");
     adw_split_button_set_use_underline(ADW_SPLIT_BUTTON(open), TRUE);
-    adw_split_button_set_menu_model(ADW_SPLIT_BUTTON(open), G_MENU_MODEL(editor->recent));
+    adw_split_button_set_popover(ADW_SPLIT_BUTTON(open), GTK_POPOVER(editor->recent_popover));
     adw_split_button_set_dropdown_tooltip(ADW_SPLIT_BUTTON(open), "Recent Files");
     gtk_actionable_set_action_name(GTK_ACTIONABLE(open), "win.open");
 
@@ -1610,6 +1705,9 @@ static GtkWidget *search_bar(Editor *editor)
     g_signal_connect(one, "clicked", G_CALLBACK(on_replace_clicked), editor);
     g_signal_connect(all, "clicked", G_CALLBACK(on_replace_all_clicked), editor);
 
+    gtk_widget_set_visible(bar, FALSE);
+    g_signal_connect(bar, "notify::search-mode-enabled", G_CALLBACK(on_search_mode), 0);
+
     editor->search_bar    = GTK_SEARCH_BAR(bar);
     editor->search_entry  = GTK_SEARCH_ENTRY(entry);
     editor->match_case    = GTK_TOGGLE_BUTTON(matching);
@@ -1645,6 +1743,9 @@ static GtkWidget *goto_bar(Editor *editor)
     g_signal_connect(keys, "key-pressed", G_CALLBACK(on_goto_key), editor);
     gtk_widget_add_controller(bar, keys);
 
+    gtk_widget_set_visible(bar, FALSE);
+    g_signal_connect(bar, "notify::search-mode-enabled", G_CALLBACK(on_search_mode), 0);
+
     editor->goto_bar   = GTK_SEARCH_BAR(bar);
     editor->goto_entry = GTK_ENTRY(entry);
     return bar;
@@ -1666,10 +1767,7 @@ static GtkWidget *status_bar(Editor *editor)
 {
     GtkWidget *box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 18);
 
-    gtk_widget_set_margin_start(box, 12);
-    gtk_widget_set_margin_end(box, 12);
-    gtk_widget_set_margin_top(box, 4);
-    gtk_widget_set_margin_bottom(box, 4);
+    gtk_widget_add_css_class(box, "neatpad-status");
 
     editor->position  = pane(box);
     editor->doc_stats = pane(box);
@@ -1714,6 +1812,7 @@ static GtkWindow *editor_window_new(GtkApplication *app, GFile *file)
     // GNOME's scrollbars: overlaid, unless Accessibility says always show them.
     // Ctrl and the wheel zoom, before the view scrolls.
     gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(scroll), view);
+    gtk_widget_add_css_class(scroll, "neatpad-text");
     gtk_event_controller_set_propagation_phase(zoom_wheel, GTK_PHASE_CAPTURE);
     g_signal_connect(zoom_wheel, "scroll", G_CALLBACK(on_zoom_scroll), editor);
     gtk_widget_add_controller(scroll, zoom_wheel);
@@ -2008,14 +2107,14 @@ static void on_startup(GApplication *app, gpointer data)
 
     g_action_map_add_action_entries(G_ACTION_MAP(app), app_actions, G_N_ELEMENTS(app_actions), app);
 
-    // the saved style, and the style switcher's look
+    // the saved style, and the app's CSS: the style switcher and hairlines
     load_settings();
     session_files = g_ptr_array_new_with_free_func(g_free);
     watch_desktop_font();
     g_action_group_change_action_state(G_ACTION_GROUP(app), "style", g_variant_new_string(settings.style));
     apply_style();
 
-    gtk_css_provider_load_from_string(css, style_css);
+    gtk_css_provider_load_from_string(css, app_css);
     gtk_style_context_add_provider_for_display(gdk_display_get_default(), GTK_STYLE_PROVIDER(css),
                                                GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
     g_object_unref(css);

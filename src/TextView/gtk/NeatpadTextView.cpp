@@ -19,8 +19,8 @@ struct _NeatpadTextView
     GtkIMContext *im;
 
     // GtkScrollable: the adjustments a GtkScrolledWindow gives, which the
-    // engine sets and follows: bytes down (where the top line starts), pixels
-    // across
+    // engine sets and follows: bytes down (where the top line starts), and
+    // characters across
     GtkAdjustment      *vadjust;
     GtkAdjustment      *hadjust;
     GtkScrollablePolicy vpolicy;
