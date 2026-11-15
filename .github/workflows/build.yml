@@ -29,10 +29,16 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
 
   linux:
-    # The portable parts, built with CMake: TextDocument and the core tests
+    # Built with CMake: TextDocument, the TextView engine, the GTK view, and
+    # their tests. The GTK tests need a display, so they run under Xvfb.
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+
+      - name: Install GTK
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libgtk-4-dev xvfb
 
       - name: Build
         run: |
@@ -40,4 +46,4 @@ jobs:
           cmake --build build/cmake
 
       - name: Test
-        run: ctest --test-dir build/cmake --output-on-failure
+        run: xvfb-run -a ctest --test-dir build/cmake --output-on-failure

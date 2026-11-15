@@ -1,0 +1,529 @@
+//
+//	MODULE:		NeatpadTextView.cpp
+//
+//	PURPOSE:	The TextView editor as a GTK widget: input goes to the engine,
+//				and the engine paints, through TextViewGtk
+//
+#include "NeatpadTextView.h"
+#include "TextViewGtk.h"
+#include "../TextViewInternal.h"
+
+#include <string.h>
+
+struct _NeatpadTextView
+{
+    GtkWidget parent_instance;
+
+    TextViewGtk  *host;
+    GtkWidget    *vscroll;
+    GtkWidget    *hscroll;
+    GtkIMContext *im;
+
+    bool   buttonDown;
+    double wheel; // smooth scrolling, until it adds up to a notch
+};
+
+G_DEFINE_FINAL_TYPE(NeatpadTextView, neatpad_text_view, GTK_TYPE_WIDGET)
+
+// In the order of the engine's TVNOTIFY_* codes
+enum
+{
+    SIGNAL_CURSOR_CHANGED,
+    SIGNAL_SELECTION_CHANGED,
+    SIGNAL_EDIT_MODE_CHANGED,
+    SIGNAL_CHANGED,
+    SIGNAL_INDEX_CHANGED,
+    SIGNAL_COUNT
+};
+
+static guint signals[SIGNAL_COUNT];
+
+void NeatpadTextViewNotify(GtkWidget *widget, unsigned code)
+{
+    if (code < SIGNAL_COUNT)
+        g_signal_emit(widget, signals[code], 0);
+}
+
+TextViewGtk *NeatpadTextViewHost(GtkWidget *widget)
+{
+    return NEATPAD_TEXT_VIEW(widget)->host;
+}
+
+static TextView *view_of(NeatpadTextView *self)
+{
+    return self->host->View();
+}
+
+static void set_modifiers(NeatpadTextView *self, GtkEventController *controller)
+{
+    self->host->SetModifiers(gtk_event_controller_get_current_event_state(controller));
+}
+
+//
+//	Keys the engine handles itself, as Win32's virtual keys: the rest are
+//	text, which the input method commits
+//
+static uint32_t engine_key(guint keyval)
+{
+    switch (keyval)
+    {
+    case GDK_KEY_Left:
+    case GDK_KEY_KP_Left:
+        return TVK_LEFT;
+
+    case GDK_KEY_Right:
+    case GDK_KEY_KP_Right:
+        return TVK_RIGHT;
+
+    case GDK_KEY_Up:
+    case GDK_KEY_KP_Up:
+        return TVK_UP;
+
+    case GDK_KEY_Down:
+    case GDK_KEY_KP_Down:
+        return TVK_DOWN;
+
+    case GDK_KEY_Home:
+    case GDK_KEY_KP_Home:
+        return TVK_HOME;
+
+    case GDK_KEY_End:
+    case GDK_KEY_KP_End:
+        return TVK_END;
+
+    case GDK_KEY_Page_Up:
+    case GDK_KEY_KP_Page_Up:
+        return TVK_PRIOR;
+
+    case GDK_KEY_Page_Down:
+    case GDK_KEY_KP_Page_Down:
+        return TVK_NEXT;
+
+    case GDK_KEY_Insert:
+    case GDK_KEY_KP_Insert:
+        return TVK_INSERT;
+
+    case GDK_KEY_Delete:
+    case GDK_KEY_KP_Delete:
+        return TVK_DELETE;
+
+    case GDK_KEY_BackSpace:
+        return TVK_BACK;
+
+    default:
+        return 0;
+    }
+}
+
+static gboolean on_key_pressed(GtkEventControllerKey *controller, guint keyval, guint, GdkModifierType state,
+                               gpointer data)
+{
+    NeatpadTextView *self = NEATPAD_TEXT_VIEW(data);
+    TextView        *view = view_of(self);
+    uint32_t         key  = engine_key(keyval);
+
+    set_modifiers(self, GTK_EVENT_CONTROLLER(controller));
+
+    if (key)
+    {
+        view->OnKeyDown(key, 0);
+        return TRUE;
+    }
+
+    if (keyval == GDK_KEY_Return || keyval == GDK_KEY_KP_Enter)
+    {
+        view->OnChar('\r', 0);
+        return TRUE;
+    }
+
+    if (keyval == GDK_KEY_Tab && (state & GDK_CONTROL_MASK) == 0)
+    {
+        view->OnChar('\t', 0);
+        return TRUE;
+    }
+
+    if (state & GDK_CONTROL_MASK)
+    {
+        switch (gdk_keyval_to_lower(keyval))
+        {
+        case GDK_KEY_a:
+            neatpad_text_view_select_all(self);
+            return TRUE;
+
+        case GDK_KEY_c:
+            neatpad_text_view_copy(self);
+            return TRUE;
+
+        case GDK_KEY_x:
+            neatpad_text_view_cut(self);
+            return TRUE;
+
+        case GDK_KEY_v:
+            neatpad_text_view_paste(self);
+            return TRUE;
+
+        // the engine undoes on Ctrl+Z and redoes on Ctrl+Y, as does Shift+Ctrl+Z
+        case GDK_KEY_z:
+            view->OnKeyDown(state & GDK_SHIFT_MASK ? 'Y' : 'Z', 0);
+            return TRUE;
+
+        case GDK_KEY_y:
+            view->OnKeyDown('Y', 0);
+            return TRUE;
+        }
+    }
+
+    return FALSE;
+}
+
+// Text, as the input method gives it
+static void on_commit(GtkIMContext *, const char *text, gpointer data)
+{
+    view_of(NEATPAD_TEXT_VIEW(data))->OnText(text, (uint32_t)strlen(text));
+}
+
+//
+//	The mouse: GTK keeps sending its motion to the widget while the button is
+//	down, also outside it, so dragging a selection past the edge scrolls
+//
+static void on_pressed(GtkGestureClick *gesture, int presses, double x, double y, gpointer data)
+{
+    NeatpadTextView *self = NEATPAD_TEXT_VIEW(data);
+
+    gtk_widget_grab_focus(GTK_WIDGET(self));
+    set_modifiers(self, GTK_EVENT_CONTROLLER(gesture));
+    self->host->SetMousePosition((int)x, (int)y);
+    self->buttonDown = true;
+
+    if (presses == 2)
+        view_of(self)->OnLButtonDblClick(0, (int)x, (int)y);
+    else
+        view_of(self)->OnLButtonDown(0, (int)x, (int)y);
+}
+
+static void on_released(GtkGestureClick *gesture, int, double x, double y, gpointer data)
+{
+    NeatpadTextView *self = NEATPAD_TEXT_VIEW(data);
+
+    set_modifiers(self, GTK_EVENT_CONTROLLER(gesture));
+    self->buttonDown = false;
+    view_of(self)->OnLButtonUp(0, (int)x, (int)y);
+}
+
+static void on_motion(GtkEventControllerMotion *controller, double x, double y, gpointer data)
+{
+    NeatpadTextView *self = NEATPAD_TEXT_VIEW(data);
+
+    set_modifiers(self, GTK_EVENT_CONTROLLER(controller));
+    self->host->SetMousePosition((int)x, (int)y);
+    view_of(self)->OnMouseMove(0, (int)x, (int)y);
+}
+
+// The wheel: a notch is 120, as on Win32. Smooth scrolling adds up to notches.
+static gboolean on_scroll(GtkEventControllerScroll *controller, double, double dy, gpointer data)
+{
+    NeatpadTextView *self = NEATPAD_TEXT_VIEW(data);
+
+    set_modifiers(self, GTK_EVENT_CONTROLLER(controller));
+    self->wheel += dy;
+
+    while (self->wheel >= 1 || self->wheel <= -1)
+    {
+        int notch = self->wheel > 0 ? 1 : -1;
+
+        view_of(self)->OnMouseWheel(-notch * 120);
+        self->wheel -= notch;
+    }
+
+    return TRUE;
+}
+
+static void on_focus_enter(GtkEventControllerFocus *, gpointer data)
+{
+    NeatpadTextView *self = NEATPAD_TEXT_VIEW(data);
+
+    gtk_im_context_focus_in(self->im);
+    view_of(self)->OnSetFocus();
+}
+
+static void on_focus_leave(GtkEventControllerFocus *, gpointer data)
+{
+    NeatpadTextView *self = NEATPAD_TEXT_VIEW(data);
+
+    gtk_im_context_focus_out(self->im);
+    view_of(self)->OnKillFocus();
+}
+
+static void on_vscroll(GtkAdjustment *, gpointer data)
+{
+    NEATPAD_TEXT_VIEW(data)->host->Scrolled(true);
+}
+
+static void on_hscroll(GtkAdjustment *, gpointer data)
+{
+    NEATPAD_TEXT_VIEW(data)->host->Scrolled(false);
+}
+
+//
+//	The widget: the text area, with a scrollbar right and below it
+//
+static void neatpad_text_view_measure(GtkWidget *, GtkOrientation orientation, int, int *minimum, int *natural,
+                                      int *minimum_baseline, int *natural_baseline)
+{
+    *minimum          = 64;
+    *natural          = orientation == GTK_ORIENTATION_HORIZONTAL ? 640 : 480;
+    *minimum_baseline = -1;
+    *natural_baseline = -1;
+}
+
+static void neatpad_text_view_size_allocate(GtkWidget *widget, int width, int height, int)
+{
+    NeatpadTextView *self = NEATPAD_TEXT_VIEW(widget);
+    int              vwidth;
+    int              hheight;
+    GtkAllocation    vertical;
+    GtkAllocation    horizontal;
+
+    gtk_widget_measure(self->vscroll, GTK_ORIENTATION_HORIZONTAL, -1, 0, &vwidth, 0, 0);
+    gtk_widget_measure(self->hscroll, GTK_ORIENTATION_VERTICAL, -1, 0, &hheight, 0, 0);
+
+    vertical   = {MAX(width - vwidth, 0), 0, vwidth, MAX(height - hheight, 0)};
+    horizontal = {0, MAX(height - hheight, 0), MAX(width - vwidth, 0), hheight};
+
+    // the engine sets the scrollbars' ranges for its size, before they're placed
+    self->host->Resize(MAX(width - vwidth, 0), MAX(height - hheight, 0));
+
+    gtk_widget_size_allocate(self->vscroll, &vertical, -1);
+    gtk_widget_size_allocate(self->hscroll, &horizontal, -1);
+}
+
+static void neatpad_text_view_snapshot(GtkWidget *widget, GtkSnapshot *snapshot)
+{
+    NeatpadTextView *self = NEATPAD_TEXT_VIEW(widget);
+
+    self->host->Snapshot(snapshot);
+
+    gtk_widget_snapshot_child(widget, self->vscroll, snapshot);
+    gtk_widget_snapshot_child(widget, self->hscroll, snapshot);
+}
+
+static void neatpad_text_view_dispose(GObject *object)
+{
+    NeatpadTextView *self = NEATPAD_TEXT_VIEW(object);
+
+    delete self->host;
+    self->host = 0;
+
+    g_clear_pointer(&self->vscroll, gtk_widget_unparent);
+    g_clear_pointer(&self->hscroll, gtk_widget_unparent);
+
+    if (self->im)
+        gtk_im_context_set_client_widget(self->im, 0);
+
+    g_clear_object(&self->im);
+
+    G_OBJECT_CLASS(neatpad_text_view_parent_class)->dispose(object);
+}
+
+static void neatpad_text_view_class_init(NeatpadTextViewClass *klass)
+{
+    GObjectClass   *object_class = G_OBJECT_CLASS(klass);
+    GtkWidgetClass *widget_class = GTK_WIDGET_CLASS(klass);
+
+    object_class->dispose       = neatpad_text_view_dispose;
+    widget_class->measure       = neatpad_text_view_measure;
+    widget_class->size_allocate = neatpad_text_view_size_allocate;
+    widget_class->snapshot      = neatpad_text_view_snapshot;
+
+    const char *names[SIGNAL_COUNT] = {"cursor-changed", "selection-changed", "edit-mode-changed", "changed",
+                                       "index-changed"};
+
+    for (int i = 0; i < SIGNAL_COUNT; i++)
+        signals[i] = g_signal_new(names[i], G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_LAST, 0, 0, 0, 0, G_TYPE_NONE, 0);
+
+    gtk_widget_class_set_css_name(widget_class, "neatpadtextview");
+}
+
+static void neatpad_text_view_init(NeatpadTextView *self)
+{
+    GtkWidget          *widget = GTK_WIDGET(self);
+    GtkEventController *key    = gtk_event_controller_key_new();
+    GtkEventController *motion = gtk_event_controller_motion_new();
+    GtkEventController *scroll = gtk_event_controller_scroll_new(GTK_EVENT_CONTROLLER_SCROLL_VERTICAL);
+    GtkEventController *focus  = gtk_event_controller_focus_new();
+    GtkGesture         *click  = gtk_gesture_click_new();
+
+    gtk_widget_set_focusable(widget, TRUE);
+    gtk_widget_set_cursor_from_name(widget, "text");
+
+    self->buttonDown = false;
+    self->wheel      = 0;
+    self->host       = new TextViewGtk(widget);
+
+    self->vscroll = gtk_scrollbar_new(GTK_ORIENTATION_VERTICAL, 0);
+    self->hscroll = gtk_scrollbar_new(GTK_ORIENTATION_HORIZONTAL, 0);
+
+    gtk_widget_set_parent(self->vscroll, widget);
+    gtk_widget_set_parent(self->hscroll, widget);
+
+    self->host->AttachScrollbars(gtk_scrollbar_get_adjustment(GTK_SCROLLBAR(self->vscroll)),
+                                 gtk_scrollbar_get_adjustment(GTK_SCROLLBAR(self->hscroll)));
+
+    g_signal_connect(gtk_scrollbar_get_adjustment(GTK_SCROLLBAR(self->vscroll)), "value-changed",
+                     G_CALLBACK(on_vscroll), self);
+    g_signal_connect(gtk_scrollbar_get_adjustment(GTK_SCROLLBAR(self->hscroll)), "value-changed",
+                     G_CALLBACK(on_hscroll), self);
+
+    self->im = gtk_im_multicontext_new();
+    gtk_im_context_set_client_widget(self->im, widget);
+    g_signal_connect(self->im, "commit", G_CALLBACK(on_commit), self);
+
+    gtk_event_controller_key_set_im_context(GTK_EVENT_CONTROLLER_KEY(key), self->im);
+    g_signal_connect(key, "key-pressed", G_CALLBACK(on_key_pressed), self);
+    gtk_widget_add_controller(widget, key);
+
+    gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(click), GDK_BUTTON_PRIMARY);
+    g_signal_connect(click, "pressed", G_CALLBACK(on_pressed), self);
+    g_signal_connect(click, "released", G_CALLBACK(on_released), self);
+    gtk_widget_add_controller(widget, GTK_EVENT_CONTROLLER(click));
+
+    g_signal_connect(motion, "motion", G_CALLBACK(on_motion), self);
+    gtk_widget_add_controller(widget, motion);
+
+    g_signal_connect(scroll, "scroll", G_CALLBACK(on_scroll), self);
+    gtk_widget_add_controller(widget, scroll);
+
+    g_signal_connect(focus, "enter", G_CALLBACK(on_focus_enter), self);
+    g_signal_connect(focus, "leave", G_CALLBACK(on_focus_leave), self);
+    gtk_widget_add_controller(widget, focus);
+}
+
+//
+//	The API
+//
+GtkWidget *neatpad_text_view_new(void)
+{
+    return GTK_WIDGET(g_object_new(NEATPAD_TYPE_TEXT_VIEW, 0));
+}
+
+gboolean neatpad_text_view_open_file(NeatpadTextView *view, const char *filename)
+{
+    g_return_val_if_fail(NEATPAD_IS_TEXT_VIEW(view), FALSE);
+
+    return view_of(view)->OpenFile(filename, -1, false) != 0;
+}
+
+void neatpad_text_view_set_font(NeatpadTextView *view, const char *font)
+{
+    g_return_if_fail(NEATPAD_IS_TEXT_VIEW(view));
+
+    view->host->SetFont(font);
+}
+
+void neatpad_text_view_set_style(NeatpadTextView *view, guint mask, guint styles)
+{
+    g_return_if_fail(NEATPAD_IS_TEXT_VIEW(view));
+
+    view_of(view)->SetStyle(mask, styles);
+    gtk_widget_queue_draw(GTK_WIDGET(view));
+}
+
+void neatpad_text_view_get_cursor(NeatpadTextView *view, guint64 *line, guint64 *column, gboolean *line_known)
+{
+    TextViewCursorInfo info;
+
+    g_return_if_fail(NEATPAD_IS_TEXT_VIEW(view));
+
+    view_of(view)->FillCursorInfo(&info);
+
+    if (line)
+        *line = info.nLineNo;
+
+    if (column)
+        *column = info.nColumnNo;
+
+    if (line_known)
+        *line_known = info.fLineNoKnown;
+}
+
+// Undo and redo, telling whoever listens that the text changed
+static gboolean undone(NeatpadTextView *view, bool done)
+{
+    if (done)
+        NeatpadTextViewNotify(GTK_WIDGET(view), TVNOTIFY_CHANGED);
+
+    return done;
+}
+
+gboolean neatpad_text_view_undo(NeatpadTextView *view)
+{
+    g_return_val_if_fail(NEATPAD_IS_TEXT_VIEW(view), FALSE);
+
+    return undone(view, view_of(view)->Undo());
+}
+
+gboolean neatpad_text_view_redo(NeatpadTextView *view)
+{
+    g_return_val_if_fail(NEATPAD_IS_TEXT_VIEW(view), FALSE);
+
+    return undone(view, view_of(view)->Redo());
+}
+
+gboolean neatpad_text_view_can_undo(NeatpadTextView *view)
+{
+    g_return_val_if_fail(NEATPAD_IS_TEXT_VIEW(view), FALSE);
+
+    return view_of(view)->CanUndo();
+}
+
+gboolean neatpad_text_view_can_redo(NeatpadTextView *view)
+{
+    g_return_val_if_fail(NEATPAD_IS_TEXT_VIEW(view), FALSE);
+
+    return view_of(view)->CanRedo();
+}
+
+void neatpad_text_view_cut(NeatpadTextView *view)
+{
+    g_return_if_fail(NEATPAD_IS_TEXT_VIEW(view));
+
+    undone(view, view_of(view)->OnCut());
+}
+
+void neatpad_text_view_copy(NeatpadTextView *view)
+{
+    g_return_if_fail(NEATPAD_IS_TEXT_VIEW(view));
+
+    view_of(view)->OnCopy();
+}
+
+// GTK reads the clipboard asynchronously: the text is pasted once it's here
+static void on_clipboard_text(GObject *source, GAsyncResult *result, gpointer data)
+{
+    NeatpadTextView *view = NEATPAD_TEXT_VIEW(data);
+    char            *text = gdk_clipboard_read_text_finish(GDK_CLIPBOARD(source), result, 0);
+
+    if (text && view->host)
+    {
+        view->host->Paste(text);
+        NeatpadTextViewNotify(GTK_WIDGET(view), TVNOTIFY_CHANGED);
+    }
+
+    g_free(text);
+    g_object_unref(view);
+}
+
+void neatpad_text_view_paste(NeatpadTextView *view)
+{
+    g_return_if_fail(NEATPAD_IS_TEXT_VIEW(view));
+
+    gdk_clipboard_read_text_async(gtk_widget_get_clipboard(GTK_WIDGET(view)), 0, on_clipboard_text,
+                                  g_object_ref(view));
+}
+
+void neatpad_text_view_select_all(NeatpadTextView *view)
+{
+    g_return_if_fail(NEATPAD_IS_TEXT_VIEW(view));
+
+    view_of(view)->SelectAll();
+}

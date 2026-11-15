@@ -1,0 +1,191 @@
+//
+//	GTK view tests: PangoTextLayout and NeatpadTextView, with real Pango
+//	fonts. GTK needs a display, so in CI they run under Xvfb.
+//
+#include "../tests.h"
+#include "../../src/TextView/TextViewInternal.h"
+#include "../../src/TextView/gtk/NeatpadTextView.h"
+#include "../../src/TextView/gtk/TextViewGtk.h"
+
+int g_failures = 0;
+
+void check(bool condition, const char *expr, const char *file, int line)
+{
+    if (!condition)
+    {
+        printf("%s(%d): check failed: %s\n", file, line, expr);
+
+        if (getenv("GITHUB_ACTIONS"))
+            printf("::error::%s(%d): check failed: %s\n", file, line, expr);
+
+        g_failures++;
+    }
+}
+
+namespace
+{
+// A UTF-8 lead byte, or ASCII: where a character starts
+bool starts_character(const tstring &text, size_t i)
+{
+    return ((unsigned char)text[i] & 0xC0) != 0x80;
+}
+
+// A widget, sunk so it can be freed, and its host
+struct Widget
+{
+    GtkWidget   *widget;
+    TextViewGtk *host;
+
+    Widget()
+    {
+        widget = neatpad_text_view_new();
+        g_object_ref_sink(widget);
+        host = NeatpadTextViewHost(widget);
+        host->Resize(640, 480);
+    }
+
+    ~Widget()
+    {
+        g_object_unref(widget);
+    }
+};
+
+void pango_layout_stops_only_at_character_starts()
+{
+    Widget                widget;
+    TextLayout           *layout = widget.host->CreateLayout();
+    tstring               text   = tstr(U"a\u00e9\U0001F600\u4e2d \tb ok");
+    std::vector<TextRun>  runs(text.size());
+    int                   previous = -1;
+
+    for (TextRun &run : runs)
+    {
+        run     = TextRun();
+        run.len = 1;
+    }
+
+    CHECK(layout->Analyze(text.c_str(), (int)text.size(), runs.data(), 4));
+    CHECK(layout->Length() == (int)text.size());
+
+    for (int i = 0; i <= (int)text.size(); i++)
+    {
+        bool start = i == (int)text.size() || starts_character(text, i);
+
+        // the caret and words stop only where characters start
+        CHECK(layout->IsCursorStop(i) == start);
+
+        if (!start)
+        {
+            CHECK(!layout->IsWordStop(i));
+            CHECK(!layout->IsWhiteSpace(i));
+            continue;
+        }
+
+        // across the line, and x finds each stop again
+        int  x = layout->OffsetToX(i, false);
+        int  offset;
+        bool trailing;
+
+        CHECK(x >= previous);
+        previous = x;
+
+        if (i < (int)text.size())
+        {
+            layout->XToOffset(x, &offset, &trailing);
+            CHECK(offset == i);
+            CHECK(!trailing);
+        }
+    }
+
+    CHECK(layout->IsWhiteSpace((int)tstr(U"a\u00e9\U0001F600\u4e2d").size()));
+    CHECK(layout->IsWordStop((int)tstr(U"a\u00e9\U0001F600\u4e2d \tb ").size()));
+    CHECK(layout->Width() == layout->OffsetToX((int)text.size(), false));
+
+    delete layout;
+}
+
+void widget_arrows_step_over_characters_with_pango()
+{
+    Widget      widget;
+    TextView   *view = widget.host->View();
+    std::string bytes = encode_text(U"a\u00e9\U0001F600b", NCP_UTF8);
+    seqfilechar path[TEST_PATH_MAX];
+    size_w      expected[] = {1, 3, 7, 8};
+
+    CHECK(write_temp_file(bytes.data(), bytes.size(), path));
+    CHECK(neatpad_text_view_open_file(NEATPAD_TEXT_VIEW(widget.widget), path));
+
+    for (size_w column : expected)
+    {
+        guint64 line;
+        guint64 at;
+
+        view->OnKeyDown(TVK_RIGHT, 0);
+        neatpad_text_view_get_cursor(NEATPAD_TEXT_VIEW(widget.widget), &line, &at, 0);
+        CHECK(line == 0 && at == column);
+    }
+
+    delete_file(path);
+}
+
+void widget_types_through_its_engine()
+{
+    Widget      widget;
+    TextView   *view = widget.host->View();
+    std::string bytes = encode_text(U"", NCP_UTF8);
+    seqfilechar path[TEST_PATH_MAX];
+    int         changed = 0;
+    guint64     column;
+
+    CHECK(write_temp_file(bytes.data(), bytes.size(), path));
+    CHECK(neatpad_text_view_open_file(NEATPAD_TEXT_VIEW(widget.widget), path));
+
+    g_signal_connect(widget.widget, "changed", G_CALLBACK(+[](GtkWidget *, gpointer data) { ++*(int *)data; }),
+                     &changed);
+
+    view->OnText("caf\xc3\xa9", 5);
+    neatpad_text_view_get_cursor(NEATPAD_TEXT_VIEW(widget.widget), 0, &column, 0);
+
+    CHECK(column == 5);
+    CHECK(changed == 1);
+    CHECK(neatpad_text_view_can_undo(NEATPAD_TEXT_VIEW(widget.widget)));
+    CHECK(neatpad_text_view_undo(NEATPAD_TEXT_VIEW(widget.widget)));
+    CHECK(changed == 2);
+
+    delete_file(path);
+}
+
+const test_case tests[] = {
+    {"pango_layout_stops_only_at_character_starts", pango_layout_stops_only_at_character_starts},
+    {"widget_arrows_step_over_characters_with_pango", widget_arrows_step_over_characters_with_pango},
+    {"widget_types_through_its_engine", widget_types_through_its_engine},
+};
+} // namespace
+
+int main()
+{
+    // no display, nothing to test: ctest counts it skipped
+    if (!gtk_init_check())
+    {
+        printf("No display: GTK tests skipped\n");
+        return 77;
+    }
+
+    for (const test_case &test : tests)
+    {
+        int before = g_failures;
+
+        printf("run %s\n", test.name);
+        test.run();
+        printf("%s %s\n", before == g_failures ? "ok" : "FAIL", test.name);
+    }
+
+    if (g_failures)
+    {
+        printf("%d check(s) failed\n", g_failures);
+        return 1;
+    }
+
+    printf("All tests passed\n");
+    return 0;
+}

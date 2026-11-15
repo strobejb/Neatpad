@@ -225,7 +225,25 @@ Each step is its own commit on `main`, and moves and formatting changes stay sep
     of any length (also a surrogate pair on Windows), and Tab-to-spaces counting characters.
   - `tests/engine_tests.cpp` drives the engine through a fake host, layout and canvas, in both builds: Ubuntu CI in
     UTF-8, Windows CI in UTF-16.
-- **Next:** step 8, `TextViewGtk` and `NeatpadTextView`. Step 7, the Pango spike, is optional.
+- **Done:** step 8, the GTK view, in `src/TextView/gtk`. CMake builds it as `TextViewGtk` where GTK 4 is found:
+  - `NeatpadTextView` is the widget, with a C API (`NeatpadTextView.h`): open a file, the font, `TXS_*` styles, the
+    caret, undo and redo, the clipboard, and signals for the engine's notifications. It holds `TextViewGtk` and two
+    scrollbars.
+  - `TextViewGtk` is the host. Timers are GLib sources, the caret is drawn over the text, and redraws are the whole
+    widget. Scrollbar ranges set while painting wait until the frame is drawn, as GTK can't place a scrollbar part
+    way through drawing it. Paste reads the clipboard first (GTK reads it asynchronously), then the engine pastes it.
+    Glyphs are at whole pixels, as the engine works in them.
+  - `PangoTextLayout` lays a line out with Pango. Its stops, per character in Pango, are on each character's first
+    byte only. Run backgrounds and the selection are drawn under the text; foregrounds are Pango attributes.
+  - `GtkCanvas` draws on a `GtkSnapshot`. `FillChecked` is a plain fill of the two colours mixed.
+  - Keys go to the engine as `TVK_*`, text through a `GtkIMContext` to `OnText`, and Ctrl+A/C/X/V/Z/Y to the
+    widget's own calls. The mouse, the wheel (a notch is 120, as on Win32) and focus go to the engine too.
+  - `tests/gtk/textview_demo.c` shows the widget in a window; `--screenshot FILE.png` saves what it draws.
+    `tests/gtk/gtk_tests.cpp` tests the Pango layout's stops and the widget, with real fonts: Ubuntu CI runs them
+    under Xvfb.
+  - Not yet: the theme's colours (a light palette for now), margin images, a blinking caret, the input method's
+    preedit text and cursor location, the context menu, more than one font, and saving.
+- **Next:** step 9, the GTK app in `src/Neatpad/gtk`. Step 7, the Pango spike, wasn't needed.
 
 ## Open decisions
 

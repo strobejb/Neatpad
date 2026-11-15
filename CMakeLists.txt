@@ -58,6 +58,32 @@ add_library(TextViewEngine STATIC
 
 target_link_libraries(TextViewEngine PUBLIC TextDocument)
 
+# The GTK view, NeatpadTextView, and a window to try it in: where GTK 4 is
+find_package(PkgConfig QUIET)
+
+if(PkgConfig_FOUND)
+    pkg_check_modules(GTK4 IMPORTED_TARGET gtk4)
+endif()
+
+if(GTK4_FOUND)
+    add_library(TextViewGtk STATIC
+        src/TextView/gtk/GtkCanvas.cpp
+        src/TextView/gtk/NeatpadTextView.cpp
+        src/TextView/gtk/PangoTextLayout.cpp
+        src/TextView/gtk/TextViewGtk.cpp
+    )
+
+    target_include_directories(TextViewGtk PUBLIC src/TextView/gtk)
+    target_link_libraries(TextViewGtk PUBLIC TextViewEngine PkgConfig::GTK4)
+
+    add_executable(textview-demo tests/gtk/textview_demo.c)
+    target_link_libraries(textview-demo PRIVATE TextViewGtk)
+
+    # These need a display: without one they're skipped
+    add_executable(GtkTests tests/gtk/gtk_tests.cpp tests/test_helpers.cpp)
+    target_link_libraries(GtkTests PRIVATE TextViewGtk)
+endif()
+
 # The portable tests: the sequence, line and character indexes, TextDocument,
 # and the TextView engine with a fake host
 add_executable(CoreTests
@@ -74,3 +100,8 @@ target_link_libraries(CoreTests PRIVATE TextDocument TextViewEngine)
 
 enable_testing()
 add_test(NAME CoreTests COMMAND CoreTests)
+
+if(GTK4_FOUND)
+    add_test(NAME GtkTests COMMAND GtkTests)
+    set_tests_properties(GtkTests PROPERTIES SKIP_RETURN_CODE 77)
+endif()
