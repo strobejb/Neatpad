@@ -263,7 +263,16 @@ Each step is its own commit on `main`, and moves and formatting changes stay sep
     light, dark), as Text Editor's. Preferences has the font (fixed-width only), line numbers, current line,
     highlighting changes, tab width, spaces for tabs and auto-indent. Settings are a `GKeyFile`,
     `~/.config/catch22/neatpad/settings.ini`, and apply to every window as they change.
-  - **Next:** recovery, then printing.
+  - **Done:** recovery and Restore Session, as the Win32 app's recovery (`src/Neatpad/gtk/recovery.c`). Each
+    document's unsaved state goes to a store of its own in `~/.local/state/catch22/neatpad/recovery` once edits
+    pause (1.5 seconds, or 10 at most), and before a save replaces what it refers to. A store is locked (`flock`)
+    while a window has it, and marked `clean` when there's nothing to restore. With Restore Session (on by
+    default) a window closes with its unsaved changes kept as a session, as Win32 Neatpad and GNOME Text Editor do,
+    and the files open as Neatpad quits (or as its last window closes) open again next time
+    (`session.ini`). Without it, closing asks to save or discard. Starting, stores a crash or a session left are
+    restored, each in a window. Use System Font follows GNOME's monospace font. The engine's recovery state is
+    now tested on Linux too.
+  - **Next:** printing.
 
 ## Open decisions
 

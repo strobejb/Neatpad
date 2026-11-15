@@ -624,6 +624,43 @@ gboolean neatpad_text_view_save_file(NeatpadTextView *view, const char *filename
     return TRUE;
 }
 
+gboolean neatpad_text_view_save_state(NeatpadTextView *view, const char *directory, const char *filename,
+                                      gboolean preserve_sources)
+{
+    TextViewRecovery state = {};
+
+    g_return_val_if_fail(NEATPAD_IS_TEXT_VIEW(view), FALSE);
+
+    state.directory       = directory;
+    state.filename        = filename ? filename : "";
+    state.preserveSources = preserve_sources != FALSE;
+
+    return view_of(view)->SaveState(&state);
+}
+
+gboolean neatpad_text_view_load_state(NeatpadTextView *view, const char *directory, char **filename,
+                                      gboolean *original_unavailable)
+{
+    TextViewRecovery state = {};
+    bool             ok;
+
+    g_return_val_if_fail(NEATPAD_IS_TEXT_VIEW(view), FALSE);
+
+    state.directory = directory;
+    ok              = view_of(view)->LoadState(&state);
+
+    if (filename)
+        *filename = ok ? g_strdup(state.filename.c_str()) : 0;
+
+    if (original_unavailable)
+        *original_unavailable = state.originalUnavailable;
+
+    if (ok)
+        NeatpadTextViewNotify(GTK_WIDGET(view), TVNOTIFY_CHANGED);
+
+    return ok;
+}
+
 gboolean neatpad_text_view_get_modified(NeatpadTextView *view)
 {
     g_return_val_if_fail(NEATPAD_IS_TEXT_VIEW(view), FALSE);

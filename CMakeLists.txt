@@ -81,12 +81,12 @@ if(GTK4_FOUND)
     target_link_libraries(textview-demo PRIVATE TextViewGtk)
 
     # These need a display: without one they're skipped
-    add_executable(GtkTests tests/gtk/gtk_tests.cpp tests/test_helpers.cpp)
+    add_executable(GtkTests tests/gtk/gtk_tests.cpp tests/test_helpers.cpp src/Neatpad/gtk/recovery.c)
     target_link_libraries(GtkTests PRIVATE TextViewGtk)
 
     # The app, where libadwaita is too
     if(ADWAITA_FOUND)
-        add_executable(neatpad src/Neatpad/gtk/neatpad.c)
+        add_executable(neatpad src/Neatpad/gtk/neatpad.c src/Neatpad/gtk/recovery.c)
         target_link_libraries(neatpad PRIVATE TextViewGtk PkgConfig::ADWAITA)
     endif()
 endif()

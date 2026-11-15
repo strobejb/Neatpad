@@ -3,11 +3,13 @@
 //
 //	PURPOSE:	Neatpad for GNOME: a window per document, with a NeatpadTextView,
 //				open (and recent files) and save, find and replace, go to line,
-//				a status bar, the light or dark style, and preferences
+//				a status bar, the light or dark style, preferences, and
+//				unsaved changes kept safe (recovery.c)
 //
 #include <adwaita.h>
 
 #include "NeatpadTextView.h"
+#include "recovery.h"
 
 #define APP_ID      "net.catch22.Neatpad"
 #define RECENT_MAX  10
@@ -32,6 +34,7 @@ typedef struct
     GtkLabel        *position;
     GtkLabel        *encoding;
     GFile           *file; // 0 until opened or saved
+    Recovery        *recovery;
     gboolean         closing;
 } Editor;
 
@@ -44,7 +47,9 @@ typedef void (*EditorThen)(Editor *editor);
 typedef struct
 {
     char    *style; // "follow", "light" or "dark"
+    gboolean system_font;
     char    *font;
+    gboolean restore_session;
     gboolean line_numbers;
     gboolean current_line;
     gboolean highlight_changes;
@@ -54,6 +59,13 @@ typedef struct
 } Settings;
 
 static Settings settings;
+
+// GNOME's own settings, for its monospace font: 0 where they aren't installed
+static GSettings *desktop;
+
+// The session's saved files, collected as its windows close
+static GPtrArray *session_files;
+static gboolean   quitting;
 
 static char *settings_path(void)
 {
@@ -80,7 +92,9 @@ static void load_settings(void)
     g_key_file_load_from_file(file, path, G_KEY_FILE_NONE, 0);
 
     settings.style             = read_string(file, "style", "follow");
+    settings.system_font       = read_boolean(file, "use-system-font", TRUE);
     settings.font              = read_string(file, "font", "Monospace 11");
+    settings.restore_session   = read_boolean(file, "restore-session", TRUE);
     settings.line_numbers      = read_boolean(file, "line-numbers", FALSE);
     settings.current_line      = read_boolean(file, "highlight-current-line", FALSE);
     settings.highlight_changes = read_boolean(file, "highlight-changes", TRUE);
@@ -101,7 +115,9 @@ static void save_settings(void)
     char     *folder = g_path_get_dirname(path);
 
     g_key_file_set_string(file, "editor", "style", settings.style);
+    g_key_file_set_boolean(file, "editor", "use-system-font", settings.system_font);
     g_key_file_set_string(file, "editor", "font", settings.font);
+    g_key_file_set_boolean(file, "editor", "restore-session", settings.restore_session);
     g_key_file_set_boolean(file, "editor", "line-numbers", settings.line_numbers);
     g_key_file_set_boolean(file, "editor", "highlight-current-line", settings.current_line);
     g_key_file_set_boolean(file, "editor", "highlight-changes", settings.highlight_changes);
@@ -143,6 +159,9 @@ static void editor_free(gpointer data)
 {
     Editor *editor = data;
 
+    if (editor->recovery)
+        recovery_free(editor->recovery);
+
     g_clear_object(&editor->file);
     g_clear_object(&editor->recent);
     g_free(editor->recent_uri);
@@ -161,7 +180,10 @@ static void apply_settings(Editor *editor)
                    (settings.highlight_changes ? TXS_HIGHLIGHTCHANGES : 0) |
                    (settings.insert_spaces ? TXS_INSERTSPACES : 0) | (settings.auto_indent ? TXS_AUTOINDENT : 0);
 
-    neatpad_text_view_set_font(editor->view, settings.font);
+    char *system = settings.system_font && desktop ? g_settings_get_string(desktop, "monospace-font-name") : 0;
+
+    neatpad_text_view_set_font(editor->view, system && *system ? system : settings.font);
+    g_free(system);
     neatpad_text_view_set_tab_width(editor->view, (guint)settings.tab_width);
     neatpad_text_view_set_style(editor->view,
                                 TXS_LINENUMBERS | TXS_SELMARGIN | TXS_HIGHLIGHTCURLINE | TXS_HIGHLIGHTCHANGES |
@@ -244,8 +266,24 @@ static void update_status(Editor *editor)
 
 static void on_changed(NeatpadTextView *view, gpointer data)
 {
+    Editor *editor = data;
+
     (void)view;
-    update_title(data);
+    update_title(editor);
+    recovery_changed(editor->recovery);
+}
+
+// What recovery asks of the window
+static char *recovery_filename(gpointer data)
+{
+    Editor *editor = data;
+
+    return editor->file ? g_file_get_path(editor->file) : 0;
+}
+
+static void recovery_failed(gpointer data)
+{
+    toast(data, "Unsaved changes can\xe2\x80\x99t be kept safe: recovery data can\xe2\x80\x99t be written");
 }
 
 static void on_cursor_changed(NeatpadTextView *view, gpointer data)
@@ -335,6 +373,8 @@ static gboolean load(Editor *editor, GFile *file)
 
     if (ok)
     {
+        // the document it replaced has gone, and its store with it
+        recovery_reset(editor->recovery);
         g_set_object(&editor->file, file);
         remember(file);
     }
@@ -374,11 +414,14 @@ static void pending_free(Pending *pending)
     g_free(pending);
 }
 
+// The store keeps what it needs from the file before it's saved over
 static void save_to(Editor *editor, GFile *file, EditorThen then)
 {
     char    *path = g_file_get_path(file);
-    gboolean ok   = path && neatpad_text_view_save_file(editor->view, path);
+    gboolean ok;
 
+    recovery_before_save(editor->recovery);
+    ok = path && neatpad_text_view_save_file(editor->view, path);
     g_free(path);
 
     if (!ok)
@@ -387,6 +430,7 @@ static void save_to(Editor *editor, GFile *file, EditorThen then)
         return;
     }
 
+    recovery_saved(editor->recovery);
     g_set_object(&editor->file, file);
     remember(file);
     update_title(editor);
@@ -478,12 +522,26 @@ static void unless_unsaved(Editor *editor, EditorThen then)
 }
 
 //
-//	Closing: once any changes are saved or discarded
+//	Closing. With Restore Session, unsaved changes are kept for next time, and
+//	the last window's file (or every window's, quitting) is reopened then.
+//	Without it, or if they can't be kept, the changes are saved or discarded.
 //
 static void close_now(Editor *editor)
 {
     editor->closing = TRUE;
     gtk_window_close(editor->window);
+}
+
+static gboolean closed(Editor *editor, gboolean kept)
+{
+    GList *windows = gtk_application_get_windows(gtk_window_get_application(editor->window));
+
+    if (!kept && editor->file && (quitting || g_list_length(windows) == 1))
+        g_ptr_array_add(session_files, g_file_get_uri(editor->file));
+
+    recovery_free(editor->recovery);
+    editor->recovery = 0;
+    return FALSE;
 }
 
 static gboolean on_close_request(GtkWindow *window, gpointer data)
@@ -493,7 +551,10 @@ static gboolean on_close_request(GtkWindow *window, gpointer data)
     (void)window;
 
     if (editor->closing || !neatpad_text_view_get_modified(editor->view))
-        return FALSE;
+        return closed(editor, FALSE);
+
+    if (settings.restore_session && recovery_keep_session(editor->recovery))
+        return closed(editor, TRUE);
 
     unless_unsaved(editor, close_now);
     return TRUE;
@@ -1054,8 +1115,9 @@ static GtkWidget *status_bar(Editor *editor)
 
 static GtkWindow *editor_window_new(GtkApplication *app, GFile *file)
 {
-    Editor    *editor  = g_new0(Editor, 1);
-    GtkWidget *window  = adw_application_window_new(app);
+    Editor        *editor  = g_new0(Editor, 1);
+    GtkWidget     *window  = adw_application_window_new(app);
+    RecoveryClient client;
     GtkWidget *toolbar = adw_toolbar_view_new();
     GtkWidget *scroll  = gtk_scrolled_window_new();
     GtkWidget *view    = neatpad_text_view_new();
@@ -1064,6 +1126,12 @@ static GtkWindow *editor_window_new(GtkApplication *app, GFile *file)
     editor->view   = NEATPAD_TEXT_VIEW(view);
     editor->toasts = ADW_TOAST_OVERLAY(adw_toast_overlay_new());
     g_object_set_data_full(G_OBJECT(window), "editor", editor, editor_free);
+
+    client.view      = editor->view;
+    client.filename  = recovery_filename;
+    client.failed    = recovery_failed;
+    client.data      = editor;
+    editor->recovery = recovery_new(&client);
 
     g_action_map_add_action_entries(G_ACTION_MAP(window), window_actions, G_N_ELEMENTS(window_actions), editor);
 
@@ -1121,6 +1189,31 @@ static void action_about(GSimpleAction *action, GVariant *parameter, gpointer da
     adw_about_dialog_set_website(ADW_ABOUT_DIALOG(about), "https://www.catch22.net/tuts/neatpad");
     adw_about_dialog_set_license_type(ADW_ABOUT_DIALOG(about), GTK_LICENSE_MIT_X11);
     adw_dialog_present(about, GTK_WIDGET(gtk_application_get_active_window(app)));
+}
+
+// GNOME's monospace font, which Use System Font follows as it changes
+static void on_desktop_font(GSettings *changed, const char *key, gpointer data)
+{
+    (void)changed;
+    (void)key;
+    (void)data;
+    apply_settings_everywhere();
+}
+
+static void watch_desktop_font(void)
+{
+    GSettingsSchemaSource *source = g_settings_schema_source_get_default();
+    GSettingsSchema       *schema =
+        source ? g_settings_schema_source_lookup(source, "org.gnome.desktop.interface", TRUE) : 0;
+
+    if (schema && g_settings_schema_has_key(schema, "monospace-font-name"))
+    {
+        desktop = g_settings_new("org.gnome.desktop.interface");
+        g_signal_connect(desktop, "changed::monospace-font-name", G_CALLBACK(on_desktop_font), 0);
+    }
+
+    if (schema)
+        g_settings_schema_unref(schema);
 }
 
 // app.style: follow the system, light or dark
@@ -1210,6 +1303,8 @@ static void action_preferences(GSimpleAction *action, GVariant *parameter, gpoin
     GtkFilter            *monospace   = GTK_FILTER(gtk_custom_filter_new(is_monospace, 0, 0));
     PangoFontDescription *font        = pango_font_description_from_string(settings.font);
     GtkWidget            *tabs        = adw_spin_row_new_with_range(1, 16, 1);
+    GtkWidget            *behaviour   = adw_preferences_group_new();
+    GtkWidget            *system_font;
 
     (void)action;
     (void)parameter;
@@ -1227,7 +1322,17 @@ static void action_preferences(GSimpleAction *action, GVariant *parameter, gpoin
     gtk_widget_set_valign(font_button, GTK_ALIGN_CENTER);
     adw_action_row_add_suffix(ADW_ACTION_ROW(font_row), font_button);
     g_signal_connect(font_button, "notify::font-desc", G_CALLBACK(on_font), 0);
+
+    // the font is chosen only when it isn't the system's
+    system_font = switch_row(fonts, "Use System Font", 0, &settings.system_font);
+    g_object_bind_property(system_font, "active", font_row, "sensitive",
+                           G_BINDING_SYNC_CREATE | G_BINDING_INVERT_BOOLEAN);
     adw_preferences_group_add(ADW_PREFERENCES_GROUP(fonts), font_row);
+
+    // what's kept between runs
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(behaviour), "Behavior");
+    switch_row(behaviour, "Restore Session", "Reopen files and unsaved changes when Neatpad starts",
+               &settings.restore_session);
 
     // what's shown
     adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(display), "Display");
@@ -1248,6 +1353,7 @@ static void action_preferences(GSimpleAction *action, GVariant *parameter, gpoin
     adw_preferences_page_add(ADW_PREFERENCES_PAGE(page), ADW_PREFERENCES_GROUP(fonts));
     adw_preferences_page_add(ADW_PREFERENCES_PAGE(page), ADW_PREFERENCES_GROUP(display));
     adw_preferences_page_add(ADW_PREFERENCES_PAGE(page), ADW_PREFERENCES_GROUP(indentation));
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(page), ADW_PREFERENCES_GROUP(behaviour));
     adw_preferences_dialog_add(ADW_PREFERENCES_DIALOG(dialog), ADW_PREFERENCES_PAGE(page));
 
     adw_dialog_present(dialog, GTK_WIDGET(gtk_application_get_active_window(GTK_APPLICATION(data))));
@@ -1264,8 +1370,13 @@ static void action_quit(GSimpleAction *action, GVariant *parameter, gpointer dat
     (void)action;
     (void)parameter;
 
+    quitting = TRUE;
+
     for (GList *w = windows; w; w = w->next)
         gtk_window_close(GTK_WINDOW(w->data));
+
+    // a window kept open by Cancel: quitting stopped
+    quitting = FALSE;
 }
 
 static const GActionEntry app_actions[] = {
@@ -1304,6 +1415,8 @@ static void on_startup(GApplication *app, gpointer data)
 
     // the saved style, and the style switcher's look
     load_settings();
+    session_files = g_ptr_array_new_with_free_func(g_free);
+    watch_desktop_font();
     g_action_group_change_action_state(G_ACTION_GROUP(app), "style", g_variant_new_string(settings.style));
     apply_style();
 
@@ -1316,19 +1429,124 @@ static void on_startup(GApplication *app, gpointer data)
         gtk_application_set_accels_for_action(GTK_APPLICATION(app), accels[i].action, accels[i].keys);
 }
 
+//
+//	Starting: unsaved changes a crash or a session left come back first, each
+//	in a window, then (for a session) the files it had open
+//
+// The window a file is open in, or 0
+static GtkWindow *window_of(GtkApplication *app, GFile *file)
+{
+    for (GList *w = gtk_application_get_windows(app); w; w = w->next)
+    {
+        Editor *editor = editor_of(w->data);
+
+        if (editor && editor->file && g_file_equal(editor->file, file))
+            return GTK_WINDOW(w->data);
+    }
+
+    return 0;
+}
+
+// A file that's open already has its window brought forward
+static void present_file(GtkApplication *app, GFile *file)
+{
+    GtkWindow *window = window_of(app, file);
+
+    gtk_window_present(window ? window : editor_window_new(app, file));
+}
+
+static int restore(GtkApplication *app, gboolean session_files_too)
+{
+    static gboolean done;
+
+    char **stores;
+    int    count = 0;
+
+    if (done)
+        return 0;
+
+    done   = TRUE;
+    stores = recovery_stores();
+
+    for (char **store = stores; *store; store++)
+    {
+        GtkWindow *window = editor_window_new(app, 0);
+        Editor    *editor = editor_of(window);
+        char      *filename;
+        gboolean   session;
+
+        if (!recovery_restore(editor->recovery, *store, &filename, &session))
+        {
+            gtk_window_destroy(window);
+            continue;
+        }
+
+        if (filename && *filename)
+            editor->file = g_file_new_for_path(filename);
+
+        update_title(editor);
+        update_status(editor);
+        gtk_window_present(window);
+        toast(editor, session ? "Unsaved changes restored" : "Unsaved changes recovered");
+        g_free(filename);
+        count++;
+    }
+
+    g_strfreev(stores);
+
+    if (session_files_too && settings.restore_session)
+    {
+        char **uris = recovery_session_files();
+
+        for (char **uri = uris; *uri; uri++)
+        {
+            GFile *file = g_file_new_for_uri(*uri);
+
+            if (!window_of(app, file) && g_file_query_exists(file, 0))
+            {
+                gtk_window_present(editor_window_new(app, file));
+                count++;
+            }
+
+            g_object_unref(file);
+        }
+
+        g_strfreev(uris);
+    }
+
+    return count;
+}
+
 static void on_activate(GApplication *app, gpointer data)
 {
     (void)data;
-    gtk_window_present(editor_window_new(GTK_APPLICATION(app), 0));
+
+    if (restore(GTK_APPLICATION(app), TRUE) == 0)
+        gtk_window_present(editor_window_new(GTK_APPLICATION(app), 0));
 }
 
+// Files to open: lost changes come back too, but not the session's files
 static void on_open(GApplication *app, GFile **files, int count, const char *hint, gpointer data)
 {
     (void)hint;
     (void)data;
 
+    restore(GTK_APPLICATION(app), FALSE);
+
     for (int i = 0; i < count; i++)
-        gtk_window_present(editor_window_new(GTK_APPLICATION(app), files[i]));
+        present_file(GTK_APPLICATION(app), files[i]);
+}
+
+// The session's saved files, for next time
+static void on_shutdown(GApplication *app, gpointer data)
+{
+    (void)app;
+    (void)data;
+
+    g_ptr_array_add(session_files, 0);
+    recovery_set_session_files(settings.restore_session ? (const char *const *)session_files->pdata : 0);
+    g_ptr_array_unref(session_files);
+    g_clear_object(&desktop);
 }
 
 int main(int argc, char *argv[])
@@ -1343,6 +1561,7 @@ int main(int argc, char *argv[])
     g_signal_connect(app, "startup", G_CALLBACK(on_startup), 0);
     g_signal_connect(app, "activate", G_CALLBACK(on_activate), 0);
     g_signal_connect(app, "open", G_CALLBACK(on_open), 0);
+    g_signal_connect(app, "shutdown", G_CALLBACK(on_shutdown), 0);
 
     status = g_application_run(G_APPLICATION(app), argc, argv);
     g_object_unref(app);

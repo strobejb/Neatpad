@@ -7,6 +7,11 @@
 #include "../../src/TextView/gtk/NeatpadTextView.h"
 #include "../../src/TextView/gtk/TextViewGtk.h"
 
+extern "C"
+{
+#include "../../src/Neatpad/gtk/recovery.h"
+}
+
 int g_failures = 0;
 
 void check(bool condition, const char *expr, const char *file, int line)
@@ -276,6 +281,126 @@ void widget_scrolls_with_its_adjustments()
     delete_file(path);
 }
 
+// What recovery asks of a test's window: its file, and failures counted
+struct RecoveryWindow
+{
+    Widget         widget;
+    std::string    path;
+    int            failures = 0;
+    RecoveryClient client;
+    Recovery      *recovery;
+
+    explicit RecoveryWindow(const std::string &file) : path(file)
+    {
+        client.view     = NEATPAD_TEXT_VIEW(widget.widget);
+        client.filename = [](gpointer data) -> char * { return g_strdup(((RecoveryWindow *)data)->path.c_str()); };
+        client.failed   = [](gpointer data) { ((RecoveryWindow *)data)->failures++; };
+        client.data     = this;
+        recovery        = recovery_new(&client);
+    }
+};
+
+int store_count()
+{
+    char **stores = recovery_stores();
+    int    count  = (int)g_strv_length(stores);
+
+    g_strfreev(stores);
+    return count;
+}
+
+// Unsaved changes kept as a session come back, once; a store a window has
+// open can't be taken; a saved one is tidied away
+void recovery_keeps_and_restores_unsaved_changes()
+{
+    std::string bytes = "hello";
+    seqfilechar path[TEST_PATH_MAX];
+    char       *filename;
+    gboolean    session;
+    char      **stores;
+
+    CHECK(write_temp_file(bytes.data(), bytes.size(), path));
+    CHECK(store_count() == 0);
+
+    {
+        RecoveryWindow first(path);
+
+        CHECK(neatpad_text_view_open_file(first.client.view, path));
+        first.widget.host->View()->OnKeyDown(TVK_END, 0);
+        first.widget.host->View()->OnText(" world", 6);
+
+        // a crash now would leave the store; another window can't take it
+        CHECK(recovery_before_save(first.recovery));
+        CHECK(store_count() == 1);
+
+        {
+            RecoveryWindow other("");
+
+            stores = recovery_stores();
+            CHECK(!recovery_restore(other.recovery, stores[0], &filename, &session));
+            g_strfreev(stores);
+            recovery_free(other.recovery);
+        }
+
+        CHECK(recovery_keep_session(first.recovery));
+        recovery_free(first.recovery);
+        CHECK(first.failures == 0);
+    }
+
+    {
+        RecoveryWindow restored("");
+        guint64        column;
+
+        stores = recovery_stores();
+        CHECK(g_strv_length(stores) == 1);
+        CHECK(recovery_restore(restored.recovery, stores[0], &filename, &session));
+        CHECK(session);
+        CHECK(filename && strcmp(filename, path) == 0);
+        CHECK(neatpad_text_view_get_modified(restored.client.view));
+        neatpad_text_view_get_cursor(restored.client.view, 0, &column, 0);
+        CHECK(column == 11);
+
+        // closed without keeping it, the store goes
+        g_free(filename);
+        g_strfreev(stores);
+        recovery_free(restored.recovery);
+        CHECK(store_count() == 0);
+    }
+
+    {
+        RecoveryWindow saved(path);
+
+        CHECK(neatpad_text_view_open_file(saved.client.view, path));
+        saved.widget.host->View()->OnText("!", 1);
+        CHECK(recovery_before_save(saved.recovery));
+        CHECK(neatpad_text_view_save_file(saved.client.view, path));
+        recovery_saved(saved.recovery);
+
+        // saved, there's nothing to restore
+        CHECK(store_count() == 0);
+        recovery_free(saved.recovery);
+    }
+
+    delete_file(path);
+}
+
+void recovery_remembers_session_files()
+{
+    const char *files[] = {"file:///tmp/one.txt", "file:///tmp/two%20words.txt", 0};
+    char      **read;
+
+    recovery_set_session_files(files);
+    read = recovery_session_files();
+    CHECK(g_strv_length(read) == 2);
+    CHECK(strcmp(read[1], files[1]) == 0);
+    g_strfreev(read);
+
+    recovery_set_session_files(0);
+    read = recovery_session_files();
+    CHECK(g_strv_length(read) == 0);
+    g_strfreev(read);
+}
+
 const test_case tests[] = {
     {"pango_layout_stops_only_at_character_starts", pango_layout_stops_only_at_character_starts},
     {"widget_arrows_step_over_characters_with_pango", widget_arrows_step_over_characters_with_pango},
@@ -283,10 +408,12 @@ const test_case tests[] = {
     {"widget_finds_saves_and_starts_again", widget_finds_saves_and_starts_again},
     {"widget_replaces_and_goes_to_lines", widget_replaces_and_goes_to_lines},
     {"widget_scrolls_with_its_adjustments", widget_scrolls_with_its_adjustments},
+    {"recovery_keeps_and_restores_unsaved_changes", recovery_keeps_and_restores_unsaved_changes},
+    {"recovery_remembers_session_files", recovery_remembers_session_files},
 };
 } // namespace
 
-int main()
+static int run_tests()
 {
     // no display, nothing to test: ctest counts it skipped
     if (!gtk_init_check())
@@ -312,4 +439,19 @@ int main()
 
     printf("All tests passed\n");
     return 0;
+}
+
+int main()
+{
+    char state[] = "/tmp/neatpad-gtk-tests-XXXXXX";
+    int  result;
+
+    // recovery keeps its stores here, not in the user's own state
+    if (!mkdtemp(state))
+        return 1;
+
+    setenv("XDG_STATE_HOME", state, 1);
+    result = run_tests();
+    std::filesystem::remove_all(state);
+    return result;
 }

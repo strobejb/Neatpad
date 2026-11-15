@@ -35,6 +35,17 @@ void neatpad_text_view_new_file(NeatpadTextView *view);
 // it had one
 gboolean neatpad_text_view_save_file(NeatpadTextView *view, const char *filename);
 
+// Recovery: the document's unsaved state, kept in a folder of its own, and
+// the file it's for (NULL or "" for none). preserve_sources keeps what the
+// state refers to in the file, before a save replaces it.
+gboolean neatpad_text_view_save_state(NeatpadTextView *view, const char *directory, const char *filename,
+                                      gboolean preserve_sources);
+
+// Restore state saved in a folder: the file it's for (g_free it), and whether
+// a failure was because that file has changed or gone
+gboolean neatpad_text_view_load_state(NeatpadTextView *view, const char *directory, char **filename,
+                                      gboolean *original_unavailable);
+
 // Whether the text differs from the file it was opened from or saved to
 gboolean neatpad_text_view_get_modified(NeatpadTextView *view);
 

@@ -570,6 +570,49 @@ void engine_paints_every_line()
     CHECK(v.view->SelectionSize() == v.view->FileDoc()->byte_length());
 }
 
+// Unsaved edits saved as recovery state, and restored into a new view: the
+// text, the file it's for, and the caret
+void engine_restores_its_recovery_state()
+{
+    EngineView                     v(U"one two");
+    std::filesystem::path          dir = std::filesystem::temp_directory_path() / "neatpad-recovery-test";
+    std::basic_string<seqfilechar> store;
+    TextViewRecovery               state = {};
+    tstring                        edit  = tstr(U" \u00e9");
+
+    std::filesystem::remove_all(dir);
+    CHECK(std::filesystem::create_directory(dir));
+    store = dir.native();
+
+    v.key(TVK_END);
+    v.view->OnText(edit.c_str(), (uint32_t)edit.size());
+
+    state.directory = store.c_str();
+    state.filename  = v.path;
+    CHECK(v.view->SaveState(&state));
+
+    {
+        FakeHost         host;
+        TextView         restored(&host);
+        TextViewRecovery loaded = {};
+
+        restored.OnSize(0, 640, 480);
+        loaded.directory = store.c_str();
+        CHECK(restored.LoadState(&loaded));
+        CHECK(loaded.filename == v.path);
+        CHECK(restored.FileDoc()->modified());
+        CHECK(restored.CursorColumn() == tstr(U"one two \u00e9").size());
+
+        std::vector<tchar_t> buf(64);
+        TextDocument        *doc    = restored.FileDoc();
+        TextReader           reader = doc->text_from_range(TextPos(0), TextPos(doc->byte_length()));
+
+        CHECK(tstring(buf.data(), reader.read(buf.data(), (uint32_t)buf.size())) == tstr(U"one two \u00e9"));
+    }
+
+    std::filesystem::remove_all(dir);
+}
+
 const test_case tests[] =
 {
     { "engine_arrows_step_over_whole_characters", engine_arrows_step_over_whole_characters },
@@ -581,6 +624,7 @@ const test_case tests[] =
     { "engine_types_and_tells_its_host", engine_types_and_tells_its_host },
     { "engine_types_into_a_new_view", engine_types_into_a_new_view },
     { "engine_paints_every_line", engine_paints_every_line },
+    { "engine_restores_its_recovery_state", engine_restores_its_recovery_state },
 };
 }
 
