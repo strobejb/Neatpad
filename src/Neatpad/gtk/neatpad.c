@@ -1902,6 +1902,10 @@ static const char app_css[] = ".style-switcher { margin: 6px 0; }"
                                 ".neatpad-text { border-top: 1px solid alpha(currentColor, 0.15); }"
                                 ".neatpad-bar, .neatpad-status { border-top: 1px solid alpha(currentColor, 0.15); }"
                                 ".neatpad-status { padding: 7px 12px; }"
+                                // the find and go-to bars as Text Editor's: roomier, with taller
+                                // entries
+                                ".neatpad-bar > revealer > box { padding: 9px 12px; }"
+                                ".neatpad-bar entry { min-height: 38px; }"
                                 ".recent-files { min-width: 300px; }"
                                 ".recent-files row { padding: 4px 4px 4px 10px; }";
 
@@ -1994,7 +1998,9 @@ static GtkWidget *search_bar(Editor *editor)
     gtk_widget_add_css_class(bar, "neatpad-bar");
     gtk_widget_set_size_request(entry, ENTRY_WIDTH, -1);
     gtk_widget_set_size_request(replacement, ENTRY_WIDTH, -1);
-    gtk_entry_set_placeholder_text(GTK_ENTRY(replacement), "Replace with");
+    gtk_search_entry_set_placeholder_text(GTK_SEARCH_ENTRY(entry), "Search");
+    gtk_entry_set_placeholder_text(GTK_ENTRY(replacement), "Replace");
+    gtk_entry_set_icon_from_icon_name(GTK_ENTRY(replacement), GTK_ENTRY_ICON_PRIMARY, "edit-find-replace-symbolic");
     gtk_widget_set_tooltip_text(previous, "Previous Match");
     gtk_widget_set_tooltip_text(next, "Next Match");
     gtk_widget_set_tooltip_text(matching, "Match Case");
@@ -2053,6 +2059,7 @@ static GtkWidget *goto_bar(Editor *editor)
     gtk_widget_add_css_class(label, "heading");
     gtk_label_set_mnemonic_widget(GTK_LABEL(label), entry);
     gtk_editable_set_width_chars(GTK_EDITABLE(entry), 10);
+    gtk_entry_set_placeholder_text(GTK_ENTRY(entry), "Line number");
     gtk_entry_set_input_purpose(GTK_ENTRY(entry), GTK_INPUT_PURPOSE_DIGITS);
     gtk_widget_add_css_class(go, "suggested-action");
 
