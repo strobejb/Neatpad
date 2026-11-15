@@ -261,7 +261,9 @@ Each step is its own commit on `main`, and moves and formatting changes stay sep
   - **Done:** the style and preferences. The text takes the colours of GtkSourceView's Adwaita and Adwaita Dark
     schemes (`neatpad_text_view_set_scheme`), with the selection in the accent colour (libadwaita 1.6; Adwaita
     blue before), and follows libadwaita's style. The main menu starts with a style switcher (follow the system,
-    light, dark) and the zoom (out, reset, in), as Text Editor's. Preferences has the font (fixed-width only), line numbers, current line,
+    light, dark) and the zoom (out, reset, in), as Text Editor's.
+    Keyboard Shortcuts (Ctrl+?) is libadwaita's `AdwShortcutsDialog`, from `src/Neatpad/gtk/shortcuts-dialog.ui`
+    (libadwaita 1.8 on; older builds don't have it). Preferences has the font (fixed-width only), line numbers, current line,
     highlighting changes, tab width, spaces for tabs and auto-indent. Settings are a `GKeyFile`,
     `~/.config/catch22/neatpad/settings.ini`, and apply to every window as they change.
   - **Done:** recovery and Restore Session, as the Win32 app's recovery (`src/Neatpad/gtk/recovery.c`). Each

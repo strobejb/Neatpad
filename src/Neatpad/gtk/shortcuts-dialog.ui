@@ -1,0 +1,177 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Keyboard Shortcuts (Ctrl+?): AdwApplication shows this dialog, from
+     libadwaita 1.8. Items with an action name show the keys the app gives it
+     (on_startup in neatpad.c); the view's own keys are written out. -->
+<interface>
+  <object class="AdwShortcutsDialog" id="shortcuts_dialog">
+    <child>
+      <object class="AdwShortcutsSection">
+        <property name="title">General</property>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title">New Window</property>
+            <property name="action-name">win.new-window</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title">Close Window</property>
+            <property name="action-name">win.close</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title">Preferences</property>
+            <property name="action-name">app.preferences</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title">Keyboard Shortcuts</property>
+            <property name="action-name">app.shortcuts</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title">Quit</property>
+            <property name="action-name">app.quit</property>
+          </object>
+        </child>
+      </object>
+    </child>
+    <child>
+      <object class="AdwShortcutsSection">
+        <property name="title">Files</property>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title">Open</property>
+            <property name="action-name">win.open</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title">Open Previous File</property>
+            <property name="action-name">win.open-previous</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title">Save</property>
+            <property name="action-name">win.save</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title">Save As</property>
+            <property name="action-name">win.save-as</property>
+          </object>
+        </child>
+      </object>
+    </child>
+    <child>
+      <object class="AdwShortcutsSection">
+        <property name="title">Editing</property>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title">Undo</property>
+            <property name="accelerator">&lt;Ctrl&gt;z</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title">Redo</property>
+            <property name="accelerator">&lt;Ctrl&gt;y &lt;Shift&gt;&lt;Ctrl&gt;z</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title">Cut</property>
+            <property name="accelerator">&lt;Ctrl&gt;x</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title">Copy</property>
+            <property name="accelerator">&lt;Ctrl&gt;c</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title">Paste</property>
+            <property name="accelerator">&lt;Ctrl&gt;v</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title">Select All</property>
+            <property name="accelerator">&lt;Ctrl&gt;a</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title">Insert or Overwrite</property>
+            <property name="accelerator">Insert</property>
+          </object>
+        </child>
+      </object>
+    </child>
+    <child>
+      <object class="AdwShortcutsSection">
+        <property name="title">Find</property>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title">Find</property>
+            <property name="action-name">win.find</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title">Find Next</property>
+            <property name="action-name">win.find-next</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title">Find Previous</property>
+            <property name="action-name">win.find-previous</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title">Replace</property>
+            <property name="action-name">win.replace</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title">Go to Line</property>
+            <property name="action-name">win.go-to-line</property>
+          </object>
+        </child>
+      </object>
+    </child>
+    <child>
+      <object class="AdwShortcutsSection">
+        <property name="title">View</property>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title">Zoom In</property>
+            <property name="action-name">win.zoom-in</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title">Zoom Out</property>
+            <property name="action-name">win.zoom-out</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title">Reset Zoom</property>
+            <property name="action-name">win.zoom-reset</property>
+          </object>
+        </child>
+      </object>
+    </child>
+  </object>
+</interface>

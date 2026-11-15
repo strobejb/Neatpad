@@ -1875,6 +1875,10 @@ static GMenuModel *primary_menu(void)
     g_menu_append_submenu(view, "_Line Endings", G_MENU_MODEL(endings));
 
     g_menu_append(general, "_Preferences", "app.preferences");
+#if ADW_CHECK_VERSION(1, 8, 0)
+    // AdwApplication's, from shortcuts-dialog.ui
+    g_menu_append(general, "_Keyboard Shortcuts", "app.shortcuts");
+#endif
     g_menu_append(general, "_About Neatpad", "app.about");
 
     g_menu_append_section(menu, 0, G_MENU_MODEL(style));
