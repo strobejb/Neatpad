@@ -1842,7 +1842,6 @@ static GMenuModel *primary_menu(void)
 
     g_menu_append(general, "_Preferences", "app.preferences");
     g_menu_append(general, "_About Neatpad", "app.about");
-    g_menu_append(general, "_Quit", "app.quit");
 
     g_menu_append_section(menu, 0, G_MENU_MODEL(style));
     g_menu_append_section(menu, 0, G_MENU_MODEL(file));
