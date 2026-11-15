@@ -32,7 +32,7 @@ typedef struct
     GtkSearchBar    *search_bar;
     GtkSearchEntry  *search_entry;
     GtkToggleButton *match_case;
-    GtkToggleButton *filter; // only the lines that match show
+    gboolean         filtering; // only the lines that match show, or every match is highlighted
     GtkWidget       *replace_row;
     GtkEntry        *replace_entry;
     GtkSearchBar    *goto_bar;
@@ -1100,7 +1100,7 @@ static void show_matches(Editor *editor)
 {
     neatpad_text_view_show_matches(editor->view, gtk_editable_get_text(GTK_EDITABLE(editor->search_entry)),
                                    gtk_toggle_button_get_active(editor->match_case),
-                                   gtk_toggle_button_get_active(editor->filter));
+                                   editor->filtering);
 }
 
 static void on_search_changed(GtkSearchEntry *entry, gpointer data)
@@ -1114,6 +1114,74 @@ static void on_match_toggled(GtkToggleButton *button, gpointer data)
     (void)button;
     show_matches(data);
 }
+
+//
+//	How matches show, as Win32's search bar has it: Highlight every match, or
+//	Filter to the lines that match. A toggle group where libadwaita has one
+//	(1.7), as Win32's pill; two linked toggle buttons before.
+//
+static void set_filtering(Editor *editor, gboolean filtering)
+{
+    if (editor->filtering == filtering)
+        return;
+
+    editor->filtering = filtering;
+    show_matches(editor);
+}
+
+#if ADW_CHECK_VERSION(1, 7, 0)
+static void on_match_mode(GObject *group, GParamSpec *spec, gpointer data)
+{
+    (void)spec;
+    set_filtering(data, g_strcmp0(adw_toggle_group_get_active_name(ADW_TOGGLE_GROUP(group)), "filter") == 0);
+}
+
+static GtkWidget *match_mode(Editor *editor)
+{
+    GtkWidget *group     = adw_toggle_group_new();
+    AdwToggle *highlight = adw_toggle_new();
+    AdwToggle *filter    = adw_toggle_new();
+
+    adw_toggle_set_name(highlight, "highlight");
+    adw_toggle_set_icon_name(highlight, "neatpad-highlight-symbolic");
+    adw_toggle_set_tooltip(highlight, "Highlight Every Match");
+    adw_toggle_set_name(filter, "filter");
+    adw_toggle_set_icon_name(filter, "neatpad-filter-symbolic");
+    adw_toggle_set_tooltip(filter, "Show Only the Lines That Match");
+
+    adw_toggle_group_add(ADW_TOGGLE_GROUP(group), highlight);
+    adw_toggle_group_add(ADW_TOGGLE_GROUP(group), filter);
+    adw_toggle_group_set_active_name(ADW_TOGGLE_GROUP(group), "highlight");
+    gtk_widget_set_valign(group, GTK_ALIGN_CENTER);
+    g_signal_connect(group, "notify::active-name", G_CALLBACK(on_match_mode), editor);
+    return group;
+}
+#else
+static void on_filter_toggled(GtkToggleButton *button, gpointer data)
+{
+    set_filtering(data, gtk_toggle_button_get_active(button));
+}
+
+static GtkWidget *match_mode(Editor *editor)
+{
+    GtkWidget *box       = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+    GtkWidget *highlight = gtk_toggle_button_new();
+    GtkWidget *filter    = gtk_toggle_button_new();
+
+    gtk_button_set_icon_name(GTK_BUTTON(highlight), "neatpad-highlight-symbolic");
+    gtk_widget_set_tooltip_text(highlight, "Highlight Every Match");
+    gtk_button_set_icon_name(GTK_BUTTON(filter), "neatpad-filter-symbolic");
+    gtk_widget_set_tooltip_text(filter, "Show Only the Lines That Match");
+    gtk_toggle_button_set_group(GTK_TOGGLE_BUTTON(filter), GTK_TOGGLE_BUTTON(highlight));
+    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(highlight), TRUE);
+
+    gtk_widget_add_css_class(box, "linked");
+    gtk_box_append(GTK_BOX(box), highlight);
+    gtk_box_append(GTK_BOX(box), filter);
+    g_signal_connect(filter, "toggled", G_CALLBACK(on_filter_toggled), editor);
+    return box;
+}
+#endif
 
 static void on_search_stop(GtkSearchEntry *entry, gpointer data)
 {
@@ -1757,7 +1825,7 @@ static GtkWidget *search_bar(Editor *editor)
     GtkWidget *previous    = gtk_button_new_from_icon_name("go-up-symbolic");
     GtkWidget *next        = gtk_button_new_from_icon_name("go-down-symbolic");
     GtkWidget *matching    = gtk_toggle_button_new_with_label("Aa");
-    GtkWidget *filter      = gtk_toggle_button_new_with_mnemonic("_Filter");
+    GtkWidget *mode        = match_mode(editor);
     GtkWidget *replacement = gtk_entry_new();
     GtkWidget *one         = gtk_button_new_with_mnemonic("_Replace");
     GtkWidget *all         = gtk_button_new_with_mnemonic("Replace _All");
@@ -1768,13 +1836,12 @@ static GtkWidget *search_bar(Editor *editor)
     gtk_widget_set_tooltip_text(previous, "Previous Match");
     gtk_widget_set_tooltip_text(next, "Next Match");
     gtk_widget_set_tooltip_text(matching, "Match Case");
-    gtk_widget_set_tooltip_text(filter, "Show Only the Lines That Match");
 
     gtk_box_append(GTK_BOX(find_row), entry);
     gtk_box_append(GTK_BOX(find_row), previous);
     gtk_box_append(GTK_BOX(find_row), next);
     gtk_box_append(GTK_BOX(find_row), matching);
-    gtk_box_append(GTK_BOX(find_row), filter);
+    gtk_box_append(GTK_BOX(find_row), mode);
 
     gtk_box_append(GTK_BOX(replace_row), replacement);
     gtk_box_append(GTK_BOX(replace_row), one);
@@ -1798,7 +1865,6 @@ static GtkWidget *search_bar(Editor *editor)
     g_signal_connect(one, "clicked", G_CALLBACK(on_replace_clicked), editor);
     g_signal_connect(all, "clicked", G_CALLBACK(on_replace_all_clicked), editor);
     g_signal_connect(matching, "toggled", G_CALLBACK(on_match_toggled), editor);
-    g_signal_connect(filter, "toggled", G_CALLBACK(on_match_toggled), editor);
 
     gtk_widget_set_visible(bar, FALSE);
     g_signal_connect(bar, "notify::search-mode-enabled", G_CALLBACK(on_search_mode), 0);
@@ -1807,7 +1873,6 @@ static GtkWidget *search_bar(Editor *editor)
     editor->search_bar    = GTK_SEARCH_BAR(bar);
     editor->search_entry  = GTK_SEARCH_ENTRY(entry);
     editor->match_case    = GTK_TOGGLE_BUTTON(matching);
-    editor->filter        = GTK_TOGGLE_BUTTON(filter);
     editor->replace_row   = replace_row;
     editor->replace_entry = GTK_ENTRY(replacement);
     return bar;

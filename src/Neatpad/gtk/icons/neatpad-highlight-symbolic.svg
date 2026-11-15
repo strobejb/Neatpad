@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+  <!-- Highlight every match: lines of text, the middle one marked, as Win32 Neatpad's search bar has it -->
+  <g fill="#222222">
+    <rect x="3" y="2" width="10" height="2" rx="1"/>
+    <rect x="3" y="12" width="10" height="2" rx="1"/>
+    <rect x="1" y="5" width="2" height="6" rx="1"/>
+    <rect x="13" y="5" width="2" height="6" rx="1"/>
+    <rect x="1" y="7" width="14" height="2"/>
+  </g>
+</svg>

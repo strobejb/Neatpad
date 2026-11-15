@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Compiled into the app. GtkApplication adds icons/ under its resource
+     path, /net/catch22/Neatpad, to the icon theme. -->
+<gresources>
+  <gresource prefix="/net/catch22/Neatpad/icons/scalable/actions">
+    <file alias="neatpad-highlight-symbolic.svg">icons/neatpad-highlight-symbolic.svg</file>
+    <file alias="neatpad-filter-symbolic.svg">icons/neatpad-filter-symbolic.svg</file>
+  </gresource>
+</gresources>

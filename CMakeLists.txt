@@ -88,8 +88,18 @@ if(GTK4_FOUND)
 
     # The app, where libadwaita is too
     if(ADWAITA_FOUND)
+        # its icons, compiled in as a GResource
+        find_program(GLIB_COMPILE_RESOURCES glib-compile-resources REQUIRED)
+        set(NEATPAD_GTK ${CMAKE_CURRENT_SOURCE_DIR}/src/Neatpad/gtk)
+        add_custom_command(
+            OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/neatpad-resources.c
+            COMMAND ${GLIB_COMPILE_RESOURCES} --generate-source --sourcedir=${NEATPAD_GTK}
+                    --target=${CMAKE_CURRENT_BINARY_DIR}/neatpad-resources.c ${NEATPAD_GTK}/neatpad.gresource.xml
+            DEPENDS ${NEATPAD_GTK}/neatpad.gresource.xml ${NEATPAD_GTK}/icons/neatpad-highlight-symbolic.svg
+                    ${NEATPAD_GTK}/icons/neatpad-filter-symbolic.svg)
+
         add_executable(neatpad src/Neatpad/gtk/neatpad.c src/Neatpad/gtk/palette.c src/Neatpad/gtk/preferences.c
-                               src/Neatpad/gtk/recovery.c)
+                               src/Neatpad/gtk/recovery.c ${CMAKE_CURRENT_BINARY_DIR}/neatpad-resources.c)
         target_link_libraries(neatpad PRIVATE TextViewGtk PkgConfig::ADWAITA)
         target_compile_definitions(neatpad PRIVATE NEATPAD_VERSION="${PROJECT_VERSION}")
     endif()
