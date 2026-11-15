@@ -2272,6 +2272,8 @@ static GtkWindow *editor_window_new(GtkApplication *app, GFile *file)
 //
 static void action_about(GSimpleAction *action, GVariant *parameter, gpointer data)
 {
+    static const char *const developers[] = {"James Brown https://www.catch22.net/about", 0};
+
     GtkApplication *app = data;
     AdwDialog      *about;
 
@@ -2283,9 +2285,12 @@ static void action_about(GSimpleAction *action, GVariant *parameter, gpointer da
     adw_about_dialog_set_application_icon(ADW_ABOUT_DIALOG(about), APP_ID);
     adw_about_dialog_set_developer_name(ADW_ABOUT_DIALOG(about), "J Brown\nCatch22 Solutions");
     adw_about_dialog_set_version(ADW_ABOUT_DIALOG(about), NEATPAD_VERSION);
-    adw_about_dialog_set_copyright(ADW_ABOUT_DIALOG(about), "\u00a9 2006\u20132026 Catch22 Solutions");
-    adw_about_dialog_set_website(ADW_ABOUT_DIALOG(about), "https://www.catch22.net/tuts/neatpad");
+    adw_about_dialog_set_copyright(ADW_ABOUT_DIALOG(about), "\u00a9 1999\u20132026 James Brown, Catch22 Solutions");
+    adw_about_dialog_set_website(ADW_ABOUT_DIALOG(about), "https://www.catch22.net/projects/neatpad");
     adw_about_dialog_set_license_type(ADW_ABOUT_DIALOG(about), GTK_LICENSE_MIT_X11);
+
+    // Credits: the developers, each with a link
+    adw_about_dialog_set_developers(ADW_ABOUT_DIALOG(about), (const char **)developers);
     adw_dialog_present(about, GTK_WIDGET(gtk_application_get_active_window(app)));
 }
 
