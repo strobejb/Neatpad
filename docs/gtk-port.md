@@ -138,7 +138,7 @@ Each step is its own commit on `main`, and moves and formatting changes stay sep
 6. **The engine on Linux.** Audit the engine for ±1 offset steps that bypass the layout's cursor stops. Then build it with `tchar_t = char` and a fake host, and run its tests in Ubuntu CI.
 7. **Optional throwaway GTK spike:** TextDocument + Pango, scrolling a multi-GB file. It tests Pango's speed, selection painting and control characters before `PangoTextLayout` is written. If you want it to shape `TextLayout` itself, do it before step 3.
 8. **Build `TextViewGtk` and `NeatpadTextView`** on the engine.
-9. **Build the GTK app in `src/Neatpad/gtk`:** first open, edit, save, find, undo and the status bar. Then options, printing, recovery and theming one at a time.
+9. **Build the GTK app in `src/Neatpad/gtk`:** first open, edit, save, find, undo and the status bar. Then options, recovery and theming one at a time. Printing was dropped: the Win32 app doesn't print either (`Printing.c` isn't used).
 
 ## Current state
 
@@ -244,7 +244,7 @@ Each step is its own commit on `main`, and moves and formatting changes stay sep
     under Xvfb.
   - Not yet: the theme's colours (a light palette for now), margin images, a blinking caret, the input method's
     preedit text and cursor location, the context menu, more than one font, and saving.
-- **Step 9**, the GTK app, has started: `src/Neatpad/gtk/neatpad.c`, built as `neatpad` where libadwaita is found.
+- **Done:** step 9, the GTK app: `src/Neatpad/gtk/neatpad.c`, built as `neatpad` where libadwaita is found.
   Step 7, the Pango spike, wasn't needed.
   - **Done:** the first cut. A libadwaita window per document: open, save and save as (GTK's file dialogs), a
     question before closing or opening over unsaved changes, find (next, previous, match case, wrapping), undo
@@ -281,7 +281,10 @@ Each step is its own commit on `main`, and moves and formatting changes stay sep
     its end and takes in what's appended; Stop, or a file rewritten shorter, opens it as usual. Linux has no
     share-mode locks, so a file another program is writing doesn't open read-only, as it does on Windows. Growing
     a document is now tested on Linux too.
-  - **Next:** printing.
+  - Printing isn't planned: the Win32 app doesn't print either. If it's wanted, both apps can add it together,
+    drawing pages with the engine's painting.
+- **Next:** smaller gaps, as wanted: a blinking caret, the context menu from the keyboard, input-method preedit,
+  line endings and encoding when saving, a filter in the find bar, and a `.desktop` file and icon.
 
 ## Open decisions
 
