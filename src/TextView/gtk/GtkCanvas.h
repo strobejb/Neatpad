@@ -48,7 +48,12 @@ GdkRGBA RgbaFromColour(uint32_t colour);
 class GtkCanvas : public TextCanvas
 {
   public:
-    GtkCanvas(GtkSnapshot *snapshot, PangoContext *context, const PangoFontDescription *font);
+    // How far a row's backgrounds reach into the next row (see BeginRow)
+    static const int ROW_OVERLAP = 1;
+
+    // originY: the view's top in its surface; scale: device pixels a pixel
+    GtkCanvas(GtkSnapshot *snapshot, PangoContext *context, const PangoFontDescription *font, double originY,
+              double scale);
     ~GtkCanvas() override;
 
     void BeginRow(int y, int width, int height) override;
@@ -68,6 +73,11 @@ class GtkCanvas : public TextCanvas
   private:
     GtkSnapshot *m_snapshot;
     PangoLayout *m_marginLayout;
+    int          m_rowHeight;   // the row being drawn, or 0
+    double       m_originY;
+    double       m_scale;
+
+    float SnapY(int y) const;
 };
 
 #endif

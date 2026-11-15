@@ -104,7 +104,28 @@ void TextViewGtk::Resize(int width, int height)
 //
 void TextViewGtk::Snapshot(GtkSnapshot *snapshot)
 {
-    GtkCanvas canvas(snapshot, m_context, m_font);
+    GtkNative *native  = gtk_widget_get_native(m_widget);
+    double     originY = 0;
+    double     scale   = 1;
+
+    // where the view is in its surface, and the surface's scale, to keep rows
+    // on device pixels
+    if (native)
+    {
+        graphene_point_t at;
+        double           surfaceX;
+        double           surfaceY;
+
+        gtk_native_get_surface_transform(native, &surfaceX, &surfaceY);
+
+        if (gtk_widget_compute_point(m_widget, GTK_WIDGET(native), PointArg(0, 0), &at))
+            originY = at.y + surfaceY;
+
+        if (GdkSurface *surface = gtk_native_get_surface(native))
+            scale = gdk_surface_get_scale(surface);
+    }
+
+    GtkCanvas canvas(snapshot, m_context, m_font, originY, scale);
     TextRect  rect = {0, 0, m_width, m_height};
 
     gtk_snapshot_push_clip(snapshot, RectArg(0, 0, (float)m_width, (float)m_height));

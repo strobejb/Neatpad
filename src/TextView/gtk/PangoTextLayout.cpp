@@ -185,7 +185,7 @@ void PangoTextLayout::Draw(TextCanvas &canvas, int x, int y, int lineHeight, int
 
     gtk_snapshot_push_clip(snapshot,
                            RectArg((float)clipLeft, (float)clipTop, (float)(clipRight - clipLeft),
-                                               (float)(clipBottom - clipTop)));
+                                               (float)(clipBottom - clipTop + GtkCanvas::ROW_OVERLAP)));
 
     for (int start = 0; start < m_length;)
     {
@@ -201,7 +201,8 @@ void PangoTextLayout::Draw(TextCanvas &canvas, int x, int y, int lineHeight, int
 
         gtk_snapshot_append_color(snapshot, &rgba,
                                   RectArg((float)(x + left), (float)y,
-                                                      (float)(OffsetToX(end, false) - left), (float)lineHeight));
+                                                      (float)(OffsetToX(end, false) - left),
+                                                      (float)(lineHeight + GtkCanvas::ROW_OVERLAP)));
         start = end;
     }
 
@@ -213,7 +214,7 @@ void PangoTextLayout::Draw(TextCanvas &canvas, int x, int y, int lineHeight, int
 
         gtk_snapshot_append_color(snapshot, &rgba,
                                   RectArg((float)(x + left), (float)y, (float)(right - left),
-                                                      (float)lineHeight));
+                                          (float)(lineHeight + GtkCanvas::ROW_OVERLAP)));
 
         if (original)
         {

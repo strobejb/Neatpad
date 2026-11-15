@@ -3,6 +3,8 @@
 //
 //	PURPOSE:	Painting onto a GtkSnapshot
 //
+#include <math.h>
+
 #include "GtkCanvas.h"
 
 GdkRGBA RgbaFromColour(uint32_t colour)
@@ -16,8 +18,10 @@ GdkRGBA RgbaFromColour(uint32_t colour)
     return rgba;
 }
 
-GtkCanvas::GtkCanvas(GtkSnapshot *snapshot, PangoContext *context, const PangoFontDescription *font)
-    : m_snapshot(snapshot), m_marginLayout(pango_layout_new(context))
+GtkCanvas::GtkCanvas(GtkSnapshot *snapshot, PangoContext *context, const PangoFontDescription *font, double originY,
+                     double scale)
+    : m_snapshot(snapshot), m_marginLayout(pango_layout_new(context)), m_rowHeight(0), m_originY(originY),
+      m_scale(scale)
 {
     pango_layout_set_font_description(m_marginLayout, font);
 }
@@ -32,15 +36,35 @@ GtkSnapshot *GtkCanvas::Snapshot() const
     return m_snapshot;
 }
 
+// The nearest y on a device pixel's edge
+float GtkCanvas::SnapY(int y) const
+{
+    return (float)(round((m_originY + y) * m_scale) / m_scale - m_originY);
+}
+
+//
+//	At a fractional scale a row can start or end part way through a device
+//	pixel. Both rows would part-paint that pixel, each layer of each row
+//	blending its edge again, and a faint line would show between them. So a
+//	row starts and ends on device pixels, and its backgrounds reach a pixel
+//	past its end for the clip to cut.
+//
 void GtkCanvas::BeginRow(int y, int width, int height)
 {
+    float top    = SnapY(y);
+    float bottom = SnapY(y + height);
+
+    m_rowHeight = height;
+
     gtk_snapshot_save(m_snapshot);
-    gtk_snapshot_translate(m_snapshot, PointArg(0, (float)y));
-    gtk_snapshot_push_clip(m_snapshot, RectArg(0, 0, (float)width, (float)height));
+    gtk_snapshot_translate(m_snapshot, PointArg(0, top));
+    gtk_snapshot_push_clip(m_snapshot, RectArg(0, 0, (float)width, bottom - top));
 }
 
 void GtkCanvas::EndRow()
 {
+    m_rowHeight = 0;
+
     gtk_snapshot_pop(m_snapshot);
     gtk_snapshot_restore(m_snapshot);
 }
@@ -48,6 +72,9 @@ void GtkCanvas::EndRow()
 void GtkCanvas::FillRect(int x, int y, int width, int height, uint32_t colour)
 {
     GdkRGBA rgba = RgbaFromColour(colour);
+
+    if (m_rowHeight && y + height >= m_rowHeight)
+        height += ROW_OVERLAP;
 
     gtk_snapshot_append_color(m_snapshot, &rgba,
                               RectArg((float)x, (float)y, (float)width, (float)height));
