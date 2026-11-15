@@ -1,3 +1,6 @@
+// Copyright (c) 2004-2026 James Brown, Catch22 Solutions
+// SPDX-License-Identifier: MIT
+
 //
 //	Character tests: the conversions in Unicode.c, and the character index -
 //	the UTF-16 positions counted beside the line index

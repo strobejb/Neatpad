@@ -1,3 +1,6 @@
+// Copyright (c) 2004-2026 James Brown, Catch22 Solutions
+// SPDX-License-Identifier: MIT
+
 //
 //	Neatpad's tests: what the test files share. Each file holds a group of
 //	tests, and main.cpp runs the groups.

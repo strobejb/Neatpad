@@ -1,3 +1,6 @@
+// Copyright (c) 1999-2026 James Brown, Catch22 Solutions
+// SPDX-License-Identifier: MIT
+
 // Changes against the last saved piece layout. Only source identities and
 // offsets are retained: no text is copied, and editing/undo never updates this
 // baseline. Surviving bytes identify unchanged ranges even after branching.

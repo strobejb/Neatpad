@@ -1,3 +1,6 @@
+// Copyright (c) 1999-2026 James Brown, Catch22 Solutions
+// SPDX-License-Identifier: MIT
+
 // Sequence checkpoints. The editing engine knows only save_state/load_state;
 // format, backing-store I/O and graph validation are confined to this file.
 #define NOMINMAX

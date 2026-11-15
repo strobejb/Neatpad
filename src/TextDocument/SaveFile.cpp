@@ -1,3 +1,6 @@
+// Copyright (c) 2004-2026 James Brown, Catch22 Solutions
+// SPDX-License-Identifier: MIT
+
 //
 //	SaveFile.cpp
 //

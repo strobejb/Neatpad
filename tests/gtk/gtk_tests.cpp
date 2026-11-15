@@ -1,3 +1,6 @@
+// Copyright (c) 2004-2026 James Brown, Catch22 Solutions
+// SPDX-License-Identifier: MIT
+
 //
 //	GTK view tests: PangoTextLayout and NeatpadTextView, with real Pango
 //	fonts. GTK needs a display, so in CI they run under Xvfb.

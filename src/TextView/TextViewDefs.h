@@ -1,3 +1,6 @@
+// Copyright (c) 2004-2026 James Brown, Catch22 Solutions
+// SPDX-License-Identifier: MIT
+
 //
 //	TextView's definitions that don't depend on the platform: edit modes,
 //	styles, colours and find results. TextView.h (Win32's API) includes this,

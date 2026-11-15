@@ -1,3 +1,6 @@
+// Copyright (c) 2004-2026 James Brown, Catch22 Solutions
+// SPDX-License-Identifier: MIT
+
 //
 //	TextView engine tests: the editor without a window, through a fake host,
 //	layout and canvas, so they run on every platform and in each build's text

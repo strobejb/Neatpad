@@ -1,3 +1,6 @@
+// Copyright (c) 2004-2026 James Brown, Catch22 Solutions
+// SPDX-License-Identifier: MIT
+
 #ifndef UNICODE_LIB_INCLUDED
 #define UNICODE_LIB_INCLUDED
 

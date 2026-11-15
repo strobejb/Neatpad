@@ -1,3 +1,6 @@
+// Copyright (c) 2004-2026 James Brown, Catch22 Solutions
+// SPDX-License-Identifier: MIT
+
 // Recovery and session lifetime. TextView owns the C++ persistence boundary.
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>

@@ -1,3 +1,6 @@
+// Copyright (c) 1999-2026 James Brown, Catch22 Solutions
+// SPDX-License-Identifier: MIT
+
 //
 //	Sequence tests: inserting, erasing and replacing across spans, undo and
 //	redo, and reading files into a sequence

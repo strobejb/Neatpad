@@ -1,3 +1,6 @@
+// Copyright (c) 2004-2026 James Brown, Catch22 Solutions
+// SPDX-License-Identifier: MIT
+
 //
 //	NeatpadTextView - the TextView editor as a GTK widget. Include this file
 //	when you want one: its API is C, as GTK's is.

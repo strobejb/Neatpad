@@ -1,3 +1,6 @@
+// Copyright (c) 2004-2026 James Brown, Catch22 Solutions
+// SPDX-License-Identifier: MIT
+
 //
 //	TextView tests: the EDIT control messages, compared with the answers of a
 //	real edit control, and the commands that change the text. The windows are

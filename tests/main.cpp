@@ -1,3 +1,6 @@
+// Copyright (c) 2004-2026 James Brown, Catch22 Solutions
+// SPDX-License-Identifier: MIT
+
 //
 //	Run the tests: every group, or the groups named on the command line -
 //	sequence, lines, chars, document, engine or textview

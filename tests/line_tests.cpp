@@ -1,3 +1,6 @@
+// Copyright (c) 2004-2026 James Brown, Catch22 Solutions
+// SPDX-License-Identifier: MIT
+
 //
 //	Line index tests: counting line breaks and finding lines, as files are
 //	read lazily and as their text is edited, in each line-scan mode

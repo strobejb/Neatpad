@@ -1,3 +1,6 @@
+// Copyright (c) 1999-2026 James Brown, Catch22 Solutions
+// SPDX-License-Identifier: MIT
+
 #ifndef SEQUENCE_STATE_INCLUDED
 #define SEQUENCE_STATE_INCLUDED
 
