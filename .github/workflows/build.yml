@@ -35,6 +35,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # MSVC reads source in the ANSI code page, so text beyond ASCII is
+      # escaped (é), never written as itself
+      - name: Sources are ASCII
+        run: |
+          if git ls-files 'src/*.c' 'src/*.cpp' 'src/*.h' 'tests/*.c' 'tests/*.cpp' 'tests/*.h' \
+             | xargs grep -nP '[^\x00-\x7F]'; then
+            echo "::error::non-ASCII characters in source: escape them"
+            exit 1
+          fi
+
       - name: Install GTK
         run: |
           sudo apt-get update
