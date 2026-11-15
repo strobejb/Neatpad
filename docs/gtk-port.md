@@ -243,7 +243,15 @@ Each step is its own commit on `main`, and moves and formatting changes stay sep
     under Xvfb.
   - Not yet: the theme's colours (a light palette for now), margin images, a blinking caret, the input method's
     preedit text and cursor location, the context menu, more than one font, and saving.
-- **Next:** step 9, the GTK app in `src/Neatpad/gtk`. Step 7, the Pango spike, wasn't needed.
+- **Step 9**, the GTK app, has started: `src/Neatpad/gtk/neatpad.c`, built as `neatpad` where libadwaita is found.
+  Step 7, the Pango spike, wasn't needed.
+  - **Done:** the first cut. A libadwaita window per document: open, save and save as (GTK's file dialogs), a
+    question before closing or opening over unsaved changes, find (next, previous, match case, wrapping), undo
+    and redo, and a status bar with the caret's line and column (in characters) and the encoding. Files given on
+    the command line each open a window. The widget gained `new_file`, `save_file`, `get_modified`,
+    `get_encoding` and `find`, and its column counts characters (`TextView::CursorCharColumn`).
+  - Rows start and end on whole device pixels, so a fractional display scale draws no lines between them.
+  - **Next:** options (font, tabs, line numbers), then printing, recovery and theming, one at a time.
 
 ## Open decisions
 

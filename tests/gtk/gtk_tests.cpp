@@ -110,7 +110,7 @@ void widget_arrows_step_over_characters_with_pango()
     TextView   *view = widget.host->View();
     std::string bytes = encode_text(U"a\u00e9\U0001F600b", NCP_UTF8);
     seqfilechar path[TEST_PATH_MAX];
-    size_w      expected[] = {1, 3, 7, 8};
+    size_w      expected[] = {1, 2, 3, 4};
 
     CHECK(write_temp_file(bytes.data(), bytes.size(), path));
     CHECK(neatpad_text_view_open_file(NEATPAD_TEXT_VIEW(widget.widget), path));
@@ -146,7 +146,7 @@ void widget_types_through_its_engine()
     view->OnText("caf\xc3\xa9", 5);
     neatpad_text_view_get_cursor(NEATPAD_TEXT_VIEW(widget.widget), 0, &column, 0);
 
-    CHECK(column == 5);
+    CHECK(column == 4);
     CHECK(changed == 1);
     CHECK(neatpad_text_view_can_undo(NEATPAD_TEXT_VIEW(widget.widget)));
     CHECK(neatpad_text_view_undo(NEATPAD_TEXT_VIEW(widget.widget)));
@@ -155,10 +155,64 @@ void widget_types_through_its_engine()
     delete_file(path);
 }
 
+void widget_finds_saves_and_starts_again()
+{
+    Widget           widget;
+    NeatpadTextView *view  = NEATPAD_TEXT_VIEW(widget.widget);
+    std::string      bytes = "one two one";
+    seqfilechar      path[TEST_PATH_MAX];
+    seqfilechar      saved[TEST_PATH_MAX];
+    guint64          column;
+    char             text[32] = {0};
+    FILE            *file;
+
+    CHECK(write_temp_file(bytes.data(), bytes.size(), path));
+    CHECK(temp_file(saved));
+    CHECK(neatpad_text_view_open_file(view, path));
+    CHECK(!neatpad_text_view_get_modified(view));
+    CHECK(strcmp(neatpad_text_view_get_encoding(view), "UTF-8") == 0);
+
+    // each match in turn, then round to the first again
+    CHECK(neatpad_text_view_find(view, "one", FALSE, TRUE) == NEATPAD_FIND_FOUND);
+    neatpad_text_view_get_cursor(view, 0, &column, 0);
+    CHECK(column == 3);
+    CHECK(neatpad_text_view_find(view, "one", FALSE, TRUE) == NEATPAD_FIND_FOUND);
+    neatpad_text_view_get_cursor(view, 0, &column, 0);
+    CHECK(column == 11);
+    CHECK(neatpad_text_view_find(view, "one", FALSE, TRUE) == NEATPAD_FIND_WRAPPED);
+    CHECK(neatpad_text_view_find(view, "ONE", FALSE, TRUE) == NEATPAD_FIND_NOT_FOUND);
+
+    // typing replaces the match; saving keeps it
+    widget.host->View()->OnText("1", 1);
+    CHECK(neatpad_text_view_get_modified(view));
+    CHECK(neatpad_text_view_save_file(view, saved));
+    CHECK(!neatpad_text_view_get_modified(view));
+
+    file = fopen(saved, "rb");
+    CHECK(file != 0);
+
+    if (file)
+    {
+        CHECK(fread(text, 1, sizeof(text) - 1, file) == 9);
+        fclose(file);
+    }
+
+    CHECK(strcmp(text, "1 two one") == 0);
+
+    neatpad_text_view_new_file(view);
+    neatpad_text_view_get_cursor(view, 0, &column, 0);
+    CHECK(column == 0);
+    CHECK(!neatpad_text_view_get_modified(view));
+
+    delete_file(path);
+    delete_file(saved);
+}
+
 const test_case tests[] = {
     {"pango_layout_stops_only_at_character_starts", pango_layout_stops_only_at_character_starts},
     {"widget_arrows_step_over_characters_with_pango", widget_arrows_step_over_characters_with_pango},
     {"widget_types_through_its_engine", widget_types_through_its_engine},
+    {"widget_finds_saves_and_starts_again", widget_finds_saves_and_starts_again},
 };
 } // namespace
 

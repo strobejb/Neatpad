@@ -413,6 +413,90 @@ gboolean neatpad_text_view_open_file(NeatpadTextView *view, const char *filename
     return view_of(view)->OpenFile(filename, -1, false) != 0;
 }
 
+void neatpad_text_view_new_file(NeatpadTextView *view)
+{
+    g_return_if_fail(NEATPAD_IS_TEXT_VIEW(view));
+
+    view_of(view)->ClearFile();
+    NeatpadTextViewNotify(GTK_WIDGET(view), TVNOTIFY_CHANGED);
+}
+
+gboolean neatpad_text_view_save_file(NeatpadTextView *view, const char *filename)
+{
+    TextDocument *doc;
+
+    g_return_val_if_fail(NEATPAD_IS_TEXT_VIEW(view), FALSE);
+
+    doc = view_of(view)->FileDoc();
+
+    if (!view_of(view)->SaveFile(filename, (uint32_t)doc->getformat(), doc->has_bom(), 0))
+        return FALSE;
+
+    NeatpadTextViewNotify(GTK_WIDGET(view), TVNOTIFY_CHANGED);
+    return TRUE;
+}
+
+gboolean neatpad_text_view_get_modified(NeatpadTextView *view)
+{
+    g_return_val_if_fail(NEATPAD_IS_TEXT_VIEW(view), FALSE);
+
+    return view_of(view)->FileDoc()->modified();
+}
+
+const char *neatpad_text_view_get_encoding(NeatpadTextView *view)
+{
+    g_return_val_if_fail(NEATPAD_IS_TEXT_VIEW(view), "");
+
+    switch (view_of(view)->FileDoc()->getformat())
+    {
+    case NCP_ASCII:
+        return "Latin-1";
+
+    case NCP_UTF8:
+        return "UTF-8";
+
+    case NCP_UTF16:
+        return "UTF-16 LE";
+
+    case NCP_UTF16BE:
+        return "UTF-16 BE";
+
+    case NCP_UTF32:
+        return "UTF-32 LE";
+
+    case NCP_UTF32BE:
+        return "UTF-32 BE";
+    }
+
+    return "";
+}
+
+NeatpadFindResult neatpad_text_view_find(NeatpadTextView *view, const char *text, gboolean backwards,
+                                         gboolean match_case)
+{
+    TextViewFind find = {};
+
+    g_return_val_if_fail(NEATPAD_IS_TEXT_VIEW(view), NEATPAD_FIND_NOT_FOUND);
+
+    find.text      = text;
+    find.length    = (uint32_t)strlen(text);
+    find.backwards = backwards != FALSE;
+    find.wrap      = true;
+    find.matchcase = match_case != FALSE;
+
+    switch (view_of(view)->FindText(&find))
+    {
+    case TVFR_FOUND:
+        return NEATPAD_FIND_FOUND;
+
+    case TVFR_FOUNDWRAPPED:
+        return NEATPAD_FIND_WRAPPED;
+
+    default:
+        return NEATPAD_FIND_NOT_FOUND;
+    }
+}
+
 void neatpad_text_view_set_font(NeatpadTextView *view, const char *font)
 {
     g_return_if_fail(NEATPAD_IS_TEXT_VIEW(view));
@@ -440,7 +524,7 @@ void neatpad_text_view_get_cursor(NeatpadTextView *view, guint64 *line, guint64 
         *line = info.nLineNo;
 
     if (column)
-        *column = info.nColumnNo;
+        *column = view_of(view)->CursorCharColumn();
 
     if (line_known)
         *line_known = info.fLineNoKnown;

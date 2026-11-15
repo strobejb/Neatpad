@@ -28,6 +28,30 @@ GtkWidget *neatpad_text_view_new(void);
 // Open a file, in the encoding its byte-order mark says (or UTF-8, or ANSI)
 gboolean neatpad_text_view_open_file(NeatpadTextView *view, const char *filename);
 
+// Start again with an empty, unnamed document
+void neatpad_text_view_new_file(NeatpadTextView *view);
+
+// Save to a file, in the encoding it was opened in, with its byte-order mark if
+// it had one
+gboolean neatpad_text_view_save_file(NeatpadTextView *view, const char *filename);
+
+// Whether the text differs from the file it was opened from or saved to
+gboolean neatpad_text_view_get_modified(NeatpadTextView *view);
+
+// The document's encoding, to show: "UTF-8", "UTF-16 LE", ...
+const char *neatpad_text_view_get_encoding(NeatpadTextView *view);
+
+// Find text from the caret, wrapping round the end, and select it
+typedef enum
+{
+    NEATPAD_FIND_NOT_FOUND,
+    NEATPAD_FIND_FOUND,
+    NEATPAD_FIND_WRAPPED
+} NeatpadFindResult;
+
+NeatpadFindResult neatpad_text_view_find(NeatpadTextView *view, const char *text, gboolean backwards,
+                                         gboolean match_case);
+
 // The font, as Pango describes one: "Monospace 11"
 void neatpad_text_view_set_font(NeatpadTextView *view, const char *font);
 
@@ -35,7 +59,7 @@ void neatpad_text_view_set_font(NeatpadTextView *view, const char *font);
 void neatpad_text_view_set_style(NeatpadTextView *view, guint mask, guint styles);
 
 // The caret's line (from 0; an estimate past the indexed part of a large file)
-// and its column, in bytes of the line's UTF-8 text
+// and its column, in characters from the line's start
 void neatpad_text_view_get_cursor(NeatpadTextView *view, guint64 *line, guint64 *column, gboolean *line_known);
 
 gboolean neatpad_text_view_undo(NeatpadTextView *view);

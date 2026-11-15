@@ -63,6 +63,7 @@ find_package(PkgConfig QUIET)
 
 if(PkgConfig_FOUND)
     pkg_check_modules(GTK4 IMPORTED_TARGET gtk4)
+    pkg_check_modules(ADWAITA IMPORTED_TARGET libadwaita-1)
 endif()
 
 if(GTK4_FOUND)
@@ -82,6 +83,12 @@ if(GTK4_FOUND)
     # These need a display: without one they're skipped
     add_executable(GtkTests tests/gtk/gtk_tests.cpp tests/test_helpers.cpp)
     target_link_libraries(GtkTests PRIVATE TextViewGtk)
+
+    # The app, where libadwaita is too
+    if(ADWAITA_FOUND)
+        add_executable(neatpad src/Neatpad/gtk/neatpad.c)
+        target_link_libraries(neatpad PRIVATE TextViewGtk PkgConfig::ADWAITA)
+    endif()
 endif()
 
 # The portable tests: the sequence, line and character indexes, TextDocument,

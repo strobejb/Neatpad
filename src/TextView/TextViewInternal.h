@@ -266,6 +266,7 @@ public:
 	TEXT_RESULT	CursorOffset(size_w *chars);
 	TEXT_RESULT	CursorLine(size_w *lineno);
 	size_w		CursorColumn();
+	size_w		CursorCharColumn();
 	int			LineFormat();
 	uint32_t		GetEditMode();
 	uint32_t		SetEditMode(uint32_t mode);

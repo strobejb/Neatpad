@@ -542,6 +542,31 @@ size_w TextView::CursorColumn()
 	return m_cursorPos.column;
 }
 
+//
+//	The caret's column in characters, as a status bar shows it: each unit that
+//	starts a character counts, so a surrogate pair or a UTF-8 sequence is one
+//
+size_w TextView::CursorCharColumn()
+{
+	TextReader reader = m_pTextDoc->text_from_range(m_cursorPos.line_begin, m_cursorPos);
+	tchar_t    buf[0x400];
+	uint32_t   len;
+	size_w     chars = 0;
+
+	while((len = reader.read(buf, 0x400)) != 0)
+	{
+		for(uint32_t i = 0; i < len; i++)
+		{
+			uint32_t unit = (uint32_t)buf[i] & (TCHAR_UTF8 ? 0xff : 0xffff);
+
+			if(TCHAR_UTF8 ? (unit & 0xc0) != 0x80 : unit < 0xdc00 || unit > 0xdfff)
+				chars++;
+		}
+	}
+
+	return chars;
+}
+
 int TextView::LineFormat()
 {
 	return m_nCRLFMode;
