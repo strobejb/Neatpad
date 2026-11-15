@@ -22,6 +22,8 @@ typedef struct
     NeatpadTextView *view;
     AdwWindowTitle  *title;
     AdwToastOverlay *toasts;
+    AdwBanner       *banner;
+    int              notice; // what the banner says: NOTICE_*
     GMenu           *recent; // the Open button's menu
     char            *recent_uri; // the recent file being opened
     GtkSearchBar    *search_bar;
@@ -37,6 +39,17 @@ typedef struct
     Recovery        *recovery;
     gboolean         closing;
 } Editor;
+
+// What the banner below the header bar says, as Win32 Neatpad's notification bar
+enum
+{
+    NOTICE_NONE,
+    NOTICE_RECOVERED,          // a file's unsaved changes, after a crash: Revert to Saved
+    NOTICE_RECOVERED_UNTITLED, // an unsaved document: Discard Document
+    NOTICE_RESTORED,           // a file's unsaved changes, kept as a session
+    NOTICE_RESTORED_UNTITLED,
+    NOTICE_RECOVERY_FAILED // recovery data can't be written
+};
 
 // What to do once a document's changes are saved or discarded
 typedef void (*EditorThen)(Editor *editor);
@@ -173,6 +186,51 @@ static void toast(Editor *editor, const char *message)
     adw_toast_overlay_add_toast(editor->toasts, adw_toast_new(message));
 }
 
+static void show_notice(Editor *editor, int notice)
+{
+    const char *title  = "";
+    const char *button = 0;
+
+    switch (notice)
+    {
+    case NOTICE_RECOVERED:
+        title  = "Unsaved changes have been recovered";
+        button = "_Revert to Saved";
+        break;
+
+    case NOTICE_RECOVERED_UNTITLED:
+        title  = "An unsaved document has been recovered";
+        button = "_Discard Document";
+        break;
+
+    case NOTICE_RESTORED:
+        title  = "Previous session restored";
+        button = "_Revert to Saved";
+        break;
+
+    case NOTICE_RESTORED_UNTITLED:
+        title  = "Previous session restored";
+        button = "_Discard Document";
+        break;
+
+    case NOTICE_RECOVERY_FAILED:
+        title = "Unable to save recovery data. Please save your work.";
+        break;
+    }
+
+    editor->notice = notice;
+    adw_banner_set_title(editor->banner, title);
+    adw_banner_set_button_label(editor->banner, button);
+    adw_banner_set_revealed(editor->banner, notice != NOTICE_NONE);
+}
+
+// The document was saved, reverted or replaced: what the banner said is past
+static void hide_notice(Editor *editor)
+{
+    if (editor->notice != NOTICE_NONE)
+        show_notice(editor, NOTICE_NONE);
+}
+
 static void apply_settings(Editor *editor)
 {
     guint styles = (settings.line_numbers ? TXS_LINENUMBERS | TXS_SELMARGIN : 0) |
@@ -283,7 +341,7 @@ static char *recovery_filename(gpointer data)
 
 static void recovery_failed(gpointer data)
 {
-    toast(data, "Unsaved changes can\xe2\x80\x99t be kept safe: recovery data can\xe2\x80\x99t be written");
+    show_notice(data, NOTICE_RECOVERY_FAILED);
 }
 
 static void on_cursor_changed(NeatpadTextView *view, gpointer data)
@@ -375,6 +433,7 @@ static gboolean load(Editor *editor, GFile *file)
     {
         // the document it replaced has gone, and its store with it
         recovery_reset(editor->recovery);
+        hide_notice(editor);
         g_set_object(&editor->file, file);
         remember(file);
     }
@@ -431,6 +490,7 @@ static void save_to(Editor *editor, GFile *file, EditorThen then)
     }
 
     recovery_saved(editor->recovery);
+    hide_notice(editor);
     g_set_object(&editor->file, file);
     remember(file);
     update_title(editor);
@@ -782,6 +842,37 @@ static void show_goto(Editor *editor)
     gtk_search_bar_set_search_mode(editor->goto_bar, TRUE);
     gtk_widget_grab_focus(GTK_WIDGET(editor->goto_entry));
     gtk_editable_select_region(GTK_EDITABLE(editor->goto_entry), 0, -1);
+}
+
+//
+//	The banner's button, for recovered changes: back to the file as saved, or,
+//	without a file, an empty document. Either drops the recovered changes.
+//
+static void on_banner_clicked(AdwBanner *banner, gpointer data)
+{
+    Editor *editor = data;
+
+    (void)banner;
+
+    if (editor->notice == NOTICE_RECOVERED_UNTITLED || editor->notice == NOTICE_RESTORED_UNTITLED)
+    {
+        neatpad_text_view_new_file(editor->view);
+        recovery_reset(editor->recovery);
+        hide_notice(editor);
+        update_title(editor);
+        update_status(editor);
+    }
+    else if (editor->file && !g_file_query_exists(editor->file, 0))
+    {
+        toast(editor, "The saved file is unavailable. Your recovered changes are still open.");
+    }
+    else if (editor->file)
+    {
+        GFile *file = g_object_ref(editor->file);
+
+        load(editor, file);
+        g_object_unref(file);
+    }
 }
 
 //
@@ -1139,8 +1230,14 @@ static GtkWindow *editor_window_new(GtkApplication *app, GFile *file)
     gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(scroll), view);
     adw_toast_overlay_set_child(editor->toasts, scroll);
 
-    // the find and go-to-line bars are below the text, above the status bar
+    // the banner is below the header bar; the find and go-to-line bars are
+    // below the text, above the status bar
+    editor->banner = ADW_BANNER(adw_banner_new(""));
+    adw_banner_set_use_markup(editor->banner, FALSE);
+    g_signal_connect(editor->banner, "button-clicked", G_CALLBACK(on_banner_clicked), editor);
+
     adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(toolbar), header_bar(editor));
+    adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(toolbar), GTK_WIDGET(editor->banner));
     adw_toolbar_view_add_bottom_bar(ADW_TOOLBAR_VIEW(toolbar), search_bar(editor));
     adw_toolbar_view_add_bottom_bar(ADW_TOOLBAR_VIEW(toolbar), goto_bar(editor));
     adw_toolbar_view_add_bottom_bar(ADW_TOOLBAR_VIEW(toolbar), status_bar(editor));
@@ -1487,7 +1584,11 @@ static int restore(GtkApplication *app, gboolean session_files_too)
         update_title(editor);
         update_status(editor);
         gtk_window_present(window);
-        toast(editor, session ? "Unsaved changes restored" : "Unsaved changes recovered");
+
+        if (session)
+            show_notice(editor, editor->file ? NOTICE_RESTORED : NOTICE_RESTORED_UNTITLED);
+        else
+            show_notice(editor, editor->file ? NOTICE_RECOVERED : NOTICE_RECOVERED_UNTITLED);
         g_free(filename);
         count++;
     }
