@@ -30,6 +30,7 @@ typedef struct
     GtkSearchBar    *search_bar;
     GtkSearchEntry  *search_entry;
     GtkToggleButton *match_case;
+    GtkToggleButton *filter; // only the lines that match show
     GtkWidget       *replace_row;
     GtkEntry        *replace_entry;
     GtkSearchBar    *goto_bar;
@@ -84,6 +85,7 @@ typedef struct
     gboolean line_numbers;
     gboolean selection_margin; // where a click selects lines, and change indicators show
     int      line_spacing;     // extra pixels between lines
+    int      filter_context;   // lines shown round each filtered match
     gboolean current_line;
     gboolean highlight_changes;
     gboolean change_markers;    // outlines and deletion marks in the margin
@@ -135,6 +137,10 @@ static void load_settings(void)
     settings.status_bar        = read_boolean(file, "status-bar", TRUE);
     settings.line_numbers      = read_boolean(file, "line-numbers", FALSE);
     settings.selection_margin  = read_boolean(file, "selection-margin", TRUE);
+    settings.filter_context    = g_key_file_has_key(file, "editor", "filter-context", 0)
+                                     ? CLAMP(g_key_file_get_integer(file, "editor", "filter-context", 0), 0,
+                                             TV_MAX_FILTER_CONTEXT)
+                                     : 2;
     settings.line_spacing      = g_key_file_has_key(file, "editor", "line-spacing", 0)
                                      ? CLAMP(g_key_file_get_integer(file, "editor", "line-spacing", 0), 0, 40)
                                      : 0;
@@ -170,6 +176,7 @@ static void save_settings(void)
     g_key_file_set_boolean(file, "editor", "line-numbers", settings.line_numbers);
     g_key_file_set_boolean(file, "editor", "selection-margin", settings.selection_margin);
     g_key_file_set_integer(file, "editor", "line-spacing", settings.line_spacing);
+    g_key_file_set_integer(file, "editor", "filter-context", settings.filter_context);
     g_key_file_set_boolean(file, "editor", "highlight-current-line", settings.current_line);
     g_key_file_set_boolean(file, "editor", "highlight-changes", settings.highlight_changes);
     g_key_file_set_boolean(file, "editor", "change-markers", settings.change_markers);
@@ -325,6 +332,7 @@ static void apply_settings(Editor *editor)
     g_free(system);
     neatpad_text_view_set_tab_width(editor->view, (guint)settings.tab_width);
     neatpad_text_view_set_long_line(editor->view, (guint)settings.long_line_column);
+    neatpad_text_view_set_filter_context(editor->view, (guint)settings.filter_context);
     neatpad_text_view_set_line_spacing(editor->view, (guint)settings.line_spacing / 2,
                                        (guint)(settings.line_spacing + 1) / 2);
     neatpad_text_view_set_style(editor->view,
@@ -1196,10 +1204,25 @@ static void on_search_previous(GtkSearchEntry *entry, gpointer data)
     find(data, TRUE);
 }
 
+// Every match is highlighted as the text is typed, as on Win32: with Filter,
+// only their lines show
+static void show_matches(Editor *editor)
+{
+    neatpad_text_view_show_matches(editor->view, gtk_editable_get_text(GTK_EDITABLE(editor->search_entry)),
+                                   gtk_toggle_button_get_active(editor->match_case),
+                                   gtk_toggle_button_get_active(editor->filter));
+}
+
 static void on_search_changed(GtkSearchEntry *entry, gpointer data)
 {
-    (void)data;
     gtk_widget_remove_css_class(GTK_WIDGET(entry), "error");
+    show_matches(data);
+}
+
+static void on_match_toggled(GtkToggleButton *button, gpointer data)
+{
+    (void)button;
+    show_matches(data);
 }
 
 static void on_search_stop(GtkSearchEntry *entry, gpointer data)
@@ -1427,6 +1450,19 @@ static void on_search_mode(GObject *bar, GParamSpec *spec, gpointer data)
 
     if (!gtk_search_bar_get_search_mode(GTK_SEARCH_BAR(bar)))
         gtk_widget_set_visible(GTK_WIDGET(bar), FALSE);
+}
+
+// Closing the find bar shows the whole document again, unhighlighted
+static void on_find_mode(GObject *bar, GParamSpec *spec, gpointer data)
+{
+    Editor *editor = data;
+
+    (void)spec;
+
+    if (gtk_search_bar_get_search_mode(GTK_SEARCH_BAR(bar)))
+        show_matches(editor);
+    else
+        neatpad_text_view_show_matches(editor->view, 0, FALSE, FALSE);
 }
 
 //
@@ -1831,6 +1867,7 @@ static GtkWidget *search_bar(Editor *editor)
     GtkWidget *previous    = gtk_button_new_from_icon_name("go-up-symbolic");
     GtkWidget *next        = gtk_button_new_from_icon_name("go-down-symbolic");
     GtkWidget *matching    = gtk_toggle_button_new_with_label("Aa");
+    GtkWidget *filter      = gtk_toggle_button_new_with_mnemonic("_Filter");
     GtkWidget *replacement = gtk_entry_new();
     GtkWidget *one         = gtk_button_new_with_mnemonic("_Replace");
     GtkWidget *all         = gtk_button_new_with_mnemonic("Replace _All");
@@ -1841,11 +1878,13 @@ static GtkWidget *search_bar(Editor *editor)
     gtk_widget_set_tooltip_text(previous, "Previous Match");
     gtk_widget_set_tooltip_text(next, "Next Match");
     gtk_widget_set_tooltip_text(matching, "Match Case");
+    gtk_widget_set_tooltip_text(filter, "Show Only the Lines That Match");
 
     gtk_box_append(GTK_BOX(find_row), entry);
     gtk_box_append(GTK_BOX(find_row), previous);
     gtk_box_append(GTK_BOX(find_row), next);
     gtk_box_append(GTK_BOX(find_row), matching);
+    gtk_box_append(GTK_BOX(find_row), filter);
 
     gtk_box_append(GTK_BOX(replace_row), replacement);
     gtk_box_append(GTK_BOX(replace_row), one);
@@ -1868,13 +1907,17 @@ static GtkWidget *search_bar(Editor *editor)
     g_signal_connect(replacement, "activate", G_CALLBACK(on_replace_activate), editor);
     g_signal_connect(one, "clicked", G_CALLBACK(on_replace_clicked), editor);
     g_signal_connect(all, "clicked", G_CALLBACK(on_replace_all_clicked), editor);
+    g_signal_connect(matching, "toggled", G_CALLBACK(on_match_toggled), editor);
+    g_signal_connect(filter, "toggled", G_CALLBACK(on_match_toggled), editor);
 
     gtk_widget_set_visible(bar, FALSE);
     g_signal_connect(bar, "notify::search-mode-enabled", G_CALLBACK(on_search_mode), 0);
+    g_signal_connect(bar, "notify::search-mode-enabled", G_CALLBACK(on_find_mode), editor);
 
     editor->search_bar    = GTK_SEARCH_BAR(bar);
     editor->search_entry  = GTK_SEARCH_ENTRY(entry);
     editor->match_case    = GTK_TOGGLE_BUTTON(matching);
+    editor->filter        = GTK_TOGGLE_BUTTON(filter);
     editor->replace_row   = replace_row;
     editor->replace_entry = GTK_ENTRY(replacement);
     return bar;
@@ -2173,6 +2216,8 @@ static void action_preferences(GSimpleAction *action, GVariant *parameter, gpoin
     GtkWidget            *tabs        = adw_spin_row_new_with_range(1, 16, 1);
     GtkWidget            *long_line   = adw_spin_row_new_with_range(1, 999, 1);
     GtkWidget            *spacing     = adw_spin_row_new_with_range(0, 40, 1);
+    GtkWidget            *filtering   = adw_preferences_group_new();
+    GtkWidget            *context     = adw_spin_row_new_with_range(0, TV_MAX_FILTER_CONTEXT, 1);
     GtkWidget            *behaviour   = adw_preferences_group_new();
     GtkWidget            *system_font;
     GtkWidget            *long_lines;
@@ -2245,6 +2290,15 @@ static void action_preferences(GSimpleAction *action, GVariant *parameter, gpoin
     adw_preferences_page_add(ADW_PREFERENCES_PAGE(page), ADW_PREFERENCES_GROUP(fonts));
     adw_preferences_page_add(ADW_PREFERENCES_PAGE(page), ADW_PREFERENCES_GROUP(display));
     adw_preferences_page_add(ADW_PREFERENCES_PAGE(page), ADW_PREFERENCES_GROUP(indentation));
+    // the find bar's filter
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(filtering), "Filter");
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(context), "Context Lines");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(context), "Lines shown before and after each match");
+    adw_spin_row_set_value(ADW_SPIN_ROW(context), settings.filter_context);
+    g_signal_connect(context, "notify::value", G_CALLBACK(on_spin_row), &settings.filter_context);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(filtering), context);
+
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(page), ADW_PREFERENCES_GROUP(filtering));
     adw_preferences_page_add(ADW_PREFERENCES_PAGE(page), ADW_PREFERENCES_GROUP(behaviour));
     adw_preferences_dialog_add(ADW_PREFERENCES_DIALOG(dialog), ADW_PREFERENCES_PAGE(page));
 

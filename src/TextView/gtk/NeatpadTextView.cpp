@@ -817,6 +817,27 @@ void neatpad_text_view_set_long_line(NeatpadTextView *view, guint column)
     gtk_widget_queue_draw(GTK_WIDGET(view));
 }
 
+void neatpad_text_view_show_matches(NeatpadTextView *view, const char *text, gboolean match_case, gboolean filter)
+{
+    TextViewFind find = {};
+
+    g_return_if_fail(NEATPAD_IS_TEXT_VIEW(view));
+
+    find.text      = text;
+    find.length    = text ? (uint32_t)strlen(text) : 0;
+    find.matchcase = match_case != FALSE;
+
+    view_of(view)->ShowMatches(find.length ? &find : 0, filter != FALSE);
+    gtk_widget_queue_draw(GTK_WIDGET(view));
+}
+
+void neatpad_text_view_set_filter_context(NeatpadTextView *view, guint lines)
+{
+    g_return_if_fail(NEATPAD_IS_TEXT_VIEW(view));
+
+    view_of(view)->SetFilterContext(lines);
+}
+
 void neatpad_text_view_set_line_spacing(NeatpadTextView *view, guint above, guint below)
 {
     g_return_if_fail(NEATPAD_IS_TEXT_VIEW(view));

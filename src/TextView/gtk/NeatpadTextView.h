@@ -105,6 +105,15 @@ gboolean neatpad_text_view_convert_line_endings(NeatpadTextView *view, guint for
 // The column TXS_LONGLINES highlights lines beyond
 void neatpad_text_view_set_long_line(NeatpadTextView *view, guint column);
 
+// Highlight every match of text (NULL or "" for none), as it's typed; filter
+// shows only the lines that match, with context lines round them, read-only,
+// found in the background. Saving and the document's details are still the
+// whole document's.
+void neatpad_text_view_show_matches(NeatpadTextView *view, const char *text, gboolean match_case, gboolean filter);
+
+// Lines shown before and after each filtered match: 0 for matches only
+void neatpad_text_view_set_filter_context(NeatpadTextView *view, guint lines);
+
 // Extra pixels above and below each line
 void neatpad_text_view_set_line_spacing(NeatpadTextView *view, guint above, guint below);
 

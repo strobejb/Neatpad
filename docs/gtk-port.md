@@ -295,8 +295,12 @@ Each step is its own commit on `main`, and moves and formatting changes stay sep
     in the selection or the whole document; show them all or only mismatched ones). Preferences has Highlight Long
     Lines and its column, and Change Indicators. Recent files can be cleared, and Ctrl+Shift+R opens the
     previous one, as on Win32. A new document's line endings are the platform's: LF off Windows.
+  - **Done:** Selection Margin and Extra Line Spacing in Preferences, as Win32's options. The find bar highlights
+    every match as it's typed, and Filter shows only the lines that match, with Preferences' context lines round
+    them, as Win32's search bar does. Matches regardless of case are highlighted in UTF-8 too: the engine compares
+    them as UTF-16, as find does.
 - **Next:** smaller gaps, as wanted: the context menu from the keyboard, input-method preedit, line endings and
-  encoding when saving, and a filter in the find bar.
+  encoding when saving, and colours of one's own.
 
 ## Open decisions
 
