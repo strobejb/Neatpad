@@ -3,7 +3,7 @@
 #ifndef NEATPAD_PANGOTEXTLAYOUT_INCLUDED
 #define NEATPAD_PANGOTEXTLAYOUT_INCLUDED
 
-#include <pango/pango.h>
+#include <gtk/gtk.h>
 
 #include <vector>
 
@@ -46,6 +46,9 @@ class PangoTextLayout : public TextLayout
     int CharStart(int offset);
     int NextChar(int offset);
 
+    void DrawText(GtkSnapshot *snapshot, int x, int y, int left, int right, const GdkRGBA *colour);
+    void DrawControl(GtkSnapshot *snapshot, int x, int y, int index);
+
     const TextViewGtk *m_host;
     PangoLayout       *m_layout;
     int                m_length;
@@ -55,9 +58,27 @@ class PangoTextLayout : public TextLayout
     std::vector<bool> m_wordStop;
     std::vector<bool> m_whiteSpace;
 
+    // Each character's leading edge and width (negative right to left), in
+    // Pango units, by its first byte: found once, as Pango's own lookup walks
+    // the line each time, which a long line makes slow
+    std::vector<int> m_x;
+    std::vector<int> m_width;
+    int              m_lineWidth; // in pixels
+
     // The runs' colours, a pair per byte, for drawing
     std::vector<uint32_t> m_fg;
     std::vector<uint32_t> m_bg;
+
+    // Control characters (but tabs), as Win32's UspLib shows them: their code
+    // in hex, in the text's colour turned round, in a rounded box. Pango keeps
+    // a shape's room for each, and draws nothing there.
+    struct Control
+    {
+        int           offset;
+        unsigned char code;
+    };
+
+    std::vector<Control> m_controls;
 
     int      m_selStart;
     int      m_selEnd;

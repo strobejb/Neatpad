@@ -109,6 +109,34 @@ void pango_layout_stops_only_at_character_starts()
     delete layout;
 }
 
+// Control characters take the room of their hex code in a box, as on Win32,
+// and a NUL doesn't end the line
+void pango_layout_shows_control_characters()
+{
+    Widget               widget;
+    TextLayout          *layout = widget.host->CreateLayout();
+    std::string          text("a\x1b" "b\0c", 5);
+    std::vector<TextRun> runs(text.size());
+    int                  cell = widget.host->CharWidth();
+
+    for (size_t i = 0; i < runs.size(); i++)
+    {
+        runs[i]      = TextRun();
+        runs[i].len  = 1;
+        runs[i].ctrl = text[i] == 0x1b || text[i] == 0;
+    }
+
+    CHECK(layout->Analyze(text.data(), (int)text.size(), runs.data(), 4));
+
+    // wider than the two digits of its code, and every character laid out
+    CHECK(layout->OffsetToX(2, false) - layout->OffsetToX(1, false) > 2 * cell);
+    CHECK(layout->OffsetToX(4, false) - layout->OffsetToX(3, false) > 2 * cell);
+    CHECK(layout->OffsetToX(5, false) > layout->OffsetToX(4, false));
+    CHECK(layout->Width() == layout->OffsetToX(5, false));
+
+    delete layout;
+}
+
 void widget_arrows_step_over_characters_with_pango()
 {
     Widget      widget;
@@ -437,6 +465,7 @@ void widget_follows_a_growing_file()
 
 const test_case tests[] = {
     {"pango_layout_stops_only_at_character_starts", pango_layout_stops_only_at_character_starts},
+    {"pango_layout_shows_control_characters", pango_layout_shows_control_characters},
     {"widget_arrows_step_over_characters_with_pango", widget_arrows_step_over_characters_with_pango},
     {"widget_types_through_its_engine", widget_types_through_its_engine},
     {"widget_finds_saves_and_starts_again", widget_finds_saves_and_starts_again},

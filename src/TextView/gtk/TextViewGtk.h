@@ -32,6 +32,20 @@ class TextViewGtk : public TextViewHost
 
     void SetFont(const char *description);
 
+    // A control character's label, its code in hex, laid out in the font and
+    // measured: made once per font, for the layouts to share
+    struct ControlLabel
+    {
+        PangoLayout *layout;
+        int          width;     // across the label
+        int          baseline;  // from its top
+        int          height;
+        int          inkTop;    // its digits, from its top
+        int          inkHeight;
+    };
+
+    const ControlLabel &Control(unsigned char code) const;
+
     // The background, text and caret colours (0x00BBGGRR) the system colours
     // and the padding take, as the widget's scheme says
     void SetPalette(uint32_t window, uint32_t text, uint32_t caret);
@@ -115,6 +129,7 @@ class TextViewGtk : public TextViewHost
     static gboolean OnPaintedScroll(gpointer data);
 
     void Measure();
+    void ForgetControls() const;
     void RestartBlink();
     void StopBlink();
 
@@ -122,6 +137,8 @@ class TextViewGtk : public TextViewHost
     PangoContext         *m_context;
     PangoFontDescription *m_font;
     PangoLayout          *m_measure; // for TextWidth
+
+    mutable ControlLabel m_controls[32]; // made as they're first needed
     FontMetrics           m_metrics;
     TextView             *m_view;
 

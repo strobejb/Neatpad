@@ -14,7 +14,7 @@
 TextViewGtk::TextViewGtk(GtkWidget *widget)
     : m_widget(widget), m_context(gtk_widget_create_pango_context(widget)),
       m_font(pango_font_description_from_string("Monospace 11")), m_measure(pango_layout_new(m_context)),
-      m_metrics(), m_view(0), m_windowColour(TV_RGB(255, 255, 255)), m_textColour(TV_RGB(0, 0, 0)),
+      m_metrics(), m_controls(), m_view(0), m_windowColour(TV_RGB(255, 255, 255)), m_textColour(TV_RGB(0, 0, 0)),
       m_caretColour(TV_RGB(0, 0, 0)), m_width(0), m_height(0), m_caretCreated(false), m_caretHidden(1), m_caretX(0),
       m_caretY(0), m_caretWidth(0), m_caretHeight(0), m_caretOn(true),
       m_blinkTimer(0), m_blinkUntil(0), m_vadjust(0), m_hadjust(0), m_settingScroll(false),
@@ -37,6 +37,7 @@ TextViewGtk::~TextViewGtk()
 
     m_timers.clear();
     StopBlink();
+    ForgetControls();
 
     if (m_scrollIdle)
         g_source_remove(m_scrollIdle);
@@ -78,9 +79,48 @@ void TextViewGtk::SetFont(const char *description)
     Invalidate();
 }
 
+const TextViewGtk::ControlLabel &TextViewGtk::Control(unsigned char code) const
+{
+    ControlLabel &control = m_controls[code & 31];
+
+    if (!control.layout)
+    {
+        PangoRectangle ink;
+        PangoRectangle logical;
+        char           label[4];
+
+        g_snprintf(label, sizeof label, "%02X", (unsigned)(code & 31));
+        control.layout = pango_layout_new(m_context);
+        pango_layout_set_font_description(control.layout, m_font);
+        pango_layout_set_text(control.layout, label, -1);
+        pango_layout_get_pixel_extents(control.layout, &ink, &logical);
+
+        control.width     = logical.width;
+        control.height    = logical.height;
+        control.baseline  = PANGO_PIXELS(pango_layout_get_baseline(control.layout));
+        control.inkTop    = ink.y;
+        control.inkHeight = ink.height;
+    }
+
+    return control;
+}
+
+void TextViewGtk::ForgetControls() const
+{
+    for (ControlLabel &control : m_controls)
+    {
+        if (control.layout)
+            g_object_unref(control.layout);
+
+        control = ControlLabel();
+    }
+}
+
 // The font's line height, ascent and character width, in pixels
 void TextViewGtk::Measure()
 {
+    ForgetControls();
+
     PangoFontMetrics *metrics = pango_context_get_metrics(m_context, m_font, 0);
     int               ascent  = PANGO_PIXELS_CEIL(pango_font_metrics_get_ascent(metrics));
     int               descent = PANGO_PIXELS_CEIL(pango_font_metrics_get_descent(metrics));

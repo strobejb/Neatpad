@@ -3,13 +3,15 @@
 //
 //	PURPOSE:	A line laid out by Pango
 //
+#include <string.h>
+
 #include "PangoTextLayout.h"
 #include "GtkCanvas.h"
 #include "TextViewGtk.h"
 
 PangoTextLayout::PangoTextLayout(const TextViewGtk *host)
-    : m_host(host), m_layout(pango_layout_new(host->Context())), m_length(0), m_selStart(0), m_selEnd(0),
-      m_selFg(0), m_selBg(0)
+    : m_host(host), m_layout(pango_layout_new(host->Context())), m_length(0), m_lineWidth(0), m_selStart(0),
+      m_selEnd(0), m_selFg(0), m_selBg(0)
 {
     pango_layout_set_single_paragraph_mode(m_layout, TRUE);
 }
@@ -17,6 +19,18 @@ PangoTextLayout::PangoTextLayout(const TextViewGtk *host)
 PangoTextLayout::~PangoTextLayout()
 {
     g_object_unref(m_layout);
+}
+
+// The border round a control character's label, as UspLib's: 15% of its
+// digits' height down, and at least 2 pixels across
+static int BorderY(int inkHeight)
+{
+    return inkHeight * 15 / 100 > 1 ? inkHeight * 15 / 100 : 1;
+}
+
+static int BorderX(int inkHeight)
+{
+    return BorderY(inkHeight) > 2 ? BorderY(inkHeight) : 2;
 }
 
 //
@@ -36,7 +50,25 @@ bool PangoTextLayout::Analyze(const tchar_t *text, int length, TextRun *runs, in
     m_selEnd   = 0;
 
     pango_layout_set_font_description(m_layout, m_host->Font());
-    pango_layout_set_text(m_layout, text, length);
+
+    // Pango stops at a NUL, as UTF-8 never has one: a space holds its place,
+    // drawn as a control character as the rest are
+    if (memchr(text, 0, length))
+    {
+        std::string copy(text, length);
+
+        for (char &c : copy)
+        {
+            if (c == 0)
+                c = ' ';
+        }
+
+        pango_layout_set_text(m_layout, copy.data(), length);
+    }
+    else
+    {
+        pango_layout_set_text(m_layout, text, length);
+    }
 
     // a tab stop every tabWidth characters: Pango repeats the one given
     pango_tab_array_set_tab(tabs, 0, PANGO_TAB_LEFT, (tabWidth > 0 ? tabWidth : 1) * m_host->CharWidth());
@@ -72,6 +104,32 @@ bool PangoTextLayout::Analyze(const tchar_t *text, int length, TextRun *runs, in
         start = end;
     }
 
+    // each control character a shape, as wide as its label in a box
+    m_controls.clear();
+
+    for (int i = 0; i < length; i++)
+    {
+        PangoRectangle  room;
+        PangoAttribute *shape;
+
+        if (!runs[i].ctrl || text[i] == '\t')
+            continue;
+
+        const TextViewGtk::ControlLabel &label = m_host->Control((unsigned char)text[i]);
+
+        m_controls.push_back({i, (unsigned char)text[i]});
+
+        room.x      = 0;
+        room.y      = -label.baseline * PANGO_SCALE;
+        room.width  = (label.width + 2 * BorderX(label.inkHeight) + BorderY(label.inkHeight)) * PANGO_SCALE;
+        room.height = label.height * PANGO_SCALE;
+
+        shape              = pango_attr_shape_new(&room, &room);
+        shape->start_index = i;
+        shape->end_index   = i + 1;
+        pango_attr_list_insert(list, shape);
+    }
+
     pango_layout_set_attributes(m_layout, list);
     pango_attr_list_unref(list);
 
@@ -93,6 +151,31 @@ bool PangoTextLayout::Analyze(const tchar_t *text, int length, TextRun *runs, in
 
     m_cursorStop[length] = true;
     m_wordStop[length]   = true;
+
+    // where each character is, in one pass along the line
+    PangoLayoutIter *iter = pango_layout_get_iter(m_layout);
+
+    m_x.assign(length + 1, 0);
+    m_width.assign(length + 1, 0);
+
+    do
+    {
+        int             i   = pango_layout_iter_get_index(iter);
+        PangoLayoutRun *run = pango_layout_iter_get_run_readonly(iter);
+        PangoRectangle  extents;
+        bool            rtl;
+
+        if (i >= length)
+            break;
+
+        pango_layout_iter_get_char_extents(iter, &extents);
+        rtl        = run && (run->item->analysis.level & 1);
+        m_x[i]     = rtl ? extents.x + extents.width : extents.x;
+        m_width[i] = rtl ? -extents.width : extents.width;
+    } while (pango_layout_iter_next_char(iter));
+
+    pango_layout_iter_free(iter);
+    pango_layout_get_pixel_size(m_layout, &m_lineWidth, 0);
     return true;
 }
 
@@ -103,21 +186,18 @@ int PangoTextLayout::Length()
 
 int PangoTextLayout::Width()
 {
-    int width = 0;
-
-    pango_layout_get_pixel_size(m_layout, &width, 0);
-    return width;
+    return m_lineWidth;
 }
 
 int PangoTextLayout::OffsetToX(int offset, bool trailing)
 {
-    PangoRectangle pos;
+    int start;
 
     if (offset >= m_length)
         return Width();
 
-    pango_layout_index_to_pos(m_layout, CharStart(offset), &pos);
-    return PANGO_PIXELS(trailing ? pos.x + pos.width : pos.x);
+    start = CharStart(offset);
+    return PANGO_PIXELS(trailing ? m_x[start] + m_width[start] : m_x[start]);
 }
 
 void PangoTextLayout::XToOffset(int x, int *offset, bool *trailing)
@@ -174,14 +254,13 @@ void PangoTextLayout::SetSelectionColours(uint32_t fg, uint32_t bg)
 
 //
 //	The runs' backgrounds, the selection over them, then the text: in the
-//	selection, in its own colour
+//	selection, in its own colour. Only what's in sight is drawn: a line can be
+//	thousands of characters long.
 //
 void PangoTextLayout::Draw(TextCanvas &canvas, int x, int y, int lineHeight, int adjustY, int clipLeft, int clipTop,
                            int clipRight, int clipBottom)
 {
-    GtkSnapshot   *snapshot = static_cast<GtkCanvas &>(canvas).Snapshot();
-    PangoAttrList *original = pango_layout_get_attributes(m_layout);
-    GdkRGBA        black    = {0, 0, 0, 1};
+    GtkSnapshot *snapshot = static_cast<GtkCanvas &>(canvas).Snapshot();
 
     gtk_snapshot_push_clip(snapshot,
                            RectArg((float)clipLeft, (float)clipTop, (float)(clipRight - clipLeft),
@@ -215,36 +294,138 @@ void PangoTextLayout::Draw(TextCanvas &canvas, int x, int y, int lineHeight, int
         gtk_snapshot_append_color(snapshot, &rgba,
                                   RectArg((float)(x + left), (float)y, (float)(right - left),
                                           (float)(lineHeight + GtkCanvas::ROW_OVERLAP)));
-
-        if (original)
-        {
-            PangoAttrList  *list = pango_attr_list_copy(original);
-            GdkRGBA         fg   = RgbaFromColour(m_selFg);
-            PangoAttribute *attr = pango_attr_foreground_new((guint16)(fg.red * 65535), (guint16)(fg.green * 65535),
-                                                             (guint16)(fg.blue * 65535));
-
-            pango_attr_list_ref(original);
-            attr->start_index = m_selStart;
-            attr->end_index   = m_selEnd;
-            pango_attr_list_change(list, attr);
-            pango_layout_set_attributes(m_layout, list);
-            pango_attr_list_unref(list);
-        }
     }
 
-    gtk_snapshot_save(snapshot);
-    gtk_snapshot_translate(snapshot, PointArg((float)x, (float)(y + adjustY)));
-    gtk_snapshot_append_layout(snapshot, m_layout, &black);
-    gtk_snapshot_restore(snapshot);
-
-    // the line's own colours again, without the selection's
-    if (m_selStart < m_selEnd && original)
+    // the text, and the selected text in the selection's colour: the line is
+    // laid out once, and its glyphs drawn either side of the selection, and
+    // in it
+    if (m_selStart < m_selEnd)
     {
-        pango_layout_set_attributes(m_layout, original);
-        pango_attr_list_unref(original);
+        int     left  = x + OffsetToX(m_selStart, false);
+        int     right = x + (m_selEnd >= m_length ? Width() + m_host->CharWidth() : OffsetToX(m_selEnd, false));
+        GdkRGBA fg    = RgbaFromColour(m_selFg);
+
+        DrawText(snapshot, x, y + adjustY, clipLeft, left, 0);
+        DrawText(snapshot, x, y + adjustY, left, right, &fg);
+        DrawText(snapshot, x, y + adjustY, right, clipRight, 0);
+    }
+    else
+    {
+        DrawText(snapshot, x, y + adjustY, clipLeft, clipRight, 0);
+    }
+
+    // those in sight: a long line can hold thousands
+    for (size_t i = 0; i < m_controls.size(); i++)
+    {
+        int left  = x + OffsetToX(m_controls[i].offset, false);
+        int right = x + OffsetToX(m_controls[i].offset + 1, false);
+
+        if (right >= clipLeft && left <= clipRight)
+            DrawControl(snapshot, x, y + adjustY, (int)i);
     }
 
     gtk_snapshot_pop(snapshot);
+}
+
+//
+//	The glyphs between left and right, the line's runs at a time: those out of
+//	sight aren't drawn. Each in its own colour, or in colour if it's given.
+//
+void PangoTextLayout::DrawText(GtkSnapshot *snapshot, int x, int y, int left, int right, const GdkRGBA *colour)
+{
+    PangoLayoutIter *iter;
+
+    if (left >= right)
+        return;
+
+    iter = pango_layout_get_iter(m_layout);
+
+    gtk_snapshot_push_clip(snapshot, RectArg((float)left, (float)y - 1000, (float)(right - left), 2000));
+
+    do
+    {
+        PangoLayoutRun *run = pango_layout_iter_get_run_readonly(iter);
+        PangoRectangle  extents;
+        GdkRGBA         rgba = {0, 0, 0, 1};
+        GskRenderNode  *node;
+
+        if (!run)
+            continue;
+
+        pango_layout_iter_get_run_extents(iter, 0, &extents);
+
+        // runs go left to right: the rest are past the right edge
+        if (x + PANGO_PIXELS(extents.x) > right)
+            break;
+
+        if (x + PANGO_PIXELS(extents.x + extents.width) < left)
+            continue;
+
+        if (colour)
+        {
+            rgba = *colour;
+        }
+        else
+        {
+            for (GSList *a = run->item->analysis.extra_attrs; a; a = a->next)
+            {
+                PangoAttribute *attr = (PangoAttribute *)a->data;
+
+                if (attr->klass->type == PANGO_ATTR_FOREGROUND)
+                {
+                    PangoColor *c = &((PangoAttrColor *)attr)->color;
+
+                    rgba = {c->red / 65535.0f, c->green / 65535.0f, c->blue / 65535.0f, 1};
+                }
+            }
+        }
+
+        graphene_point_t at = GRAPHENE_POINT_INIT(
+            (float)x + (float)extents.x / PANGO_SCALE,
+            (float)y + (float)(pango_layout_iter_get_baseline(iter) - run->y_offset) / PANGO_SCALE);
+
+        node = gsk_text_node_new(run->item->analysis.font, run->glyphs, &rgba, &at);
+
+        if (node)
+        {
+            gtk_snapshot_append_node(snapshot, node);
+            gsk_render_node_unref(node);
+        }
+    } while (pango_layout_iter_next_run(iter));
+
+    gtk_snapshot_pop(snapshot);
+    pango_layout_iter_free(iter);
+}
+
+//
+//	A control character: its label in the background's colour, in a rounded
+//	box of the text's (the selection's, where it's selected), as UspLib's
+//	PaintCtrlChar draws it
+//
+void PangoTextLayout::DrawControl(GtkSnapshot *snapshot, int x, int y, int index)
+{
+    const Control                   &control  = m_controls[index];
+    const TextViewGtk::ControlLabel &text     = m_host->Control(control.code);
+    bool                             selected = control.offset >= m_selStart && control.offset < m_selEnd;
+    GdkRGBA                          box      = RgbaFromColour(selected ? m_selFg : m_fg[control.offset]);
+    GdkRGBA                          label    = RgbaFromColour(selected ? m_selBg : m_bg[control.offset]);
+    int                              borderY  = BorderY(text.inkHeight);
+    int                              borderX  = BorderX(text.inkHeight);
+    int                              left     = x + OffsetToX(control.offset, false) + borderY / 2 + 1;
+    graphene_rect_t                  rect     = GRAPHENE_RECT_INIT((float)left, (float)(y + text.inkTop - borderY),
+                                                                   (float)(text.width + 2 * borderX - 2),
+                                                                   (float)(text.inkHeight + 2 * borderY));
+    GskRoundedRect                   rounded;
+
+    gsk_rounded_rect_init_from_rect(&rounded, &rect, (float)borderY + 1);
+    gtk_snapshot_push_rounded_clip(snapshot, &rounded);
+    gtk_snapshot_append_color(snapshot, &box, &rect);
+    gtk_snapshot_pop(snapshot);
+
+    gtk_snapshot_save(snapshot);
+    gtk_snapshot_translate(snapshot, PointArg((float)(left + borderX - 1), (float)y));
+    gtk_snapshot_append_layout(snapshot, text.layout, &label);
+    gtk_snapshot_restore(snapshot);
 }
 
 int PangoTextLayout::CharStart(int offset)

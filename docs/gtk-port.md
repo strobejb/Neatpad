@@ -304,6 +304,8 @@ Each step is its own commit on `main`, and moves and formatting changes stay sep
     and Solarized are built in, and `.palette` files in `~/.config/catch22/neatpad/palettes` add more: a key file
     with `[light]` and `[dark]` colours, as `src/Neatpad/gtk/palette.h` describes. What a palette leaves out is
     Adwaita's.
+  - **Done:** control characters (but tabs) show as on Win32: their code in hex, in a rounded box of the text's
+    colour, which Pango keeps a shape's room for. A NUL no longer ends a line: Pango is given a space in its place.
 - **Next:** smaller gaps, as wanted: the context menu from the keyboard, input-method preedit, line endings and
   encoding when saving.
 
