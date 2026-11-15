@@ -1897,11 +1897,11 @@ static const char app_css[] = ".style-switcher { margin: 6px 0; }"
                                 ".style-switcher button.dark { background: #1d1d20; }"
                                 ".style-switcher button:checked {"
                                 "  outline: 2px solid @accent_bg_color; outline-offset: 2px; }"
-                                // hairlines above the text and the status bar, in libadwaita's
-                                // border colour
+                                // hairlines above the text, the find and go-to bars and the
+                                // status bar, in libadwaita's border colour
                                 ".neatpad-text { border-top: 1px solid alpha(currentColor, 0.15); }"
-                                ".neatpad-status { border-top: 1px solid alpha(currentColor, 0.15);"
-                                "  padding: 7px 12px; }"
+                                ".neatpad-bar, .neatpad-status { border-top: 1px solid alpha(currentColor, 0.15); }"
+                                ".neatpad-status { padding: 7px 12px; }"
                                 ".recent-files { min-width: 300px; }"
                                 ".recent-files row { padding: 4px 4px 4px 10px; }";
 
@@ -1991,6 +1991,7 @@ static GtkWidget *search_bar(Editor *editor)
     GtkWidget *one         = gtk_button_new_with_mnemonic("_Replace");
     GtkWidget *all         = gtk_button_new_with_mnemonic("Replace _All");
 
+    gtk_widget_add_css_class(bar, "neatpad-bar");
     gtk_widget_set_size_request(entry, ENTRY_WIDTH, -1);
     gtk_widget_set_size_request(replacement, ENTRY_WIDTH, -1);
     gtk_entry_set_placeholder_text(GTK_ENTRY(replacement), "Replace with");
@@ -2048,6 +2049,7 @@ static GtkWidget *goto_bar(Editor *editor)
     GtkWidget          *go    = gtk_button_new_with_label("Go");
     GtkEventController *keys  = gtk_event_controller_key_new();
 
+    gtk_widget_add_css_class(bar, "neatpad-bar");
     gtk_widget_add_css_class(label, "heading");
     gtk_label_set_mnemonic_widget(GTK_LABEL(label), entry);
     gtk_editable_set_width_chars(GTK_EDITABLE(entry), 10);
