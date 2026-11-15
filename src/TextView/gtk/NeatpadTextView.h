@@ -97,6 +97,14 @@ NeatpadFindResult neatpad_text_view_find(NeatpadTextView *view, const char *text
 guint64 neatpad_text_view_replace(NeatpadTextView *view, const char *text, const char *replacement,
                                   gboolean match_case, gboolean all);
 
+// Line endings in the selection, or the whole document, made one kind: TXL_CRLF,
+// TXL_LF or TXL_CR, or 0 for the document's own (normalizing them). FALSE if
+// the text is read-only.
+gboolean neatpad_text_view_convert_line_endings(NeatpadTextView *view, guint format);
+
+// The column TXS_LONGLINES highlights lines beyond
+void neatpad_text_view_set_long_line(NeatpadTextView *view, guint column);
+
 // Move the caret to the start of a line, from 0. FALSE if the document hasn't
 // that line, or hasn't indexed as far yet.
 gboolean neatpad_text_view_goto_line(NeatpadTextView *view, guint64 line);

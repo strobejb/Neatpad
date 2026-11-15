@@ -84,6 +84,10 @@ typedef struct
     gboolean line_numbers;
     gboolean current_line;
     gboolean highlight_changes;
+    gboolean change_markers;    // outlines and deletion marks in the margin
+    gboolean long_lines;        // lines beyond long_line_column highlighted
+    int      long_line_column;
+    gboolean show_line_endings; // every line ending, not just mismatched ones
     int      tab_width;
     gboolean insert_spaces;
     gboolean auto_indent;
@@ -130,6 +134,12 @@ static void load_settings(void)
     settings.line_numbers      = read_boolean(file, "line-numbers", FALSE);
     settings.current_line      = read_boolean(file, "highlight-current-line", FALSE);
     settings.highlight_changes = read_boolean(file, "highlight-changes", TRUE);
+    settings.change_markers    = read_boolean(file, "change-markers", TRUE);
+    settings.long_lines        = read_boolean(file, "long-lines", TRUE);
+    settings.show_line_endings = read_boolean(file, "show-line-endings", FALSE);
+    settings.long_line_column  = g_key_file_has_key(file, "editor", "long-line-column", 0)
+                                     ? CLAMP(g_key_file_get_integer(file, "editor", "long-line-column", 0), 1, 999)
+                                     : 80;
     settings.insert_spaces     = read_boolean(file, "insert-spaces", FALSE);
     settings.auto_indent       = read_boolean(file, "auto-indent", FALSE);
     settings.tab_width         = g_key_file_has_key(file, "editor", "tab-width", 0)
@@ -154,6 +164,10 @@ static void save_settings(void)
     g_key_file_set_boolean(file, "editor", "line-numbers", settings.line_numbers);
     g_key_file_set_boolean(file, "editor", "highlight-current-line", settings.current_line);
     g_key_file_set_boolean(file, "editor", "highlight-changes", settings.highlight_changes);
+    g_key_file_set_boolean(file, "editor", "change-markers", settings.change_markers);
+    g_key_file_set_boolean(file, "editor", "long-lines", settings.long_lines);
+    g_key_file_set_integer(file, "editor", "long-line-column", settings.long_line_column);
+    g_key_file_set_boolean(file, "editor", "show-line-endings", settings.show_line_endings);
     g_key_file_set_integer(file, "editor", "tab-width", settings.tab_width);
     g_key_file_set_boolean(file, "editor", "insert-spaces", settings.insert_spaces);
     g_key_file_set_boolean(file, "editor", "auto-indent", settings.auto_indent);
@@ -281,6 +295,8 @@ static void apply_settings(Editor *editor)
     guint styles = (settings.line_numbers ? TXS_LINENUMBERS | TXS_SELMARGIN : 0) |
                    (settings.current_line ? TXS_HIGHLIGHTCURLINE : 0) |
                    (settings.highlight_changes ? TXS_HIGHLIGHTCHANGES : 0) |
+                   (settings.change_markers ? TXS_CHANGEMARKERS : 0) | (settings.long_lines ? TXS_LONGLINES : 0) |
+                   (settings.show_line_endings ? TXS_SHOWLINEENDINGS : 0) |
                    (settings.insert_spaces ? TXS_INSERTSPACES : 0) | (settings.auto_indent ? TXS_AUTOINDENT : 0);
 
     char *system = settings.system_font && desktop ? g_settings_get_string(desktop, "monospace-font-name") : 0;
@@ -300,9 +316,11 @@ static void apply_settings(Editor *editor)
     pango_font_description_free(font);
     g_free(system);
     neatpad_text_view_set_tab_width(editor->view, (guint)settings.tab_width);
+    neatpad_text_view_set_long_line(editor->view, (guint)settings.long_line_column);
     neatpad_text_view_set_style(editor->view,
                                 TXS_LINENUMBERS | TXS_SELMARGIN | TXS_HIGHLIGHTCURLINE | TXS_HIGHLIGHTCHANGES |
-                                    TXS_INSERTSPACES | TXS_AUTOINDENT,
+                                    TXS_CHANGEMARKERS | TXS_LONGLINES | TXS_SHOWLINEENDINGS | TXS_INSERTSPACES |
+                                    TXS_AUTOINDENT,
                                 styles);
 }
 
@@ -598,12 +616,49 @@ static char *recent_folder(GtkRecentInfo *info)
     return folder;
 }
 
+// The files Neatpad opened or saved that are still there, newest first:
+// g_list_free_full them with gtk_recent_info_unref
+static GList *recent_files(void)
+{
+    GList *items = gtk_recent_manager_get_items(gtk_recent_manager_get_default());
+    GList *files = 0;
+
+    for (GList *i = items; i; i = i->next)
+    {
+        GtkRecentInfo *info = i->data;
+
+        if (gtk_recent_info_has_application(info, g_get_application_name()) && gtk_recent_info_exists(info))
+            files = g_list_prepend(files, gtk_recent_info_ref(info));
+    }
+
+    g_list_free_full(items, (GDestroyNotify)gtk_recent_info_unref);
+    return g_list_sort(files, newest_first);
+}
+
+// Clear Recent Files, as Win32's Recent > Clear: the files leave GNOME's list
+static void clear_recent(void)
+{
+    GList *files = recent_files();
+
+    for (GList *i = files; i; i = i->next)
+        gtk_recent_manager_remove_item(gtk_recent_manager_get_default(), gtk_recent_info_get_uri(i->data), 0);
+
+    g_list_free_full(files, (GDestroyNotify)gtk_recent_info_unref);
+}
+
 static void on_recent_activated(GtkListBox *list, GtkListBoxRow *row, gpointer data)
 {
     Editor     *editor = data;
     const char *uri    = g_object_get_data(G_OBJECT(row), "uri");
 
     (void)list;
+
+    if (g_object_get_data(G_OBJECT(row), "clear"))
+    {
+        gtk_popover_popdown(GTK_POPOVER(editor->recent_popover));
+        clear_recent();
+        return;
+    }
 
     if (!uri)
         return;
@@ -662,20 +717,14 @@ static GtkWidget *recent_row(GtkRecentInfo *info)
 
 static void update_recent(Editor *editor)
 {
-    GList *items = gtk_recent_manager_get_items(gtk_recent_manager_get_default());
+    GList *items = recent_files();
     int    count = 0;
 
     gtk_list_box_remove_all(editor->recent_list);
-    items = g_list_sort(items, newest_first);
 
     for (GList *i = items; i && count < RECENT_MAX; i = i->next)
     {
-        GtkRecentInfo *info = i->data;
-
-        if (!gtk_recent_info_has_application(info, g_get_application_name()) || !gtk_recent_info_exists(info))
-            continue;
-
-        gtk_list_box_append(editor->recent_list, recent_row(info));
+        gtk_list_box_append(editor->recent_list, recent_row(i->data));
         count++;
     }
 
@@ -689,6 +738,18 @@ static void update_recent(Editor *editor)
         gtk_widget_set_margin_bottom(label, 6);
         gtk_list_box_row_set_child(GTK_LIST_BOX_ROW(row), label);
         gtk_list_box_row_set_activatable(GTK_LIST_BOX_ROW(row), FALSE);
+        gtk_list_box_append(editor->recent_list, row);
+    }
+    else
+    {
+        GtkWidget *row   = gtk_list_box_row_new();
+        GtkWidget *label = gtk_label_new("Clear Recent Files");
+
+        gtk_widget_set_margin_top(label, 4);
+        gtk_widget_set_margin_bottom(label, 4);
+        gtk_list_box_row_set_child(GTK_LIST_BOX_ROW(row), label);
+        g_object_set_data(G_OBJECT(row), "clear", GINT_TO_POINTER(1));
+        gtk_widget_add_css_class(row, "recent-clear");
         gtk_list_box_append(editor->recent_list, row);
     }
 
@@ -1387,6 +1448,58 @@ static void action_open_recent(GSimpleAction *action, GVariant *parameter, gpoin
     unless_unsaved(editor, open_recent_now);
 }
 
+// The newest recent file other than this window's, as Win32's Ctrl+Shift+R:
+// again, and it's back to the first
+static void action_open_previous(GSimpleAction *action, GVariant *parameter, gpointer data)
+{
+    Editor *editor  = data;
+    char   *current = editor->file ? g_file_get_uri(editor->file) : 0;
+    GList  *files   = recent_files();
+
+    (void)action;
+    (void)parameter;
+
+    for (GList *i = files; i; i = i->next)
+    {
+        const char *uri = gtk_recent_info_get_uri(i->data);
+
+        if (!current || !g_str_equal(uri, current))
+        {
+            gtk_widget_activate_action(GTK_WIDGET(editor->window), "win.open-recent", "s", uri);
+            break;
+        }
+    }
+
+    g_list_free_full(files, (GDestroyNotify)gtk_recent_info_unref);
+    g_free(current);
+}
+
+// Line endings made one kind, in the selection or the whole document, as
+// Win32's View > Line Endings: "normalize" (the document's own), "crlf", "lf"
+// or "cr". A very large document is too slow to convert in place.
+#define CONVERT_IN_PLACE_LIMIT (64 * 1024 * 1024)
+
+static void action_convert_line_endings(GSimpleAction *action, GVariant *parameter, gpointer data)
+{
+    Editor         *editor = data;
+    const char     *to     = g_variant_get_string(parameter, 0);
+    guint           format = g_str_equal(to, "crlf") ? TXL_CRLF
+                             : g_str_equal(to, "lf") ? TXL_LF
+                             : g_str_equal(to, "cr") ? TXL_CR
+                                                     : 0;
+    NeatpadDocStats stats;
+
+    (void)action;
+
+    if (!neatpad_text_view_get_doc_stats(editor->view, &stats))
+        return;
+
+    if ((stats.selected_bytes ? stats.selected_bytes : stats.bytes) > CONVERT_IN_PLACE_LIMIT)
+        toast(editor, "This file is too large to convert its line endings here");
+    else if (!neatpad_text_view_convert_line_endings(editor->view, format))
+        toast(editor, "This file is read-only");
+}
+
 static void action_save(GSimpleAction *action, GVariant *parameter, gpointer data)
 {
     (void)action;
@@ -1530,6 +1643,8 @@ static const GActionEntry window_actions[] = {
     {"new-window", action_new_window, 0, 0, 0, {0}},
     {"open", action_open, 0, 0, 0, {0}},
     {"open-recent", action_open_recent, "s", 0, 0, {0}},
+    {"open-previous", action_open_previous, 0, 0, 0, {0}},
+    {"convert-line-endings", action_convert_line_endings, "s", 0, 0, {0}},
     {"save", action_save, 0, 0, 0, {0}},
     {"save-as", action_save_as, 0, 0, 0, {0}},
     {"find", action_find, 0, 0, 0, {0}},
@@ -1554,6 +1669,10 @@ static GMenuModel *primary_menu(void)
     GMenu     *style   = g_menu_new();
     GMenu     *file    = g_menu_new();
     GMenu     *search  = g_menu_new();
+    GMenu     *view    = g_menu_new();
+    GMenu     *endings = g_menu_new();
+    GMenu     *convert = g_menu_new();
+    GMenu     *show    = g_menu_new();
     GMenu     *general = g_menu_new();
     GMenuItem *styles  = g_menu_item_new(0, 0);
 
@@ -1569,6 +1688,17 @@ static GMenuModel *primary_menu(void)
     g_menu_append(search, "_Find\xe2\x80\xa6", "win.find");
     g_menu_append(search, "_Replace\xe2\x80\xa6", "win.replace");
     g_menu_append(search, "_Go to Line\xe2\x80\xa6", "win.go-to-line");
+    // View, as Win32's View menu: line endings (long lines are in Preferences)
+    g_menu_append(convert, "_Normalize", "win.convert-line-endings::normalize");
+    g_menu_append(convert, "Convert to _Windows (CRLF)", "win.convert-line-endings::crlf");
+    g_menu_append(convert, "Convert to _Unix (LF)", "win.convert-line-endings::lf");
+    g_menu_append(convert, "Convert to _Mac (CR)", "win.convert-line-endings::cr");
+    g_menu_append(show, "_Always Show", "app.show-line-endings::always");
+    g_menu_append(show, "Only _Mismatched", "app.show-line-endings::mismatched");
+    g_menu_append_section(endings, 0, G_MENU_MODEL(convert));
+    g_menu_append_section(endings, 0, G_MENU_MODEL(show));
+    g_menu_append_submenu(view, "_Line Endings", G_MENU_MODEL(endings));
+
     g_menu_append(general, "_Preferences", "app.preferences");
     g_menu_append(general, "_About Neatpad", "app.about");
     g_menu_append(general, "_Quit", "app.quit");
@@ -1576,11 +1706,16 @@ static GMenuModel *primary_menu(void)
     g_menu_append_section(menu, 0, G_MENU_MODEL(style));
     g_menu_append_section(menu, 0, G_MENU_MODEL(file));
     g_menu_append_section(menu, 0, G_MENU_MODEL(search));
+    g_menu_append_section(menu, 0, G_MENU_MODEL(view));
     g_menu_append_section(menu, 0, G_MENU_MODEL(general));
 
     g_object_unref(style);
     g_object_unref(file);
     g_object_unref(search);
+    g_object_unref(view);
+    g_object_unref(endings);
+    g_object_unref(convert);
+    g_object_unref(show);
     g_object_unref(general);
     return G_MENU_MODEL(menu);
 }
@@ -1940,6 +2075,18 @@ static void action_style(GSimpleAction *action, GVariant *state, gpointer data)
     save_settings();
 }
 
+// app.show-line-endings: "always", or "mismatched" (those that aren't the
+// document's own)
+static void action_show_line_endings(GSimpleAction *action, GVariant *state, gpointer data)
+{
+    (void)data;
+
+    g_simple_action_set_state(action, state);
+    settings.show_line_endings = g_str_equal(g_variant_get_string(state, 0), "always");
+    save_settings();
+    apply_settings_everywhere();
+}
+
 //
 //	Preferences: each row changes a setting, saves it, and applies it to every
 //	window
@@ -1952,11 +2099,10 @@ static void on_switch_row(GObject *row, GParamSpec *spec, gpointer setting)
     apply_settings_everywhere();
 }
 
-static void on_tab_width(GObject *row, GParamSpec *spec, gpointer data)
+static void on_spin_row(GObject *row, GParamSpec *spec, gpointer setting)
 {
     (void)spec;
-    (void)data;
-    settings.tab_width = (int)adw_spin_row_get_value(ADW_SPIN_ROW(row));
+    *(int *)setting = (int)adw_spin_row_get_value(ADW_SPIN_ROW(row));
     save_settings();
     apply_settings_everywhere();
 }
@@ -2015,8 +2161,10 @@ static void action_preferences(GSimpleAction *action, GVariant *parameter, gpoin
     GtkFilter            *monospace   = GTK_FILTER(gtk_custom_filter_new(is_monospace, 0, 0));
     PangoFontDescription *font        = pango_font_description_from_string(settings.font);
     GtkWidget            *tabs        = adw_spin_row_new_with_range(1, 16, 1);
+    GtkWidget            *long_line   = adw_spin_row_new_with_range(1, 999, 1);
     GtkWidget            *behaviour   = adw_preferences_group_new();
     GtkWidget            *system_font;
+    GtkWidget            *long_lines;
 
     (void)action;
     (void)parameter;
@@ -2052,13 +2200,21 @@ static void action_preferences(GSimpleAction *action, GVariant *parameter, gpoin
     switch_row(display, "Highlight Current Line", 0, &settings.current_line);
     switch_row(display, "Highlight Changes", "Colour text typed since the file was opened",
                &settings.highlight_changes);
+    switch_row(display, "Change Indicators", "Mark changed and deleted lines in the margin",
+               &settings.change_markers);
+    long_lines = switch_row(display, "Highlight Long Lines", 0, &settings.long_lines);
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(long_line), "Long Line Column");
+    adw_spin_row_set_value(ADW_SPIN_ROW(long_line), settings.long_line_column);
+    g_object_bind_property(long_lines, "active", long_line, "sensitive", G_BINDING_SYNC_CREATE);
+    g_signal_connect(long_line, "notify::value", G_CALLBACK(on_spin_row), &settings.long_line_column);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(display), long_line);
     switch_row(display, "Status Bar", 0, &settings.status_bar);
 
     // tabs and indentation
     adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(indentation), "Indentation");
     adw_preferences_row_set_title(ADW_PREFERENCES_ROW(tabs), "Tab Width");
     adw_spin_row_set_value(ADW_SPIN_ROW(tabs), settings.tab_width);
-    g_signal_connect(tabs, "notify::value", G_CALLBACK(on_tab_width), 0);
+    g_signal_connect(tabs, "notify::value", G_CALLBACK(on_spin_row), &settings.tab_width);
     adw_preferences_group_add(ADW_PREFERENCES_GROUP(indentation), tabs);
     switch_row(indentation, "Insert Spaces Instead of Tabs", 0, &settings.insert_spaces);
     switch_row(indentation, "Automatic Indentation", 0, &settings.auto_indent);
@@ -2094,6 +2250,7 @@ static void action_quit(GSimpleAction *action, GVariant *parameter, gpointer dat
 
 static const GActionEntry app_actions[] = {
     {"style", 0, "s", "'follow'", action_style, {0}},
+    {"show-line-endings", 0, "s", "'mismatched'", action_show_line_endings, {0}},
     {"preferences", action_preferences, 0, 0, 0, {0}},
     {"about", action_about, 0, 0, 0, {0}},
     {"quit", action_quit, 0, 0, 0, {0}},
@@ -2108,6 +2265,7 @@ static void on_startup(GApplication *app, gpointer data)
     } accels[] = {
         {"win.new-window", {"<Ctrl>n", 0}},
         {"win.open", {"<Ctrl>o", 0}},
+        {"win.open-previous", {"<Ctrl><Shift>r", 0}},
         {"win.save", {"<Ctrl>s", 0}},
         {"win.save-as", {"<Ctrl><Shift>s", 0}},
         {"win.find", {"<Ctrl>f", 0}},
@@ -2134,6 +2292,8 @@ static void on_startup(GApplication *app, gpointer data)
     session_files = g_ptr_array_new_with_free_func(g_free);
     watch_desktop_font();
     g_action_group_change_action_state(G_ACTION_GROUP(app), "style", g_variant_new_string(settings.style));
+    g_simple_action_set_state(G_SIMPLE_ACTION(g_action_map_lookup_action(G_ACTION_MAP(app), "show-line-endings")),
+                              g_variant_new_string(settings.show_line_endings ? "always" : "mismatched"));
     apply_style();
 
     gtk_css_provider_load_from_string(css, app_css);

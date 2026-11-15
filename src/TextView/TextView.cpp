@@ -37,7 +37,7 @@ TextView::TextView(TextViewHost *host)
 	m_nCaretWidth	 = 0;
 	m_nLongLineLimit = 80;
 	m_nLineInfoCount = 0;
-	m_nCRLFMode		 = TXL_CRLF;//ALL;
+	m_nCRLFMode		 = DEFAULT_LINE_FORMAT;
 
 	// allocate the line-layout cache
 	m_lineCache		= new LINECACHE[LINE_CACHE_SIZE];

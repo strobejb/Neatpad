@@ -291,6 +291,10 @@ Each step is its own commit on `main`, and moves and formatting changes stay sep
     it moves. `scripts/install-dev-desktop.sh` installs a desktop entry and icon for the build in this checkout,
     named for the app ID (`net.catch22.Neatpad`), so GNOME shows it in the app grid, the dock and Open With. The
     icon is `src/Neatpad/gtk/neatpad-gnome-512.png`.
+  - **Done:** Win32's View menu, as a section of the main menu: Line Endings (normalize, convert to CRLF, LF or CR,
+    in the selection or the whole document; show them all or only mismatched ones). Preferences has Highlight Long
+    Lines and its column, and Change Indicators. Recent files can be cleared, and Ctrl+Shift+R opens the
+    previous one, as on Win32. A new document's line endings are the platform's: LF off Windows.
 - **Next:** smaller gaps, as wanted: the context menu from the keyboard, input-method preedit, line endings and
   encoding when saving, and a filter in the find bar.
 

@@ -799,6 +799,24 @@ guint64 neatpad_text_view_replace(NeatpadTextView *view, const char *text, const
     return view_of(view)->ReplaceText(&find, all != FALSE);
 }
 
+gboolean neatpad_text_view_convert_line_endings(NeatpadTextView *view, guint format)
+{
+    g_return_val_if_fail(NEATPAD_IS_TEXT_VIEW(view), FALSE);
+
+    if (format == 0)
+        format = (guint)view_of(view)->LineFormat();
+
+    return view_of(view)->ConvertLineBreaks(format);
+}
+
+void neatpad_text_view_set_long_line(NeatpadTextView *view, guint column)
+{
+    g_return_if_fail(NEATPAD_IS_TEXT_VIEW(view));
+
+    view_of(view)->SetLongLine((int)column);
+    gtk_widget_queue_draw(GTK_WIDGET(view));
+}
+
 gboolean neatpad_text_view_goto_line(NeatpadTextView *view, guint64 line)
 {
     g_return_val_if_fail(NEATPAD_IS_TEXT_VIEW(view), FALSE);

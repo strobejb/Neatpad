@@ -190,6 +190,13 @@ typedef struct
 //
 //	TextView - the editor engine. Its platform's host owns it.
 //
+// A new document's line endings, and a file's without any: the platform's own
+#ifdef _WIN32
+#define DEFAULT_LINE_FORMAT TXL_CRLF
+#else
+#define DEFAULT_LINE_FORMAT TXL_LF
+#endif
+
 class TextView
 {
     friend class TextViewMarginProbe; // Hidden-window gutter tests.
@@ -474,7 +481,7 @@ private:
 	int			m_nTabWidthChars;
 	uint32_t		m_nCaretWidth;
 	int			m_nLongLineLimit;
-	int			m_nCRLFMode;
+	int			m_nCRLFMode;	// a new document's is the platform's (DEFAULT_LINE_FORMAT)
 	
 	LINEINFO	m_LineInfo[MAX_LINE_INFO];
 	int			m_nLineInfoCount;

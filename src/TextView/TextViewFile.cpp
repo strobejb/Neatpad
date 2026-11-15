@@ -194,6 +194,7 @@ int32_t TextView::ClearFile()
 
 	m_nLineCount		= m_pTextDoc->linecount();
 	m_nLongestLine		= 0;	// grows as lines are laid out
+	m_nCRLFMode			= DEFAULT_LINE_FORMAT;
 
 	m_nHScrollPos		= 0;
 
