@@ -43,6 +43,7 @@ typedef struct
     GtkLabel        *doc_stats;
     GtkLabel        *index;
     GtkLabel        *zoom_pane;
+    GtkWidget       *zoom_reset; // the main menu's zoom, between - and +
     GtkLabel        *line_format;
     GtkLabel        *encoding;
     int              zoom; // percent of the font's size
@@ -469,6 +470,8 @@ static void update_status(Editor *editor)
 
     g_snprintf(text, sizeof(text), "%d%%", editor->zoom);
     gtk_label_set_text(editor->zoom_pane, text);
+    gtk_widget_set_visible(GTK_WIDGET(editor->zoom_pane), editor->zoom != 100);
+    gtk_button_set_label(GTK_BUTTON(editor->zoom_reset), text);
     gtk_label_set_text(editor->encoding, neatpad_text_view_get_encoding(editor->view));
 }
 
@@ -1832,6 +1835,8 @@ static GMenuModel *primary_menu(void)
 {
     GMenu     *menu    = g_menu_new();
     GMenu     *style   = g_menu_new();
+    GMenu     *zooming = g_menu_new();
+    GMenu     *window  = g_menu_new();
     GMenu     *file    = g_menu_new();
     GMenu     *search  = g_menu_new();
     GMenu     *view    = g_menu_new();
@@ -1840,13 +1845,18 @@ static GMenuModel *primary_menu(void)
     GMenu     *show    = g_menu_new();
     GMenu     *general = g_menu_new();
     GMenuItem *styles  = g_menu_item_new(0, 0);
+    GMenuItem *zoom    = g_menu_item_new(0, 0);
 
-    // the style switcher, a widget of its own (style_switcher)
+    // the style switcher and the zoom, widgets of their own (style_switcher,
+    // zoom_row)
     g_menu_item_set_attribute(styles, "custom", "s", "style");
     g_menu_append_item(style, styles);
     g_object_unref(styles);
+    g_menu_item_set_attribute(zoom, "custom", "s", "zoom");
+    g_menu_append_item(zooming, zoom);
+    g_object_unref(zoom);
 
-    g_menu_append(file, "_New Window", "win.new-window");
+    g_menu_append(window, "_New Window", "win.new-window");
     g_menu_append(file, "_Save", "win.save");
     g_menu_append(file, "Save _As\xe2\x80\xa6", "win.save-as");
     g_menu_append(file, "_Follow File", "win.follow");
@@ -1868,12 +1878,16 @@ static GMenuModel *primary_menu(void)
     g_menu_append(general, "_About Neatpad", "app.about");
 
     g_menu_append_section(menu, 0, G_MENU_MODEL(style));
+    g_menu_append_section(menu, 0, G_MENU_MODEL(zooming));
+    g_menu_append_section(menu, 0, G_MENU_MODEL(window));
     g_menu_append_section(menu, 0, G_MENU_MODEL(file));
     g_menu_append_section(menu, 0, G_MENU_MODEL(search));
     g_menu_append_section(menu, 0, G_MENU_MODEL(view));
     g_menu_append_section(menu, 0, G_MENU_MODEL(general));
 
     g_object_unref(style);
+    g_object_unref(zooming);
+    g_object_unref(window);
     g_object_unref(file);
     g_object_unref(search);
     g_object_unref(view);
@@ -1906,8 +1920,39 @@ static const char app_css[] = ".style-switcher { margin: 6px 0; }"
                                 // entries
                                 ".neatpad-bar > revealer > box { padding: 9px 12px; }"
                                 ".neatpad-bar entry { min-height: 38px; }"
+                                ".zoom-row > button:not(.circular) { min-width: 64px; }"
                                 ".recent-files { min-width: 300px; }"
                                 ".recent-files row { padding: 4px 4px 4px 10px; }";
+
+// Zoom out, the zoom (to reset it) and zoom in, as Text Editor's menu has them
+static GtkWidget *zoom_row(Editor *editor)
+{
+    GtkWidget *box  = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
+    GtkWidget *out  = gtk_button_new_from_icon_name("list-remove-symbolic");
+    GtkWidget *in   = gtk_button_new_from_icon_name("list-add-symbolic");
+    GtkWidget *zoom = gtk_button_new_with_label("100%");
+
+    gtk_widget_set_halign(box, GTK_ALIGN_CENTER);
+    gtk_widget_add_css_class(box, "zoom-row");
+    gtk_widget_add_css_class(out, "flat");
+    gtk_widget_add_css_class(out, "circular");
+    gtk_widget_add_css_class(in, "flat");
+    gtk_widget_add_css_class(in, "circular");
+    gtk_widget_add_css_class(zoom, "flat");
+    gtk_widget_set_tooltip_text(out, "Zoom Out");
+    gtk_widget_set_tooltip_text(in, "Zoom In");
+    gtk_widget_set_tooltip_text(zoom, "Reset Zoom");
+    gtk_actionable_set_action_name(GTK_ACTIONABLE(out), "win.zoom-out");
+    gtk_actionable_set_action_name(GTK_ACTIONABLE(in), "win.zoom-in");
+    gtk_actionable_set_action_name(GTK_ACTIONABLE(zoom), "win.zoom-reset");
+
+    gtk_box_append(GTK_BOX(box), out);
+    gtk_box_append(GTK_BOX(box), zoom);
+    gtk_box_append(GTK_BOX(box), in);
+
+    editor->zoom_reset = zoom;
+    return box;
+}
 
 static GtkWidget *style_switcher(void)
 {
@@ -1968,6 +2013,8 @@ static GtkWidget *header_bar(Editor *editor)
     gtk_menu_button_set_menu_model(GTK_MENU_BUTTON(menu), model);
     gtk_popover_menu_add_child(GTK_POPOVER_MENU(gtk_menu_button_get_popover(GTK_MENU_BUTTON(menu))), style_switcher(),
                                "style");
+    gtk_popover_menu_add_child(GTK_POPOVER_MENU(gtk_menu_button_get_popover(GTK_MENU_BUTTON(menu))),
+                               zoom_row(editor), "zoom");
     gtk_menu_button_set_primary(GTK_MENU_BUTTON(menu), TRUE);
     gtk_widget_set_tooltip_text(menu, "Main Menu");
     g_object_unref(model);
@@ -2095,9 +2142,22 @@ static GtkLabel *pane(GtkWidget *box)
 
 // The panes in Win32 Neatpad's order: the caret and the document's size on
 // the left, the rest on the right
+// The zoom pane, clicked: back to 100%
+static void on_zoom_pane_clicked(GtkGestureClick *gesture, int presses, double x, double y, gpointer data)
+{
+    Editor *editor = data;
+
+    (void)gesture;
+    (void)presses;
+    (void)x;
+    (void)y;
+    gtk_widget_activate_action(GTK_WIDGET(editor->window), "win.zoom-reset", 0);
+}
+
 static GtkWidget *status_bar(Editor *editor)
 {
-    GtkWidget *box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 18);
+    GtkWidget  *box   = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 18);
+    GtkGesture *click = gtk_gesture_click_new();
 
     gtk_widget_add_css_class(box, "neatpad-status");
 
@@ -2111,9 +2171,15 @@ static GtkWidget *status_bar(Editor *editor)
     gtk_widget_remove_css_class(GTK_WIDGET(editor->index), "dim-label");
     g_signal_connect(editor->index, "activate-link", G_CALLBACK(on_index_link), editor);
 
+    // the zoom shows only while it isn't 100%, as a browser's does
     editor->zoom_pane   = pane(box);
     editor->line_format = pane(box);
     editor->encoding    = pane(box);
+
+    gtk_widget_set_tooltip_text(GTK_WIDGET(editor->zoom_pane), "Reset Zoom");
+    gtk_widget_set_cursor_from_name(GTK_WIDGET(editor->zoom_pane), "pointer");
+    gtk_widget_add_controller(GTK_WIDGET(editor->zoom_pane), GTK_EVENT_CONTROLLER(click));
+    g_signal_connect(click, "released", G_CALLBACK(on_zoom_pane_clicked), editor);
     return box;
 }
 

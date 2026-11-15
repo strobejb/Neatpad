@@ -261,7 +261,7 @@ Each step is its own commit on `main`, and moves and formatting changes stay sep
   - **Done:** the style and preferences. The text takes the colours of GtkSourceView's Adwaita and Adwaita Dark
     schemes (`neatpad_text_view_set_scheme`), with the selection in the accent colour (libadwaita 1.6; Adwaita
     blue before), and follows libadwaita's style. The main menu starts with a style switcher (follow the system,
-    light, dark), as Text Editor's. Preferences has the font (fixed-width only), line numbers, current line,
+    light, dark) and the zoom (out, reset, in), as Text Editor's. Preferences has the font (fixed-width only), line numbers, current line,
     highlighting changes, tab width, spaces for tabs and auto-indent. Settings are a `GKeyFile`,
     `~/.config/catch22/neatpad/settings.ini`, and apply to every window as they change.
   - **Done:** recovery and Restore Session, as the Win32 app's recovery (`src/Neatpad/gtk/recovery.c`). Each
@@ -286,7 +286,8 @@ Each step is its own commit on `main`, and moves and formatting changes stay sep
     a document is now tested on Linux too.
   - **Done:** the status bar has Win32's panes, in its order: the caret, the document's size or the selection's,
     the index link, the zoom, the line endings (", mixed" when there are others) and the encoding. Zoom is as
-    Win32's: 10% steps from 10% to 500%, Ctrl and the wheel, plus, minus or 0. Preferences can hide the status bar.
+    Win32's: 10% steps from 10% to 500%, Ctrl and the wheel, plus, minus or 0. The zoom pane shows only while the
+    zoom isn't 100%, and a click resets it. Preferences can hide the status bar.
   - Printing isn't planned: the Win32 app doesn't print either. If it's wanted, both apps can add it together,
     drawing pages with the engine's painting.
   - **Done:** the caret blinks as GNOME's settings say (`gtk-cursor-blink`, its time and timeout), shown again as
