@@ -63,6 +63,7 @@ enum
     NOTICE_RESTORED_UNTITLED,
     NOTICE_RECOVERY_FAILED,    // recovery data can't be written
     NOTICE_CHANGED,            // another program changed the file: Reload
+    NOTICE_GREW,               // or added to it, as to a log: Follow
     NOTICE_DELETED,            // or deleted or moved it
     NOTICE_FOLLOWING           // the file is followed as it grows: Stop
 };
@@ -245,6 +246,11 @@ static void show_notice(Editor *editor, int notice)
     case NOTICE_CHANGED:
         title  = "This file has been changed by another program";
         button = "_Reload";
+        break;
+
+    case NOTICE_GREW:
+        title  = "Another program is adding to this file";
+        button = "_Follow";
         break;
 
     case NOTICE_DELETED:
@@ -744,6 +750,7 @@ static void check_file(Editor *editor)
     gboolean on_disk;
     goffset  size;
     gint64   modified;
+    int      notice;
 
     if (!editor->file || !look_at_file(editor, &on_disk, &size, &modified))
         return;
@@ -758,11 +765,20 @@ static void check_file(Editor *editor)
         return;
     }
 
+    // a file that grew is offered to follow (which reads it again too), as
+    // Win32's bar offers Tail, unless following would drop unsaved changes
+    if (!on_disk)
+        notice = NOTICE_DELETED;
+    else if (editor->on_disk && size > editor->size && !neatpad_text_view_get_modified(editor->view))
+        notice = NOTICE_GREW;
+    else
+        notice = NOTICE_CHANGED;
+
     editor->on_disk  = on_disk;
     editor->size     = size;
     editor->modified = modified;
     set_following(editor, FALSE);
-    show_notice(editor, on_disk ? NOTICE_CHANGED : NOTICE_DELETED);
+    show_notice(editor, notice);
 }
 
 static void on_file_changed(GFileMonitor *monitor, GFile *file, GFile *other, GFileMonitorEvent event,
@@ -1295,7 +1311,8 @@ static void unless_discarding(Editor *editor, const char *heading, const char *v
 //
 //	The banner's button. For recovered changes: back to the file as saved, or,
 //	without a file, an empty document, either dropping the changes. For
-//	another program's change, reload; for a followed file, stop following.
+//	another program's change, reload, or follow a file it's adding to; for a
+//	followed file, stop following.
 //
 static void on_banner_clicked(AdwBanner *banner, gpointer data)
 {
@@ -1305,6 +1322,8 @@ static void on_banner_clicked(AdwBanner *banner, gpointer data)
 
     if (editor->notice == NOTICE_CHANGED)
         unless_discarding(editor, "Reload File?", "_Reload", reload_now);
+    else if (editor->notice == NOTICE_GREW)
+        unless_discarding(editor, "Follow File?", "_Follow", follow_now);
     else if (editor->notice == NOTICE_FOLLOWING)
         reload_now(editor);
     else if (editor->notice == NOTICE_RECOVERED_UNTITLED || editor->notice == NOTICE_RESTORED_UNTITLED)
