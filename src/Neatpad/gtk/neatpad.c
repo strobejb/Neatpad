@@ -274,20 +274,47 @@ static void on_style_changed(GObject *manager, GParamSpec *spec, gpointer window
 //	The title: the file's name, marked when it has unsaved changes, and its
 //	folder below
 //
+// Where a file is, as Text Editor shows it: home as ~
+static char *display_path(GFile *file)
+{
+    char       *path = g_file_get_path(file);
+    const char *home = g_get_home_dir();
+    size_t      size = strlen(home);
+    char       *shown;
+
+    if (!path)
+        shown = g_file_get_parse_name(file);
+    else if (g_str_has_prefix(path, home) && (path[size] == '/' || path[size] == 0) && size > 1)
+        shown = g_strconcat("~", path + size, NULL);
+    else
+        shown = g_strdup(path);
+
+    g_free(path);
+    return shown;
+}
+
+// A file's folder, as display_path shows it
+static char *display_folder(GFile *file)
+{
+    GFile *parent = g_file_get_parent(file);
+    char  *folder = parent ? display_path(parent) : g_strdup("");
+
+    g_clear_object(&parent);
+    return folder;
+}
+
 static void update_title(Editor *editor)
 {
     gboolean modified = neatpad_text_view_get_modified(editor->view);
     char    *name     = editor->file ? g_file_get_basename(editor->file) : g_strdup("Untitled");
     char    *title    = g_strdup_printf("%s%s", modified ? "\xe2\x80\xa2 " : "", name);
-    GFile   *parent   = editor->file ? g_file_get_parent(editor->file) : 0;
-    char    *folder   = parent ? g_file_get_parse_name(parent) : g_strdup("");
+    char    *folder   = editor->file ? display_folder(editor->file) : g_strdup("");
 
     adw_window_title_set_title(editor->title, title);
     adw_window_title_set_subtitle(editor->title, folder);
     gtk_window_set_title(editor->window, title);
 
     g_free(folder);
-    g_clear_object(&parent);
     g_free(title);
     g_free(name);
 }
@@ -505,24 +532,12 @@ static int newest_first(gconstpointer a, gconstpointer b)
                                gtk_recent_info_get_modified((GtkRecentInfo *)a));
 }
 
-// Where a file is, as Text Editor shows it: its folder, home as ~
+// Where a recent file is: its folder, home as ~
 static char *recent_folder(GtkRecentInfo *info)
 {
     GFile *file   = g_file_new_for_uri(gtk_recent_info_get_uri(info));
-    GFile *parent = g_file_get_parent(file);
-    char  *path   = parent ? g_file_get_path(parent) : 0;
-    char  *folder;
+    char  *folder = display_folder(file);
 
-    if (!path)
-        folder = parent ? g_file_get_parse_name(parent) : g_strdup("");
-    else if (g_str_has_prefix(path, g_get_home_dir()) &&
-             (path[strlen(g_get_home_dir())] == '/' || path[strlen(g_get_home_dir())] == 0))
-        folder = g_strconcat("~", path + strlen(g_get_home_dir()), NULL);
-    else
-        folder = g_strdup(path);
-
-    g_free(path);
-    g_clear_object(&parent);
     g_object_unref(file);
     return folder;
 }
@@ -674,7 +689,14 @@ static GtkWidget *store_row(Editor *editor, RecoveryStore *store)
     g_object_set_data_full(G_OBJECT(row), "store", g_strdup(store->store), g_free);
 
     if (store->filename)
-        gtk_widget_set_tooltip_text(row, store->filename);
+    {
+        GFile *file  = g_file_new_for_path(store->filename);
+        char  *shown = display_path(file);
+
+        gtk_widget_set_tooltip_text(row, shown);
+        g_free(shown);
+        g_object_unref(file);
+    }
 
     g_free(where);
     g_free(name);
