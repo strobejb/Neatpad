@@ -36,6 +36,11 @@ typedef struct
     GtkLabel        *position;
     GtkLabel        *encoding;
     GFile           *file; // 0 until opened or saved
+    GFileMonitor    *monitor;   // watching it for other programs' changes
+    gboolean         on_disk;   // the file as last seen: there, its size and time
+    goffset          size;
+    gint64           modified;
+    gboolean         following; // read-only, taking in what's appended
     Recovery        *recovery;
     gboolean         closing;
 } Editor;
@@ -48,7 +53,10 @@ enum
     NOTICE_RECOVERED_UNTITLED, // an unsaved document: Discard Document
     NOTICE_RESTORED,           // a file's unsaved changes, kept as a session
     NOTICE_RESTORED_UNTITLED,
-    NOTICE_RECOVERY_FAILED // recovery data can't be written
+    NOTICE_RECOVERY_FAILED,    // recovery data can't be written
+    NOTICE_CHANGED,            // another program changed the file: Reload
+    NOTICE_DELETED,            // or deleted or moved it
+    NOTICE_FOLLOWING           // the file is followed as it grows: Stop
 };
 
 // What to do once a document's changes are saved or discarded
@@ -175,6 +183,13 @@ static void editor_free(gpointer data)
     if (editor->recovery)
         recovery_free(editor->recovery);
 
+    if (editor->monitor)
+    {
+        g_signal_handlers_disconnect_by_data(editor->monitor, editor);
+        g_file_monitor_cancel(editor->monitor);
+        g_clear_object(&editor->monitor);
+    }
+
     g_clear_object(&editor->file);
     g_clear_object(&editor->recent);
     g_free(editor->recent_uri);
@@ -215,6 +230,20 @@ static void show_notice(Editor *editor, int notice)
 
     case NOTICE_RECOVERY_FAILED:
         title = "Unable to save recovery data. Please save your work.";
+        break;
+
+    case NOTICE_CHANGED:
+        title  = "This file has been changed by another program";
+        button = "_Reload";
+        break;
+
+    case NOTICE_DELETED:
+        title = "This file has been deleted or moved by another program";
+        break;
+
+    case NOTICE_FOLLOWING:
+        title  = "Following the end of this file as it grows";
+        button = "_Stop";
         break;
     }
 
@@ -424,6 +453,115 @@ static void on_recent_changed(GtkRecentManager *manager, gpointer window)
     update_recent(editor_of(window));
 }
 
+//
+//	Other programs' changes to the file, as Win32 Neatpad notices them: the
+//	file's size and time, compared with what they were when it was opened or
+//	saved. A monitor says when to look, so Neatpad's own saves aren't news.
+//	A followed file takes in what's appended, until it's rewritten shorter.
+//
+static void set_following(Editor *editor, gboolean following)
+{
+    GAction *action = g_action_map_lookup_action(G_ACTION_MAP(editor->window), "follow");
+
+    editor->following = following;
+
+    if (action)
+        g_simple_action_set_state(G_SIMPLE_ACTION(action), g_variant_new_boolean(following));
+}
+
+// FALSE if the file can't be looked at just now, which isn't news either
+static gboolean look_at_file(Editor *editor, gboolean *on_disk, goffset *size, gint64 *modified)
+{
+    gboolean   gone;
+    GError    *error = 0;
+    GFileInfo *info  = g_file_query_info(editor->file, G_FILE_ATTRIBUTE_STANDARD_SIZE "," G_FILE_ATTRIBUTE_TIME_MODIFIED
+                                                          "," G_FILE_ATTRIBUTE_TIME_MODIFIED_USEC,
+                                        G_FILE_QUERY_INFO_NONE, 0, &error);
+
+    *on_disk  = info != 0;
+    *size     = 0;
+    *modified = 0;
+
+    if (info)
+    {
+        *size     = g_file_info_get_size(info);
+        *modified = (gint64)g_file_info_get_attribute_uint64(info, G_FILE_ATTRIBUTE_TIME_MODIFIED) * G_USEC_PER_SEC +
+                    g_file_info_get_attribute_uint32(info, G_FILE_ATTRIBUTE_TIME_MODIFIED_USEC);
+        g_object_unref(info);
+        return TRUE;
+    }
+
+    gone = g_error_matches(error, G_IO_ERROR, G_IO_ERROR_NOT_FOUND);
+
+    g_error_free(error);
+    return gone;
+}
+
+static void check_file(Editor *editor)
+{
+    gboolean on_disk;
+    goffset  size;
+    gint64   modified;
+
+    if (!editor->file || !look_at_file(editor, &on_disk, &size, &modified))
+        return;
+
+    if (on_disk == editor->on_disk && (!on_disk || (size == editor->size && modified == editor->modified)))
+        return;
+
+    if (editor->following && on_disk && size >= editor->size && neatpad_text_view_update_tail(editor->view))
+    {
+        editor->size     = size;
+        editor->modified = modified;
+        return;
+    }
+
+    editor->on_disk  = on_disk;
+    editor->size     = size;
+    editor->modified = modified;
+    set_following(editor, FALSE);
+    show_notice(editor, on_disk ? NOTICE_CHANGED : NOTICE_DELETED);
+}
+
+static void on_file_changed(GFileMonitor *monitor, GFile *file, GFile *other, GFileMonitorEvent event,
+                            gpointer data)
+{
+    (void)monitor;
+    (void)file;
+    (void)other;
+    (void)event;
+    check_file(data);
+}
+
+// Watch the window's file, as it is now
+static void watch_file(Editor *editor)
+{
+    GAction *follow = g_action_map_lookup_action(G_ACTION_MAP(editor->window), "follow");
+
+    if (editor->monitor)
+    {
+        g_signal_handlers_disconnect_by_data(editor->monitor, editor);
+        g_file_monitor_cancel(editor->monitor);
+        g_clear_object(&editor->monitor);
+    }
+
+    if (editor->file)
+    {
+        look_at_file(editor, &editor->on_disk, &editor->size, &editor->modified);
+        editor->monitor = g_file_monitor_file(editor->file, G_FILE_MONITOR_WATCH_MOVES, 0, 0);
+
+        if (editor->monitor)
+        {
+            g_file_monitor_set_rate_limit(editor->monitor, 250);
+            g_signal_connect(editor->monitor, "changed", G_CALLBACK(on_file_changed), editor);
+        }
+    }
+
+    // only a file on disk can be followed
+    if (follow)
+        g_simple_action_set_enabled(G_SIMPLE_ACTION(follow), editor->file != 0);
+}
+
 static gboolean load(Editor *editor, GFile *file)
 {
     char    *path = g_file_get_path(file);
@@ -434,7 +572,9 @@ static gboolean load(Editor *editor, GFile *file)
         // the document it replaced has gone, and its store with it
         recovery_reset(editor->recovery);
         hide_notice(editor);
+        set_following(editor, FALSE);
         g_set_object(&editor->file, file);
+        watch_file(editor);
         remember(file);
     }
     else
@@ -492,6 +632,7 @@ static void save_to(Editor *editor, GFile *file, EditorThen then)
     recovery_saved(editor->recovery);
     hide_notice(editor);
     g_set_object(&editor->file, file);
+    watch_file(editor);
     remember(file);
     update_title(editor);
     update_status(editor);
@@ -845,8 +986,72 @@ static void show_goto(Editor *editor)
 }
 
 //
-//	The banner's button, for recovered changes: back to the file as saved, or,
-//	without a file, an empty document. Either drops the recovered changes.
+//	Reloading or following the file drops unsaved changes: ask first
+//
+static void reload_now(Editor *editor)
+{
+    GFile *file = g_object_ref(editor->file);
+
+    load(editor, file);
+    g_object_unref(file);
+}
+
+static void follow_now(Editor *editor)
+{
+    char *path = g_file_get_path(editor->file);
+
+    if (path && neatpad_text_view_tail_file(editor->view, path))
+    {
+        recovery_reset(editor->recovery);
+        set_following(editor, TRUE);
+        watch_file(editor);
+        show_notice(editor, NOTICE_FOLLOWING);
+    }
+    else
+    {
+        set_following(editor, FALSE);
+        toast(editor, "Could not open the file");
+    }
+
+    g_free(path);
+    update_title(editor);
+    update_status(editor);
+}
+
+static void on_discard_response(AdwAlertDialog *dialog, const char *response, gpointer data)
+{
+    Pending *pending = data;
+
+    (void)dialog;
+
+    if (g_str_equal(response, "discard"))
+        pending->then(editor_of(pending->window));
+
+    pending_free(pending);
+}
+
+static void unless_discarding(Editor *editor, const char *heading, const char *verb, EditorThen then)
+{
+    AdwDialog *dialog;
+
+    if (!neatpad_text_view_get_modified(editor->view))
+    {
+        then(editor);
+        return;
+    }
+
+    dialog = adw_alert_dialog_new(heading, "Unsaved changes will be lost.");
+    adw_alert_dialog_add_responses(ADW_ALERT_DIALOG(dialog), "cancel", "_Cancel", "discard", verb, NULL);
+    adw_alert_dialog_set_response_appearance(ADW_ALERT_DIALOG(dialog), "discard", ADW_RESPONSE_DESTRUCTIVE);
+    adw_alert_dialog_set_close_response(ADW_ALERT_DIALOG(dialog), "cancel");
+    g_signal_connect(dialog, "response", G_CALLBACK(on_discard_response), pending_new(editor, then));
+    adw_dialog_present(dialog, GTK_WIDGET(editor->window));
+}
+
+//
+//	The banner's button. For recovered changes: back to the file as saved, or,
+//	without a file, an empty document, either dropping the changes. For
+//	another program's change, reload; for a followed file, stop following.
 //
 static void on_banner_clicked(AdwBanner *banner, gpointer data)
 {
@@ -854,7 +1059,11 @@ static void on_banner_clicked(AdwBanner *banner, gpointer data)
 
     (void)banner;
 
-    if (editor->notice == NOTICE_RECOVERED_UNTITLED || editor->notice == NOTICE_RESTORED_UNTITLED)
+    if (editor->notice == NOTICE_CHANGED)
+        unless_discarding(editor, "Reload File?", "_Reload", reload_now);
+    else if (editor->notice == NOTICE_FOLLOWING)
+        reload_now(editor);
+    else if (editor->notice == NOTICE_RECOVERED_UNTITLED || editor->notice == NOTICE_RESTORED_UNTITLED)
     {
         neatpad_text_view_new_file(editor->view);
         recovery_reset(editor->recovery);
@@ -962,6 +1171,22 @@ static void action_close(GSimpleAction *action, GVariant *parameter, gpointer da
     gtk_window_close(editor->window);
 }
 
+// win.follow, a check item: follow the file's end, or stop
+static void action_follow(GSimpleAction *action, GVariant *state, gpointer data)
+{
+    Editor *editor = data;
+
+    (void)action;
+
+    if (!editor->file)
+        return;
+
+    if (g_variant_get_boolean(state))
+        unless_discarding(editor, "Follow File?", "_Follow", follow_now);
+    else
+        reload_now(editor);
+}
+
 static const GActionEntry window_actions[] = {
     {"new-window", action_new_window, 0, 0, 0, {0}},
     {"open", action_open, 0, 0, 0, {0}},
@@ -974,6 +1199,7 @@ static const GActionEntry window_actions[] = {
     {"find-previous", action_find_previous, 0, 0, 0, {0}},
     {"go-to-line", action_go_to_line, 0, 0, 0, {0}},
     {"close", action_close, 0, 0, 0, {0}},
+    {"follow", 0, 0, "false", action_follow, {0}},
 };
 
 //
@@ -997,6 +1223,7 @@ static GMenuModel *primary_menu(void)
     g_menu_append(file, "_New Window", "win.new-window");
     g_menu_append(file, "_Save", "win.save");
     g_menu_append(file, "Save _As\xe2\x80\xa6", "win.save-as");
+    g_menu_append(file, "_Follow File", "win.follow");
     g_menu_append(search, "_Find\xe2\x80\xa6", "win.find");
     g_menu_append(search, "_Replace\xe2\x80\xa6", "win.replace");
     g_menu_append(search, "_Go to Line\xe2\x80\xa6", "win.go-to-line");
@@ -1261,6 +1488,8 @@ static GtkWindow *editor_window_new(GtkApplication *app, GFile *file)
 
     if (file)
         load(editor, file);
+    else
+        watch_file(editor);
 
     update_recent(editor);
     update_title(editor);
@@ -1579,7 +1808,10 @@ static int restore(GtkApplication *app, gboolean session_files_too)
         }
 
         if (filename && *filename)
+        {
             editor->file = g_file_new_for_path(filename);
+            watch_file(editor);
+        }
 
         update_title(editor);
         update_status(editor);

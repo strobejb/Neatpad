@@ -601,6 +601,20 @@ gboolean neatpad_text_view_open_file(NeatpadTextView *view, const char *filename
     return view_of(view)->OpenFile(filename, -1, false) != 0;
 }
 
+gboolean neatpad_text_view_tail_file(NeatpadTextView *view, const char *filename)
+{
+    g_return_val_if_fail(NEATPAD_IS_TEXT_VIEW(view), FALSE);
+
+    return view_of(view)->TailFile(filename) != 0;
+}
+
+gboolean neatpad_text_view_update_tail(NeatpadTextView *view)
+{
+    g_return_val_if_fail(NEATPAD_IS_TEXT_VIEW(view), FALSE);
+
+    return view_of(view)->UpdateTail();
+}
+
 void neatpad_text_view_new_file(NeatpadTextView *view)
 {
     g_return_if_fail(NEATPAD_IS_TEXT_VIEW(view));

@@ -272,6 +272,15 @@ Each step is its own commit on `main`, and moves and formatting changes stay sep
     (`session.ini`). Without it, closing asks to save or discard. Starting, stores a crash or a session left are
     restored, each in a window. Use System Font follows GNOME's monospace font. The engine's recovery state is
     now tested on Linux too.
+  - **Done:** a banner (`AdwBanner`) for what Win32 Neatpad's notification bar says: recovered or restored changes
+    (Revert to Saved, or Discard Document), recovery data that can't be written, another program changing the file
+    (Reload) or deleting it, and following it.
+  - **Done:** file watching and Follow File. A `GFileMonitor` says when to look at the file, and its size and time
+    say whether another program changed it, as Win32's once-a-second check does, so Neatpad's own saves aren't
+    news. Follow File (a check item in the main menu, as `AdwBanner` has one button) opens the file read-only at
+    its end and takes in what's appended; Stop, or a file rewritten shorter, opens it as usual. Linux has no
+    share-mode locks, so a file another program is writing doesn't open read-only, as it does on Windows. Growing
+    a document is now tested on Linux too.
   - **Next:** printing.
 
 ## Open decisions

@@ -401,6 +401,40 @@ void recovery_remembers_session_files()
     g_strfreev(read);
 }
 
+// Following a file: what another program appends comes in at the end, with
+// the caret, and a file rewritten shorter has to be opened again
+void widget_follows_a_growing_file()
+{
+    Widget           widget;
+    NeatpadTextView *view  = NEATPAD_TEXT_VIEW(widget.widget);
+    std::string      bytes = "one\n";
+    seqfilechar      path[TEST_PATH_MAX];
+    guint64          line;
+    FILE            *file;
+
+    CHECK(write_temp_file(bytes.data(), bytes.size(), path));
+    CHECK(neatpad_text_view_tail_file(view, path));
+    CHECK(widget.host->View()->GetEditMode() == MODE_READONLY);
+
+    file = fopen(path, "ab");
+    CHECK(file != 0);
+    fputs("two\nthree\n", file);
+    fclose(file);
+
+    CHECK(neatpad_text_view_update_tail(view));
+    CHECK(widget.host->View()->FileDoc()->byte_length() == 14);
+    neatpad_text_view_get_cursor(view, &line, 0, 0);
+    CHECK(line == 3);
+
+    file = fopen(path, "wb");
+    CHECK(file != 0);
+    fputs("x", file);
+    fclose(file);
+
+    CHECK(!neatpad_text_view_update_tail(view));
+    delete_file(path);
+}
+
 const test_case tests[] = {
     {"pango_layout_stops_only_at_character_starts", pango_layout_stops_only_at_character_starts},
     {"widget_arrows_step_over_characters_with_pango", widget_arrows_step_over_characters_with_pango},
@@ -408,6 +442,7 @@ const test_case tests[] = {
     {"widget_finds_saves_and_starts_again", widget_finds_saves_and_starts_again},
     {"widget_replaces_and_goes_to_lines", widget_replaces_and_goes_to_lines},
     {"widget_scrolls_with_its_adjustments", widget_scrolls_with_its_adjustments},
+    {"widget_follows_a_growing_file", widget_follows_a_growing_file},
     {"recovery_keeps_and_restores_unsaved_changes", recovery_keeps_and_restores_unsaved_changes},
     {"recovery_remembers_session_files", recovery_remembers_session_files},
 };

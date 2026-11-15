@@ -28,6 +28,12 @@ GtkWidget *neatpad_text_view_new(void);
 // Open a file, in the encoding its byte-order mark says (or UTF-8, or ANSI)
 gboolean neatpad_text_view_open_file(NeatpadTextView *view, const char *filename);
 
+// Follow a file as another program appends to it: open it read-only, at its
+// end. update_tail adds what's been appended since, keeping a caret at the
+// end there; FALSE if the file has got shorter, and needs opening again.
+gboolean neatpad_text_view_tail_file(NeatpadTextView *view, const char *filename);
+gboolean neatpad_text_view_update_tail(NeatpadTextView *view);
+
 // Start again with an empty, unnamed document
 void neatpad_text_view_new_file(NeatpadTextView *view);
 
