@@ -82,6 +82,8 @@ typedef struct
     gboolean restore_session;
     gboolean status_bar;
     gboolean line_numbers;
+    gboolean selection_margin; // where a click selects lines, and change indicators show
+    int      line_spacing;     // extra pixels between lines
     gboolean current_line;
     gboolean highlight_changes;
     gboolean change_markers;    // outlines and deletion marks in the margin
@@ -132,6 +134,10 @@ static void load_settings(void)
     settings.restore_session   = read_boolean(file, "restore-session", TRUE);
     settings.status_bar        = read_boolean(file, "status-bar", TRUE);
     settings.line_numbers      = read_boolean(file, "line-numbers", FALSE);
+    settings.selection_margin  = read_boolean(file, "selection-margin", TRUE);
+    settings.line_spacing      = g_key_file_has_key(file, "editor", "line-spacing", 0)
+                                     ? CLAMP(g_key_file_get_integer(file, "editor", "line-spacing", 0), 0, 40)
+                                     : 0;
     settings.current_line      = read_boolean(file, "highlight-current-line", FALSE);
     settings.highlight_changes = read_boolean(file, "highlight-changes", TRUE);
     settings.change_markers    = read_boolean(file, "change-markers", TRUE);
@@ -162,6 +168,8 @@ static void save_settings(void)
     g_key_file_set_boolean(file, "editor", "restore-session", settings.restore_session);
     g_key_file_set_boolean(file, "editor", "status-bar", settings.status_bar);
     g_key_file_set_boolean(file, "editor", "line-numbers", settings.line_numbers);
+    g_key_file_set_boolean(file, "editor", "selection-margin", settings.selection_margin);
+    g_key_file_set_integer(file, "editor", "line-spacing", settings.line_spacing);
     g_key_file_set_boolean(file, "editor", "highlight-current-line", settings.current_line);
     g_key_file_set_boolean(file, "editor", "highlight-changes", settings.highlight_changes);
     g_key_file_set_boolean(file, "editor", "change-markers", settings.change_markers);
@@ -292,7 +300,7 @@ static void hide_notice(Editor *editor)
 
 static void apply_settings(Editor *editor)
 {
-    guint styles = (settings.line_numbers ? TXS_LINENUMBERS | TXS_SELMARGIN : 0) |
+    guint styles = (settings.line_numbers ? TXS_LINENUMBERS : 0) | (settings.selection_margin ? TXS_SELMARGIN : 0) |
                    (settings.current_line ? TXS_HIGHLIGHTCURLINE : 0) |
                    (settings.highlight_changes ? TXS_HIGHLIGHTCHANGES : 0) |
                    (settings.change_markers ? TXS_CHANGEMARKERS : 0) | (settings.long_lines ? TXS_LONGLINES : 0) |
@@ -317,6 +325,8 @@ static void apply_settings(Editor *editor)
     g_free(system);
     neatpad_text_view_set_tab_width(editor->view, (guint)settings.tab_width);
     neatpad_text_view_set_long_line(editor->view, (guint)settings.long_line_column);
+    neatpad_text_view_set_line_spacing(editor->view, (guint)settings.line_spacing / 2,
+                                       (guint)(settings.line_spacing + 1) / 2);
     neatpad_text_view_set_style(editor->view,
                                 TXS_LINENUMBERS | TXS_SELMARGIN | TXS_HIGHLIGHTCURLINE | TXS_HIGHLIGHTCHANGES |
                                     TXS_CHANGEMARKERS | TXS_LONGLINES | TXS_SHOWLINEENDINGS | TXS_INSERTSPACES |
@@ -2162,9 +2172,12 @@ static void action_preferences(GSimpleAction *action, GVariant *parameter, gpoin
     PangoFontDescription *font        = pango_font_description_from_string(settings.font);
     GtkWidget            *tabs        = adw_spin_row_new_with_range(1, 16, 1);
     GtkWidget            *long_line   = adw_spin_row_new_with_range(1, 999, 1);
+    GtkWidget            *spacing     = adw_spin_row_new_with_range(0, 40, 1);
     GtkWidget            *behaviour   = adw_preferences_group_new();
     GtkWidget            *system_font;
     GtkWidget            *long_lines;
+    GtkWidget            *margin;
+    GtkWidget            *indicators;
 
     (void)action;
     (void)parameter;
@@ -2189,6 +2202,13 @@ static void action_preferences(GSimpleAction *action, GVariant *parameter, gpoin
                            G_BINDING_SYNC_CREATE | G_BINDING_INVERT_BOOLEAN);
     adw_preferences_group_add(ADW_PREFERENCES_GROUP(fonts), font_row);
 
+    // extra pixels between lines, half above and half below, as Win32's
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(spacing), "Extra Line Spacing");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(spacing), "Pixels between lines");
+    adw_spin_row_set_value(ADW_SPIN_ROW(spacing), settings.line_spacing);
+    g_signal_connect(spacing, "notify::value", G_CALLBACK(on_spin_row), &settings.line_spacing);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(fonts), spacing);
+
     // what's kept between runs
     adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(behaviour), "Behavior");
     switch_row(behaviour, "Restore Session", "Reopen files and unsaved changes when Neatpad starts",
@@ -2200,8 +2220,11 @@ static void action_preferences(GSimpleAction *action, GVariant *parameter, gpoin
     switch_row(display, "Highlight Current Line", 0, &settings.current_line);
     switch_row(display, "Highlight Changes", "Colour text typed since the file was opened",
                &settings.highlight_changes);
-    switch_row(display, "Change Indicators", "Mark changed and deleted lines in the margin",
-               &settings.change_markers);
+    margin     = switch_row(display, "Selection Margin", "A margin left of the text, to select whole lines",
+                            &settings.selection_margin);
+    indicators = switch_row(display, "Change Indicators", "Mark changed and deleted lines in the margin",
+                            &settings.change_markers);
+    g_object_bind_property(margin, "active", indicators, "sensitive", G_BINDING_SYNC_CREATE);
     long_lines = switch_row(display, "Highlight Long Lines", 0, &settings.long_lines);
     adw_preferences_row_set_title(ADW_PREFERENCES_ROW(long_line), "Long Line Column");
     adw_spin_row_set_value(ADW_SPIN_ROW(long_line), settings.long_line_column);

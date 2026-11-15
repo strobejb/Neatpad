@@ -817,6 +817,14 @@ void neatpad_text_view_set_long_line(NeatpadTextView *view, guint column)
     gtk_widget_queue_draw(GTK_WIDGET(view));
 }
 
+void neatpad_text_view_set_line_spacing(NeatpadTextView *view, guint above, guint below)
+{
+    g_return_if_fail(NEATPAD_IS_TEXT_VIEW(view));
+
+    view_of(view)->SetLineSpacing((int)above, (int)below);
+    gtk_widget_queue_draw(GTK_WIDGET(view));
+}
+
 gboolean neatpad_text_view_goto_line(NeatpadTextView *view, guint64 line)
 {
     g_return_val_if_fail(NEATPAD_IS_TEXT_VIEW(view), FALSE);

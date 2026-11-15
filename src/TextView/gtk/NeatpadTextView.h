@@ -105,6 +105,9 @@ gboolean neatpad_text_view_convert_line_endings(NeatpadTextView *view, guint for
 // The column TXS_LONGLINES highlights lines beyond
 void neatpad_text_view_set_long_line(NeatpadTextView *view, guint column);
 
+// Extra pixels above and below each line
+void neatpad_text_view_set_line_spacing(NeatpadTextView *view, guint above, guint below);
+
 // Move the caret to the start of a line, from 0. FALSE if the document hasn't
 // that line, or hasn't indexed as far yet.
 gboolean neatpad_text_view_goto_line(NeatpadTextView *view, guint64 line);
