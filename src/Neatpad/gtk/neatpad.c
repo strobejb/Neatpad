@@ -192,10 +192,12 @@ static void hide_notice(Editor *editor)
 
 static void apply_settings(Editor *editor)
 {
-    guint styles = (settings.line_numbers ? TXS_LINENUMBERS : 0) | (settings.selection_margin ? TXS_SELMARGIN : 0) |
+    // the change indicators are drawn in the selection margin; the line
+    // numbers select lines without it
+    guint styles = (settings.line_numbers ? TXS_LINENUMBERS : 0) |
+                   (settings.change_markers ? TXS_SELMARGIN | TXS_CHANGEMARKERS : 0) |
                    (settings.current_line ? TXS_HIGHLIGHTCURLINE : 0) |
-                   (settings.highlight_changes ? TXS_HIGHLIGHTCHANGES : 0) |
-                   (settings.change_markers ? TXS_CHANGEMARKERS : 0) | (settings.long_lines ? TXS_LONGLINES : 0) |
+                   (settings.highlight_changes ? TXS_HIGHLIGHTCHANGES : 0) | (settings.long_lines ? TXS_LONGLINES : 0) |
                    (settings.show_line_endings ? TXS_SHOWLINEENDINGS : 0) |
                    (settings.insert_spaces ? TXS_INSERTSPACES : 0) | (settings.auto_indent ? TXS_AUTOINDENT : 0);
 

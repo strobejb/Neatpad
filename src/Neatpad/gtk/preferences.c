@@ -32,12 +32,12 @@ static char *read_string(GKeyFile *file, const char *key, const char *otherwise)
     return value ? value : g_strdup(otherwise);
 }
 
-void load_settings(void)
+// The settings a file has, and the defaults for what it hasn't
+static void read_settings(GKeyFile *file)
 {
-    GKeyFile *file = g_key_file_new();
-    char     *path = settings_path();
-
-    g_key_file_load_from_file(file, path, G_KEY_FILE_NONE, 0);
+    g_free(settings.style);
+    g_free(settings.palette);
+    g_free(settings.font);
 
     settings.style             = read_string(file, "style", "follow");
     settings.palette           = read_string(file, "palette", PALETTE_DEFAULT);
@@ -46,7 +46,6 @@ void load_settings(void)
     settings.restore_session   = read_boolean(file, "restore-session", TRUE);
     settings.status_bar        = read_boolean(file, "status-bar", TRUE);
     settings.line_numbers      = read_boolean(file, "line-numbers", FALSE);
-    settings.selection_margin  = read_boolean(file, "selection-margin", TRUE);
     settings.filter_context    = g_key_file_has_key(file, "editor", "filter-context", 0)
                                      ? CLAMP(g_key_file_get_integer(file, "editor", "filter-context", 0), 0,
                                              TV_MAX_FILTER_CONTEXT)
@@ -67,6 +66,15 @@ void load_settings(void)
     settings.tab_width         = g_key_file_has_key(file, "editor", "tab-width", 0)
                                      ? CLAMP(g_key_file_get_integer(file, "editor", "tab-width", 0), 1, 16)
                                      : 4;
+}
+
+void load_settings(void)
+{
+    GKeyFile *file = g_key_file_new();
+    char     *path = settings_path();
+
+    g_key_file_load_from_file(file, path, G_KEY_FILE_NONE, 0);
+    read_settings(file);
 
     g_free(path);
     g_key_file_free(file);
@@ -85,7 +93,6 @@ void save_settings(void)
     g_key_file_set_boolean(file, "editor", "restore-session", settings.restore_session);
     g_key_file_set_boolean(file, "editor", "status-bar", settings.status_bar);
     g_key_file_set_boolean(file, "editor", "line-numbers", settings.line_numbers);
-    g_key_file_set_boolean(file, "editor", "selection-margin", settings.selection_margin);
     g_key_file_set_integer(file, "editor", "line-spacing", settings.line_spacing);
     g_key_file_set_integer(file, "editor", "filter-context", settings.filter_context);
     g_key_file_set_boolean(file, "editor", "highlight-current-line", settings.current_line);
@@ -224,37 +231,84 @@ static GtkWidget *switch_row(GtkWidget *group, const char *title, const char *su
     return row;
 }
 
-void preferences_show(GtkWindow *parent, void (*changed)(void))
+static GtkWidget *editor_page(void);
+
+// Restore Defaults: every setting Preferences shows back as it was at first,
+// and the page shown again with them
+static void on_restore_response(AdwAlertDialog *alert, const char *response, gpointer data)
 {
-    AdwDialog            *dialog      = adw_preferences_dialog_new();
-    GtkWidget            *page        = adw_preferences_page_new();
-    GtkWidget            *fonts       = adw_preferences_group_new();
-    GtkWidget            *display     = adw_preferences_group_new();
-    GtkWidget            *indentation = adw_preferences_group_new();
-    GtkWidget            *font_row    = adw_action_row_new();
-    GtkFontDialog        *chooser     = gtk_font_dialog_new();
-    GtkWidget            *font_button = gtk_font_dialog_button_new(chooser); // the button owns chooser
-    GtkFilter            *monospace   = GTK_FILTER(gtk_custom_filter_new(is_monospace, 0, 0));
-    PangoFontDescription *font        = pango_font_description_from_string(settings.font);
-    GtkWidget            *tabs        = adw_spin_row_new_with_range(1, 16, 1);
-    GtkWidget            *long_line   = adw_spin_row_new_with_range(1, 999, 1);
-    GtkWidget            *spacing     = adw_spin_row_new_with_range(0, 40, 1);
-    GtkWidget            *filtering   = adw_preferences_group_new();
-    GtkWidget            *context     = adw_spin_row_new_with_range(0, TV_MAX_FILTER_CONTEXT, 1);
-    GtkWidget            *behaviour   = adw_preferences_group_new();
+    AdwPreferencesDialog *dialog  = data;
+    GtkWidget            *page    = g_object_get_data(G_OBJECT(dialog), "page");
+    GKeyFile             *none    = g_key_file_new();
+    char                 *style   = g_strdup(settings.style);
+    gboolean              endings = settings.show_line_endings;
+
+    (void)alert;
+
+    if (g_str_equal(response, "restore"))
+    {
+        // the style and the line endings shown are the main menu's
+        read_settings(none);
+        g_free(settings.style);
+        settings.style             = g_steal_pointer(&style);
+        settings.show_line_endings = endings;
+        save_settings();
+        settings_changed();
+
+        adw_preferences_dialog_remove(dialog, ADW_PREFERENCES_PAGE(page));
+        page = editor_page();
+        g_object_set_data(G_OBJECT(dialog), "page", page);
+        adw_preferences_dialog_add(dialog, ADW_PREFERENCES_PAGE(page));
+    }
+
+    g_free(style);
+    g_key_file_free(none);
+}
+
+static void on_restore_clicked(GtkButton *button, gpointer data)
+{
+    GtkWidget *dialog = gtk_widget_get_ancestor(GTK_WIDGET(button), ADW_TYPE_PREFERENCES_DIALOG);
+    AdwDialog *alert  = adw_alert_dialog_new("Restore Default Settings?",
+                                            "Every preference goes back to its default.");
+
+    (void)data;
+
+    adw_alert_dialog_add_responses(ADW_ALERT_DIALOG(alert), "cancel", "_Cancel", "restore", "_Restore Defaults", NULL);
+    adw_alert_dialog_set_response_appearance(ADW_ALERT_DIALOG(alert), "restore", ADW_RESPONSE_DESTRUCTIVE);
+    adw_alert_dialog_set_close_response(ADW_ALERT_DIALOG(alert), "cancel");
+    g_signal_connect(alert, "response", G_CALLBACK(on_restore_response), dialog);
+    adw_dialog_present(alert, dialog);
+}
+
+static GtkWidget *editor_page(void)
+{
+    GtkWidget            *page         = adw_preferences_page_new();
+    GtkWidget            *appearance   = adw_preferences_group_new();
+    GtkWidget            *margin       = adw_preferences_group_new();
+    GtkWidget            *highlighting = adw_preferences_group_new();
+    GtkWidget            *indentation  = adw_preferences_group_new();
+    GtkWidget            *font_row     = adw_action_row_new();
+    GtkFontDialog        *chooser      = gtk_font_dialog_new();
+    GtkWidget            *font_button  = gtk_font_dialog_button_new(chooser); // the button owns chooser
+    GtkFilter            *monospace    = GTK_FILTER(gtk_custom_filter_new(is_monospace, 0, 0));
+    PangoFontDescription *font         = pango_font_description_from_string(settings.font);
+    GtkWidget            *tabs         = adw_spin_row_new_with_range(1, 16, 1);
+    GtkWidget            *long_line    = adw_spin_row_new_with_range(1, 999, 1);
+    GtkWidget            *spacing      = adw_spin_row_new_with_range(0, 40, 1);
+    GtkWidget            *filtering    = adw_preferences_group_new();
+    GtkWidget            *context      = adw_spin_row_new_with_range(0, TV_MAX_FILTER_CONTEXT, 1);
+    GtkWidget            *behaviour    = adw_preferences_group_new();
+    GtkWidget            *defaults     = adw_preferences_group_new();
+    GtkWidget            *restore      = gtk_button_new_with_mnemonic("_Restore Defaults");
     GtkWidget            *system_font;
     GtkWidget            *long_lines;
-    GtkWidget            *margin;
-    GtkWidget            *indicators;
-
-    settings_changed = changed;
 
     adw_preferences_page_set_title(ADW_PREFERENCES_PAGE(page), "Editor");
     adw_preferences_page_set_icon_name(ADW_PREFERENCES_PAGE(page), "document-edit-symbolic");
 
-    // the colours, then the font
-    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(fonts), "Appearance");
-    adw_preferences_group_add(ADW_PREFERENCES_GROUP(fonts), palette_row());
+    // the colours, the font, and the window round the text
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(appearance), "Appearance");
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(appearance), palette_row());
     adw_preferences_row_set_title(ADW_PREFERENCES_ROW(font_row), "Editor Font");
     gtk_font_dialog_set_filter(chooser, monospace);
     gtk_font_dialog_button_set_level(GTK_FONT_DIALOG_BUTTON(font_button), GTK_FONT_LEVEL_FONT);
@@ -265,41 +319,35 @@ void preferences_show(GtkWindow *parent, void (*changed)(void))
     g_signal_connect(font_button, "notify::font-desc", G_CALLBACK(on_font), 0);
 
     // the font is chosen only when it isn't the system's
-    system_font = switch_row(fonts, "Use System Font", 0, &settings.system_font);
+    system_font = switch_row(appearance, "Use System Font", 0, &settings.system_font);
     g_object_bind_property(system_font, "active", font_row, "sensitive",
                            G_BINDING_SYNC_CREATE | G_BINDING_INVERT_BOOLEAN);
-    adw_preferences_group_add(ADW_PREFERENCES_GROUP(fonts), font_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(appearance), font_row);
 
     // extra pixels between lines, half above and half below, as Win32's
     adw_preferences_row_set_title(ADW_PREFERENCES_ROW(spacing), "Extra Line Spacing");
     adw_action_row_set_subtitle(ADW_ACTION_ROW(spacing), "Pixels between lines");
     adw_spin_row_set_value(ADW_SPIN_ROW(spacing), settings.line_spacing);
     g_signal_connect(spacing, "notify::value", G_CALLBACK(on_spin_row), &settings.line_spacing);
-    adw_preferences_group_add(ADW_PREFERENCES_GROUP(fonts), spacing);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(appearance), spacing);
+    switch_row(appearance, "Status Bar", 0, &settings.status_bar);
 
-    // what's kept between runs
-    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(behaviour), "Behavior");
-    switch_row(behaviour, "Restore Session", "Keep unsaved changes when a window closes, to come back as the file opens",
-               &settings.restore_session);
+    // left of the text
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(margin), "Margin");
+    switch_row(margin, "Line Numbers", 0, &settings.line_numbers);
+    switch_row(margin, "Change Indicators", "Mark changed and deleted lines", &settings.change_markers);
 
-    // what's shown
-    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(display), "Display");
-    switch_row(display, "Line Numbers", 0, &settings.line_numbers);
-    switch_row(display, "Highlight Current Line", 0, &settings.current_line);
-    switch_row(display, "Highlight Changes", "Colour text typed since the file was opened",
+    // what's coloured
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(highlighting), "Highlighting");
+    switch_row(highlighting, "Current Line", 0, &settings.current_line);
+    switch_row(highlighting, "Changed Text", "Colour text typed since the file was opened",
                &settings.highlight_changes);
-    margin     = switch_row(display, "Selection Margin", "A margin left of the text, to select whole lines",
-                            &settings.selection_margin);
-    indicators = switch_row(display, "Change Indicators", "Mark changed and deleted lines in the margin",
-                            &settings.change_markers);
-    g_object_bind_property(margin, "active", indicators, "sensitive", G_BINDING_SYNC_CREATE);
-    long_lines = switch_row(display, "Highlight Long Lines", 0, &settings.long_lines);
+    long_lines = switch_row(highlighting, "Long Lines", 0, &settings.long_lines);
     adw_preferences_row_set_title(ADW_PREFERENCES_ROW(long_line), "Long Line Column");
     adw_spin_row_set_value(ADW_SPIN_ROW(long_line), settings.long_line_column);
     g_object_bind_property(long_lines, "active", long_line, "sensitive", G_BINDING_SYNC_CREATE);
     g_signal_connect(long_line, "notify::value", G_CALLBACK(on_spin_row), &settings.long_line_column);
-    adw_preferences_group_add(ADW_PREFERENCES_GROUP(display), long_line);
-    switch_row(display, "Status Bar", 0, &settings.status_bar);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(highlighting), long_line);
 
     // tabs and indentation
     adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(indentation), "Indentation");
@@ -310,9 +358,6 @@ void preferences_show(GtkWindow *parent, void (*changed)(void))
     switch_row(indentation, "Insert Spaces Instead of Tabs", 0, &settings.insert_spaces);
     switch_row(indentation, "Automatic Indentation", 0, &settings.auto_indent);
 
-    adw_preferences_page_add(ADW_PREFERENCES_PAGE(page), ADW_PREFERENCES_GROUP(fonts));
-    adw_preferences_page_add(ADW_PREFERENCES_PAGE(page), ADW_PREFERENCES_GROUP(display));
-    adw_preferences_page_add(ADW_PREFERENCES_PAGE(page), ADW_PREFERENCES_GROUP(indentation));
     // the find bar's filter
     adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(filtering), "Filter");
     adw_preferences_row_set_title(ADW_PREFERENCES_ROW(context), "Context Lines");
@@ -321,12 +366,39 @@ void preferences_show(GtkWindow *parent, void (*changed)(void))
     g_signal_connect(context, "notify::value", G_CALLBACK(on_spin_row), &settings.filter_context);
     adw_preferences_group_add(ADW_PREFERENCES_GROUP(filtering), context);
 
+    // what's kept between runs
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(behaviour), "Behavior");
+    switch_row(behaviour, "Restore Session", "Keep unsaved changes when a window closes, to come back as the file opens",
+               &settings.restore_session);
+
+    // last, on its own: every setting back as it was
+    gtk_widget_add_css_class(restore, "destructive-action");
+    gtk_widget_add_css_class(restore, "pill");
+    gtk_widget_set_halign(restore, GTK_ALIGN_CENTER);
+    g_signal_connect(restore, "clicked", G_CALLBACK(on_restore_clicked), 0);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(defaults), restore);
+
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(page), ADW_PREFERENCES_GROUP(appearance));
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(page), ADW_PREFERENCES_GROUP(margin));
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(page), ADW_PREFERENCES_GROUP(highlighting));
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(page), ADW_PREFERENCES_GROUP(indentation));
     adw_preferences_page_add(ADW_PREFERENCES_PAGE(page), ADW_PREFERENCES_GROUP(filtering));
     adw_preferences_page_add(ADW_PREFERENCES_PAGE(page), ADW_PREFERENCES_GROUP(behaviour));
-    adw_preferences_dialog_add(ADW_PREFERENCES_DIALOG(dialog), ADW_PREFERENCES_PAGE(page));
-
-    adw_dialog_present(dialog, GTK_WIDGET(parent));
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(page), ADW_PREFERENCES_GROUP(defaults));
 
     pango_font_description_free(font);
     g_object_unref(monospace);
+    return page;
+}
+
+void preferences_show(GtkWindow *parent, void (*changed)(void))
+{
+    AdwDialog *dialog = adw_preferences_dialog_new();
+    GtkWidget *page   = editor_page();
+
+    settings_changed = changed;
+
+    g_object_set_data(G_OBJECT(dialog), "page", page);
+    adw_preferences_dialog_add(ADW_PREFERENCES_DIALOG(dialog), ADW_PREFERENCES_PAGE(page));
+    adw_dialog_present(dialog, GTK_WIDGET(parent));
 }

@@ -21,12 +21,11 @@ typedef struct
     gboolean restore_session;
     gboolean status_bar;
     gboolean line_numbers;
-    gboolean selection_margin; // where a click selects lines, and change indicators show
-    int      line_spacing;     // extra pixels between lines
-    int      filter_context;   // lines shown round each filtered match
+    int      line_spacing;   // extra pixels between lines
+    int      filter_context; // lines shown round each filtered match
     gboolean current_line;
     gboolean highlight_changes;
-    gboolean change_markers;    // outlines and deletion marks in the margin
+    gboolean change_markers;    // outlines and deletion marks, in a margin of their own
     gboolean long_lines;        // lines beyond long_line_column highlighted
     int      long_line_column;
     gboolean show_line_endings; // every line ending, not just mismatched ones
@@ -41,7 +40,8 @@ void load_settings(void);
 void save_settings(void);
 
 // Preferences, over parent: each row changes a setting and saves it, then
-// calls changed, to apply the settings to every window
+// calls changed, to apply the settings to every window. Restore Defaults puts
+// back every setting it shows.
 void preferences_show(GtkWindow *parent, void (*changed)(void));
 
 G_END_DECLS
