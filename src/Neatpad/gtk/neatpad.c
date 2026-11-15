@@ -28,7 +28,8 @@ typedef struct
     int              notice; // what the banner says: NOTICE_*
     GtkWidget       *recent_popover; // the Open button's recent files
     GtkListBox      *recent_list;
-    char            *recent_uri; // the recent file being opened
+    char            *recent_uri;   // the recent file being opened
+    char            *recent_store; // or the unsaved document
     GtkSearchBar    *search_bar;
     GtkSearchEntry  *search_entry;
     GtkToggleButton *match_case;
@@ -77,9 +78,8 @@ typedef void (*EditorThen)(Editor *editor);
 // GNOME's own settings, for its monospace font: 0 where they aren't installed
 static GSettings *desktop;
 
-// The session's saved files, collected as its windows close
-static GPtrArray *session_files;
-static gboolean   quitting;
+// Neatpad has started: later starts are a new window
+static gboolean started;
 
 // The style setting, as libadwaita's colour scheme
 static void apply_style(void)
@@ -117,6 +117,7 @@ static void editor_free(gpointer data)
 
     g_clear_object(&editor->file);
     g_free(editor->recent_uri);
+    g_free(editor->recent_store);
     g_free(editor);
 }
 
@@ -554,10 +555,14 @@ static void clear_recent(void)
     g_list_free_full(files, (GDestroyNotify)gtk_recent_info_unref);
 }
 
+static void restore_recent_now(Editor *editor);
+static void unless_unsaved(Editor *editor, EditorThen then);
+
 static void on_recent_activated(GtkListBox *list, GtkListBoxRow *row, gpointer data)
 {
     Editor     *editor = data;
     const char *uri    = g_object_get_data(G_OBJECT(row), "uri");
+    const char *store  = g_object_get_data(G_OBJECT(row), "store");
 
     (void)list;
 
@@ -565,6 +570,15 @@ static void on_recent_activated(GtkListBox *list, GtkListBoxRow *row, gpointer d
     {
         gtk_popover_popdown(GTK_POPOVER(editor->recent_popover));
         clear_recent();
+        return;
+    }
+
+    if (store)
+    {
+        gtk_popover_popdown(GTK_POPOVER(editor->recent_popover));
+        g_free(editor->recent_store);
+        editor->recent_store = g_strdup(store);
+        unless_unsaved(editor, restore_recent_now);
         return;
     }
 
@@ -583,16 +597,24 @@ static void on_recent_remove(GtkButton *button, gpointer data)
     gtk_recent_manager_remove_item(gtk_recent_manager_get_default(), g_object_get_data(G_OBJECT(button), "uri"), 0);
 }
 
-static GtkWidget *recent_row(GtkRecentInfo *info)
+static void update_recent(Editor *editor);
+
+// An unsaved document's close button: its changes are thrown away
+static void on_recent_discard(GtkButton *button, gpointer data)
+{
+    recovery_discard(g_object_get_data(G_OBJECT(button), "store"));
+    update_recent(data);
+}
+
+// A row: the name over where it is, and a button to remove it
+static GtkWidget *list_row(const char *title, const char *where, const char *remove_tip)
 {
     GtkWidget *row    = gtk_list_box_row_new();
     GtkWidget *box    = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
     GtkWidget *labels = gtk_box_new(GTK_ORIENTATION_VERTICAL, 2);
-    GtkWidget *name   = gtk_label_new(gtk_recent_info_get_display_name(info));
-    char      *where  = recent_folder(info);
+    GtkWidget *name   = gtk_label_new(title);
     GtkWidget *folder = gtk_label_new(where);
     GtkWidget *remove = gtk_button_new_from_icon_name("window-close-symbolic");
-    char      *uri    = g_strdup(gtk_recent_info_get_uri(info));
 
     gtk_label_set_xalign(GTK_LABEL(name), 0);
     gtk_label_set_ellipsize(GTK_LABEL(name), PANGO_ELLIPSIZE_END);
@@ -609,26 +631,82 @@ static GtkWidget *recent_row(GtkRecentInfo *info)
     gtk_widget_add_css_class(remove, "flat");
     gtk_widget_add_css_class(remove, "circular");
     gtk_widget_set_valign(remove, GTK_ALIGN_CENTER);
-    gtk_widget_set_tooltip_text(remove, "Remove From Recent Files");
-    g_object_set_data_full(G_OBJECT(remove), "uri", g_strdup(uri), g_free);
-    g_signal_connect(remove, "clicked", G_CALLBACK(on_recent_remove), 0);
+    gtk_widget_set_tooltip_text(remove, remove_tip);
+    g_object_set_data(G_OBJECT(row), "remove", remove);
 
     gtk_box_append(GTK_BOX(box), labels);
     gtk_box_append(GTK_BOX(box), remove);
     gtk_list_box_row_set_child(GTK_LIST_BOX_ROW(row), box);
     gtk_widget_set_tooltip_text(row, where);
+    return row;
+}
+
+static GtkWidget *recent_row(GtkRecentInfo *info)
+{
+    char      *where  = recent_folder(info);
+    GtkWidget *row    = list_row(gtk_recent_info_get_display_name(info), where, "Remove From Recent Files");
+    GtkWidget *remove = g_object_get_data(G_OBJECT(row), "remove");
+    char      *uri    = g_strdup(gtk_recent_info_get_uri(info));
+
+    g_object_set_data_full(G_OBJECT(remove), "uri", g_strdup(uri), g_free);
+    g_signal_connect(remove, "clicked", G_CALLBACK(on_recent_remove), 0);
     g_object_set_data_full(G_OBJECT(row), "uri", uri, g_free);
 
     g_free(where);
     return row;
 }
 
+// A document's unsaved changes, kept but not otherwise listed: untitled, or
+// for a file not in the list
+static GtkWidget *store_row(Editor *editor, RecoveryStore *store)
+{
+    GDateTime *time   = g_date_time_new_from_unix_local(store->time);
+    char      *when   = g_date_time_format(time, "%e %b, %H:%M");
+    char      *name   = store->filename ? g_path_get_basename(store->filename) : g_strdup("Untitled");
+    char      *where  = g_strdup_printf("Unsaved changes, %s", g_strstrip(when));
+    GtkWidget *row    = list_row(name, where, "Discard Unsaved Changes");
+    GtkWidget *remove = g_object_get_data(G_OBJECT(row), "remove");
+
+    g_object_set_data_full(G_OBJECT(remove), "store", g_strdup(store->store), g_free);
+    g_signal_connect(remove, "clicked", G_CALLBACK(on_recent_discard), editor);
+    g_object_set_data_full(G_OBJECT(row), "store", g_strdup(store->store), g_free);
+
+    if (store->filename)
+        gtk_widget_set_tooltip_text(row, store->filename);
+
+    g_free(where);
+    g_free(name);
+    g_free(when);
+    g_date_time_unref(time);
+    return row;
+}
+
 static void update_recent(Editor *editor)
 {
-    GList *items = recent_files();
-    int    count = 0;
+    GList     *items  = recent_files();
+    GPtrArray *stores = recovery_list();
+    int        count  = 0;
 
     gtk_list_box_remove_all(editor->recent_list);
+
+    // unsaved documents first, those the files below don't bring back
+    for (guint i = 0; i < stores->len; i++)
+    {
+        RecoveryStore *store  = stores->pdata[i];
+        gboolean       listed = FALSE;
+        int            shown  = 0;
+
+        for (GList *f = items; f && shown < RECENT_MAX && store->filename && !listed; f = f->next, shown++)
+        {
+            char *path = g_filename_from_uri(gtk_recent_info_get_uri(f->data), 0, 0);
+
+            listed = path && g_str_equal(path, store->filename);
+            g_free(path);
+        }
+
+        if (!listed)
+            gtk_list_box_append(editor->recent_list, store_row(editor, store));
+    }
 
     for (GList *i = items; i && count < RECENT_MAX; i = i->next)
     {
@@ -636,7 +714,7 @@ static void update_recent(Editor *editor)
         count++;
     }
 
-    if (count == 0)
+    if (count == 0 && stores->len == 0)
     {
         GtkWidget *row   = gtk_list_box_row_new();
         GtkWidget *label = gtk_label_new("No Recent Files");
@@ -648,7 +726,7 @@ static void update_recent(Editor *editor)
         gtk_list_box_row_set_activatable(GTK_LIST_BOX_ROW(row), FALSE);
         gtk_list_box_append(editor->recent_list, row);
     }
-    else
+    else if (count > 0)
     {
         GtkWidget *row   = gtk_list_box_row_new();
         GtkWidget *label = gtk_label_new("Clear Recent Files");
@@ -661,6 +739,7 @@ static void update_recent(Editor *editor)
         gtk_list_box_append(editor->recent_list, row);
     }
 
+    g_ptr_array_unref(stores);
     g_list_free_full(items, (GDestroyNotify)gtk_recent_info_unref);
 }
 
@@ -668,6 +747,13 @@ static void on_recent_changed(GtkRecentManager *manager, gpointer window)
 {
     (void)manager;
     update_recent(editor_of(window));
+}
+
+// Unsaved documents come and go as other windows close: look again as it opens
+static void on_recent_shown(GtkWidget *popover, gpointer data)
+{
+    (void)popover;
+    update_recent(data);
 }
 
 //
@@ -815,6 +901,56 @@ static gboolean load(Editor *editor, GFile *file)
     return ok;
 }
 
+// A store's unsaved changes, in place of the window's document
+static gboolean restore_store(Editor *editor, const char *store)
+{
+    char    *filename;
+    gboolean session;
+
+    if (!recovery_restore(editor->recovery, store, &filename, &session))
+        return FALSE;
+
+    set_following(editor, FALSE);
+    g_clear_object(&editor->file);
+
+    if (filename && *filename)
+        editor->file = g_file_new_for_path(filename);
+
+    watch_file(editor);
+    update_title(editor);
+    update_status(editor);
+
+    if (session)
+        show_notice(editor, editor->file ? NOTICE_RESTORED : NOTICE_RESTORED_UNTITLED);
+    else
+        show_notice(editor, editor->file ? NOTICE_RECOVERED : NOTICE_RECOVERED_UNTITLED);
+
+    g_free(filename);
+    return TRUE;
+}
+
+// A file opened, with its unsaved changes if any were kept
+static gboolean open_file(Editor *editor, GFile *file)
+{
+    char *path  = g_file_get_path(file);
+    char *store = path ? recovery_store_for(path) : 0;
+
+    if (!load(editor, file))
+    {
+        // the file's gone, but its changes can still be restored
+        if (store)
+            restore_store(editor, store);
+    }
+    else if (store)
+    {
+        restore_store(editor, store);
+    }
+
+    g_free(store);
+    g_free(path);
+    return editor->file != 0;
+}
+
 //
 //	Saving. Each takes what to do after it's saved, as saving before closing
 //	or opening another file needs.
@@ -950,9 +1086,9 @@ static void unless_unsaved(Editor *editor, EditorThen then)
 }
 
 //
-//	Closing. With Restore Session, unsaved changes are kept for next time, and
-//	the last window's file (or every window's, quitting) is reopened then.
-//	Without it, or if they can't be kept, the changes are saved or discarded.
+//	Closing. With Restore Session, unsaved changes are kept, to come back as
+//	the file opens again. Without it, or if they can't be kept, the changes
+//	are saved or discarded.
 //
 static void close_now(Editor *editor)
 {
@@ -960,13 +1096,8 @@ static void close_now(Editor *editor)
     gtk_window_close(editor->window);
 }
 
-static gboolean closed(Editor *editor, gboolean kept)
+static gboolean closed(Editor *editor)
 {
-    GList *windows = gtk_application_get_windows(gtk_window_get_application(editor->window));
-
-    if (!kept && editor->file && (quitting || g_list_length(windows) == 1))
-        g_ptr_array_add(session_files, g_file_get_uri(editor->file));
-
     recovery_free(editor->recovery);
     editor->recovery = 0;
     return FALSE;
@@ -979,10 +1110,10 @@ static gboolean on_close_request(GtkWindow *window, gpointer data)
     (void)window;
 
     if (editor->closing || !neatpad_text_view_get_modified(editor->view))
-        return closed(editor, FALSE);
+        return closed(editor);
 
     if (settings.restore_session && recovery_keep_session(editor->recovery))
-        return closed(editor, TRUE);
+        return closed(editor);
 
     unless_unsaved(editor, close_now);
     return TRUE;
@@ -998,7 +1129,7 @@ static void on_open_chosen(GObject *source, GAsyncResult *result, gpointer data)
 
     if (file)
     {
-        load(editor_of(pending->window), file);
+        open_file(editor_of(pending->window), file);
         g_object_unref(file);
     }
 
@@ -1017,8 +1148,14 @@ static void open_recent_now(Editor *editor)
 {
     GFile *file = g_file_new_for_uri(editor->recent_uri);
 
-    load(editor, file);
+    open_file(editor, file);
     g_object_unref(file);
+}
+
+static void restore_recent_now(Editor *editor)
+{
+    if (!restore_store(editor, editor->recent_store))
+        toast(editor, "Could not restore the unsaved changes");
 }
 
 //
@@ -1792,6 +1929,7 @@ static GtkWidget *header_bar(Editor *editor)
     gtk_widget_add_css_class(GTK_WIDGET(editor->recent_list), "navigation-sidebar");
     gtk_widget_add_css_class(GTK_WIDGET(editor->recent_list), "recent-files");
     g_signal_connect(editor->recent_list, "row-activated", G_CALLBACK(on_recent_activated), editor);
+    g_signal_connect(editor->recent_popover, "show", G_CALLBACK(on_recent_shown), editor);
     gtk_popover_set_child(GTK_POPOVER(editor->recent_popover), GTK_WIDGET(editor->recent_list));
     adw_split_button_set_label(ADW_SPLIT_BUTTON(open), "_Open");
     adw_split_button_set_use_underline(ADW_SPLIT_BUTTON(open), TRUE);
@@ -2013,7 +2151,7 @@ static GtkWindow *editor_window_new(GtkApplication *app, GFile *file)
     apply_scheme(editor);
 
     if (file)
-        load(editor, file);
+        open_file(editor, file);
     else
         watch_file(editor);
 
@@ -2113,13 +2251,8 @@ static void action_quit(GSimpleAction *action, GVariant *parameter, gpointer dat
     (void)action;
     (void)parameter;
 
-    quitting = TRUE;
-
     for (GList *w = windows; w; w = w->next)
         gtk_window_close(GTK_WINDOW(w->data));
-
-    // a window kept open by Cancel: quitting stopped
-    quitting = FALSE;
 }
 
 static const GActionEntry app_actions[] = {
@@ -2163,7 +2296,6 @@ static void on_startup(GApplication *app, gpointer data)
 
     // the saved style, and the app's CSS: the style switcher and hairlines
     load_settings();
-    session_files = g_ptr_array_new_with_free_func(g_free);
     watch_desktop_font();
     g_action_group_change_action_state(G_ACTION_GROUP(app), "style", g_variant_new_string(settings.style));
     g_simple_action_set_state(G_SIMPLE_ACTION(g_action_map_lookup_action(G_ACTION_MAP(app), "show-line-endings")),
@@ -2180,8 +2312,8 @@ static void on_startup(GApplication *app, gpointer data)
 }
 
 //
-//	Starting: unsaved changes a crash or a session left come back first, each
-//	in a window, then (for a session) the files it had open
+//	Starting: without files, the document last worked on; with them, those
+//	files. Either way, a file's unsaved changes come back as it opens.
 //
 // The window a file is open in, or 0
 static GtkWindow *window_of(GtkApplication *app, GFile *file)
@@ -2205,104 +2337,61 @@ static void present_file(GtkApplication *app, GFile *file)
     gtk_window_present(window ? window : editor_window_new(app, file));
 }
 
-static int restore(GtkApplication *app, gboolean session_files_too)
+// The newest of the unsaved documents and the recent files
+static void open_last(Editor *editor)
 {
-    static gboolean done;
+    GPtrArray     *stores = recovery_list();
+    GList         *files  = recent_files();
+    RecoveryStore *store  = stores->len ? stores->pdata[0] : 0;
+    GtkRecentInfo *recent = files ? files->data : 0;
 
-    char **stores;
-    int    count = 0;
+    if (store && recent && g_date_time_to_unix(gtk_recent_info_get_modified(recent)) > store->time)
+        store = 0;
 
-    if (done)
-        return 0;
-
-    done   = TRUE;
-    stores = recovery_stores();
-
-    for (char **store = stores; *store; store++)
+    if (!store || !restore_store(editor, store->store))
     {
-        GtkWindow *window = editor_window_new(app, 0);
-        Editor    *editor = editor_of(window);
-        char      *filename;
-        gboolean   session;
-
-        if (!recovery_restore(editor->recovery, *store, &filename, &session))
+        if (recent)
         {
-            gtk_window_destroy(window);
-            continue;
-        }
+            GFile *file = g_file_new_for_uri(gtk_recent_info_get_uri(recent));
 
-        if (filename && *filename)
-        {
-            editor->file = g_file_new_for_path(filename);
-            watch_file(editor);
-        }
-
-        update_title(editor);
-        update_status(editor);
-        gtk_window_present(window);
-
-        if (session)
-            show_notice(editor, editor->file ? NOTICE_RESTORED : NOTICE_RESTORED_UNTITLED);
-        else
-            show_notice(editor, editor->file ? NOTICE_RECOVERED : NOTICE_RECOVERED_UNTITLED);
-        g_free(filename);
-        count++;
-    }
-
-    g_strfreev(stores);
-
-    if (session_files_too && settings.restore_session)
-    {
-        char **uris = recovery_session_files();
-
-        for (char **uri = uris; *uri; uri++)
-        {
-            GFile *file = g_file_new_for_uri(*uri);
-
-            if (!window_of(app, file) && g_file_query_exists(file, 0))
-            {
-                gtk_window_present(editor_window_new(app, file));
-                count++;
-            }
-
+            open_file(editor, file);
             g_object_unref(file);
         }
-
-        g_strfreev(uris);
     }
 
-    return count;
+    g_list_free_full(files, (GDestroyNotify)gtk_recent_info_unref);
+    g_ptr_array_unref(stores);
 }
 
 static void on_activate(GApplication *app, gpointer data)
 {
+    GtkWindow *window = editor_window_new(GTK_APPLICATION(app), 0);
+
     (void)data;
 
-    if (restore(GTK_APPLICATION(app), TRUE) == 0)
-        gtk_window_present(editor_window_new(GTK_APPLICATION(app), 0));
+    if (!started)
+        open_last(editor_of(window));
+
+    started = TRUE;
+    gtk_window_present(window);
 }
 
-// Files to open: lost changes come back too, but not the session's files
 static void on_open(GApplication *app, GFile **files, int count, const char *hint, gpointer data)
 {
     (void)hint;
     (void)data;
 
-    restore(GTK_APPLICATION(app), FALSE);
+    started = TRUE;
 
     for (int i = 0; i < count; i++)
         present_file(GTK_APPLICATION(app), files[i]);
 }
 
-// The session's saved files, for next time
 static void on_shutdown(GApplication *app, gpointer data)
 {
     (void)app;
     (void)data;
 
-    g_ptr_array_add(session_files, 0);
-    recovery_set_session_files(settings.restore_session ? (const char *const *)session_files->pdata : 0);
-    g_ptr_array_unref(session_files);
     g_clear_object(&desktop);
 }
 

@@ -248,6 +248,9 @@ public:
 	int32_t		OpenFile(const seqfilechar *szFileName, int nEncoding, bool fReadOnly);	// -1 for its byte-order mark to say
     bool        SaveState(TextViewRecovery *state);
     bool        LoadState(TextViewRecovery *state);
+
+    // The file a saved state is for, without loading it (empty for none)
+    static bool StateFilename(const seqfilechar *directory, std::basic_string<seqfilechar> &filename);
 	int32_t		TailFile(const seqfilechar *szFileName);
 	bool		UpdateTail();
 	int32_t		SaveFile(const seqfilechar *szFileName, uint32_t nEncoding, bool fBom, uint32_t nLineBreak);

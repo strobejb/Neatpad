@@ -675,6 +675,15 @@ gboolean neatpad_text_view_load_state(NeatpadTextView *view, const char *directo
     return ok;
 }
 
+char *neatpad_text_view_state_filename(const char *directory)
+{
+    std::string filename;
+
+    g_return_val_if_fail(directory, 0);
+
+    return TextView::StateFilename(directory, filename) ? g_strdup(filename.c_str()) : 0;
+}
+
 gboolean neatpad_text_view_get_modified(NeatpadTextView *view)
 {
     g_return_val_if_fail(NEATPAD_IS_TEXT_VIEW(view), FALSE);

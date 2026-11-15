@@ -279,7 +279,7 @@ void preferences_show(GtkWindow *parent, void (*changed)(void))
 
     // what's kept between runs
     adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(behaviour), "Behavior");
-    switch_row(behaviour, "Restore Session", "Reopen files and unsaved changes when Neatpad starts",
+    switch_row(behaviour, "Restore Session", "Keep unsaved changes when a window closes, to come back as the file opens",
                &settings.restore_session);
 
     // what's shown

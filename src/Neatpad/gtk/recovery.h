@@ -3,7 +3,7 @@
 //
 //	PURPOSE:	Unsaved changes kept safe: each document's state saved to a
 //				store of its own as it's edited, kept as a session when the
-//				document closes unsaved, and restored when Neatpad starts
+//				document closes unsaved, and restored when its file opens again
 //
 #ifndef NEATPAD_RECOVERY_INCLUDED
 #define NEATPAD_RECOVERY_INCLUDED
@@ -44,16 +44,29 @@ void recovery_reset(Recovery *recovery);
 gboolean recovery_keep_session(Recovery *recovery);
 
 //
-//	Starting: the stores left by a crash or a session, newest first, each
-//	restored into a new document's view
+//	Stores left by a crash, or kept as a session: each is restored as its file
+//	is opened, or (untitled) as it's chosen
 //
-char   **recovery_stores(void);
+typedef struct
+{
+    char    *store;
+    char    *filename; // the file's path, or NULL for an untitled document
+    gint64   time;     // when it was last written: seconds since 1970
+    gboolean session;  // kept as its window closed, rather than left by a crash
+} RecoveryStore;
+
+// The stores no window has, newest first: g_ptr_array_unref it
+GPtrArray *recovery_list(void);
+
+// The store a file's unsaved changes are in, or NULL: g_free it
+char *recovery_store_for(const char *filename);
+
+// A store restored into the document's view, which then has it: the file it's
+// for (g_free it), and whether it was kept as a session
 gboolean recovery_restore(Recovery *recovery, const char *store, char **filename, gboolean *session);
 
-// The files a session had open, saved ones (unsaved ones are stores). NULL
-// sets none.
-char **recovery_session_files(void);
-void   recovery_set_session_files(const char *const *uris);
+// A store's changes thrown away: FALSE if a window has it
+gboolean recovery_discard(const char *store);
 
 G_END_DECLS
 

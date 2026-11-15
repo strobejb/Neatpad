@@ -20,7 +20,70 @@ uint64_t get(const std::vector<uint8_t> &in, size_t &at, unsigned bytes)
         value |= (uint64_t)in[at++] << (i * 8);
     return value;
 }
+
+// What the view keeps beside the document: its line endings, positions and file
+struct Context
+{
+    uint32_t                       crlf;
+    uint64_t                       cursor;
+    uint64_t                       anchor;
+    uint64_t                       top;
+    std::basic_string<seqfilechar> filename;
+};
+
+bool read_context(state_reader &reader, Context &out)
+{
+    std::vector<uint8_t> context;
+
+    if (!reader.read_context(context) || context.size() < 56)
+        return false;
+
+    size_t at = 16;
+
+    if (get(context, at, 4) != 0x5756504e || get(context, at, 4) != 1)
+        return false;
+
+    out.crlf      = (uint32_t)get(context, at, 4);
+    size_t length = (size_t)get(context, at, 4);
+    out.cursor    = get(context, at, 8);
+    out.anchor    = get(context, at, 8);
+    out.top       = get(context, at, 8);
+
+    if (length > TV_RECOVERY_NAME_MAX || context.size() != at + length * 2 ||
+        (out.crlf != TXL_CR && out.crlf != TXL_LF && out.crlf != TXL_CRLF))
+        return false;
+
+    out.filename.assign(length, 0);
+
+    for (size_t i = 0; i < length; ++i)
+    {
+        out.filename[i] = (seqfilechar)get(context, at, 2);
+        if (!out.filename[i])
+            return false;
+    }
+
+    return true;
+}
 } // namespace
+
+bool TextView::StateFilename(const seqfilechar *directory, std::basic_string<seqfilechar> &filename)
+{
+    try
+    {
+        state_reader reader(directory);
+        Context      context;
+
+        if (!read_context(reader, context))
+            return false;
+
+        filename = context.filename;
+        return true;
+    }
+    catch (...)
+    {
+        return false;
+    }
+}
 
 bool TextView::SaveState(TextViewRecovery *state)
 {
@@ -65,33 +128,10 @@ bool TextView::LoadState(TextViewRecovery *state)
     try
     {
         state_reader reader(state->directory);
+        Context      context;
 
-        std::vector<uint8_t> context;
-
-        if (!reader.read_context(context) || context.size() < 56)
+        if (!read_context(reader, context))
             return false;
-
-        size_t at = 16;
-
-        if (get(context, at, 4) != 0x5756504e || get(context, at, 4) != 1)
-            return false;
-
-        uint32_t crlf   = (uint32_t)get(context, at, 4);
-        size_t   length = (size_t)get(context, at, 4);
-        uint64_t cursor = get(context, at, 8), anchor = get(context, at, 8), top = get(context, at, 8);
-
-        if (length > TV_RECOVERY_NAME_MAX || context.size() != at + length * 2 ||
-            (crlf != TXL_CR && crlf != TXL_LF && crlf != TXL_CRLF))
-            return false;
-
-        std::basic_string<seqfilechar> filename(length, 0);
-
-        for (size_t i = 0; i < length; ++i)
-        {
-            filename[i] = (seqfilechar)get(context, at, 2);
-            if (!filename[i])
-                return false;
-        }
 
         std::unique_ptr<TextDocument> document(new TextDocument);
 
@@ -103,13 +143,15 @@ bool TextView::LoadState(TextViewRecovery *state)
         }
         if (!document->modified())
             return false;
-        if (cursor > document->byte_length() || anchor > document->byte_length() || top > document->byte_length())
+        if (context.cursor > document->byte_length() || context.anchor > document->byte_length() ||
+            context.top > document->byte_length())
             return false;
 
         TextCoord caret, selection, scroll;
 
-        if (!document->coord_from_pos(TextPos(cursor), &caret) ||
-            !document->coord_from_pos(TextPos(anchor), &selection) || !document->coord_from_pos(TextPos(top), &scroll))
+        if (!document->coord_from_pos(TextPos(context.cursor), &caret) ||
+            !document->coord_from_pos(TextPos(context.anchor), &selection) ||
+            !document->coord_from_pos(TextPos(context.top), &scroll))
             return false;
 
         ClearFile();
@@ -120,7 +162,7 @@ bool TextView::LoadState(TextViewRecovery *state)
 
         m_sMatchText.clear();
         m_nEditMode   = MODE_INSERT;
-        m_nCRLFMode   = crlf;
+        m_nCRLFMode   = context.crlf;
         m_nHScrollPos = 0;
         m_cursorPos   = caret;
         m_selAnchor   = selection;
@@ -137,7 +179,7 @@ bool TextView::LoadState(TextViewRecovery *state)
         NotifyCursorChange();
         NotifyIndexChange();
         NotifyParent(TVNOTIFY_CHANGED);
-        state->filename = filename;
+        state->filename = context.filename;
 
         return true;
     }

@@ -53,6 +53,10 @@ gboolean neatpad_text_view_save_state(NeatpadTextView *view, const char *directo
 gboolean neatpad_text_view_load_state(NeatpadTextView *view, const char *directory, char **filename,
                                       gboolean *original_unavailable);
 
+// The file state saved in a folder is for, without restoring it: "" for none,
+// NULL if there's no state there (g_free it)
+char *neatpad_text_view_state_filename(const char *directory);
+
 // Whether the text differs from the file it was opened from or saved to
 gboolean neatpad_text_view_get_modified(NeatpadTextView *view);
 

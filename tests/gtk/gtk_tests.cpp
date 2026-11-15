@@ -330,22 +330,24 @@ struct RecoveryWindow
 
 int store_count()
 {
-    char **stores = recovery_stores();
-    int    count  = (int)g_strv_length(stores);
+    GPtrArray *stores = recovery_list();
+    int        count  = (int)stores->len;
 
-    g_strfreev(stores);
+    g_ptr_array_unref(stores);
     return count;
 }
 
-// Unsaved changes kept as a session come back, once; a store a window has
-// open can't be taken; a saved one is tidied away
+// Unsaved changes kept as a session are found by their file and come back,
+// once; a store a window has isn't listed and can't be taken; a saved one is
+// tidied away
 void recovery_keeps_and_restores_unsaved_changes()
 {
     std::string bytes = "hello";
     seqfilechar path[TEST_PATH_MAX];
     char       *filename;
     gboolean    session;
-    char      **stores;
+    char       *store;
+    GPtrArray  *stores;
 
     CHECK(write_temp_file(bytes.data(), bytes.size(), path));
     CHECK(store_count() == 0);
@@ -357,41 +359,66 @@ void recovery_keeps_and_restores_unsaved_changes()
         first.widget.host->View()->OnKeyDown(TVK_END, 0);
         first.widget.host->View()->OnText(" world", 6);
 
-        // a crash now would leave the store; another window can't take it
+        // a crash now would leave the store, but while the window has it,
+        // it's not for anyone else
         CHECK(recovery_before_save(first.recovery));
-        CHECK(store_count() == 1);
-
-        {
-            RecoveryWindow other("");
-
-            stores = recovery_stores();
-            CHECK(!recovery_restore(other.recovery, stores[0], &filename, &session));
-            g_strfreev(stores);
-            recovery_free(other.recovery);
-        }
+        CHECK(store_count() == 0);
+        CHECK(recovery_store_for(path) == 0);
 
         CHECK(recovery_keep_session(first.recovery));
         recovery_free(first.recovery);
         CHECK(first.failures == 0);
     }
 
+    // listed, with its file
+    stores = recovery_list();
+    CHECK(stores->len == 1);
+    CHECK(((RecoveryStore *)stores->pdata[0])->session);
+    CHECK(strcmp(((RecoveryStore *)stores->pdata[0])->filename, path) == 0);
+    g_ptr_array_unref(stores);
+
+    store = recovery_store_for(path);
+    CHECK(store != 0);
+
     {
         RecoveryWindow restored("");
+        RecoveryWindow other("");
         guint64        column;
 
-        stores = recovery_stores();
-        CHECK(g_strv_length(stores) == 1);
-        CHECK(recovery_restore(restored.recovery, stores[0], &filename, &session));
+        CHECK(recovery_restore(restored.recovery, store, &filename, &session));
         CHECK(session);
         CHECK(filename && strcmp(filename, path) == 0);
         CHECK(neatpad_text_view_get_modified(restored.client.view));
         neatpad_text_view_get_cursor(restored.client.view, 0, &column, 0);
         CHECK(column == 11);
+        g_free(filename);
+
+        // another window can't take it now
+        CHECK(!recovery_restore(other.recovery, store, &filename, &session));
+        CHECK(store_count() == 0);
+        recovery_free(other.recovery);
 
         // closed without keeping it, the store goes
-        g_free(filename);
-        g_strfreev(stores);
         recovery_free(restored.recovery);
+        CHECK(store_count() == 0);
+    }
+
+    g_free(store);
+
+    {
+        RecoveryWindow untitled("");
+
+        // an untitled document's store has no file, and can be discarded
+        untitled.path.clear();
+        untitled.widget.host->View()->OnText("draft", 5);
+        CHECK(recovery_keep_session(untitled.recovery));
+        recovery_free(untitled.recovery);
+
+        stores = recovery_list();
+        CHECK(stores->len == 1);
+        CHECK(((RecoveryStore *)stores->pdata[0])->filename == 0);
+        CHECK(recovery_discard(((RecoveryStore *)stores->pdata[0])->store));
+        g_ptr_array_unref(stores);
         CHECK(store_count() == 0);
     }
 
@@ -403,30 +430,13 @@ void recovery_keeps_and_restores_unsaved_changes()
         CHECK(recovery_before_save(saved.recovery));
         CHECK(neatpad_text_view_save_file(saved.client.view, path));
         recovery_saved(saved.recovery);
+        recovery_free(saved.recovery);
 
         // saved, there's nothing to restore
         CHECK(store_count() == 0);
-        recovery_free(saved.recovery);
     }
 
     delete_file(path);
-}
-
-void recovery_remembers_session_files()
-{
-    const char *files[] = {"file:///tmp/one.txt", "file:///tmp/two%20words.txt", 0};
-    char      **read;
-
-    recovery_set_session_files(files);
-    read = recovery_session_files();
-    CHECK(g_strv_length(read) == 2);
-    CHECK(strcmp(read[1], files[1]) == 0);
-    g_strfreev(read);
-
-    recovery_set_session_files(0);
-    read = recovery_session_files();
-    CHECK(g_strv_length(read) == 0);
-    g_strfreev(read);
 }
 
 // Following a file: what another program appends comes in at the end, with
@@ -473,7 +483,6 @@ const test_case tests[] = {
     {"widget_scrolls_with_its_adjustments", widget_scrolls_with_its_adjustments},
     {"widget_follows_a_growing_file", widget_follows_a_growing_file},
     {"recovery_keeps_and_restores_unsaved_changes", recovery_keeps_and_restores_unsaved_changes},
-    {"recovery_remembers_session_files", recovery_remembers_session_files},
 };
 } // namespace
 

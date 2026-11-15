@@ -10,8 +10,8 @@
 //					clean		the state matches its file: nothing to restore
 //					session		kept on purpose as the document closed
 //
-//				A store without "clean" is restored when Neatpad starts: it
-//				was left by a crash or kept as a session.
+//				A store without "clean" was left by a crash or kept as a
+//				session, and is restored as its file opens again.
 //
 #include <errno.h>
 #include <fcntl.h>
@@ -336,28 +336,30 @@ void recovery_free(Recovery *recovery)
 }
 
 //
-//	Starting
+//	Restoring
 //
-typedef struct
+static void recovery_store_free(gpointer data)
 {
-    char  *store;
-    gint64 time;
-} Candidate;
+    RecoveryStore *store = data;
+
+    g_free(store->store);
+    g_free(store->filename);
+    g_free(store);
+}
 
 static int newest_first(gconstpointer a, gconstpointer b)
 {
-    gint64 x = ((const Candidate *)a)->time;
-    gint64 y = ((const Candidate *)b)->time;
+    gint64 x = (*(const RecoveryStore *const *)a)->time;
+    gint64 y = (*(const RecoveryStore *const *)b)->time;
 
     return x < y ? 1 : x > y ? -1 : 0;
 }
 
-char **recovery_stores(void)
+GPtrArray *recovery_list(void)
 {
-    char       *folder     = root();
-    GDir       *dir        = g_dir_open(folder, 0, 0);
-    GArray     *candidates = g_array_new(FALSE, FALSE, sizeof(Candidate));
-    GPtrArray  *stores     = g_ptr_array_new();
+    char       *folder = root();
+    GDir       *dir    = g_dir_open(folder, 0, 0);
+    GPtrArray  *stores = g_ptr_array_new_with_free_func(recovery_store_free);
     const char *name;
 
     while (dir && (name = g_dir_read_name(dir)) != 0)
@@ -367,24 +369,35 @@ char **recovery_stores(void)
         struct stat info;
         int         fd;
 
-        // a clean store left behind has nothing to restore: tidy it away,
-        // unless a window has it open
-        if (lstat(store, &info) == 0 && S_ISDIR(info.st_mode) && has_marker(store, "clean"))
+        if (lstat(store, &info) != 0 || !S_ISDIR(info.st_mode) || (fd = lock_store(store)) < 0)
         {
-            fd = lock_store(store);
-
-            if (fd >= 0)
-            {
-                close(fd);
-                remove_store(store);
-            }
+            // not a store, or a window has it
         }
-        else if (lstat(store, &info) == 0 && S_ISDIR(info.st_mode) && stat(state, &info) == 0)
+        else if (has_marker(store, "clean"))
         {
-            Candidate candidate = {store, (gint64)info.st_mtime};
+            // nothing to restore: tidy it away
+            close(fd);
+            remove_store(store);
+        }
+        else
+        {
+            char *filename = stat(state, &info) == 0 ? neatpad_text_view_state_filename(store) : 0;
 
-            g_array_append_val(candidates, candidate);
-            store = 0;
+            if (filename)
+            {
+                RecoveryStore *entry = g_new0(RecoveryStore, 1);
+
+                entry->store    = g_strdup(store);
+                entry->filename = *filename ? filename : 0;
+                entry->time     = (gint64)info.st_mtime;
+                entry->session  = has_marker(store, "session");
+                g_ptr_array_add(stores, entry);
+
+                if (!*filename)
+                    g_free(filename);
+            }
+
+            close(fd);
         }
 
         g_free(state);
@@ -394,15 +407,26 @@ char **recovery_stores(void)
     if (dir)
         g_dir_close(dir);
 
-    g_array_sort(candidates, newest_first);
-
-    for (guint i = 0; i < candidates->len; i++)
-        g_ptr_array_add(stores, g_array_index(candidates, Candidate, i).store);
-
-    g_ptr_array_add(stores, 0);
-    g_array_free(candidates, TRUE);
+    g_ptr_array_sort(stores, newest_first);
     g_free(folder);
-    return (char **)g_ptr_array_free(stores, FALSE);
+    return stores;
+}
+
+char *recovery_store_for(const char *filename)
+{
+    GPtrArray *stores = recovery_list();
+    char      *found  = 0;
+
+    for (guint i = 0; i < stores->len && !found; i++)
+    {
+        RecoveryStore *store = stores->pdata[i];
+
+        if (store->filename && g_str_equal(store->filename, filename))
+            found = g_strdup(store->store);
+    }
+
+    g_ptr_array_unref(stores);
+    return found;
 }
 
 gboolean recovery_restore(Recovery *recovery, const char *store, char **filename, gboolean *session)
@@ -429,59 +453,25 @@ gboolean recovery_restore(Recovery *recovery, const char *store, char **filename
         return FALSE;
     }
 
-    // the store is this document's now, written as far as it goes
+    // the document's own store goes, and this one is its now, written as far
+    // as it goes
+    recovery_reset(recovery);
     recovery->store   = g_strdup(store);
     recovery->lock    = fd;
     recovery->written = recovery->revision;
-    stop_timer(recovery);
     remove_marker(store, "session");
     return TRUE;
 }
 
-//
-//	The session's saved files, as URIs, in session.ini beside the stores
-//
-static char *session_path(void)
+gboolean recovery_discard(const char *store)
 {
-    char *folder = state_folder();
-    char *path   = g_build_filename(folder, "session.ini", NULL);
+    int fd = lock_store(store);
 
-    g_free(folder);
-    return path;
-}
+    if (fd < 0)
+        return FALSE;
 
-char **recovery_session_files(void)
-{
-    GKeyFile *file  = g_key_file_new();
-    char     *path  = session_path();
-    char    **uris  = 0;
-
-    if (g_key_file_load_from_file(file, path, G_KEY_FILE_NONE, 0))
-        uris = g_key_file_get_string_list(file, "session", "files", 0, 0);
-
-    g_free(path);
-    g_key_file_free(file);
-    return uris ? uris : g_new0(char *, 1);
-}
-
-void recovery_set_session_files(const char *const *uris)
-{
-    static const char *const none[] = {0};
-
-    GKeyFile *file   = g_key_file_new();
-    char     *path   = session_path();
-    char     *folder = state_folder();
-
-    if (!uris)
-        uris = none;
-
-    g_key_file_set_string_list(file, "session", "files", uris, g_strv_length((char **)uris));
-    g_mkdir_with_parents(folder, 0700);
-
-    if (!g_key_file_save_to_file(file, path, 0))
-        g_warning("can't save %s", path);
-
-    g_free(folder);
-    g_free(path);
-    g_key_file_free(file);
+    write_marker(store, "clean");
+    close(fd);
+    remove_store(store);
+    return TRUE;
 }
