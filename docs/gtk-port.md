@@ -251,6 +251,11 @@ Each step is its own commit on `main`, and moves and formatting changes stay sep
     the command line each open a window. The widget gained `new_file`, `save_file`, `get_modified`,
     `get_encoding` and `find`, and its column counts characters (`TextView::CursorCharColumn`).
   - Rows start and end on whole device pixels, so a fractional display scale draws no lines between them.
+  - **Done:** the first UX pass. Padding round the text (12px across, 6px down; GNOME Text Editor's 12px margins
+    scroll with the text, which the line-based scroll model can't do cheaply). Open is a split button with recent
+    files (GNOME's list, those Neatpad opened or saved). The main menu has Find, Replace and Go to Line in a
+    section. The view has a context menu as on Win32, without its two edit-control items that do nothing.
+    Replace is a second row in the find bar; Go to Line (Ctrl+I, as Text Editor) is a bar of its own.
   - **Next:** options (font, tabs, line numbers), then printing, recovery and theming, one at a time.
 
 ## Open decisions

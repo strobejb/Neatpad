@@ -8,6 +8,7 @@
 #include "PangoTextLayout.h"
 #include "../TextViewInternal.h"
 
+#include <math.h>
 #include <vector>
 
 TextViewGtk::TextViewGtk(GtkWidget *widget)
@@ -94,13 +95,20 @@ void TextViewGtk::Measure()
 
 void TextViewGtk::Resize(int width, int height)
 {
-    m_width  = width;
-    m_height = height;
-    m_view->OnSize(0, width, height);
+    m_width  = MAX(width - 2 * PAD_X, 0);
+    m_height = MAX(height - 2 * PAD_Y, 0);
+    m_view->OnSize(0, m_width, m_height);
+}
+
+void TextViewGtk::EnginePoint(double x, double y, int *engineX, int *engineY) const
+{
+    *engineX = (int)floor(x) - PAD_X;
+    *engineY = (int)floor(y) - PAD_Y;
 }
 
 //
-//	The engine paints the whole text area, row by row, and the caret goes on top
+//	The padding is the text's background. Inside it the engine paints its area,
+//	row by row, and the caret goes on top.
 //
 void TextViewGtk::Snapshot(GtkSnapshot *snapshot)
 {
@@ -118,7 +126,7 @@ void TextViewGtk::Snapshot(GtkSnapshot *snapshot)
 
         gtk_native_get_surface_transform(native, &surfaceX, &surfaceY);
 
-        if (gtk_widget_compute_point(m_widget, GTK_WIDGET(native), PointArg(0, 0), &at))
+        if (gtk_widget_compute_point(m_widget, GTK_WIDGET(native), PointArg(0, PAD_Y), &at))
             originY = at.y + surfaceY;
 
         if (GdkSurface *surface = gtk_native_get_surface(native))
@@ -126,8 +134,14 @@ void TextViewGtk::Snapshot(GtkSnapshot *snapshot)
     }
 
     GtkCanvas canvas(snapshot, m_context, m_font, originY, scale);
-    TextRect  rect = {0, 0, m_width, m_height};
+    TextRect  rect       = {0, 0, m_width, m_height};
+    GdkRGBA   background = RgbaFromColour(SystemColour(TVSC_WINDOW));
 
+    gtk_snapshot_append_color(snapshot, &background,
+                              RectArg(0, 0, (float)(m_width + 2 * PAD_X), (float)(m_height + 2 * PAD_Y)));
+
+    gtk_snapshot_save(snapshot);
+    gtk_snapshot_translate(snapshot, PointArg(PAD_X, PAD_Y));
     gtk_snapshot_push_clip(snapshot, RectArg(0, 0, (float)m_width, (float)m_height));
 
     m_painting = true;
@@ -144,6 +158,7 @@ void TextViewGtk::Snapshot(GtkSnapshot *snapshot)
     }
 
     gtk_snapshot_pop(snapshot);
+    gtk_snapshot_restore(snapshot);
 }
 
 void TextViewGtk::AttachScrollbars(GtkAdjustment *vertical, GtkAdjustment *horizontal)

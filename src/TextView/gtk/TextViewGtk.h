@@ -32,11 +32,17 @@ class TextViewGtk : public TextViewHost
 
     void SetFont(const char *description);
 
+    // Space between the text and the edge of its area, as GNOME's editors leave
+    static const int PAD_X = 12;
+    static const int PAD_Y = 6;
+
     //
     //	From the widget: its text area's size, painting, scrollbars, input state
-    //	and the clipboard's text when it has been read
+    //	and the clipboard's text when it has been read. The widget's points are
+    //	in its own coordinates; EnginePoint gives the engine's, inside the padding.
     //
     void Resize(int width, int height);
+    void EnginePoint(double x, double y, int *engineX, int *engineY) const;
     void Snapshot(GtkSnapshot *snapshot);
 
     void AttachScrollbars(GtkAdjustment *vertical, GtkAdjustment *horizontal);
@@ -111,7 +117,7 @@ class TextViewGtk : public TextViewHost
     FontMetrics           m_metrics;
     TextView             *m_view;
 
-    int m_width;
+    int m_width; // the engine's area, inside the padding
     int m_height;
 
     // The caret, drawn with the text: hidden while m_caretHidden isn't 0

@@ -208,11 +208,40 @@ void widget_finds_saves_and_starts_again()
     delete_file(saved);
 }
 
+void widget_replaces_and_goes_to_lines()
+{
+    Widget           widget;
+    NeatpadTextView *view  = NEATPAD_TEXT_VIEW(widget.widget);
+    std::string      bytes = "cat dog\ncat\nbird";
+    seqfilechar      path[TEST_PATH_MAX];
+    guint64          line;
+    guint64          column;
+
+    CHECK(write_temp_file(bytes.data(), bytes.size(), path));
+    CHECK(neatpad_text_view_open_file(view, path));
+
+    // a selection that isn't a match isn't replaced; a found one is
+    CHECK(neatpad_text_view_replace(view, "cat", "cow", TRUE, FALSE) == 0);
+    CHECK(neatpad_text_view_find(view, "cat", FALSE, TRUE) == NEATPAD_FIND_FOUND);
+    CHECK(neatpad_text_view_replace(view, "cat", "cow", TRUE, FALSE) == 1);
+    CHECK(neatpad_text_view_replace(view, "cat", "horse", TRUE, TRUE) == 1);
+    CHECK(neatpad_text_view_find(view, "horse", FALSE, TRUE) != NEATPAD_FIND_NOT_FOUND);
+
+    // lines count from 0
+    CHECK(neatpad_text_view_goto_line(view, 2));
+    neatpad_text_view_get_cursor(view, &line, &column, 0);
+    CHECK(line == 2 && column == 0);
+    CHECK(!neatpad_text_view_goto_line(view, 7));
+
+    delete_file(path);
+}
+
 const test_case tests[] = {
     {"pango_layout_stops_only_at_character_starts", pango_layout_stops_only_at_character_starts},
     {"widget_arrows_step_over_characters_with_pango", widget_arrows_step_over_characters_with_pango},
     {"widget_types_through_its_engine", widget_types_through_its_engine},
     {"widget_finds_saves_and_starts_again", widget_finds_saves_and_starts_again},
+    {"widget_replaces_and_goes_to_lines", widget_replaces_and_goes_to_lines},
 };
 } // namespace
 

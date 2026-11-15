@@ -17,6 +17,7 @@ struct _NeatpadTextView
     TextViewGtk  *host;
     GtkWidget    *vscroll;
     GtkWidget    *hscroll;
+    GtkWidget    *menu; // the context menu
     GtkIMContext *im;
 
     bool   buttonDown;
@@ -189,34 +190,43 @@ static void on_commit(GtkIMContext *, const char *text, gpointer data)
 static void on_pressed(GtkGestureClick *gesture, int presses, double x, double y, gpointer data)
 {
     NeatpadTextView *self = NEATPAD_TEXT_VIEW(data);
+    int              ex;
+    int              ey;
 
+    self->host->EnginePoint(x, y, &ex, &ey);
     gtk_widget_grab_focus(GTK_WIDGET(self));
     set_modifiers(self, GTK_EVENT_CONTROLLER(gesture));
-    self->host->SetMousePosition((int)x, (int)y);
+    self->host->SetMousePosition(ex, ey);
     self->buttonDown = true;
 
     if (presses == 2)
-        view_of(self)->OnLButtonDblClick(0, (int)x, (int)y);
+        view_of(self)->OnLButtonDblClick(0, ex, ey);
     else
-        view_of(self)->OnLButtonDown(0, (int)x, (int)y);
+        view_of(self)->OnLButtonDown(0, ex, ey);
 }
 
 static void on_released(GtkGestureClick *gesture, int, double x, double y, gpointer data)
 {
     NeatpadTextView *self = NEATPAD_TEXT_VIEW(data);
+    int              ex;
+    int              ey;
 
+    self->host->EnginePoint(x, y, &ex, &ey);
     set_modifiers(self, GTK_EVENT_CONTROLLER(gesture));
     self->buttonDown = false;
-    view_of(self)->OnLButtonUp(0, (int)x, (int)y);
+    view_of(self)->OnLButtonUp(0, ex, ey);
 }
 
 static void on_motion(GtkEventControllerMotion *controller, double x, double y, gpointer data)
 {
     NeatpadTextView *self = NEATPAD_TEXT_VIEW(data);
+    int              ex;
+    int              ey;
 
+    self->host->EnginePoint(x, y, &ex, &ey);
     set_modifiers(self, GTK_EVENT_CONTROLLER(controller));
-    self->host->SetMousePosition((int)x, (int)y);
-    view_of(self)->OnMouseMove(0, (int)x, (int)y);
+    self->host->SetMousePosition(ex, ey);
+    view_of(self)->OnMouseMove(0, ex, ey);
 }
 
 // The wheel: a notch is 120, as on Win32. Smooth scrolling adds up to notches.
@@ -236,6 +246,84 @@ static gboolean on_scroll(GtkEventControllerScroll *controller, double, double d
     }
 
     return TRUE;
+}
+
+//
+//	The context menu, as Win32's: undo and redo, the clipboard, and select all,
+//	each only when it would do something
+//
+static void on_menu_pressed(GtkGestureClick *, int, double x, double y, gpointer data)
+{
+    NeatpadTextView   *self      = NEATPAD_TEXT_VIEW(data);
+    GtkWidget         *widget    = GTK_WIDGET(self);
+    TextView          *view      = view_of(self);
+    bool               selection = view->SelectionSize() > 0;
+    GdkContentFormats *formats   = gdk_clipboard_get_formats(gtk_widget_get_clipboard(widget));
+    GdkRectangle       at        = {(int)x, (int)y, 1, 1};
+
+    gtk_widget_grab_focus(widget);
+
+    gtk_widget_action_set_enabled(widget, "text.undo", view->CanUndo());
+    gtk_widget_action_set_enabled(widget, "text.redo", view->CanRedo());
+    gtk_widget_action_set_enabled(widget, "text.cut", selection);
+    gtk_widget_action_set_enabled(widget, "text.copy", selection);
+    gtk_widget_action_set_enabled(widget, "text.paste", gdk_content_formats_contain_gtype(formats, G_TYPE_STRING));
+    gtk_widget_action_set_enabled(widget, "text.delete", selection);
+
+    gtk_popover_set_pointing_to(GTK_POPOVER(self->menu), &at);
+    gtk_popover_popup(GTK_POPOVER(self->menu));
+}
+
+static void on_menu_action(GtkWidget *widget, const char *action, GVariant *)
+{
+    NeatpadTextView *self = NEATPAD_TEXT_VIEW(widget);
+
+    if (g_str_equal(action, "text.undo"))
+        neatpad_text_view_undo(self);
+    else if (g_str_equal(action, "text.redo"))
+        neatpad_text_view_redo(self);
+    else if (g_str_equal(action, "text.cut"))
+        neatpad_text_view_cut(self);
+    else if (g_str_equal(action, "text.copy"))
+        neatpad_text_view_copy(self);
+    else if (g_str_equal(action, "text.paste"))
+        neatpad_text_view_paste(self);
+    else if (g_str_equal(action, "text.delete") && view_of(self)->OnClear())
+        NeatpadTextViewNotify(widget, TVNOTIFY_CHANGED);
+    else if (g_str_equal(action, "text.select-all"))
+        neatpad_text_view_select_all(self);
+}
+
+static GtkWidget *context_menu(GtkWidget *widget)
+{
+    GMenu     *model = g_menu_new();
+    GMenu     *undo  = g_menu_new();
+    GMenu     *edit  = g_menu_new();
+    GMenu     *all   = g_menu_new();
+    GtkWidget *menu;
+
+    g_menu_append(undo, "_Undo", "text.undo");
+    g_menu_append(undo, "_Redo", "text.redo");
+    g_menu_append(edit, "Cu_t", "text.cut");
+    g_menu_append(edit, "_Copy", "text.copy");
+    g_menu_append(edit, "_Paste", "text.paste");
+    g_menu_append(edit, "_Delete", "text.delete");
+    g_menu_append(all, "Select _All", "text.select-all");
+
+    g_menu_append_section(model, 0, G_MENU_MODEL(undo));
+    g_menu_append_section(model, 0, G_MENU_MODEL(edit));
+    g_menu_append_section(model, 0, G_MENU_MODEL(all));
+
+    menu = gtk_popover_menu_new_from_model(G_MENU_MODEL(model));
+    gtk_popover_set_has_arrow(GTK_POPOVER(menu), FALSE);
+    gtk_widget_set_halign(menu, GTK_ALIGN_START);
+    gtk_widget_set_parent(menu, widget);
+
+    g_object_unref(all);
+    g_object_unref(edit);
+    g_object_unref(undo);
+    g_object_unref(model);
+    return menu;
 }
 
 static void on_focus_enter(GtkEventControllerFocus *, gpointer data)
@@ -295,6 +383,8 @@ static void neatpad_text_view_size_allocate(GtkWidget *widget, int width, int he
 
     gtk_widget_size_allocate(self->vscroll, &vertical, -1);
     gtk_widget_size_allocate(self->hscroll, &horizontal, -1);
+
+    gtk_popover_present(GTK_POPOVER(self->menu));
 }
 
 static void neatpad_text_view_snapshot(GtkWidget *widget, GtkSnapshot *snapshot)
@@ -316,6 +406,7 @@ static void neatpad_text_view_dispose(GObject *object)
 
     g_clear_pointer(&self->vscroll, gtk_widget_unparent);
     g_clear_pointer(&self->hscroll, gtk_widget_unparent);
+    g_clear_pointer(&self->menu, gtk_widget_unparent);
 
     if (self->im)
         gtk_im_context_set_client_widget(self->im, 0);
@@ -342,6 +433,12 @@ static void neatpad_text_view_class_init(NeatpadTextViewClass *klass)
         signals[i] = g_signal_new(names[i], G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_LAST, 0, 0, 0, 0, G_TYPE_NONE, 0);
 
     gtk_widget_class_set_css_name(widget_class, "neatpadtextview");
+
+    const char *actions[] = {"text.undo", "text.redo",   "text.cut",       "text.copy",
+                             "text.paste", "text.delete", "text.select-all"};
+
+    for (const char *action : actions)
+        gtk_widget_class_install_action(widget_class, action, 0, on_menu_action);
 }
 
 static void neatpad_text_view_init(NeatpadTextView *self)
@@ -352,6 +449,7 @@ static void neatpad_text_view_init(NeatpadTextView *self)
     GtkEventController *scroll = gtk_event_controller_scroll_new(GTK_EVENT_CONTROLLER_SCROLL_VERTICAL);
     GtkEventController *focus  = gtk_event_controller_focus_new();
     GtkGesture         *click  = gtk_gesture_click_new();
+    GtkGesture         *right  = gtk_gesture_click_new();
 
     gtk_widget_set_focusable(widget, TRUE);
     gtk_widget_set_cursor_from_name(widget, "text");
@@ -365,6 +463,10 @@ static void neatpad_text_view_init(NeatpadTextView *self)
 
     gtk_widget_set_parent(self->vscroll, widget);
     gtk_widget_set_parent(self->hscroll, widget);
+
+    // the text has a text cursor, its scrollbars an arrow
+    gtk_widget_set_cursor_from_name(self->vscroll, "default");
+    gtk_widget_set_cursor_from_name(self->hscroll, "default");
 
     self->host->AttachScrollbars(gtk_scrollbar_get_adjustment(GTK_SCROLLBAR(self->vscroll)),
                                  gtk_scrollbar_get_adjustment(GTK_SCROLLBAR(self->hscroll)));
@@ -386,6 +488,11 @@ static void neatpad_text_view_init(NeatpadTextView *self)
     g_signal_connect(click, "pressed", G_CALLBACK(on_pressed), self);
     g_signal_connect(click, "released", G_CALLBACK(on_released), self);
     gtk_widget_add_controller(widget, GTK_EVENT_CONTROLLER(click));
+
+    self->menu = context_menu(widget);
+    gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(right), GDK_BUTTON_SECONDARY);
+    g_signal_connect(right, "pressed", G_CALLBACK(on_menu_pressed), self);
+    gtk_widget_add_controller(widget, GTK_EVENT_CONTROLLER(right));
 
     g_signal_connect(motion, "motion", G_CALLBACK(on_motion), self);
     gtk_widget_add_controller(widget, motion);
@@ -495,6 +602,33 @@ NeatpadFindResult neatpad_text_view_find(NeatpadTextView *view, const char *text
     default:
         return NEATPAD_FIND_NOT_FOUND;
     }
+}
+
+guint64 neatpad_text_view_replace(NeatpadTextView *view, const char *text, const char *replacement,
+                                  gboolean match_case, gboolean all)
+{
+    TextViewFind find = {};
+
+    g_return_val_if_fail(NEATPAD_IS_TEXT_VIEW(view), 0);
+
+    find.text          = text;
+    find.length        = (uint32_t)strlen(text);
+    find.matchcase     = match_case != FALSE;
+    find.replace       = replacement;
+    find.replacelength = (uint32_t)strlen(replacement);
+
+    return view_of(view)->ReplaceText(&find, all != FALSE);
+}
+
+gboolean neatpad_text_view_goto_line(NeatpadTextView *view, guint64 line)
+{
+    g_return_val_if_fail(NEATPAD_IS_TEXT_VIEW(view), FALSE);
+
+    if (view_of(view)->GotoLine(line, true) != TDR_OK)
+        return FALSE;
+
+    gtk_widget_grab_focus(GTK_WIDGET(view));
+    return TRUE;
 }
 
 void neatpad_text_view_set_font(NeatpadTextView *view, const char *font)

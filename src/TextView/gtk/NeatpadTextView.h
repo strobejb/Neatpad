@@ -52,6 +52,14 @@ typedef enum
 NeatpadFindResult neatpad_text_view_find(NeatpadTextView *view, const char *text, gboolean backwards,
                                          gboolean match_case);
 
+// Replace the selection if it's a match for text, or every match: how many
+guint64 neatpad_text_view_replace(NeatpadTextView *view, const char *text, const char *replacement,
+                                  gboolean match_case, gboolean all);
+
+// Move the caret to the start of a line, from 0. FALSE if the document hasn't
+// that line, or hasn't indexed as far yet.
+gboolean neatpad_text_view_goto_line(NeatpadTextView *view, guint64 line);
+
 // The font, as Pango describes one: "Monospace 11"
 void neatpad_text_view_set_font(NeatpadTextView *view, const char *font);
 
