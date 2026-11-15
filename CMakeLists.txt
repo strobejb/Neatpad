@@ -12,7 +12,9 @@
 #
 cmake_minimum_required(VERSION 3.16)
 
-project(Neatpad LANGUAGES C CXX)
+# The version is the Win32 app's too (resource.rc), which release.yml stamps
+# from the tag
+project(Neatpad VERSION 1.1.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -88,6 +90,7 @@ if(GTK4_FOUND)
     if(ADWAITA_FOUND)
         add_executable(neatpad src/Neatpad/gtk/neatpad.c src/Neatpad/gtk/recovery.c)
         target_link_libraries(neatpad PRIVATE TextViewGtk PkgConfig::ADWAITA)
+        target_compile_definitions(neatpad PRIVATE NEATPAD_VERSION="${PROJECT_VERSION}")
     endif()
 endif()
 
