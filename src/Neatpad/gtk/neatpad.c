@@ -33,8 +33,15 @@ typedef struct
     GtkEntry        *replace_entry;
     GtkSearchBar    *goto_bar;
     GtkEntry        *goto_entry;
-    GtkLabel        *position;
+    GtkWidget       *status_bar;
+    GtkLabel        *position; // the status bar's panes, as Win32 Neatpad's
+    GtkLabel        *doc_stats;
+    GtkLabel        *index;
+    GtkLabel        *zoom_pane;
+    GtkLabel        *line_format;
     GtkLabel        *encoding;
+    int              zoom; // percent of the font's size
+    double           zoom_rest; // a fine-grained wheel's turn, short of a notch
     GFile           *file; // 0 until opened or saved
     GFileMonitor    *monitor;   // watching it for other programs' changes
     gboolean         on_disk;   // the file as last seen: there, its size and time
@@ -71,6 +78,7 @@ typedef struct
     gboolean system_font;
     char    *font;
     gboolean restore_session;
+    gboolean status_bar;
     gboolean line_numbers;
     gboolean current_line;
     gboolean highlight_changes;
@@ -116,6 +124,7 @@ static void load_settings(void)
     settings.system_font       = read_boolean(file, "use-system-font", TRUE);
     settings.font              = read_string(file, "font", "Monospace 11");
     settings.restore_session   = read_boolean(file, "restore-session", TRUE);
+    settings.status_bar        = read_boolean(file, "status-bar", TRUE);
     settings.line_numbers      = read_boolean(file, "line-numbers", FALSE);
     settings.current_line      = read_boolean(file, "highlight-current-line", FALSE);
     settings.highlight_changes = read_boolean(file, "highlight-changes", TRUE);
@@ -139,6 +148,7 @@ static void save_settings(void)
     g_key_file_set_boolean(file, "editor", "use-system-font", settings.system_font);
     g_key_file_set_string(file, "editor", "font", settings.font);
     g_key_file_set_boolean(file, "editor", "restore-session", settings.restore_session);
+    g_key_file_set_boolean(file, "editor", "status-bar", settings.status_bar);
     g_key_file_set_boolean(file, "editor", "line-numbers", settings.line_numbers);
     g_key_file_set_boolean(file, "editor", "highlight-current-line", settings.current_line);
     g_key_file_set_boolean(file, "editor", "highlight-changes", settings.highlight_changes);
@@ -269,7 +279,19 @@ static void apply_settings(Editor *editor)
 
     char *system = settings.system_font && desktop ? g_settings_get_string(desktop, "monospace-font-name") : 0;
 
-    neatpad_text_view_set_font(editor->view, system && *system ? system : settings.font);
+    PangoFontDescription *font = pango_font_description_from_string(system && *system ? system : settings.font);
+    char                 *zoomed;
+
+    // zoomed, as the window's zoom says
+    if (pango_font_description_get_size(font) > 0 && editor->zoom != 100)
+        pango_font_description_set_size(font, pango_font_description_get_size(font) * editor->zoom / 100);
+
+    zoomed = pango_font_description_to_string(font);
+    neatpad_text_view_set_font(editor->view, zoomed);
+    gtk_widget_set_visible(editor->status_bar, settings.status_bar);
+
+    g_free(zoomed);
+    pango_font_description_free(font);
     g_free(system);
     neatpad_text_view_set_tab_width(editor->view, (guint)settings.tab_width);
     neatpad_text_view_set_style(editor->view,
@@ -335,7 +357,136 @@ static void update_title(Editor *editor)
     g_free(name);
 }
 
-// The caret's line and column, counted from 1, and the encoding
+//
+//	The status bar, as Win32 Neatpad's: the caret's line and column, counted
+//	from 1; the document's size, or the selection's; indexing; the zoom; the
+//	line endings; and the encoding
+//
+static const char *line_format_name(guint format)
+{
+    switch (format)
+    {
+    case TXL_LF:
+        return "UNIX (LF)";
+
+    case TXL_CR:
+        return "Mac (CR)";
+
+    case TXL_CRLF:
+        return "Windows (CRLF)";
+
+    case TXL_ALL:
+        return "ALL";
+
+    default:
+        return "?";
+    }
+}
+
+// 1,234 KB to a decimal place, or bytes, as Win32's FormatByteSize
+static void format_byte_size(char *text, size_t length, guint64 bytes)
+{
+    static const struct
+    {
+        guint64     unit;
+        const char *suffix;
+    } units[] = {{1024ULL * 1024 * 1024, "GB"}, {1024 * 1024, "MB"}, {1024, "KB"}};
+
+    for (size_t i = 0; i < G_N_ELEMENTS(units); i++)
+    {
+        guint64 whole = bytes / units[i].unit;
+        guint64 tenth = ((bytes % units[i].unit) * 10 + units[i].unit / 2) / units[i].unit;
+
+        if (whole == 0)
+            continue;
+
+        if (tenth == 10)
+        {
+            whole++;
+            tenth = 0;
+        }
+
+        g_snprintf(text, length, "%" G_GUINT64_FORMAT ".%" G_GUINT64_FORMAT " %s", whole, tenth, units[i].suffix);
+        return;
+    }
+
+    g_snprintf(text, length, "%" G_GUINT64_FORMAT " bytes", bytes);
+}
+
+// A count with the locale's thousands separator: 1,234,567
+static void format_count(char *text, size_t length, guint64 count)
+{
+    snprintf(text, length, "%'" G_GUINT64_FORMAT, count);
+}
+
+static void update_doc_stats(Editor *editor)
+{
+    NeatpadDocStats stats;
+    guint           format = neatpad_text_view_get_line_format(editor->view);
+    char            text[128];
+    char            size[32];
+    char            count[32];
+    char            selected[32];
+
+    if (!neatpad_text_view_get_doc_stats(editor->view, &stats))
+    {
+        gtk_label_set_text(editor->doc_stats, "");
+        gtk_label_set_text(editor->line_format, line_format_name(format));
+        return;
+    }
+
+    // edits and further line counting can turn up line endings of another kind
+    g_snprintf(text, sizeof(text), "%s%s", line_format_name(format),
+               (stats.line_endings_seen & ~format) ? ", mixed" : "");
+    gtk_label_set_text(editor->line_format, text);
+
+    // with a selection, how much of the document it covers; characters once
+    // the file's counted, bytes until then
+    if (stats.selected_bytes != 0 && stats.chars_known)
+    {
+        format_count(selected, sizeof(selected), stats.selected_chars);
+        format_count(count, sizeof(count), stats.chars);
+        g_snprintf(text, sizeof(text), "Selected %s of %s %s", selected, count,
+                   stats.chars == 1 ? "character" : "characters");
+    }
+    else if (stats.selected_bytes != 0)
+    {
+        format_count(selected, sizeof(selected), stats.selected_bytes);
+        g_snprintf(text, sizeof(text), "Selected %s %s", selected, stats.selected_bytes == 1 ? "byte" : "bytes");
+    }
+    else if (stats.chars_known)
+    {
+        format_byte_size(size, sizeof(size), stats.bytes);
+        format_count(count, sizeof(count), stats.chars);
+        g_snprintf(text, sizeof(text), "%s (%s %s)", size, count, stats.chars == 1 ? "character" : "characters");
+    }
+    else
+    {
+        format_byte_size(text, sizeof(text), stats.bytes);
+    }
+
+    gtk_label_set_text(editor->doc_stats, text);
+}
+
+// A link to start indexing, its progress as a link to stop it, or nothing
+// once the whole file is indexed
+static void update_index(Editor *editor)
+{
+    guint    percent;
+    gboolean indexing;
+    char     markup[64] = "";
+
+    neatpad_text_view_get_index_info(editor->view, &percent, &indexing);
+
+    if (indexing)
+        g_snprintf(markup, sizeof(markup), "<a href=\"index\">Indexing %u%%</a>", percent);
+    else if (percent < 100)
+        g_strlcpy(markup, "<a href=\"index\">Index file</a>", sizeof(markup));
+
+    gtk_label_set_markup(editor->index, markup);
+    gtk_widget_set_visible(GTK_WIDGET(editor->index), *markup != 0);
+}
+
 static void update_status(Editor *editor)
 {
     guint64  line;
@@ -344,11 +495,33 @@ static void update_status(Editor *editor)
     char     text[96];
 
     neatpad_text_view_get_cursor(editor->view, &line, &column, &known);
-    g_snprintf(text, sizeof(text), "Ln %" G_GUINT64_FORMAT "%s, Col %" G_GUINT64_FORMAT, line + 1, known ? "" : "?",
-               column + 1);
+
+    if (known)
+        g_snprintf(text, sizeof(text), "Ln %" G_GUINT64_FORMAT ", Col %" G_GUINT64_FORMAT, line + 1, column + 1);
+    else
+        g_snprintf(text, sizeof(text), "Ln ---, Col %" G_GUINT64_FORMAT, column + 1);
 
     gtk_label_set_text(editor->position, text);
+    update_doc_stats(editor);
+    update_index(editor);
+
+    g_snprintf(text, sizeof(text), "%d%%", editor->zoom);
+    gtk_label_set_text(editor->zoom_pane, text);
     gtk_label_set_text(editor->encoding, neatpad_text_view_get_encoding(editor->view));
+}
+
+static gboolean on_index_link(GtkLabel *label, const char *uri, gpointer data)
+{
+    Editor  *editor = data;
+    gboolean indexing;
+
+    (void)label;
+    (void)uri;
+
+    neatpad_text_view_get_index_info(editor->view, 0, &indexing);
+    neatpad_text_view_index_file(editor->view, !indexing);
+    update_index(editor);
+    return TRUE;
 }
 
 static void on_changed(NeatpadTextView *view, gpointer data)
@@ -357,6 +530,7 @@ static void on_changed(NeatpadTextView *view, gpointer data)
 
     (void)view;
     update_title(editor);
+    update_status(editor);
     recovery_changed(editor->recovery);
 }
 
@@ -1171,6 +1345,46 @@ static void action_close(GSimpleAction *action, GVariant *parameter, gpointer da
     gtk_window_close(editor->window);
 }
 
+//
+//	Zoom, as Win32 Neatpad's: the font in 10% steps, from 10% to 500%
+//
+#define ZOOM_STEP 10
+#define ZOOM_MIN  10
+#define ZOOM_MAX  500
+
+static void set_zoom(Editor *editor, int zoom)
+{
+    zoom = CLAMP(zoom, ZOOM_MIN, ZOOM_MAX);
+
+    if (zoom != editor->zoom)
+    {
+        editor->zoom = zoom;
+        apply_settings(editor);
+        update_status(editor);
+    }
+}
+
+// Ctrl and the wheel: a step a notch, a fine-grained wheel's turns added up
+static gboolean on_zoom_scroll(GtkEventControllerScroll *controller, double dx, double dy, gpointer data)
+{
+    Editor *editor = data;
+    int     steps;
+
+    (void)dx;
+
+    if (!(gtk_event_controller_get_current_event_state(GTK_EVENT_CONTROLLER(controller)) & GDK_CONTROL_MASK))
+        return FALSE;
+
+    editor->zoom_rest -= dy;
+    steps = (int)editor->zoom_rest;
+    editor->zoom_rest -= steps;
+
+    if (steps)
+        set_zoom(editor, editor->zoom + steps * ZOOM_STEP);
+
+    return TRUE;
+}
+
 // win.follow, a check item: follow the file's end, or stop
 static void action_follow(GSimpleAction *action, GVariant *state, gpointer data)
 {
@@ -1187,6 +1401,31 @@ static void action_follow(GSimpleAction *action, GVariant *state, gpointer data)
         reload_now(editor);
 }
 
+static void action_zoom_in(GSimpleAction *action, GVariant *parameter, gpointer data)
+{
+    Editor *editor = data;
+
+    (void)action;
+    (void)parameter;
+    set_zoom(editor, editor->zoom + ZOOM_STEP);
+}
+
+static void action_zoom_out(GSimpleAction *action, GVariant *parameter, gpointer data)
+{
+    Editor *editor = data;
+
+    (void)action;
+    (void)parameter;
+    set_zoom(editor, editor->zoom - ZOOM_STEP);
+}
+
+static void action_zoom_reset(GSimpleAction *action, GVariant *parameter, gpointer data)
+{
+    (void)action;
+    (void)parameter;
+    set_zoom(data, 100);
+}
+
 static const GActionEntry window_actions[] = {
     {"new-window", action_new_window, 0, 0, 0, {0}},
     {"open", action_open, 0, 0, 0, {0}},
@@ -1200,6 +1439,9 @@ static const GActionEntry window_actions[] = {
     {"go-to-line", action_go_to_line, 0, 0, 0, {0}},
     {"close", action_close, 0, 0, 0, {0}},
     {"follow", 0, 0, "false", action_follow, {0}},
+    {"zoom-in", action_zoom_in, 0, 0, 0, {0}},
+    {"zoom-out", action_zoom_out, 0, 0, 0, {0}},
+    {"zoom-reset", action_zoom_reset, 0, 0, 0, {0}},
 };
 
 //
@@ -1408,32 +1650,47 @@ static GtkWidget *goto_bar(Editor *editor)
     return bar;
 }
 
+// A status bar pane: dim text, as GNOME's status lines are
+static GtkLabel *pane(GtkWidget *box)
+{
+    GtkWidget *label = gtk_label_new("");
+
+    gtk_widget_add_css_class(label, "dim-label");
+    gtk_box_append(GTK_BOX(box), label);
+    return GTK_LABEL(label);
+}
+
+// The panes in Win32 Neatpad's order: the caret and the document's size on
+// the left, the rest on the right
 static GtkWidget *status_bar(Editor *editor)
 {
-    GtkWidget *box      = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 18);
-    GtkWidget *position = gtk_label_new("");
-    GtkWidget *encoding = gtk_label_new("");
+    GtkWidget *box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 18);
 
     gtk_widget_set_margin_start(box, 12);
     gtk_widget_set_margin_end(box, 12);
     gtk_widget_set_margin_top(box, 4);
     gtk_widget_set_margin_bottom(box, 4);
-    gtk_widget_set_hexpand(position, TRUE);
-    gtk_label_set_xalign(GTK_LABEL(position), 1);
-    gtk_widget_add_css_class(position, "dim-label");
-    gtk_widget_add_css_class(encoding, "dim-label");
 
-    gtk_box_append(GTK_BOX(box), position);
-    gtk_box_append(GTK_BOX(box), encoding);
+    editor->position  = pane(box);
+    editor->doc_stats = pane(box);
+    gtk_widget_set_hexpand(GTK_WIDGET(editor->doc_stats), TRUE);
+    gtk_label_set_xalign(editor->doc_stats, 0);
 
-    editor->position = GTK_LABEL(position);
-    editor->encoding = GTK_LABEL(encoding);
+    // the index link isn't dimmed: it's a link
+    editor->index = pane(box);
+    gtk_widget_remove_css_class(GTK_WIDGET(editor->index), "dim-label");
+    g_signal_connect(editor->index, "activate-link", G_CALLBACK(on_index_link), editor);
+
+    editor->zoom_pane   = pane(box);
+    editor->line_format = pane(box);
+    editor->encoding    = pane(box);
     return box;
 }
 
 static GtkWindow *editor_window_new(GtkApplication *app, GFile *file)
 {
-    Editor        *editor  = g_new0(Editor, 1);
+    Editor             *editor     = g_new0(Editor, 1);
+    GtkEventController *zoom_wheel = gtk_event_controller_scroll_new(GTK_EVENT_CONTROLLER_SCROLL_VERTICAL);
     GtkWidget     *window  = adw_application_window_new(app);
     RecoveryClient client;
     GtkWidget *toolbar = adw_toolbar_view_new();
@@ -1442,6 +1699,7 @@ static GtkWindow *editor_window_new(GtkApplication *app, GFile *file)
 
     editor->window = GTK_WINDOW(window);
     editor->view   = NEATPAD_TEXT_VIEW(view);
+    editor->zoom   = 100;
     editor->toasts = ADW_TOAST_OVERLAY(adw_toast_overlay_new());
     g_object_set_data_full(G_OBJECT(window), "editor", editor, editor_free);
 
@@ -1453,8 +1711,12 @@ static GtkWindow *editor_window_new(GtkApplication *app, GFile *file)
 
     g_action_map_add_action_entries(G_ACTION_MAP(window), window_actions, G_N_ELEMENTS(window_actions), editor);
 
-    // GNOME's scrollbars: overlaid, unless Accessibility says always show them
+    // GNOME's scrollbars: overlaid, unless Accessibility says always show them.
+    // Ctrl and the wheel zoom, before the view scrolls.
     gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(scroll), view);
+    gtk_event_controller_set_propagation_phase(zoom_wheel, GTK_PHASE_CAPTURE);
+    g_signal_connect(zoom_wheel, "scroll", G_CALLBACK(on_zoom_scroll), editor);
+    gtk_widget_add_controller(scroll, zoom_wheel);
     adw_toast_overlay_set_child(editor->toasts, scroll);
 
     // the banner is below the header bar; the find and go-to-line bars are
@@ -1467,7 +1729,8 @@ static GtkWindow *editor_window_new(GtkApplication *app, GFile *file)
     adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(toolbar), GTK_WIDGET(editor->banner));
     adw_toolbar_view_add_bottom_bar(ADW_TOOLBAR_VIEW(toolbar), search_bar(editor));
     adw_toolbar_view_add_bottom_bar(ADW_TOOLBAR_VIEW(toolbar), goto_bar(editor));
-    adw_toolbar_view_add_bottom_bar(ADW_TOOLBAR_VIEW(toolbar), status_bar(editor));
+    editor->status_bar = status_bar(editor);
+    adw_toolbar_view_add_bottom_bar(ADW_TOOLBAR_VIEW(toolbar), editor->status_bar);
     adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(toolbar), GTK_WIDGET(editor->toasts));
     adw_application_window_set_content(ADW_APPLICATION_WINDOW(window), toolbar);
 
@@ -1475,6 +1738,8 @@ static GtkWindow *editor_window_new(GtkApplication *app, GFile *file)
 
     g_signal_connect(view, "changed", G_CALLBACK(on_changed), editor);
     g_signal_connect(view, "cursor-changed", G_CALLBACK(on_cursor_changed), editor);
+    g_signal_connect(view, "selection-changed", G_CALLBACK(on_cursor_changed), editor);
+    g_signal_connect(view, "index-changed", G_CALLBACK(on_cursor_changed), editor);
     g_signal_connect(window, "close-request", G_CALLBACK(on_close_request), editor);
     g_signal_connect_object(gtk_recent_manager_get_default(), "changed", G_CALLBACK(on_recent_changed), window, 0);
     g_signal_connect_object(adw_style_manager_get_default(), "notify::dark", G_CALLBACK(on_style_changed), window, 0);
@@ -1666,6 +1931,7 @@ static void action_preferences(GSimpleAction *action, GVariant *parameter, gpoin
     switch_row(display, "Highlight Current Line", 0, &settings.current_line);
     switch_row(display, "Highlight Changes", "Colour text typed since the file was opened",
                &settings.highlight_changes);
+    switch_row(display, "Status Bar", 0, &settings.status_bar);
 
     // tabs and indentation
     adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(indentation), "Indentation");
@@ -1717,7 +1983,7 @@ static void on_startup(GApplication *app, gpointer data)
     static const struct
     {
         const char *action;
-        const char *keys[3];
+        const char *keys[4];
     } accels[] = {
         {"win.new-window", {"<Ctrl>n", 0}},
         {"win.open", {"<Ctrl>o", 0}},
@@ -1730,6 +1996,9 @@ static void on_startup(GApplication *app, gpointer data)
         {"win.go-to-line", {"<Ctrl>i", 0}},
         {"win.close", {"<Ctrl>w", 0}},
         {"app.preferences", {"<Ctrl>comma", 0}},
+        {"win.zoom-in", {"<Ctrl>plus", "<Ctrl>equal", "<Ctrl>KP_Add", 0}},
+        {"win.zoom-out", {"<Ctrl>minus", "<Ctrl>KP_Subtract", 0}},
+        {"win.zoom-reset", {"<Ctrl>0", "<Ctrl>KP_0", 0}},
         {"app.quit", {"<Ctrl>q", 0}},
     };
 

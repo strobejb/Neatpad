@@ -281,6 +281,9 @@ Each step is its own commit on `main`, and moves and formatting changes stay sep
     its end and takes in what's appended; Stop, or a file rewritten shorter, opens it as usual. Linux has no
     share-mode locks, so a file another program is writing doesn't open read-only, as it does on Windows. Growing
     a document is now tested on Linux too.
+  - **Done:** the status bar has Win32's panes, in its order: the caret, the document's size or the selection's,
+    the index link, the zoom, the line endings (", mixed" when there are others) and the encoding. Zoom is as
+    Win32's: 10% steps from 10% to 500%, Ctrl and the wheel, plus, minus or 0. Preferences can hide the status bar.
   - Printing isn't planned: the Win32 app doesn't print either. If it's wanted, both apps can add it together,
     drawing pages with the engine's painting.
 - **Next:** smaller gaps, as wanted: a blinking caret, the context menu from the keyboard, input-method preedit,

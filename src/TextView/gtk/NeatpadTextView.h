@@ -16,6 +16,7 @@
 #include <gtk/gtk.h>
 
 #include "../TextViewDefs.h"
+#include "../../TextDocument/codepages.h"
 
 G_BEGIN_DECLS
 
@@ -57,6 +58,29 @@ gboolean neatpad_text_view_get_modified(NeatpadTextView *view);
 
 // The document's encoding, to show: "UTF-8", "UTF-16 LE", ...
 const char *neatpad_text_view_get_encoding(NeatpadTextView *view);
+
+// The line endings new lines get, TXL_LF, TXL_CR or TXL_CRLF: the file's own
+guint neatpad_text_view_get_line_format(NeatpadTextView *view);
+
+// The document's size and the selection's: bytes, and characters (UTF-16
+// units, as Windows counts them) once they're counted, and the TXL_* kinds of
+// line ending found so far
+typedef struct
+{
+    guint64  bytes;
+    guint64  chars;
+    guint64  selected_bytes;
+    guint64  selected_chars;
+    gboolean chars_known;
+    guint    line_endings_seen;
+} NeatpadDocStats;
+
+gboolean neatpad_text_view_get_doc_stats(NeatpadTextView *view, NeatpadDocStats *stats);
+
+// How far the file is indexed, as a percentage, and whether indexing is going
+// on; and starting or stopping it
+void neatpad_text_view_get_index_info(NeatpadTextView *view, guint *percent, gboolean *indexing);
+void neatpad_text_view_index_file(NeatpadTextView *view, gboolean index);
 
 // Find text from the caret, wrapping round the end, and select it
 typedef enum

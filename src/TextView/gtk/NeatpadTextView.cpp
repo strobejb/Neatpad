@@ -689,7 +689,7 @@ const char *neatpad_text_view_get_encoding(NeatpadTextView *view)
     switch (view_of(view)->FileDoc()->getformat())
     {
     case NCP_ASCII:
-        return "Latin-1";
+        return "ASCII";
 
     case NCP_UTF8:
         return "UTF-8";
@@ -708,6 +708,53 @@ const char *neatpad_text_view_get_encoding(NeatpadTextView *view)
     }
 
     return "";
+}
+
+guint neatpad_text_view_get_line_format(NeatpadTextView *view)
+{
+    g_return_val_if_fail(NEATPAD_IS_TEXT_VIEW(view), 0);
+
+    return (guint)view_of(view)->LineFormat();
+}
+
+gboolean neatpad_text_view_get_doc_stats(NeatpadTextView *view, NeatpadDocStats *stats)
+{
+    TextViewDocStats engine = {};
+
+    g_return_val_if_fail(NEATPAD_IS_TEXT_VIEW(view), FALSE);
+
+    if (!view_of(view)->GetDocStats(&engine))
+        return FALSE;
+
+    stats->bytes             = engine.byte_count;
+    stats->chars             = engine.char_count;
+    stats->selected_bytes    = engine.sel_byte_count;
+    stats->selected_chars    = engine.sel_char_count;
+    stats->chars_known       = engine.char_count_known;
+    stats->line_endings_seen = engine.linebreaks_seen;
+    return TRUE;
+}
+
+void neatpad_text_view_get_index_info(NeatpadTextView *view, guint *percent, gboolean *indexing)
+{
+    TextViewIndexInfo info = {};
+
+    g_return_if_fail(NEATPAD_IS_TEXT_VIEW(view));
+
+    view_of(view)->FillIndexInfo(&info);
+
+    if (percent)
+        *percent = info.nPercent;
+
+    if (indexing)
+        *indexing = info.fIndexing;
+}
+
+void neatpad_text_view_index_file(NeatpadTextView *view, gboolean index)
+{
+    g_return_if_fail(NEATPAD_IS_TEXT_VIEW(view));
+
+    view_of(view)->IndexFile(index != FALSE);
 }
 
 NeatpadFindResult neatpad_text_view_find(NeatpadTextView *view, const char *text, gboolean backwards,
