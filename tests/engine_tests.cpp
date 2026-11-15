@@ -546,6 +546,18 @@ void engine_types_and_tells_its_host()
           v.host.notified.end());
 }
 
+void engine_types_into_a_new_view()
+{
+    FakeHost host;
+    TextView view(&host);
+    tstring  text = tstr(U"café");
+
+    // no file opened: the view starts with an empty document
+    view.OnSize(0, 640, 480);
+    view.OnText(text.c_str(), (uint32_t)text.size());
+    CHECK(view.FileDoc()->byte_length() == 5);
+}
+
 void engine_paints_every_line()
 {
     EngineView v(U"one\r\n\u00e9\t\U0001F600\r\n\u4e2d\u4e2d");
@@ -567,6 +579,7 @@ const test_case tests[] =
     { "engine_overwrites_a_character_with_a_character", engine_overwrites_a_character_with_a_character },
     { "engine_tab_spaces_count_characters", engine_tab_spaces_count_characters },
     { "engine_types_and_tells_its_host", engine_types_and_tells_its_host },
+    { "engine_types_into_a_new_view", engine_types_into_a_new_view },
     { "engine_paints_every_line", engine_paints_every_line },
 };
 }

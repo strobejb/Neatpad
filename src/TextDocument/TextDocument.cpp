@@ -105,6 +105,9 @@ TextDocument::TextDocument()
 	m_nHeaderSize		= 0;
 	m_fBom				= false;
 	m_nInMemoryLimit	= 0;
+
+	// empty and ready to edit, before any file is opened
+	clear();
 }
 
 //
