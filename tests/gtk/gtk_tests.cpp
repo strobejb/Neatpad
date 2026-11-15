@@ -236,12 +236,53 @@ void widget_replaces_and_goes_to_lines()
     delete_file(path);
 }
 
+// In a scrolled window the engine sets the adjustments' ranges, in bytes down
+// (where the top line starts, so a file needn't be counted), and scrolls as
+// they move
+void widget_scrolls_with_its_adjustments()
+{
+    GtkWidget       *scroll = gtk_scrolled_window_new();
+    Widget           widget;
+    NeatpadTextView *view = NEATPAD_TEXT_VIEW(widget.widget);
+    std::string      bytes;
+    seqfilechar      path[TEST_PATH_MAX];
+    GtkAdjustment   *vertical;
+    guint64          line;
+
+    for (int i = 0; i < 1000; i++)
+        bytes += "line\n";
+
+    g_object_ref_sink(scroll);
+    gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(scroll), widget.widget);
+    vertical = gtk_scrollable_get_vadjustment(GTK_SCROLLABLE(widget.widget));
+    CHECK(vertical == gtk_scrolled_window_get_vadjustment(GTK_SCROLLED_WINDOW(scroll)));
+
+    CHECK(write_temp_file(bytes.data(), bytes.size(), path));
+    CHECK(neatpad_text_view_open_file(view, path));
+    widget.host->Resize(640, 480);
+
+    CHECK(gtk_adjustment_get_upper(vertical) == bytes.size());
+    CHECK(gtk_adjustment_get_page_size(vertical) > 0);
+
+    // scrolled to line 200's first byte, the top row is line 200
+    gtk_adjustment_set_value(vertical, 200 * 5);
+    widget.host->View()->OnLButtonDown(0, 0, 0);
+    widget.host->View()->OnLButtonUp(0, 0, 0);
+    neatpad_text_view_get_cursor(view, &line, 0, 0);
+    CHECK(line == 200);
+
+    gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(scroll), 0);
+    g_object_unref(scroll);
+    delete_file(path);
+}
+
 const test_case tests[] = {
     {"pango_layout_stops_only_at_character_starts", pango_layout_stops_only_at_character_starts},
     {"widget_arrows_step_over_characters_with_pango", widget_arrows_step_over_characters_with_pango},
     {"widget_types_through_its_engine", widget_types_through_its_engine},
     {"widget_finds_saves_and_starts_again", widget_finds_saves_and_starts_again},
     {"widget_replaces_and_goes_to_lines", widget_replaces_and_goes_to_lines},
+    {"widget_scrolls_with_its_adjustments", widget_scrolls_with_its_adjustments},
 };
 } // namespace
 

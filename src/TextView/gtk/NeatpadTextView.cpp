@@ -15,16 +15,32 @@ struct _NeatpadTextView
     GtkWidget parent_instance;
 
     TextViewGtk  *host;
-    GtkWidget    *vscroll;
-    GtkWidget    *hscroll;
     GtkWidget    *menu; // the context menu
     GtkIMContext *im;
+
+    // GtkScrollable: the adjustments a GtkScrolledWindow gives, which the
+    // engine sets and follows: bytes down (where the top line starts), pixels
+    // across
+    GtkAdjustment      *vadjust;
+    GtkAdjustment      *hadjust;
+    GtkScrollablePolicy vpolicy;
+    GtkScrollablePolicy hpolicy;
 
     bool   buttonDown;
     double wheel; // smooth scrolling, until it adds up to a notch
 };
 
-G_DEFINE_FINAL_TYPE(NeatpadTextView, neatpad_text_view, GTK_TYPE_WIDGET)
+G_DEFINE_FINAL_TYPE_WITH_CODE(NeatpadTextView, neatpad_text_view, GTK_TYPE_WIDGET,
+                              G_IMPLEMENT_INTERFACE(GTK_TYPE_SCROLLABLE, 0))
+
+enum
+{
+    PROP_0,
+    PROP_HADJUSTMENT,
+    PROP_VADJUSTMENT,
+    PROP_HSCROLL_POLICY,
+    PROP_VSCROLL_POLICY
+};
 
 // In the order of the engine's TVNOTIFY_* codes
 enum
@@ -353,7 +369,88 @@ static void on_hscroll(GtkAdjustment *, gpointer data)
 }
 
 //
-//	The widget: the text area, with a scrollbar right and below it
+//	GtkScrollable. Without a scrolled window the view has adjustments of its
+//	own, which nothing shows.
+//
+static void set_adjustment(NeatpadTextView *self, bool vertical, GtkAdjustment *adjustment)
+{
+    GtkAdjustment **slot = vertical ? &self->vadjust : &self->hadjust;
+
+    if (adjustment && adjustment == *slot)
+        return;
+
+    if (*slot)
+    {
+        g_signal_handlers_disconnect_by_data(*slot, self);
+        g_object_unref(*slot);
+    }
+
+    *slot = adjustment ? adjustment : gtk_adjustment_new(0, 0, 0, 0, 0, 0);
+    g_object_ref_sink(*slot);
+    g_signal_connect(*slot, "value-changed", G_CALLBACK(vertical ? on_vscroll : on_hscroll), self);
+
+    self->host->AttachScrollbars(self->vadjust, self->hadjust);
+
+    // the engine sets the new adjustment's range as it's sized
+    gtk_widget_queue_allocate(GTK_WIDGET(self));
+}
+
+static void neatpad_text_view_set_property(GObject *object, guint id, const GValue *value, GParamSpec *spec)
+{
+    NeatpadTextView *self = NEATPAD_TEXT_VIEW(object);
+
+    switch (id)
+    {
+    case PROP_HADJUSTMENT:
+        set_adjustment(self, false, GTK_ADJUSTMENT(g_value_get_object(value)));
+        break;
+
+    case PROP_VADJUSTMENT:
+        set_adjustment(self, true, GTK_ADJUSTMENT(g_value_get_object(value)));
+        break;
+
+    case PROP_HSCROLL_POLICY:
+        self->hpolicy = (GtkScrollablePolicy)g_value_get_enum(value);
+        break;
+
+    case PROP_VSCROLL_POLICY:
+        self->vpolicy = (GtkScrollablePolicy)g_value_get_enum(value);
+        break;
+
+    default:
+        G_OBJECT_WARN_INVALID_PROPERTY_ID(object, id, spec);
+    }
+}
+
+static void neatpad_text_view_get_property(GObject *object, guint id, GValue *value, GParamSpec *spec)
+{
+    NeatpadTextView *self = NEATPAD_TEXT_VIEW(object);
+
+    switch (id)
+    {
+    case PROP_HADJUSTMENT:
+        g_value_set_object(value, self->hadjust);
+        break;
+
+    case PROP_VADJUSTMENT:
+        g_value_set_object(value, self->vadjust);
+        break;
+
+    case PROP_HSCROLL_POLICY:
+        g_value_set_enum(value, self->hpolicy);
+        break;
+
+    case PROP_VSCROLL_POLICY:
+        g_value_set_enum(value, self->vpolicy);
+        break;
+
+    default:
+        G_OBJECT_WARN_INVALID_PROPERTY_ID(object, id, spec);
+    }
+}
+
+//
+//	The widget: the text area. A GtkScrolledWindow round it has the scrollbars.
 //
 static void neatpad_text_view_measure(GtkWidget *, GtkOrientation orientation, int, int *minimum, int *natural,
                                       int *minimum_baseline, int *natural_baseline)
@@ -364,37 +461,18 @@ static void neatpad_text_view_measure(GtkWidget *, GtkOrientation orientation, i
     *natural_baseline = -1;
 }
 
+// The engine sets the adjustments' ranges for its size
 static void neatpad_text_view_size_allocate(GtkWidget *widget, int width, int height, int)
 {
     NeatpadTextView *self = NEATPAD_TEXT_VIEW(widget);
-    int              vwidth;
-    int              hheight;
-    GtkAllocation    vertical;
-    GtkAllocation    horizontal;
 
-    gtk_widget_measure(self->vscroll, GTK_ORIENTATION_HORIZONTAL, -1, 0, &vwidth, 0, 0);
-    gtk_widget_measure(self->hscroll, GTK_ORIENTATION_VERTICAL, -1, 0, &hheight, 0, 0);
-
-    vertical   = {MAX(width - vwidth, 0), 0, vwidth, MAX(height - hheight, 0)};
-    horizontal = {0, MAX(height - hheight, 0), MAX(width - vwidth, 0), hheight};
-
-    // the engine sets the scrollbars' ranges for its size, before they're placed
-    self->host->Resize(MAX(width - vwidth, 0), MAX(height - hheight, 0));
-
-    gtk_widget_size_allocate(self->vscroll, &vertical, -1);
-    gtk_widget_size_allocate(self->hscroll, &horizontal, -1);
-
+    self->host->Resize(width, height);
     gtk_popover_present(GTK_POPOVER(self->menu));
 }
 
 static void neatpad_text_view_snapshot(GtkWidget *widget, GtkSnapshot *snapshot)
 {
-    NeatpadTextView *self = NEATPAD_TEXT_VIEW(widget);
-
-    self->host->Snapshot(snapshot);
-
-    gtk_widget_snapshot_child(widget, self->vscroll, snapshot);
-    gtk_widget_snapshot_child(widget, self->hscroll, snapshot);
+    NEATPAD_TEXT_VIEW(widget)->host->Snapshot(snapshot);
 }
 
 static void neatpad_text_view_dispose(GObject *object)
@@ -404,9 +482,15 @@ static void neatpad_text_view_dispose(GObject *object)
     delete self->host;
     self->host = 0;
 
-    g_clear_pointer(&self->vscroll, gtk_widget_unparent);
-    g_clear_pointer(&self->hscroll, gtk_widget_unparent);
     g_clear_pointer(&self->menu, gtk_widget_unparent);
+
+    for (GtkAdjustment **adjustment : {&self->vadjust, &self->hadjust})
+    {
+        if (*adjustment)
+            g_signal_handlers_disconnect_by_data(*adjustment, self);
+
+        g_clear_object(adjustment);
+    }
 
     if (self->im)
         gtk_im_context_set_client_widget(self->im, 0);
@@ -422,6 +506,8 @@ static void neatpad_text_view_class_init(NeatpadTextViewClass *klass)
     GtkWidgetClass *widget_class = GTK_WIDGET_CLASS(klass);
 
     object_class->dispose       = neatpad_text_view_dispose;
+    object_class->set_property  = neatpad_text_view_set_property;
+    object_class->get_property  = neatpad_text_view_get_property;
     widget_class->measure       = neatpad_text_view_measure;
     widget_class->size_allocate = neatpad_text_view_size_allocate;
     widget_class->snapshot      = neatpad_text_view_snapshot;
@@ -433,6 +519,11 @@ static void neatpad_text_view_class_init(NeatpadTextViewClass *klass)
         signals[i] = g_signal_new(names[i], G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_LAST, 0, 0, 0, 0, G_TYPE_NONE, 0);
 
     gtk_widget_class_set_css_name(widget_class, "neatpadtextview");
+
+    g_object_class_override_property(object_class, PROP_HADJUSTMENT, "hadjustment");
+    g_object_class_override_property(object_class, PROP_VADJUSTMENT, "vadjustment");
+    g_object_class_override_property(object_class, PROP_HSCROLL_POLICY, "hscroll-policy");
+    g_object_class_override_property(object_class, PROP_VSCROLL_POLICY, "vscroll-policy");
 
     const char *actions[] = {"text.undo", "text.redo",   "text.cut",       "text.copy",
                              "text.paste", "text.delete", "text.select-all"};
@@ -458,23 +549,12 @@ static void neatpad_text_view_init(NeatpadTextView *self)
     self->wheel      = 0;
     self->host       = new TextViewGtk(widget);
 
-    self->vscroll = gtk_scrollbar_new(GTK_ORIENTATION_VERTICAL, 0);
-    self->hscroll = gtk_scrollbar_new(GTK_ORIENTATION_HORIZONTAL, 0);
-
-    gtk_widget_set_parent(self->vscroll, widget);
-    gtk_widget_set_parent(self->hscroll, widget);
-
-    // the text has a text cursor, its scrollbars an arrow
-    gtk_widget_set_cursor_from_name(self->vscroll, "default");
-    gtk_widget_set_cursor_from_name(self->hscroll, "default");
-
-    self->host->AttachScrollbars(gtk_scrollbar_get_adjustment(GTK_SCROLLBAR(self->vscroll)),
-                                 gtk_scrollbar_get_adjustment(GTK_SCROLLBAR(self->hscroll)));
-
-    g_signal_connect(gtk_scrollbar_get_adjustment(GTK_SCROLLBAR(self->vscroll)), "value-changed",
-                     G_CALLBACK(on_vscroll), self);
-    g_signal_connect(gtk_scrollbar_get_adjustment(GTK_SCROLLBAR(self->hscroll)), "value-changed",
-                     G_CALLBACK(on_hscroll), self);
+    self->vadjust = 0;
+    self->hadjust = 0;
+    self->vpolicy = GTK_SCROLL_MINIMUM;
+    self->hpolicy = GTK_SCROLL_MINIMUM;
+    set_adjustment(self, true, 0);
+    set_adjustment(self, false, 0);
 
     self->im = gtk_im_multicontext_new();
     gtk_im_context_set_client_widget(self->im, widget);

@@ -855,6 +855,7 @@ static GtkWindow *editor_window_new(GtkApplication *app, GFile *file)
     Editor    *editor  = g_new0(Editor, 1);
     GtkWidget *window  = adw_application_window_new(app);
     GtkWidget *toolbar = adw_toolbar_view_new();
+    GtkWidget *scroll  = gtk_scrolled_window_new();
     GtkWidget *view    = neatpad_text_view_new();
 
     editor->window = GTK_WINDOW(window);
@@ -864,7 +865,9 @@ static GtkWindow *editor_window_new(GtkApplication *app, GFile *file)
 
     g_action_map_add_action_entries(G_ACTION_MAP(window), window_actions, G_N_ELEMENTS(window_actions), editor);
 
-    adw_toast_overlay_set_child(editor->toasts, view);
+    // GNOME's scrollbars: overlaid, unless Accessibility says always show them
+    gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(scroll), view);
+    adw_toast_overlay_set_child(editor->toasts, scroll);
 
     // the find and go-to-line bars are below the text, above the status bar
     adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(toolbar), header_bar(editor));

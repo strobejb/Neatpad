@@ -227,11 +227,12 @@ Each step is its own commit on `main`, and moves and formatting changes stay sep
     UTF-8, Windows CI in UTF-16.
 - **Done:** step 8, the GTK view, in `src/TextView/gtk`. CMake builds it as `TextViewGtk` where GTK 4 is found:
   - `NeatpadTextView` is the widget, with a C API (`NeatpadTextView.h`): open a file, the font, `TXS_*` styles, the
-    caret, undo and redo, the clipboard, and signals for the engine's notifications. It holds `TextViewGtk` and two
-    scrollbars.
+    caret, undo and redo, the clipboard, and signals for the engine's notifications. It holds `TextViewGtk`. It's a
+    `GtkScrollable`, so a `GtkScrolledWindow` round it has the scrollbars: GNOME's overlay scrollbars, or always
+    shown as Accessibility says. Its adjustments are bytes down (where the top line starts) and pixels across.
   - `TextViewGtk` is the host. Timers are GLib sources, the caret is drawn over the text, and redraws are the whole
-    widget. Scrollbar ranges set while painting wait until the frame is drawn, as GTK can't place a scrollbar part
-    way through drawing it. Paste reads the clipboard first (GTK reads it asynchronously), then the engine pastes it.
+    widget. Scroll ranges set while painting wait until the frame is drawn, as GTK can't resize the scrolled window
+    part way through drawing it. Paste reads the clipboard first (GTK reads it asynchronously), then the engine pastes it.
     Glyphs are at whole pixels, as the engine works in them.
   - `PangoTextLayout` lays a line out with Pango. Its stops, per character in Pango, are on each character's first
     byte only. Run backgrounds and the selection are drawn under the text; foregrounds are Pango attributes.

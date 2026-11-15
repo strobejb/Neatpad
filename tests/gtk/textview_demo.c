@@ -62,12 +62,14 @@ static gboolean save_screenshot(gpointer data)
 static void on_activate(GtkApplication *app, gpointer data)
 {
     GtkWidget *window = gtk_application_window_new(app);
+    GtkWidget *scroll = gtk_scrolled_window_new();
     GtkWidget *view   = neatpad_text_view_new();
 
     (void)data;
 
     gtk_window_set_default_size(GTK_WINDOW(window), 800, 500);
-    gtk_window_set_child(GTK_WINDOW(window), view);
+    gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(scroll), view);
+    gtk_window_set_child(GTK_WINDOW(window), scroll);
 
     if (g_lines)
         neatpad_text_view_set_style(NEATPAD_TEXT_VIEW(view), TXS_LINENUMBERS | TXS_SELMARGIN,
