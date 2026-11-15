@@ -597,6 +597,13 @@ void TextView::HighlightMatches(tchar_t *szText, int nTextLen, TextRun *attr)
 	int length = (int)m_sMatchText.size();
 	int i = 0;
 
+	// UTF-8 text, regardless of case, is compared as UTF-16, as find does
+	if(TCHAR_UTF8 && !m_fMatchCase)
+	{
+		HighlightMatchesUtf8NoCase(szText, nTextLen, attr);
+		return;
+	}
+
 	while(length != 0 && i + length <= nTextLen)
 	{
 		bool match = m_fMatchCase ?
@@ -614,6 +621,66 @@ void TextView::HighlightMatches(tchar_t *szText, int nTextLen, TextRun *attr)
 			attr[i].fg = GetColour(TXC_SEARCHMATCHTEXT);
 			attr[i].bg = GetColour(TXC_SEARCHMATCH);
 		}
+	}
+}
+
+//
+//	HighlightMatches for UTF-8 text regardless of case: the line and the match
+//	text as UTF-16, each of the line's units knowing which byte its character
+//	starts at, so a match is coloured from the start of its first character to
+//	the start of the character after it
+//
+void TextView::HighlightMatchesUtf8NoCase(tchar_t *szText, int nTextLen, TextRun *attr)
+{
+	std::vector<UTF16> pattern(m_sMatchText.size());
+	std::vector<UTF16> line;
+	std::vector<int>   starts;	// the byte each unit's character starts at
+	size_t             patternLen = pattern.size();
+
+	if(patternLen == 0)
+		return;
+
+	utf8_to_utf16((const UTF8 *)m_sMatchText.data(), m_sMatchText.size(), pattern.data(), &patternLen);
+
+	for(int i = 0; i < nTextLen; )
+	{
+		unsigned char lead  = (unsigned char)szText[i];
+		int           bytes = lead < 0xc0 ? 1 : lead < 0xe0 ? 2 : lead < 0xf0 ? 3 : 4;
+		UTF16         units[4];
+		size_t        unitCount = 4;
+
+		bytes = bytes < nTextLen - i ? bytes : nTextLen - i;
+		utf8_to_utf16((const UTF8 *)szText + i, bytes, units, &unitCount);
+
+		for(size_t u = 0; u < unitCount; u++)
+		{
+			line.push_back(units[u]);
+			starts.push_back(i);
+		}
+
+		i += bytes;
+	}
+
+	starts.push_back(nTextLen);
+
+	for(size_t k = 0; k + patternLen <= line.size(); )
+	{
+		// a match starts with a character, never part way through one
+		bool first = k == 0 || starts[k - 1] != starts[k];
+
+		if(!first || !utf16_equal_nocase(&line[k], pattern.data(), patternLen))
+		{
+			k++;
+			continue;
+		}
+
+		for(int b = starts[k]; b < starts[k + patternLen]; b++)
+		{
+			attr[b].fg = GetColour(TXC_SEARCHMATCHTEXT);
+			attr[b].bg = GetColour(TXC_SEARCHMATCH);
+		}
+
+		k += patternLen;
 	}
 }
 

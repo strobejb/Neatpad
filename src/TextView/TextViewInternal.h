@@ -304,6 +304,7 @@ private:
 	//	Cursor/Selection
 	//
 	void		HighlightMatches(tchar_t *szText, int nTextLen, TextRun *attr);
+	void		HighlightMatchesUtf8NoCase(tchar_t *szText, int nTextLen, TextRun *attr);
 
 	// Filtering (TextViewFilter.cpp)
     void          WriteFilterContext(TextPos match);

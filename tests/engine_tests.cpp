@@ -24,6 +24,9 @@ bool starts_character(const tstring &text, size_t i)
     return unit < 0xDC00 || unit > 0xDFFF;
 }
 
+// Each unit's background, as the last line laid out with colours had it
+static std::vector<uint32_t> last_backgrounds;
+
 //
 //	A line laid out a character to a cell, with tab stops every tabWidth cells.
 //	Cursor and word stops are at character starts, never inside one.
@@ -31,9 +34,17 @@ bool starts_character(const tstring &text, size_t i)
 class FakeLayout : public TextLayout
 {
   public:
-    bool Analyze(const tchar_t *text, int length, TextRun *, int tabWidth) override
+    bool Analyze(const tchar_t *text, int length, TextRun *runs, int tabWidth) override
     {
         int x = 0;
+
+        if (runs)
+        {
+            last_backgrounds.clear();
+
+            for (int i = 0; i < length; i++)
+                last_backgrounds.push_back(runs[i].bg);
+        }
 
         m_text.assign(text, length);
         m_x.assign(length + 1, 0);
@@ -570,6 +581,30 @@ void engine_paints_every_line()
     CHECK(v.view->SelectionSize() == v.view->FileDoc()->byte_length());
 }
 
+// Every match highlighted, regardless of case, over whole characters: the
+// UTF-8 build compares as UTF-16, as find does
+void engine_highlights_matches_regardless_of_case()
+{
+    EngineView   v(U"un \u00c9clair, deux \u00e9clairs");
+    FakeCanvas   canvas;
+    TextRect     rect    = {0, 0, 640, 480};
+    tstring      pattern = tstr(U"\u00e9CLAIR");
+    TextViewFind find    = {};
+    size_t       marked  = 0;
+
+    find.text      = pattern.c_str();
+    find.length    = (uint32_t)pattern.size();
+    find.matchcase = false;
+
+    v.view->ShowMatches(&find, false);
+    v.view->Paint(canvas, &rect);
+
+    for (uint32_t bg : last_backgrounds)
+        marked += bg == TV_RGB(255, 230, 128);
+
+    CHECK(marked == 2 * tstr(U"\u00e9clair").size());
+}
+
 // Unsaved edits saved as recovery state, and restored into a new view: the
 // text, the file it's for, and the caret
 void engine_restores_its_recovery_state()
@@ -625,6 +660,7 @@ const test_case tests[] =
     { "engine_types_into_a_new_view", engine_types_into_a_new_view },
     { "engine_paints_every_line", engine_paints_every_line },
     { "engine_restores_its_recovery_state", engine_restores_its_recovery_state },
+    { "engine_highlights_matches_regardless_of_case", engine_highlights_matches_regardless_of_case },
 };
 }
 
