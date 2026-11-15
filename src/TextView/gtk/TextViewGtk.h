@@ -32,6 +32,10 @@ class TextViewGtk : public TextViewHost
 
     void SetFont(const char *description);
 
+    // The background, text and caret colours (0x00BBGGRR) the system colours
+    // and the padding take, as the widget's scheme says
+    void SetPalette(uint32_t window, uint32_t text, uint32_t caret);
+
     // Space between the text and the edge of its area, as GNOME's editors leave
     static const int PAD_X = 12;
     static const int PAD_Y = 6;
@@ -116,6 +120,10 @@ class TextViewGtk : public TextViewHost
     PangoLayout          *m_measure; // for TextWidth
     FontMetrics           m_metrics;
     TextView             *m_view;
+
+    uint32_t m_windowColour;
+    uint32_t m_textColour;
+    uint32_t m_caretColour;
 
     int m_width; // the engine's area, inside the padding
     int m_height;

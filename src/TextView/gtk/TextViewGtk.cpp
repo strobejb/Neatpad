@@ -14,7 +14,8 @@
 TextViewGtk::TextViewGtk(GtkWidget *widget)
     : m_widget(widget), m_context(gtk_widget_create_pango_context(widget)),
       m_font(pango_font_description_from_string("Monospace 11")), m_measure(pango_layout_new(m_context)),
-      m_metrics(), m_view(0), m_width(0), m_height(0), m_caretCreated(false), m_caretHidden(1), m_caretX(0),
+      m_metrics(), m_view(0), m_windowColour(TV_RGB(255, 255, 255)), m_textColour(TV_RGB(0, 0, 0)),
+      m_caretColour(TV_RGB(0, 0, 0)), m_width(0), m_height(0), m_caretCreated(false), m_caretHidden(1), m_caretX(0),
       m_caretY(0), m_caretWidth(0), m_caretHeight(0), m_vadjust(0), m_hadjust(0), m_settingScroll(false),
       m_painting(false), m_vpending(), m_hpending(), m_scrollIdle(0), m_modifiers(0), m_mouseX(0), m_mouseY(0)
 {
@@ -100,6 +101,14 @@ void TextViewGtk::Resize(int width, int height)
     m_view->OnSize(0, m_width, m_height);
 }
 
+void TextViewGtk::SetPalette(uint32_t window, uint32_t text, uint32_t caret)
+{
+    m_windowColour = window;
+    m_textColour   = text;
+    m_caretColour  = caret;
+    gtk_widget_queue_draw(m_widget);
+}
+
 void TextViewGtk::EnginePoint(double x, double y, int *engineX, int *engineY) const
 {
     *engineX = (int)floor(x) - PAD_X;
@@ -150,7 +159,7 @@ void TextViewGtk::Snapshot(GtkSnapshot *snapshot)
 
     if (m_caretCreated && m_caretHidden == 0 && HasFocus())
     {
-        GdkRGBA colour = RgbaFromColour(SystemColour(TVSC_WINDOWTEXT));
+        GdkRGBA colour = RgbaFromColour(m_caretColour);
 
         gtk_snapshot_append_color(snapshot, &colour,
                                   RectArg((float)m_caretX, (float)m_caretY, (float)m_caretWidth,
@@ -440,10 +449,10 @@ uint32_t TextViewGtk::SystemColour(int index)
     switch (index)
     {
     case TVSC_WINDOW:
-        return TV_RGB(255, 255, 255);
+        return m_windowColour;
 
     case TVSC_WINDOWTEXT:
-        return TV_RGB(0x24, 0x1f, 0x31);
+        return m_textColour;
 
     case TVSC_HIGHLIGHT:
         return TV_RGB(0x35, 0x84, 0xe4);

@@ -66,6 +66,13 @@ void neatpad_text_view_set_font(NeatpadTextView *view, const char *font);
 // TXS_* styles: those in mask become those in styles
 void neatpad_text_view_set_style(NeatpadTextView *view, guint mask, guint styles);
 
+// Characters from one tab stop to the next
+void neatpad_text_view_set_tab_width(NeatpadTextView *view, guint width);
+
+// The colours: GNOME's Adwaita or Adwaita Dark editor scheme, with the
+// selection in the accent colour (Adwaita blue when accent is NULL)
+void neatpad_text_view_set_scheme(NeatpadTextView *view, gboolean dark, const GdkRGBA *accent);
+
 // The caret's line (from 0; an estimate past the indexed part of a large file)
 // and its column, in characters from the line's start
 void neatpad_text_view_get_cursor(NeatpadTextView *view, guint64 *line, guint64 *column, gboolean *line_known);

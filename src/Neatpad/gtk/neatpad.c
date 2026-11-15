@@ -3,7 +3,7 @@
 //
 //	PURPOSE:	Neatpad for GNOME: a window per document, with a NeatpadTextView,
 //				open (and recent files) and save, find and replace, go to line,
-//				and a status bar
+//				a status bar, the light or dark style, and preferences
 //
 #include <adwaita.h>
 
@@ -38,6 +38,100 @@ typedef struct
 // What to do once a document's changes are saved or discarded
 typedef void (*EditorThen)(Editor *editor);
 
+//
+//	Settings, for every window, kept in ~/.config/catch22/neatpad/settings.ini
+//
+typedef struct
+{
+    char    *style; // "follow", "light" or "dark"
+    char    *font;
+    gboolean line_numbers;
+    gboolean current_line;
+    gboolean highlight_changes;
+    int      tab_width;
+    gboolean insert_spaces;
+    gboolean auto_indent;
+} Settings;
+
+static Settings settings;
+
+static char *settings_path(void)
+{
+    return g_build_filename(g_get_user_config_dir(), "catch22", "neatpad", "settings.ini", NULL);
+}
+
+static gboolean read_boolean(GKeyFile *file, const char *key, gboolean otherwise)
+{
+    return g_key_file_has_key(file, "editor", key, 0) ? g_key_file_get_boolean(file, "editor", key, 0) : otherwise;
+}
+
+static char *read_string(GKeyFile *file, const char *key, const char *otherwise)
+{
+    char *value = g_key_file_get_string(file, "editor", key, 0);
+
+    return value ? value : g_strdup(otherwise);
+}
+
+static void load_settings(void)
+{
+    GKeyFile *file = g_key_file_new();
+    char     *path = settings_path();
+
+    g_key_file_load_from_file(file, path, G_KEY_FILE_NONE, 0);
+
+    settings.style             = read_string(file, "style", "follow");
+    settings.font              = read_string(file, "font", "Monospace 11");
+    settings.line_numbers      = read_boolean(file, "line-numbers", FALSE);
+    settings.current_line      = read_boolean(file, "highlight-current-line", FALSE);
+    settings.highlight_changes = read_boolean(file, "highlight-changes", TRUE);
+    settings.insert_spaces     = read_boolean(file, "insert-spaces", FALSE);
+    settings.auto_indent       = read_boolean(file, "auto-indent", FALSE);
+    settings.tab_width         = g_key_file_has_key(file, "editor", "tab-width", 0)
+                                     ? CLAMP(g_key_file_get_integer(file, "editor", "tab-width", 0), 1, 16)
+                                     : 4;
+
+    g_free(path);
+    g_key_file_free(file);
+}
+
+static void save_settings(void)
+{
+    GKeyFile *file   = g_key_file_new();
+    char     *path   = settings_path();
+    char     *folder = g_path_get_dirname(path);
+
+    g_key_file_set_string(file, "editor", "style", settings.style);
+    g_key_file_set_string(file, "editor", "font", settings.font);
+    g_key_file_set_boolean(file, "editor", "line-numbers", settings.line_numbers);
+    g_key_file_set_boolean(file, "editor", "highlight-current-line", settings.current_line);
+    g_key_file_set_boolean(file, "editor", "highlight-changes", settings.highlight_changes);
+    g_key_file_set_integer(file, "editor", "tab-width", settings.tab_width);
+    g_key_file_set_boolean(file, "editor", "insert-spaces", settings.insert_spaces);
+    g_key_file_set_boolean(file, "editor", "auto-indent", settings.auto_indent);
+
+    g_mkdir_with_parents(folder, 0700);
+
+    if (!g_key_file_save_to_file(file, path, 0))
+        g_warning("can't save %s", path);
+
+    g_free(folder);
+    g_free(path);
+    g_key_file_free(file);
+}
+
+// The style setting, as libadwaita's colour scheme
+static void apply_style(void)
+{
+    AdwColorScheme scheme = ADW_COLOR_SCHEME_DEFAULT;
+
+    if (g_str_equal(settings.style, "light"))
+        scheme = ADW_COLOR_SCHEME_FORCE_LIGHT;
+    else if (g_str_equal(settings.style, "dark"))
+        scheme = ADW_COLOR_SCHEME_FORCE_DARK;
+
+    adw_style_manager_set_color_scheme(adw_style_manager_get_default(), scheme);
+}
+
 static GtkWindow *editor_window_new(GtkApplication *app, GFile *file);
 
 static Editor *editor_of(gpointer window)
@@ -58,6 +152,56 @@ static void editor_free(gpointer data)
 static void toast(Editor *editor, const char *message)
 {
     adw_toast_overlay_add_toast(editor->toasts, adw_toast_new(message));
+}
+
+static void apply_settings(Editor *editor)
+{
+    guint styles = (settings.line_numbers ? TXS_LINENUMBERS | TXS_SELMARGIN : 0) |
+                   (settings.current_line ? TXS_HIGHLIGHTCURLINE : 0) |
+                   (settings.highlight_changes ? TXS_HIGHLIGHTCHANGES : 0) |
+                   (settings.insert_spaces ? TXS_INSERTSPACES : 0) | (settings.auto_indent ? TXS_AUTOINDENT : 0);
+
+    neatpad_text_view_set_font(editor->view, settings.font);
+    neatpad_text_view_set_tab_width(editor->view, (guint)settings.tab_width);
+    neatpad_text_view_set_style(editor->view,
+                                TXS_LINENUMBERS | TXS_SELMARGIN | TXS_HIGHLIGHTCURLINE | TXS_HIGHLIGHTCHANGES |
+                                    TXS_INSERTSPACES | TXS_AUTOINDENT,
+                                styles);
+}
+
+static void apply_settings_everywhere(void)
+{
+    GList *windows = gtk_application_get_windows(GTK_APPLICATION(g_application_get_default()));
+
+    for (GList *w = windows; w; w = w->next)
+    {
+        if (editor_of(w->data))
+            apply_settings(editor_of(w->data));
+    }
+}
+
+// The text's colours follow the style: light or dark, and the accent colour
+// where libadwaita has one (1.6)
+static void apply_scheme(Editor *editor)
+{
+    AdwStyleManager *manager = adw_style_manager_get_default();
+    GdkRGBA         *accent  = 0;
+
+#if ADW_CHECK_VERSION(1, 6, 0)
+    accent = adw_style_manager_get_accent_color_rgba(manager);
+#endif
+
+    neatpad_text_view_set_scheme(editor->view, adw_style_manager_get_dark(manager), accent);
+
+    if (accent)
+        gdk_rgba_free(accent);
+}
+
+static void on_style_changed(GObject *manager, GParamSpec *spec, gpointer window)
+{
+    (void)manager;
+    (void)spec;
+    apply_scheme(editor_of(window));
 }
 
 //
@@ -686,10 +830,17 @@ static const GActionEntry window_actions[] = {
 //
 static GMenuModel *primary_menu(void)
 {
-    GMenu *menu    = g_menu_new();
-    GMenu *file    = g_menu_new();
-    GMenu *search  = g_menu_new();
-    GMenu *general = g_menu_new();
+    GMenu     *menu    = g_menu_new();
+    GMenu     *style   = g_menu_new();
+    GMenu     *file    = g_menu_new();
+    GMenu     *search  = g_menu_new();
+    GMenu     *general = g_menu_new();
+    GMenuItem *styles  = g_menu_item_new(0, 0);
+
+    // the style switcher, a widget of its own (style_switcher)
+    g_menu_item_set_attribute(styles, "custom", "s", "style");
+    g_menu_append_item(style, styles);
+    g_object_unref(styles);
 
     g_menu_append(file, "_New Window", "win.new-window");
     g_menu_append(file, "_Save", "win.save");
@@ -697,17 +848,66 @@ static GMenuModel *primary_menu(void)
     g_menu_append(search, "_Find\xe2\x80\xa6", "win.find");
     g_menu_append(search, "_Replace\xe2\x80\xa6", "win.replace");
     g_menu_append(search, "_Go to Line\xe2\x80\xa6", "win.go-to-line");
+    g_menu_append(general, "_Preferences", "app.preferences");
     g_menu_append(general, "_About Neatpad", "app.about");
     g_menu_append(general, "_Quit", "app.quit");
 
+    g_menu_append_section(menu, 0, G_MENU_MODEL(style));
     g_menu_append_section(menu, 0, G_MENU_MODEL(file));
     g_menu_append_section(menu, 0, G_MENU_MODEL(search));
     g_menu_append_section(menu, 0, G_MENU_MODEL(general));
 
+    g_object_unref(style);
     g_object_unref(file);
     g_object_unref(search);
     g_object_unref(general);
     return G_MENU_MODEL(menu);
+}
+
+//
+//	The style switcher: follow the system, light or dark, as round swatches,
+//	as GNOME Text Editor has them. Each is a radio button on app.style.
+//
+static const char style_css[] = ".style-switcher { margin: 6px 0; }"
+                                ".style-switcher button { min-width: 40px; min-height: 40px; padding: 0;"
+                                "  border-radius: 9999px; border: 1px solid alpha(black, 0.15); box-shadow: none; }"
+                                ".style-switcher button.follow {"
+                                "  background: linear-gradient(-45deg, #1d1d20 49.99%, #ffffff 50%); }"
+                                ".style-switcher button.light { background: #ffffff; }"
+                                ".style-switcher button.dark { background: #1d1d20; }"
+                                ".style-switcher button:checked {"
+                                "  outline: 2px solid @accent_bg_color; outline-offset: 2px; }";
+
+static GtkWidget *style_switcher(void)
+{
+    static const struct
+    {
+        const char *name;
+        const char *tooltip;
+    } styles[] = {
+        {"follow", "Follow System Style"},
+        {"light", "Light Style"},
+        {"dark", "Dark Style"},
+    };
+
+    GtkWidget *box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 18);
+
+    gtk_widget_set_halign(box, GTK_ALIGN_CENTER);
+    gtk_widget_add_css_class(box, "style-switcher");
+
+    for (size_t i = 0; i < G_N_ELEMENTS(styles); i++)
+    {
+        GtkWidget *button = gtk_toggle_button_new();
+        char      *action = g_strdup_printf("app.style::%s", styles[i].name);
+
+        gtk_widget_add_css_class(button, styles[i].name);
+        gtk_widget_set_tooltip_text(button, styles[i].tooltip);
+        gtk_actionable_set_detailed_action_name(GTK_ACTIONABLE(button), action);
+        gtk_box_append(GTK_BOX(box), button);
+        g_free(action);
+    }
+
+    return box;
 }
 
 static GtkWidget *header_bar(Editor *editor)
@@ -727,6 +927,8 @@ static GtkWidget *header_bar(Editor *editor)
 
     gtk_menu_button_set_icon_name(GTK_MENU_BUTTON(menu), "open-menu-symbolic");
     gtk_menu_button_set_menu_model(GTK_MENU_BUTTON(menu), model);
+    gtk_popover_menu_add_child(GTK_POPOVER_MENU(gtk_menu_button_get_popover(GTK_MENU_BUTTON(menu))), style_switcher(),
+                               "style");
     gtk_menu_button_set_primary(GTK_MENU_BUTTON(menu), TRUE);
     gtk_widget_set_tooltip_text(menu, "Main Menu");
     g_object_unref(model);
@@ -883,6 +1085,14 @@ static GtkWindow *editor_window_new(GtkApplication *app, GFile *file)
     g_signal_connect(view, "cursor-changed", G_CALLBACK(on_cursor_changed), editor);
     g_signal_connect(window, "close-request", G_CALLBACK(on_close_request), editor);
     g_signal_connect_object(gtk_recent_manager_get_default(), "changed", G_CALLBACK(on_recent_changed), window, 0);
+    g_signal_connect_object(adw_style_manager_get_default(), "notify::dark", G_CALLBACK(on_style_changed), window, 0);
+#if ADW_CHECK_VERSION(1, 6, 0)
+    g_signal_connect_object(adw_style_manager_get_default(), "notify::accent-color-rgba",
+                            G_CALLBACK(on_style_changed), window, 0);
+#endif
+
+    apply_settings(editor);
+    apply_scheme(editor);
 
     if (file)
         load(editor, file);
@@ -913,6 +1123,139 @@ static void action_about(GSimpleAction *action, GVariant *parameter, gpointer da
     adw_dialog_present(about, GTK_WIDGET(gtk_application_get_active_window(app)));
 }
 
+// app.style: follow the system, light or dark
+static void action_style(GSimpleAction *action, GVariant *state, gpointer data)
+{
+    (void)data;
+
+    g_simple_action_set_state(action, state);
+    g_free(settings.style);
+    settings.style = g_variant_dup_string(state, 0);
+    apply_style();
+    save_settings();
+}
+
+//
+//	Preferences: each row changes a setting, saves it, and applies it to every
+//	window
+//
+static void on_switch_row(GObject *row, GParamSpec *spec, gpointer setting)
+{
+    (void)spec;
+    *(gboolean *)setting = adw_switch_row_get_active(ADW_SWITCH_ROW(row));
+    save_settings();
+    apply_settings_everywhere();
+}
+
+static void on_tab_width(GObject *row, GParamSpec *spec, gpointer data)
+{
+    (void)spec;
+    (void)data;
+    settings.tab_width = (int)adw_spin_row_get_value(ADW_SPIN_ROW(row));
+    save_settings();
+    apply_settings_everywhere();
+}
+
+static void on_font(GObject *button, GParamSpec *spec, gpointer data)
+{
+    PangoFontDescription *font = gtk_font_dialog_button_get_font_desc(GTK_FONT_DIALOG_BUTTON(button));
+
+    (void)spec;
+    (void)data;
+
+    if (!font)
+        return;
+
+    g_free(settings.font);
+    settings.font = pango_font_description_to_string(font);
+    save_settings();
+    apply_settings_everywhere();
+}
+
+// Only fixed-width fonts: the engine measures a character width
+static gboolean is_monospace(gpointer item, gpointer data)
+{
+    PangoFontFamily *family = PANGO_IS_FONT_FACE(item) ? pango_font_face_get_family(PANGO_FONT_FACE(item))
+                                                       : PANGO_IS_FONT_FAMILY(item) ? PANGO_FONT_FAMILY(item) : 0;
+
+    (void)data;
+    return family && pango_font_family_is_monospace(family);
+}
+
+static GtkWidget *switch_row(GtkWidget *group, const char *title, const char *subtitle, gboolean *setting)
+{
+    GtkWidget *row = adw_switch_row_new();
+
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(row), title);
+
+    if (subtitle)
+        adw_action_row_set_subtitle(ADW_ACTION_ROW(row), subtitle);
+
+    adw_switch_row_set_active(ADW_SWITCH_ROW(row), *setting);
+    g_signal_connect(row, "notify::active", G_CALLBACK(on_switch_row), setting);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(group), row);
+    return row;
+}
+
+static void action_preferences(GSimpleAction *action, GVariant *parameter, gpointer data)
+{
+    AdwDialog            *dialog      = adw_preferences_dialog_new();
+    GtkWidget            *page        = adw_preferences_page_new();
+    GtkWidget            *fonts       = adw_preferences_group_new();
+    GtkWidget            *display     = adw_preferences_group_new();
+    GtkWidget            *indentation = adw_preferences_group_new();
+    GtkWidget            *font_row    = adw_action_row_new();
+    GtkFontDialog        *chooser     = gtk_font_dialog_new();
+    GtkWidget            *font_button = gtk_font_dialog_button_new(chooser); // the button owns chooser
+    GtkFilter            *monospace   = GTK_FILTER(gtk_custom_filter_new(is_monospace, 0, 0));
+    PangoFontDescription *font        = pango_font_description_from_string(settings.font);
+    GtkWidget            *tabs        = adw_spin_row_new_with_range(1, 16, 1);
+
+    (void)action;
+    (void)parameter;
+
+    adw_preferences_page_set_title(ADW_PREFERENCES_PAGE(page), "Editor");
+    adw_preferences_page_set_icon_name(ADW_PREFERENCES_PAGE(page), "document-edit-symbolic");
+
+    // the font
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(fonts), "Font");
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(font_row), "Editor Font");
+    gtk_font_dialog_set_filter(chooser, monospace);
+    gtk_font_dialog_button_set_level(GTK_FONT_DIALOG_BUTTON(font_button), GTK_FONT_LEVEL_FONT);
+    gtk_font_dialog_button_set_use_font(GTK_FONT_DIALOG_BUTTON(font_button), TRUE);
+    gtk_font_dialog_button_set_font_desc(GTK_FONT_DIALOG_BUTTON(font_button), font);
+    gtk_widget_set_valign(font_button, GTK_ALIGN_CENTER);
+    adw_action_row_add_suffix(ADW_ACTION_ROW(font_row), font_button);
+    g_signal_connect(font_button, "notify::font-desc", G_CALLBACK(on_font), 0);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(fonts), font_row);
+
+    // what's shown
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(display), "Display");
+    switch_row(display, "Line Numbers", 0, &settings.line_numbers);
+    switch_row(display, "Highlight Current Line", 0, &settings.current_line);
+    switch_row(display, "Highlight Changes", "Colour text typed since the file was opened",
+               &settings.highlight_changes);
+
+    // tabs and indentation
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(indentation), "Indentation");
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(tabs), "Tab Width");
+    adw_spin_row_set_value(ADW_SPIN_ROW(tabs), settings.tab_width);
+    g_signal_connect(tabs, "notify::value", G_CALLBACK(on_tab_width), 0);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(indentation), tabs);
+    switch_row(indentation, "Insert Spaces Instead of Tabs", 0, &settings.insert_spaces);
+    switch_row(indentation, "Automatic Indentation", 0, &settings.auto_indent);
+
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(page), ADW_PREFERENCES_GROUP(fonts));
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(page), ADW_PREFERENCES_GROUP(display));
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(page), ADW_PREFERENCES_GROUP(indentation));
+    adw_preferences_dialog_add(ADW_PREFERENCES_DIALOG(dialog), ADW_PREFERENCES_PAGE(page));
+
+    adw_dialog_present(dialog, GTK_WIDGET(gtk_application_get_active_window(GTK_APPLICATION(data))));
+
+    pango_font_description_free(font);
+    g_object_unref(monospace);
+}
+
 // Each window asks about its own unsaved changes as it closes
 static void action_quit(GSimpleAction *action, GVariant *parameter, gpointer data)
 {
@@ -926,6 +1269,8 @@ static void action_quit(GSimpleAction *action, GVariant *parameter, gpointer dat
 }
 
 static const GActionEntry app_actions[] = {
+    {"style", 0, "s", "'follow'", action_style, {0}},
+    {"preferences", action_preferences, 0, 0, 0, {0}},
     {"about", action_about, 0, 0, 0, {0}},
     {"quit", action_quit, 0, 0, 0, {0}},
 };
@@ -947,12 +1292,25 @@ static void on_startup(GApplication *app, gpointer data)
         {"win.find-previous", {"<Ctrl><Shift>g", "<Shift>F3", 0}},
         {"win.go-to-line", {"<Ctrl>i", 0}},
         {"win.close", {"<Ctrl>w", 0}},
+        {"app.preferences", {"<Ctrl>comma", 0}},
         {"app.quit", {"<Ctrl>q", 0}},
     };
+
+    GtkCssProvider *css = gtk_css_provider_new();
 
     (void)data;
 
     g_action_map_add_action_entries(G_ACTION_MAP(app), app_actions, G_N_ELEMENTS(app_actions), app);
+
+    // the saved style, and the style switcher's look
+    load_settings();
+    g_action_group_change_action_state(G_ACTION_GROUP(app), "style", g_variant_new_string(settings.style));
+    apply_style();
+
+    gtk_css_provider_load_from_string(css, style_css);
+    gtk_style_context_add_provider_for_display(gdk_display_get_default(), GTK_STYLE_PROVIDER(css),
+                                               GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+    g_object_unref(css);
 
     for (size_t i = 0; i < G_N_ELEMENTS(accels); i++)
         gtk_application_set_accels_for_action(GTK_APPLICATION(app), accels[i].action, accels[i].keys);

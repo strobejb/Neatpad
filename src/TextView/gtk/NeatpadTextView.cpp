@@ -555,6 +555,7 @@ static void neatpad_text_view_init(NeatpadTextView *self)
     self->hpolicy = GTK_SCROLL_MINIMUM;
     set_adjustment(self, true, 0);
     set_adjustment(self, false, 0);
+    neatpad_text_view_set_scheme(self, FALSE, 0);
 
     self->im = gtk_im_multicontext_new();
     gtk_im_context_set_client_widget(self->im, widget);
@@ -716,6 +717,85 @@ void neatpad_text_view_set_font(NeatpadTextView *view, const char *font)
     g_return_if_fail(NEATPAD_IS_TEXT_VIEW(view));
 
     view->host->SetFont(font);
+}
+
+void neatpad_text_view_set_tab_width(NeatpadTextView *view, guint width)
+{
+    g_return_if_fail(NEATPAD_IS_TEXT_VIEW(view));
+
+    view_of(view)->SetTabWidth(width);
+}
+
+// A colour part way from one to another: 0 is from, 1 is to
+static uint32_t mix(uint32_t from, uint32_t to, double amount)
+{
+    uint32_t mixed = 0;
+
+    for (int shift = 0; shift < 24; shift += 8)
+    {
+        double a = (from >> shift) & 0xff;
+        double b = (to >> shift) & 0xff;
+
+        mixed |= (uint32_t)(a + (b - a) * amount + 0.5) << shift;
+    }
+
+    return mixed;
+}
+
+//
+//	The colours of GtkSourceView's Adwaita and Adwaita Dark schemes, as GNOME
+//	Text Editor shows text. A selection is the accent colour a quarter over the
+//	background, as libadwaita selects text, and a tenth of the text's colour
+//	when the view isn't focused.
+//
+void neatpad_text_view_set_scheme(NeatpadTextView *view, gboolean dark, const GdkRGBA *accent)
+{
+    TextView *engine = 0;
+    uint32_t  background;
+    uint32_t  text;
+    uint32_t  highlight;
+    uint32_t  current;
+
+    g_return_if_fail(NEATPAD_IS_TEXT_VIEW(view));
+
+    engine     = view_of(view);
+    background = dark ? TV_RGB(0x1d, 0x1d, 0x20) : TV_RGB(0xff, 0xff, 0xff);
+    text       = dark ? TV_RGB(0xc0, 0xbf, 0xbc) : TV_RGB(0x50, 0x4e, 0x55);
+    current    = dark ? TV_RGB(0x24, 0x24, 0x28) : TV_RGB(0xf6, 0xf5, 0xf4);
+    highlight  = accent ? TV_RGB((int)(accent->red * 255 + 0.5), (int)(accent->green * 255 + 0.5),
+                                 (int)(accent->blue * 255 + 0.5))
+                        : TV_RGB(0x35, 0x84, 0xe4);
+
+    const struct
+    {
+        uint32_t index;
+        uint32_t colour;
+    } colours[] = {
+        {TXC_FOREGROUND, text},
+        {TXC_BACKGROUND, background},
+        {TXC_HIGHLIGHTTEXT, text},
+        {TXC_HIGHLIGHT, mix(background, highlight, 0.25)},
+        {TXC_HIGHLIGHTTEXT2, text},
+        {TXC_HIGHLIGHT2, mix(background, text, 0.1)},
+        {TXC_SELMARGIN1, background},
+        {TXC_SELMARGIN2, background},
+        {TXC_LINENUMBERTEXT, dark ? TV_RGB(0x5e, 0x5e, 0x5e) : TV_RGB(0xb0, 0xaf, 0xac)},
+        {TXC_LINENUMBER, background},
+        {TXC_LONGLINETEXT, text},
+        {TXC_LONGLINE, current},
+        {TXC_CURRENTLINETEXT, text},
+        {TXC_CURRENTLINE, current},
+        {TXC_SEARCHMATCHTEXT, dark ? TV_RGB(0x24, 0x24, 0x24) : TV_RGB(0x3d, 0x38, 0x46)},
+        {TXC_SEARCHMATCH, dark ? mix(background, TV_RGB(0xf6, 0xd3, 0x2d), 0.5) : TV_RGB(0xf8, 0xe4, 0x5c)},
+        {TXC_CHANGEDTEXT, dark ? TV_RGB(0xf6, 0x61, 0x51) : TV_RGB(0xc0, 0x1c, 0x28)},
+        {TXC_CHANGEDLINE, dark ? TV_RGB(0x62, 0xa0, 0xea) : TV_RGB(0x35, 0x84, 0xe4)},
+        {TXC_CHANGEDLINEBG, current},
+    };
+
+    for (const auto &colour : colours)
+        engine->SetColour(colour.index, colour.colour);
+
+    view->host->SetPalette(background, text, dark ? TV_RGB(0xc0, 0xbf, 0xbc) : TV_RGB(0x77, 0x76, 0x7b));
 }
 
 void neatpad_text_view_set_style(NeatpadTextView *view, guint mask, guint styles)

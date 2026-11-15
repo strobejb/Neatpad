@@ -257,7 +257,13 @@ Each step is its own commit on `main`, and moves and formatting changes stay sep
     files (GNOME's list, those Neatpad opened or saved). The main menu has Find, Replace and Go to Line in a
     section. The view has a context menu as on Win32, without its two edit-control items that do nothing.
     Replace is a second row in the find bar; Go to Line (Ctrl+I, as Text Editor) is a bar of its own.
-  - **Next:** options (font, tabs, line numbers), then printing, recovery and theming, one at a time.
+  - **Done:** the style and preferences. The text takes the colours of GtkSourceView's Adwaita and Adwaita Dark
+    schemes (`neatpad_text_view_set_scheme`), with the selection in the accent colour (libadwaita 1.6; Adwaita
+    blue before), and follows libadwaita's style. The main menu starts with a style switcher (follow the system,
+    light, dark), as Text Editor's. Preferences has the font (fixed-width only), line numbers, current line,
+    highlighting changes, tab width, spaces for tabs and auto-indent. Settings are a `GKeyFile`,
+    `~/.config/catch22/neatpad/settings.ini`, and apply to every window as they change.
+  - **Next:** recovery, then printing.
 
 ## Open decisions
 
@@ -268,7 +274,7 @@ Each step is its own commit on `main`, and moves and formatting changes stay sep
 | ANSI code pages on Linux (`Unicode.c`) | Step 5 | glibc `iconv`: part of the C library, so no new dependency |
 | Oldest GTK4 and libadwaita versions | Step 8 | Whatever the oldest distro you support ships; CI builds against that |
 | How the GTK app ships | Step 9 | Flatpak, distro packages or from source. Flatpak opens files through its document portal, so check multi-GB file performance |
-| Where Linux settings are stored | Step 9 | `GKeyFile` in `~/.config/neatpad` (part of GLib, nothing to install), or GSettings (needs a schema installed) |
+| Where Linux settings are stored | Step 9 | Decided: `GKeyFile` in `~/.config/catch22/neatpad` (part of GLib, nothing to install) |
 
 ## Details to settle during the refactor
 
