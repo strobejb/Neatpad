@@ -11,7 +11,7 @@ repo_root="$(cd -- "${script_dir}/.." && pwd)"
 
 app_id="net.catch22.Neatpad"
 default_build_dir="${repo_root}/build"
-default_icon_source="${repo_root}/src/Neatpad/gtk/neatpad-gnome-512.png"
+default_icon_source="${repo_root}/src/Neatpad/gtk/icons/neatpad-gnome-512.png"
 
 if [[ $# -gt 2 ]]; then
     echo "Usage: ${0##*/} [build-dir] [icon-file]" >&2
