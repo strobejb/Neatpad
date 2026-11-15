@@ -290,7 +290,7 @@ Each step is its own commit on `main`, and moves and formatting changes stay sep
   - **Done:** the caret blinks as GNOME's settings say (`gtk-cursor-blink`, its time and timeout), shown again as
     it moves. `scripts/install-dev-desktop.sh` installs a desktop entry and icon for the build in this checkout,
     named for the app ID (`net.catch22.Neatpad`), so GNOME shows it in the app grid, the dock and Open With. The
-    icon, `data/neatpad.png`, is the Win32 app's, 48 pixels: a larger one would look sharper in the app grid.
+    icon is `src/Neatpad/gtk/neatpad-gnome-512.png`.
 - **Next:** smaller gaps, as wanted: the context menu from the keyboard, input-method preedit, line endings and
   encoding when saving, and a filter in the find bar.
 

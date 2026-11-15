@@ -161,7 +161,7 @@ END
 
 // Icon with lowest ID value placed first to ensure application icon
 // remains consistent on all systems.
-IDI_ICON1               ICON                    "icon1.ico"
+IDI_ICON1               ICON                    "neatpad.ico"
 
 IDI_ICON2               ICON                    "icon2.ico"
 

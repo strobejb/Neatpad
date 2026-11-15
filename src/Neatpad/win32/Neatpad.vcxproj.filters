@@ -78,7 +78,7 @@
     <Image Include="bitmap4.bmp">
       <Filter>Resource Files</Filter>
     </Image>
-    <Image Include="icon1.ico">
+    <Image Include="neatpad.ico">
       <Filter>Resource Files</Filter>
     </Image>
     <Image Include="icon2.ico">

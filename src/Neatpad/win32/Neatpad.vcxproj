@@ -176,7 +176,7 @@
     <Image Include="bitmap2.bmp" />
     <Image Include="bitmap3.bmp" />
     <Image Include="bitmap4.bmp" />
-    <Image Include="icon1.ico" />
+    <Image Include="neatpad.ico" />
     <Image Include="icon2.ico" />
     <Image Include="icon3.ico" />
     <Image Include="icon4.ico" />

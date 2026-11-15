@@ -11,7 +11,7 @@ repo_root="$(cd -- "${script_dir}/.." && pwd)"
 
 app_id="net.catch22.Neatpad"
 default_build_dir="${repo_root}/build"
-default_icon_source="${repo_root}/data/neatpad.png"
+default_icon_source="${repo_root}/src/Neatpad/gtk/neatpad-gnome-512.png"
 
 if [[ $# -gt 2 ]]; then
     echo "Usage: ${0##*/} [build-dir] [icon-file]" >&2
@@ -40,8 +40,13 @@ if [[ ! -f "${icon_source}" ]]; then
     exit 1
 fi
 
-# The icon goes in the folder for its size: a PNG's width is bytes 16-19
+# The icon goes in the folder for its size: a PNG's width is bytes 16-19. The
+# theme's largest is 512, and GTK scales a larger icon down from there.
 icon_size="$(od -An -tu1 -j16 -N4 "${icon_source}" | awk '{ print $1 * 16777216 + $2 * 65536 + $3 * 256 + $4 }')"
+
+if (( icon_size > 512 )); then
+    icon_size=512
+fi
 
 data_dir="${XDG_DATA_HOME:-${HOME}/.local/share}"
 applications_dir="${data_dir}/applications"
@@ -59,6 +64,9 @@ cleanup() {
 trap cleanup EXIT
 
 mkdir -p "${applications_dir}" "${icons_dir}"
+
+# an icon installed before at another size would still be used at that size
+rm -f "${data_dir}"/icons/hicolor/*/apps/"${app_id}".png
 
 icon_tmp="$(mktemp "${icons_dir}/${app_id}.png.XXXXXX")"
 cp "${icon_source}" "${icon_tmp}"
@@ -92,7 +100,9 @@ if command -v update-desktop-database >/dev/null 2>&1; then
 fi
 
 if command -v gtk-update-icon-cache >/dev/null 2>&1; then
-    gtk-update-icon-cache -f -q "${data_dir}/icons/hicolor" >/dev/null 2>&1 || true
+    # GTK trusts a cache over the folder, so an old one must be brought up to
+    # date: -t, as a user's hicolor folder usually has no index.theme
+    gtk-update-icon-cache -f -t -q "${data_dir}/icons/hicolor" >/dev/null 2>&1 || true
 fi
 
 echo "Installed ${desktop_file}"
