@@ -463,6 +463,8 @@ private:
 
 	// Scrollbar-related data
 	TextCoord	m_scrollVPos;		// top line of the view
+	TextCoord	m_lastScroll;		// LastScrollCoord's answer, for m_nLastScrollLines rows
+	int			m_nLastScrollLines;	// -1 when the text has changed since
 	int			m_nHScrollPos;
 	int			m_nHScrollMax;
 

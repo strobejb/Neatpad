@@ -158,6 +158,9 @@ void TextView::ResetLineCache()
 	{
 		m_lineCache[i].usage	= 0;
 	}
+
+	// and LastScrollCoord's answer: the cache is reset as the text changes
+	m_nLastScrollLines = -1;
 }
 
 //

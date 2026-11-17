@@ -137,6 +137,32 @@ bool TextDocument::coord_from_document_end(TextCoord *coord)
 	return coord_from_pos(TextPos(byte_length()), coord);
 }
 
+bool TextDocument::last_line_start(TextCoord *line)
+{
+	size_w rawLength = m_seq.size() - m_nHeaderSize;
+	size_w line_begin;
+	size_w line_next;
+
+	if(line == 0)
+		return false;
+
+	if(rawLength == 0)
+	{
+		*line = TextCoord();
+		return true;
+	}
+
+	if(!line_bounds_from_offset(rawLength, &line_begin, &line_next))
+		return false;
+
+	line->byte_offset = line_begin;
+	line->line_begin  = TextPos(line_begin);
+	line->line_next   = TextPos(line_next);
+	line->column      = 0;
+
+	return true;
+}
+
 bool TextDocument::coord_from_line_pos(const TextCoord *line, size_w column, TextCoord *coord)
 {
 	if(line == 0 || coord == 0)

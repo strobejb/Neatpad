@@ -31,6 +31,7 @@ TextView::TextView(TextViewHost *host)
 	
 
 	// Scrollbar related data
+	m_nLastScrollLines = -1;
 	m_nHScrollPos = 0;
 	m_nHScrollMax = 0;
 

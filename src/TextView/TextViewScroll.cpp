@@ -100,16 +100,30 @@ bool TextView::SetScrollCoord(TextCoord *coord)
 
 //
 //	The furthest the view can scroll: the top line that puts the end of the
-//	document on the last whole row
+//	document on the last whole row. Finding the last line can scan a long way
+//	back (a binary file's last "line" can be megabytes), so the answer is kept
+//	until the text or the window's height changes.
 //
 bool TextView::LastScrollCoord(TextCoord *top)
 {
-	TextCoord eofCoord;
+	TextCoord lastLine;
+	uint32_t  rows = m_nWindowLines > 1 ? m_nWindowLines - 1 : 0;
 
-	if(!m_pTextDoc->coord_from_document_end(&eofCoord))
+	if(m_nLastScrollLines == (int)rows)
+	{
+		*top = m_lastScroll;
+		return true;
+	}
+
+	if(!m_pTextDoc->last_line_start(&lastLine))
 		return false;
 
-	return m_pTextDoc->previous_line_from_coord(&eofCoord, m_nWindowLines > 1 ? m_nWindowLines - 1 : 0, top);
+	if(!m_pTextDoc->previous_line_from_coord(&lastLine, rows, top))
+		return false;
+
+	m_lastScroll		= *top;
+	m_nLastScrollLines	= (int)rows;
+	return true;
 }
 
 //
@@ -120,6 +134,9 @@ bool TextView::LastScrollCoord(TextCoord *top)
 void TextView::AdjustCoordsForChange(TextChange *change)
 {
 	TextCoord scrollPos = m_scrollVPos;
+
+	// the end of the text may have moved
+	m_nLastScrollLines = -1;
 
 	if(m_pTextDoc->coord_after_change(&scrollPos, change))
 		SetScrollCoord(&scrollPos);

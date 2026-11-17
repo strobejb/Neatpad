@@ -232,6 +232,10 @@ public:
 	bool  coord_from_pos(TextPos pos, TextCoord *coord);
 	bool  coord_from_document_end(TextCoord *coord);
 
+	// The start of the last line, without counting its column (which reads
+	// the whole line)
+	bool  last_line_start(TextCoord *line);
+
 	// The start of a line, counted from 0. A line past the indexed part of the
 	// document is TDR_PENDING_INDEX (one a little past it is indexed there and
 	// then), and one the document doesn't have TDR_FAILED.
