@@ -835,7 +835,7 @@ bool sequence::save_state(state_writer &out) const
             else if (i >= old.buffers.size() && (b->fp || (i == 0 && !out.original_file.empty())))
             {
                 file_ptr original(b->fp ? 0 : open_file(out.original_file, "rb"));
-                FILE    *fp = b->fp ? (FILE *)b->fp : original.get();
+                FILE    *fp = b->fp ? (FILE *)b->source_file() : original.get();
 
                 if (!fp || !source_info(fp, r, true) || r.length != b->length || !source_valid(r))
                     return false;
@@ -970,7 +970,7 @@ bool sequence::load_state(state_reader &in)
             {
                 buffer_record now;
 
-                if (!source_info((FILE *)b->fp, now, false) || !same_source(record, now))
+                if (!source_info((FILE *)b->source_file(), now, false) || !same_source(record, now))
                 {
                     in.source_unavailable = true;
                     return false;

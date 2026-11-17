@@ -319,7 +319,14 @@ Each step is its own commit on `main`, and moves and formatting changes stay sep
     choices, so Save As is a `GtkFileChooserNative` (deprecated, as GNOME Text Editor's is), which the portal shows.
     UTF-8's byte-order mark is an encoding of its own there, as a choice can't be a check box for one encoding.
     Saved another way, the document opens again as the file now is, and its recovery store starts afresh.
-- **Next:** smaller gaps, as wanted: the context menu from the keyboard, input-method preedit.
+  - **Done:** files another program writes in place. Linux can't stop it (its locks are advisory), so files
+    under 16 MB are read into memory and closed, as Win32's `InMemoryLimit` does. A longer one is read from a
+    copy-on-write clone (`FICLONE`, on btrfs and XFS: Fedora's default), an unnamed file (`O_TMPFILE`) in its
+    folder, so writes to the file don't change the document. The file stays open beside it, for recovery to
+    know it by. Elsewhere (ext4, a folder that can't be written) it's read from the file, as before. A test
+    makes the change and runs where the temp folder can clone: set `TMPDIR` to a folder on btrfs.
+- **Next:** smaller gaps, as wanted: the context menu from the keyboard, input-method preedit, dropping files on
+  the window.
 
 ## Open decisions
 

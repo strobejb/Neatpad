@@ -1404,6 +1404,80 @@ void textdocument_reads_files_under_the_limit_into_memory()
 }
 #endif
 
+#ifdef __linux__
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/ioctl.h>
+#include <linux/fs.h>
+
+bool save_as_is(TextDocument &doc, const seqfilechar *path);
+
+// Whether the file system path is on makes copy-on-write clones (btrfs, XFS)
+static bool can_clone(const seqfilechar *path)
+{
+    std::string folder = std::filesystem::path(path).parent_path().string();
+    int         from   = open(path, O_RDONLY | O_CLOEXEC);
+    int         to     = open(folder.c_str(), O_TMPFILE | O_RDWR | O_CLOEXEC, 0600);
+    bool        cloned = from != -1 && to != -1 && ioctl(to, FICLONE, from) == 0;
+
+    if (from != -1)
+        close(from);
+
+    if (to != -1)
+        close(to);
+
+    return cloned;
+}
+
+void textdocument_reads_a_clone_that_writes_in_place_dont_change()
+{
+    TextDocument doc;
+    seqfilechar  path[TEST_PATH_MAX];
+    std::string  text;
+    FILE        *writer;
+
+    // 4 MB of lines: more than the document keeps of a file it reads from disk,
+    // so a line far in is read from the file as it's asked for
+    for (int i = 0; i < 800000; i++)
+        text += "line\n";
+
+    CHECK(write_textdocument_file(text.c_str(), DOC_ASCII, path));
+
+    if (!can_clone(path))
+    {
+        printf("  skipped: %s can't make clones (set TMPDIR to a folder on btrfs or XFS)\n",
+               std::filesystem::path(path).parent_path().c_str());
+        delete_file(path);
+        return;
+    }
+
+    // read from disk, as it's longer than the limit
+    CHECK(doc.init(path));
+    CHECK(read_line(doc, 0) == TSTR("line\n"));
+
+    // another program writes the file in place, as nothing stops it here
+    writer = fopen(path, "r+b");
+    CHECK(writer != 0);
+
+    if (writer)
+    {
+        CHECK(fseek(writer, 3000000, SEEK_SET) == 0);
+        CHECK(fwrite("XXXX", 1, 4, writer) == 4);
+        fclose(writer);
+    }
+
+    // the document still has the file as it was opened, and saves it so
+    CHECK(read_line(doc, 3000000) == TSTR("line\n"));
+    CHECK(save_as_is(doc, path));
+    doc.clear();
+
+    CHECK(doc.init(path));
+    CHECK(read_line(doc, 3000000) == TSTR("line\n"));
+    doc.clear();
+    delete_file(path);
+}
+#endif
+
 // Save a document as it is: its own encoding, byte-order mark and line breaks
 bool save_as_is(TextDocument &doc, const seqfilechar *path)
 {
@@ -2332,6 +2406,9 @@ const test_case tests[] =
 #ifdef _WIN32
     { "textdocument_open_file_can_be_replaced_but_not_written", textdocument_open_file_can_be_replaced_but_not_written },
     { "textdocument_reads_files_under_the_limit_into_memory", textdocument_reads_files_under_the_limit_into_memory },
+#endif
+#ifdef __linux__
+    { "textdocument_reads_a_clone_that_writes_in_place_dont_change", textdocument_reads_a_clone_that_writes_in_place_dont_change },
 #endif
     { "tempappendfile_grows_under_a_document", tempappendfile_grows_under_a_document },
     { "savefile_writes_a_new_file", savefile_writes_a_new_file },

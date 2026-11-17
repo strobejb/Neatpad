@@ -619,6 +619,12 @@ public:
 	seqchar *getptr(size_w offset, size_w length);
 	void	clear();
 
+	// The file the text is from, to know it by: fp, or the file it's a copy of
+	void   *source_file() const
+	{
+		return source ? source : fp;
+	}
+
 	//
 	//	Line counting (sequence_lines.cpp). Each LINE_PAGE_SIZE page caches its
 	//	break and character counts once scanned. Buffer bytes never change, so a
@@ -675,6 +681,7 @@ public:
 	size_w	    maxsize;
 	
 	void	  * fp;
+	void	  * source;				// the file, when fp reads a copy of it: what recovery records
 	bool	    own_memory;
 	bool	    readonly;
 	int		    id;

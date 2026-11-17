@@ -552,6 +552,10 @@ static void neatpad_text_view_init(NeatpadTextView *self)
     self->wheel      = 0;
     self->host       = new TextViewGtk(widget);
 
+    // files under 16 MB are read into memory and closed, as Win32 Neatpad's
+    // InMemoryLimit does: others can write them, which nothing stops here
+    view_of(self)->FileDoc()->set_in_memory_limit(16 * 1024 * 1024);
+
     self->vadjust = 0;
     self->hadjust = 0;
     self->vpolicy = GTK_SCROLL_MINIMUM;

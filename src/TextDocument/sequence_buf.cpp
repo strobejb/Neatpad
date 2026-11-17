@@ -24,6 +24,9 @@
 // Open a file to read, letting others write it or not (at the end of the file)
 static FILE *seq_fopen_shared(const seqfilechar *filename, bool others_write);
 
+// A copy of an open file that others' writes to it don't change, or 0
+static FILE *seq_clone(const seqfilechar *filename, FILE *file);
+
 sequence::buffer_control::buffer_control()
 {
 	int i;
@@ -36,6 +39,7 @@ sequence::buffer_control::buffer_control()
 	length = 0;
 	maxsize = 0;
 	fp = 0;
+	source = 0;
 	own_memory = true;
 	readonly = false;
 	id = 0;
@@ -150,6 +154,7 @@ bool sequence::buffer_control::init_file(const seqfilechar *filename, bool read_
 {
 	FILE *file;
 	FILE *locked;
+	FILE *copy;
 	long long file_length;
 	bool read;
 
@@ -188,9 +193,20 @@ bool sequence::buffer_control::init_file(const seqfilechar *filename, bool read_
 		read_only = true;
 	}
 
+	// where nothing stops others writing it, read a copy that their writes
+	// don't change, if the file system can make one; the file stays open, for
+	// recovery to know it by
+	if(!read_only && (copy = seq_clone(filename, file)) != 0)
+	{
+		source = file;
+		file = copy;
+		file_length = file_length_of(file);
+	}
+
 	if(file_length < 0)
 	{
 		fclose(file);
+		clear();
 		return false;
 	}
 
@@ -204,6 +220,7 @@ bool sequence::buffer_control::init_file(const seqfilechar *filename, bool read_
 	{
 		fclose(file);
 		fp = 0;
+		clear();
 		return false;
 	}
 
@@ -304,6 +321,12 @@ void sequence::buffer_control::clear()
 	{
 		fclose((FILE *)fp);
 		fp = 0;
+	}
+
+	if(source)
+	{
+		fclose((FILE *)source);
+		source = 0;
 	}
 
 	for(i = 0; i < MAX_VIEWS; i++)
@@ -503,6 +526,12 @@ static FILE *seq_fopen_shared(const seqfilechar *filename, bool others_write)
 	return fp;
 }
 
+// Windows stops others writing a file while it's read from (seq_fopen_shared)
+static FILE *seq_clone(const seqfilechar *filename, FILE *file)
+{
+	return 0;
+}
+
 #else
 
 // Other systems let an open file be renamed over or deleted anyway, and have
@@ -511,5 +540,48 @@ static FILE *seq_fopen_shared(const seqfilechar *filename, bool others_write)
 {
 	return fopen(filename, "rb");
 }
+
+#ifdef __linux__
+
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/ioctl.h>
+#include <linux/fs.h>
+#include <string>
+
+//
+//	A copy-on-write clone of the file (FICLONE: btrfs and XFS), made at once
+//	and taking no room until one of them changes. It's an unnamed file in the
+//	file's folder (O_TMPFILE), as a clone must be on the same file system, so
+//	nothing is left behind. 0 where it can't be made: another file system, or
+//	a folder that can't be written.
+//
+static FILE *seq_clone(const seqfilechar *filename, FILE *file)
+{
+	const char *slash  = strrchr(filename, '/');
+	std::string folder = slash ? std::string(filename, slash == filename ? 1 : slash - filename) : ".";
+	FILE	   *copy;
+	int			fd;
+
+	if((fd = open(folder.c_str(), O_TMPFILE | O_RDWR | O_CLOEXEC, 0600)) == -1)
+		return 0;
+
+	if(ioctl(fd, FICLONE, fileno(file)) == -1 || (copy = fdopen(fd, "rb")) == 0)
+	{
+		close(fd);
+		return 0;
+	}
+
+	return copy;
+}
+
+#else
+
+static FILE *seq_clone(const seqfilechar *filename, FILE *file)
+{
+	return 0;
+}
+
+#endif
 
 #endif
