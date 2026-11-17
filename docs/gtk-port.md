@@ -325,8 +325,9 @@ Each step is its own commit on `main`, and moves and formatting changes stay sep
     folder, so writes to the file don't change the document. The file stays open beside it, for recovery to
     know it by. Elsewhere (ext4, a folder that can't be written) it's read from the file, as before. A test
     makes the change and runs where the temp folder can clone: set `TMPDIR` to a folder on btrfs.
-- **Next:** smaller gaps, as wanted: the context menu from the keyboard, input-method preedit, dropping files on
-  the window.
+  - **Done:** files dropped on a window open: the first in that window, as Win32's, after asking about unsaved
+    changes; the rest each in a window of its own, as the command line's.
+- **Next:** smaller gaps, as wanted: the context menu from the keyboard, input-method preedit.
 
 ## Open decisions
 

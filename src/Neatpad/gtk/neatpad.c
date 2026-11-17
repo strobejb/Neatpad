@@ -99,6 +99,7 @@ static void apply_style(void)
 }
 
 static GtkWindow *editor_window_new(GtkApplication *app, GFile *file);
+static void       present_file(GtkApplication *app, GFile *file);
 
 static Editor *editor_of(gpointer window)
 {
@@ -2359,6 +2360,32 @@ static GtkWidget *status_bar(Editor *editor)
     return box;
 }
 
+//
+//	Files dropped on the window, from Files or the desktop: the first opens
+//	here, as Win32's does, once unsaved changes are saved or discarded. The
+//	rest open as the command line's do, each in its own window.
+//
+static gboolean on_drop(GtkDropTarget *target, const GValue *value, double x, double y, gpointer data)
+{
+    Editor *editor = data;
+    GSList *files  = g_value_get_boxed(value);
+
+    (void)target;
+    (void)x;
+    (void)y;
+
+    if (!files)
+        return FALSE;
+
+    for (GSList *f = files->next; f; f = f->next)
+        present_file(gtk_window_get_application(editor->window), f->data);
+
+    g_free(editor->recent_uri);
+    editor->recent_uri = g_file_get_uri(files->data);
+    unless_unsaved(editor, open_recent_now);
+    return TRUE;
+}
+
 static GtkWindow *editor_window_new(GtkApplication *app, GFile *file)
 {
     Editor             *editor     = g_new0(Editor, 1);
@@ -2368,6 +2395,7 @@ static GtkWindow *editor_window_new(GtkApplication *app, GFile *file)
     GtkWidget *toolbar = adw_toolbar_view_new();
     GtkWidget *scroll  = gtk_scrolled_window_new();
     GtkWidget *view    = neatpad_text_view_new();
+    GtkDropTarget *drop;
 
     editor->window = GTK_WINDOW(window);
     editor->view   = NEATPAD_TEXT_VIEW(view);
@@ -2391,6 +2419,11 @@ static GtkWindow *editor_window_new(GtkApplication *app, GFile *file)
     g_signal_connect(zoom_wheel, "scroll", G_CALLBACK(on_zoom_scroll), editor);
     gtk_widget_add_controller(scroll, zoom_wheel);
     adw_toast_overlay_set_child(editor->toasts, scroll);
+
+    // files dropped anywhere on the window open
+    drop = gtk_drop_target_new(GDK_TYPE_FILE_LIST, GDK_ACTION_COPY);
+    g_signal_connect(drop, "drop", G_CALLBACK(on_drop), editor);
+    gtk_widget_add_controller(window, GTK_EVENT_CONTROLLER(drop));
 
     // the banner is below the header bar; the find and go-to-line bars are
     // below the text, above the status bar
