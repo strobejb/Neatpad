@@ -45,6 +45,7 @@ typedef struct
     GtkLabel        *position; // the status bar's panes, as Win32 Neatpad's
     GtkLabel        *doc_stats;
     GtkLabel        *index;
+    guint            index_idle; // the index link's click, acted on once the label is done with it
     GtkLabel        *zoom_pane;
     GtkWidget       *zoom_reset; // the main menu's zoom, between - and +
     GtkLabel        *line_format;
@@ -122,6 +123,7 @@ static void editor_free(gpointer data)
         g_clear_object(&editor->monitor);
     }
 
+    g_clear_handle_id(&editor->index_idle, g_source_remove);
     g_clear_object(&editor->file);
     g_free(editor->recent_uri);
     g_free(editor->recent_store);
@@ -480,17 +482,33 @@ static void update_status(Editor *editor)
     gtk_label_set_text(editor->encoding, neatpad_text_view_get_encoding(editor->view));
 }
 
-static gboolean on_index_link(GtkLabel *label, const char *uri, gpointer data)
+static gboolean toggle_indexing(gpointer data)
 {
     Editor  *editor = data;
     gboolean indexing;
 
-    (void)label;
-    (void)uri;
-
+    editor->index_idle = 0;
     neatpad_text_view_get_index_info(editor->view, 0, &indexing);
     neatpad_text_view_index_file(editor->view, !indexing);
     update_index(editor);
+    return G_SOURCE_REMOVE;
+}
+
+//
+//	The label calls this from its click gesture. Changing its links replaces
+//	its controllers, which mustn't happen while they're running, so the link
+//	is followed once the click is done.
+//
+static gboolean on_index_link(GtkLabel *label, const char *uri, gpointer data)
+{
+    Editor *editor = data;
+
+    (void)label;
+    (void)uri;
+
+    if (editor->index_idle == 0)
+        editor->index_idle = g_idle_add(toggle_indexing, editor);
+
     return TRUE;
 }
 
