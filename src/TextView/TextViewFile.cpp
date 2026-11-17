@@ -102,12 +102,15 @@ int32_t TextView::SaveFile(const seqfilechar *szFileName, uint32_t nEncoding, bo
 
 //
 //	Open a file to follow as another program appends to it: read-only, with
-//	the caret at the end, where UpdateTail adds what's appended
+//	the caret at the end, where UpdateTail adds what's appended. It's indexed
+//	as it opens, so the lines in view, at the end, have their numbers.
 //
 int32_t TextView::TailFile(const seqfilechar *szFileName)
 {
 	if(!OpenFile(szFileName, -1, true))
 		return false;
+
+	IndexFile(true);
 
 	MoveFileEnd();
 	m_selAnchor = m_cursorPos;

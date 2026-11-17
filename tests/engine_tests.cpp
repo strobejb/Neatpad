@@ -610,6 +610,54 @@ void engine_highlights_matches_regardless_of_case()
 
 // Unsaved edits saved as recovery state, and restored into a new view: the
 // text, the file it's for, and the caret
+//
+//	A followed file is indexed as it opens, and its index takes in what's
+//	appended, so the lines at its end have their numbers
+//
+void engine_indexes_a_followed_file()
+{
+    FakeHost          host;
+    TextView         *view = new TextView(&host);
+    seqfilechar       path[TEST_PATH_MAX];
+    std::string       text;
+    TextViewIndexInfo info;
+    FILE             *fp;
+
+    // longer than the part indexed as a file opens
+    for (int i = 0; i < 600000; i++)
+        text += "a log line\n";
+
+    view->OnSize(0, 640, 480);
+    CHECK(write_temp_file(text.data(), text.size(), path));
+    CHECK(view->TailFile(path));
+
+    view->FillIndexInfo(&info);
+    CHECK(info.fIndexing);
+
+    for (int i = 0; i < 10000 && info.nPercent < 100; i++)
+    {
+        view->OnTimer(INDEX_TIMER);
+        view->FillIndexInfo(&info);
+    }
+
+    CHECK(info.nPercent == 100);
+    CHECK(info.nLineCount == 600001);
+
+    // appended lines are indexed too
+    fp = open_file(path, "ab");
+    CHECK(fp != 0);
+    fputs("one more\nand another\n", fp);
+    fclose(fp);
+
+    CHECK(view->UpdateTail());
+    view->FillIndexInfo(&info);
+    CHECK(info.nPercent == 100);
+    CHECK(info.nLineCount == 600003);
+
+    delete view;
+    delete_file(path);
+}
+
 void engine_restores_its_recovery_state()
 {
     EngineView                     v(U"one two");
@@ -658,6 +706,7 @@ const test_case tests[] =
     { "engine_deletes_whole_characters", engine_deletes_whole_characters },
     { "engine_selects_and_copies_whole_characters", engine_selects_and_copies_whole_characters },
     { "engine_overwrites_a_character_with_a_character", engine_overwrites_a_character_with_a_character },
+    { "engine_indexes_a_followed_file", engine_indexes_a_followed_file },
     { "engine_tab_spaces_count_characters", engine_tab_spaces_count_characters },
     { "engine_types_and_tells_its_host", engine_types_and_tells_its_host },
     { "engine_types_into_a_new_view", engine_types_into_a_new_view },
