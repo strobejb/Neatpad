@@ -2113,8 +2113,9 @@ static const char app_css[] = ".style-switcher { margin: 6px 0; }"
                                 ".neatpad-bar, .neatpad-status { border-top: 1px solid alpha(currentColor, 0.15); }"
                                 ".neatpad-status { padding: 7px 12px; }"
                                 // the find and go-to bars as Text Editor's: roomier, with taller
-                                // entries
-                                ".neatpad-bar > revealer > box { padding: 9px 12px; }"
+                                // entries, and without libadwaita's line under them: the
+                                // status bar's above it is enough
+                                ".neatpad-bar > revealer > box { padding: 9px 12px; box-shadow: none; }"
                                 ".neatpad-bar entry { min-height: 38px; }"
                                 ".zoom-row > button:not(.circular) { min-width: 64px; }"
                                 ".recent-files { min-width: 300px; }"
