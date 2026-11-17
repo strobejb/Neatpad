@@ -315,8 +315,11 @@ Each step is its own commit on `main`, and moves and formatting changes stay sep
     Adwaita's.
   - **Done:** control characters (but tabs) show as on Win32: their code in hex, in a rounded box of the text's
     colour, which Pango keeps a shape's room for. A NUL no longer ends a line: Pango is given a space in its place.
-- **Next:** smaller gaps, as wanted: the context menu from the keyboard, input-method preedit, line endings and
-  encoding when saving.
+  - **Done:** Save As chooses the encoding and line endings, as Win32's Save As does. `GtkFileDialog` can't add
+    choices, so Save As is a `GtkFileChooserNative` (deprecated, as GNOME Text Editor's is), which the portal shows.
+    UTF-8's byte-order mark is an encoding of its own there, as a choice can't be a check box for one encoding.
+    Saved another way, the document opens again as the file now is, and its recovery store starts afresh.
+- **Next:** smaller gaps, as wanted: the context menu from the keyboard, input-method preedit.
 
 ## Open decisions
 

@@ -41,9 +41,17 @@ gboolean neatpad_text_view_update_tail(NeatpadTextView *view);
 // Start again with an empty, unnamed document
 void neatpad_text_view_new_file(NeatpadTextView *view);
 
-// Save to a file, in the encoding it was opened in, with its byte-order mark if
-// it had one
-gboolean neatpad_text_view_save_file(NeatpadTextView *view, const char *filename);
+// Save to a file, in an NCP_* encoding, with a byte-order mark or not, and
+// line_break 0 to keep the line endings or TXL_CRLF, TXL_LF or TXL_CR to make
+// them all one. Saved another way than the document is, it's opened again, as
+// the file now is: undo starts afresh.
+gboolean neatpad_text_view_save_file(NeatpadTextView *view, const char *filename, guint encoding, gboolean bom,
+                                     guint line_break);
+
+// The NCP_* encoding the document was opened or saved in, and whether the file
+// has a byte-order mark: to save it as it is
+guint    neatpad_text_view_get_format(NeatpadTextView *view);
+gboolean neatpad_text_view_get_bom(NeatpadTextView *view);
 
 // Recovery: the document's unsaved state, kept in a folder of its own, and
 // the file it's for (NULL or "" for none). preserve_sources keeps what the

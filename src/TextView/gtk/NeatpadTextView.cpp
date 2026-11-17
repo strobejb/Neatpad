@@ -626,19 +626,30 @@ void neatpad_text_view_new_file(NeatpadTextView *view)
     NeatpadTextViewNotify(GTK_WIDGET(view), TVNOTIFY_CHANGED);
 }
 
-gboolean neatpad_text_view_save_file(NeatpadTextView *view, const char *filename)
+gboolean neatpad_text_view_save_file(NeatpadTextView *view, const char *filename, guint encoding, gboolean bom,
+                                     guint line_break)
 {
-    TextDocument *doc;
-
     g_return_val_if_fail(NEATPAD_IS_TEXT_VIEW(view), FALSE);
 
-    doc = view_of(view)->FileDoc();
-
-    if (!view_of(view)->SaveFile(filename, (uint32_t)doc->getformat(), doc->has_bom(), 0))
+    if (!view_of(view)->SaveFile(filename, encoding, bom != FALSE, line_break))
         return FALSE;
 
     NeatpadTextViewNotify(GTK_WIDGET(view), TVNOTIFY_CHANGED);
     return TRUE;
+}
+
+guint neatpad_text_view_get_format(NeatpadTextView *view)
+{
+    g_return_val_if_fail(NEATPAD_IS_TEXT_VIEW(view), NCP_UTF8);
+
+    return (guint)view_of(view)->FileDoc()->getformat();
+}
+
+gboolean neatpad_text_view_get_bom(NeatpadTextView *view)
+{
+    g_return_val_if_fail(NEATPAD_IS_TEXT_VIEW(view), FALSE);
+
+    return view_of(view)->FileDoc()->has_bom();
 }
 
 gboolean neatpad_text_view_save_state(NeatpadTextView *view, const char *directory, const char *filename,

@@ -221,7 +221,8 @@ void widget_finds_saves_and_starts_again()
     // typing replaces the match; saving keeps it
     widget.host->View()->OnText("1", 1);
     CHECK(neatpad_text_view_get_modified(view));
-    CHECK(neatpad_text_view_save_file(view, saved));
+    CHECK(neatpad_text_view_save_file(view, saved, neatpad_text_view_get_format(view),
+                                      neatpad_text_view_get_bom(view), 0));
     CHECK(!neatpad_text_view_get_modified(view));
 
     file = fopen(saved, "rb");
@@ -238,6 +239,50 @@ void widget_finds_saves_and_starts_again()
     neatpad_text_view_new_file(view);
     neatpad_text_view_get_cursor(view, 0, &column, 0);
     CHECK(column == 0);
+    CHECK(!neatpad_text_view_get_modified(view));
+
+    delete_file(path);
+    delete_file(saved);
+}
+
+void widget_saves_in_another_encoding()
+{
+    Widget           widget;
+    NeatpadTextView *view  = NEATPAD_TEXT_VIEW(widget.widget);
+    std::string      bytes = "a\nb";
+    seqfilechar      path[TEST_PATH_MAX];
+    seqfilechar      saved[TEST_PATH_MAX];
+    unsigned char    data[16] = {0};
+    size_t           length   = 0;
+    FILE            *file;
+
+    CHECK(write_temp_file(bytes.data(), bytes.size(), path));
+    CHECK(temp_file(saved));
+    CHECK(neatpad_text_view_open_file(view, path));
+    CHECK(neatpad_text_view_get_format(view) == NCP_UTF8);
+    CHECK(!neatpad_text_view_get_bom(view));
+
+    // UTF-16 LE with its byte-order mark, and Windows line endings
+    CHECK(neatpad_text_view_save_file(view, saved, NCP_UTF16, TRUE, TXL_CRLF));
+
+    file = fopen(saved, "rb");
+    CHECK(file != 0);
+
+    if (file)
+    {
+        length = fread(data, 1, sizeof(data), file);
+        fclose(file);
+    }
+
+    const unsigned char expected[] = {0xff, 0xfe, 'a', 0, '\r', 0, '\n', 0, 'b', 0};
+
+    CHECK(length == sizeof(expected));
+    CHECK(memcmp(data, expected, sizeof(expected)) == 0);
+
+    // the document is the file as it's now saved
+    CHECK(neatpad_text_view_get_format(view) == NCP_UTF16);
+    CHECK(neatpad_text_view_get_bom(view));
+    CHECK(neatpad_text_view_get_line_format(view) == TXL_CRLF);
     CHECK(!neatpad_text_view_get_modified(view));
 
     delete_file(path);
@@ -431,7 +476,8 @@ void recovery_keeps_and_restores_unsaved_changes()
         CHECK(neatpad_text_view_open_file(saved.client.view, path));
         saved.widget.host->View()->OnText("!", 1);
         CHECK(recovery_before_save(saved.recovery));
-        CHECK(neatpad_text_view_save_file(saved.client.view, path));
+        CHECK(neatpad_text_view_save_file(saved.client.view, path, neatpad_text_view_get_format(saved.client.view),
+                                          neatpad_text_view_get_bom(saved.client.view), 0));
         recovery_saved(saved.recovery);
         recovery_free(saved.recovery);
 
@@ -482,6 +528,7 @@ const test_case tests[] = {
     {"widget_arrows_step_over_characters_with_pango", widget_arrows_step_over_characters_with_pango},
     {"widget_types_through_its_engine", widget_types_through_its_engine},
     {"widget_finds_saves_and_starts_again", widget_finds_saves_and_starts_again},
+    {"widget_saves_in_another_encoding", widget_saves_in_another_encoding},
     {"widget_replaces_and_goes_to_lines", widget_replaces_and_goes_to_lines},
     {"widget_scrolls_with_its_adjustments", widget_scrolls_with_its_adjustments},
     {"widget_follows_a_growing_file", widget_follows_a_growing_file},

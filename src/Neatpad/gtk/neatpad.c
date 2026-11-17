@@ -989,11 +989,17 @@ typedef struct
 {
     GtkWindow *window;
     EditorThen then;
+
+    // Save As: where, and how
+    GFile   *file;
+    guint    encoding;
+    gboolean bom;
+    guint    line_break;
 } Pending;
 
 static Pending *pending_new(Editor *editor, EditorThen then)
 {
-    Pending *pending = g_new(Pending, 1);
+    Pending *pending = g_new0(Pending, 1);
 
     pending->window = g_object_ref(editor->window);
     pending->then   = then;
@@ -1003,17 +1009,27 @@ static Pending *pending_new(Editor *editor, EditorThen then)
 static void pending_free(Pending *pending)
 {
     g_object_unref(pending->window);
+    g_clear_object(&pending->file);
     g_free(pending);
 }
 
-// The store keeps what it needs from the file before it's saved over
-static void save_to(Editor *editor, GFile *file, EditorThen then)
+//
+//	Save to a file, in an NCP_* encoding, with a byte-order mark or not, and
+//	line_break 0 to keep the line endings, or TXL_* to make them all one. The
+//	store keeps what it needs from the file before it's saved over. Saved
+//	another way, the document is opened again, as the file now is, and its
+//	store starts afresh, as Win32's does.
+//
+static void save_to(Editor *editor, GFile *file, guint encoding, gboolean bom, guint line_break, EditorThen then)
 {
-    char    *path = g_file_get_path(file);
+    char    *path      = g_file_get_path(file);
+    gboolean converted = encoding != neatpad_text_view_get_format(editor->view) || line_break != 0;
     gboolean ok;
 
-    recovery_before_save(editor->recovery);
-    ok = path && neatpad_text_view_save_file(editor->view, path);
+    if (!converted)
+        recovery_before_save(editor->recovery);
+
+    ok = path && neatpad_text_view_save_file(editor->view, path, encoding, bom, line_break);
     g_free(path);
 
     if (!ok)
@@ -1022,7 +1038,16 @@ static void save_to(Editor *editor, GFile *file, EditorThen then)
         return;
     }
 
-    recovery_saved(editor->recovery);
+    if (converted)
+    {
+        recovery_reset(editor->recovery);
+        set_following(editor, FALSE);
+    }
+    else
+    {
+        recovery_saved(editor->recovery);
+    }
+
     hide_notice(editor);
     g_set_object(&editor->file, file);
     watch_file(editor);
@@ -1034,37 +1059,181 @@ static void save_to(Editor *editor, GFile *file, EditorThen then)
         then(editor);
 }
 
-static void on_save_as_chosen(GObject *source, GAsyncResult *result, gpointer data)
+static void save_pending(Pending *pending)
+{
+    save_to(editor_of(pending->window), pending->file, pending->encoding, pending->bom, pending->line_break,
+            pending->then);
+}
+
+static void on_ascii_response(AdwAlertDialog *dialog, const char *response, gpointer data)
 {
     Pending *pending = data;
-    GFile   *file    = gtk_file_dialog_save_finish(GTK_FILE_DIALOG(source), result, 0);
 
-    if (file)
-    {
-        save_to(editor_of(pending->window), file, pending->then);
-        g_object_unref(file);
-    }
+    (void)dialog;
+
+    if (g_str_equal(response, "save"))
+        save_pending(pending);
 
     pending_free(pending);
 }
 
-static void save_as(Editor *editor, EditorThen then)
+//
+//	Save As's encodings and line endings, as Win32's Save As has them. A
+//	choice can't be a check box shown for one encoding alone, so UTF-8's
+//	byte-order mark is an encoding of its own; UTF-16 and UTF-32 always have
+//	one. ASCII is read as Latin-1 off Windows, and saved so.
+//
+static const struct
 {
-    GtkFileDialog *dialog = gtk_file_dialog_new();
+    const char *id;
+    const char *label;
+    guint       encoding;
+    gboolean    bom;
+} g_encodings[] = {
+    {"ascii", "ASCII (Latin-1)", NCP_ASCII, FALSE},
+    {"utf-8", "UTF-8", NCP_UTF8, FALSE},
+    {"utf-8-bom", "UTF-8 with BOM", NCP_UTF8, TRUE},
+    {"utf-16le", "UTF-16 LE", NCP_UTF16, TRUE},
+    {"utf-16be", "UTF-16 BE", NCP_UTF16BE, TRUE},
+    {"utf-32le", "UTF-32 LE", NCP_UTF32, TRUE},
+    {"utf-32be", "UTF-32 BE", NCP_UTF32BE, TRUE},
+};
 
-    if (editor->file)
-        gtk_file_dialog_set_initial_file(dialog, editor->file);
-    else
-        gtk_file_dialog_set_initial_name(dialog, "Untitled.txt");
+static const struct
+{
+    const char *id;
+    const char *label;
+    guint       line_break;
+} g_line_breaks[] = {
+    {"keep", "Keep Existing", 0},
+    {"lf", "Unix (LF)", TXL_LF},
+    {"crlf", "Windows (CRLF)", TXL_CRLF},
+    {"cr", "Mac (CR)", TXL_CR},
+};
 
-    gtk_file_dialog_save(dialog, editor->window, 0, on_save_as_chosen, pending_new(editor, then));
-    g_object_unref(dialog);
+G_GNUC_BEGIN_IGNORE_DEPRECATIONS
+
+//
+//	The file and how to save it are chosen. Unicode to ASCII can't keep every
+//	character: ask first.
+//
+static void on_save_as_response(GtkNativeDialog *native, int response, gpointer data)
+{
+    Pending        *pending  = data;
+    GtkFileChooser *chooser  = GTK_FILE_CHOOSER(native);
+    Editor         *editor   = editor_of(pending->window);
+    const char     *encoding = gtk_file_chooser_get_choice(chooser, "encoding");
+    const char     *ending   = gtk_file_chooser_get_choice(chooser, "line-endings");
+    AdwDialog      *dialog;
+
+    pending->file = response == GTK_RESPONSE_ACCEPT ? gtk_file_chooser_get_file(chooser) : 0;
+    g_object_unref(native);
+
+    if (!pending->file)
+    {
+        pending_free(pending);
+        return;
+    }
+
+    pending->encoding = neatpad_text_view_get_format(editor->view);
+    pending->bom      = neatpad_text_view_get_bom(editor->view);
+
+    for (size_t i = 0; encoding && i < G_N_ELEMENTS(g_encodings); i++)
+    {
+        if (g_str_equal(encoding, g_encodings[i].id))
+        {
+            pending->encoding = g_encodings[i].encoding;
+            pending->bom      = g_encodings[i].bom;
+        }
+    }
+
+    for (size_t i = 0; ending && i < G_N_ELEMENTS(g_line_breaks); i++)
+    {
+        if (g_str_equal(ending, g_line_breaks[i].id))
+            pending->line_break = g_line_breaks[i].line_break;
+    }
+
+    if (pending->encoding != NCP_ASCII || neatpad_text_view_get_format(editor->view) == NCP_ASCII)
+    {
+        save_pending(pending);
+        pending_free(pending);
+        return;
+    }
+
+    dialog = adw_alert_dialog_new("Save as ASCII?",
+                                  "Characters that Latin-1 can\xe2\x80\x99t hold will be saved as \xe2\x80\x9c?\xe2\x80\x9d.");
+    adw_alert_dialog_add_responses(ADW_ALERT_DIALOG(dialog), "cancel", "_Cancel", "save", "_Save", NULL);
+    adw_alert_dialog_set_response_appearance(ADW_ALERT_DIALOG(dialog), "save", ADW_RESPONSE_DESTRUCTIVE);
+    adw_alert_dialog_set_close_response(ADW_ALERT_DIALOG(dialog), "cancel");
+    g_signal_connect(dialog, "response", G_CALLBACK(on_ascii_response), pending);
+    adw_dialog_present(dialog, GTK_WIDGET(editor->window));
 }
 
+//
+//	GtkFileDialog can't add choices, so Save As is a GtkFileChooserNative, as
+//	GNOME Text Editor's is: through the portal, GNOME's file dialog shows them
+//
+static void save_as(Editor *editor, EditorThen then)
+{
+    GtkFileChooserNative *native;
+    GtkFileChooser       *chooser;
+    const char           *ids[G_N_ELEMENTS(g_encodings) + 1];
+    const char           *labels[G_N_ELEMENTS(g_encodings) + 1];
+    guint                 format = neatpad_text_view_get_format(editor->view);
+    gboolean              bom    = neatpad_text_view_get_bom(editor->view);
+
+    native  = gtk_file_chooser_native_new("Save As", editor->window, GTK_FILE_CHOOSER_ACTION_SAVE, "_Save", "_Cancel");
+    chooser = GTK_FILE_CHOOSER(native);
+
+    if (editor->file)
+        gtk_file_chooser_set_file(chooser, editor->file, 0);
+    else
+        gtk_file_chooser_set_current_name(chooser, "Untitled.txt");
+
+    // the encoding the document has now, chosen to start with
+    for (size_t i = 0; i < G_N_ELEMENTS(g_encodings); i++)
+    {
+        ids[i]    = g_encodings[i].id;
+        labels[i] = g_encodings[i].label;
+    }
+
+    ids[G_N_ELEMENTS(g_encodings)]    = 0;
+    labels[G_N_ELEMENTS(g_encodings)] = 0;
+
+    gtk_file_chooser_add_choice(chooser, "encoding", "Encoding", ids, labels);
+    gtk_file_chooser_set_choice(chooser, "encoding", "utf-8");
+
+    for (size_t i = 0; i < G_N_ELEMENTS(g_encodings); i++)
+    {
+        if (g_encodings[i].encoding == format && (format != NCP_UTF8 || g_encodings[i].bom == bom))
+            gtk_file_chooser_set_choice(chooser, "encoding", g_encodings[i].id);
+    }
+
+    for (size_t i = 0; i < G_N_ELEMENTS(g_line_breaks); i++)
+    {
+        ids[i]    = g_line_breaks[i].id;
+        labels[i] = g_line_breaks[i].label;
+    }
+
+    ids[G_N_ELEMENTS(g_line_breaks)]    = 0;
+    labels[G_N_ELEMENTS(g_line_breaks)] = 0;
+
+    gtk_file_chooser_add_choice(chooser, "line-endings", "Line Endings", ids, labels);
+    gtk_file_chooser_set_choice(chooser, "line-endings", "keep");
+
+    gtk_native_dialog_set_modal(GTK_NATIVE_DIALOG(native), TRUE);
+    g_signal_connect(native, "response", G_CALLBACK(on_save_as_response), pending_new(editor, then));
+    gtk_native_dialog_show(GTK_NATIVE_DIALOG(native));
+}
+
+G_GNUC_END_IGNORE_DEPRECATIONS
+
+// Save, as the file is now
 static void save(Editor *editor, EditorThen then)
 {
     if (editor->file)
-        save_to(editor, editor->file, then);
+        save_to(editor, editor->file, neatpad_text_view_get_format(editor->view),
+                neatpad_text_view_get_bom(editor->view), 0, then);
     else
         save_as(editor, then);
 }
