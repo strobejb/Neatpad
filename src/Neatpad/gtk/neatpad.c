@@ -1835,6 +1835,23 @@ static void on_search_mode(GObject *bar, GParamSpec *spec, gpointer data)
         gtk_widget_set_visible(GTK_WIDGET(bar), FALSE);
 }
 
+// The status bar has a line above it when the find or go-to bar is open
+// above it; otherwise the toolbar view's line is above it
+static void on_bar_visible(GObject *bar, GParamSpec *spec, gpointer data)
+{
+    Editor  *editor = data;
+    gboolean below  = gtk_widget_get_visible(GTK_WIDGET(editor->search_bar)) ||
+                     gtk_widget_get_visible(GTK_WIDGET(editor->goto_bar));
+
+    (void)bar;
+    (void)spec;
+
+    if (below)
+        gtk_widget_add_css_class(editor->status_bar, "below-bar");
+    else
+        gtk_widget_remove_css_class(editor->status_bar, "below-bar");
+}
+
 // Closing the find bar shows the whole document again, unhighlighted
 static void on_find_mode(GObject *bar, GParamSpec *spec, gpointer data)
 {
@@ -2176,15 +2193,15 @@ static const char app_css[] = ".style-switcher { margin: 6px 0; }"
                                 ".style-switcher button.dark { background: #1d1d20; }"
                                 ".style-switcher button:checked {"
                                 "  outline: 2px solid @accent_bg_color; outline-offset: 2px; }"
-                                // hairlines above the text, the find and go-to bars and the
-                                // status bar, in libadwaita's border colour
+                                // hairlines above the text, and above the status bar when a bar
+                                // is open above it, in libadwaita's border colour: the toolbar
+                                // view draws its own above the first of its bottom bars
                                 ".neatpad-text { border-top: 1px solid alpha(currentColor, 0.15); }"
-                                ".neatpad-bar, .neatpad-status { border-top: 1px solid alpha(currentColor, 0.15); }"
+                                ".neatpad-status.below-bar { border-top: 1px solid alpha(currentColor, 0.15); }"
                                 ".neatpad-status { padding: 7px 12px; }"
                                 // the find and go-to bars as Text Editor's: roomier, with taller
-                                // entries, and without libadwaita's line under them: the
-                                // status bar's above it is enough
-                                ".neatpad-bar > revealer > box { padding: 9px 12px; box-shadow: none; }"
+                                // entries
+                                ".neatpad-bar > revealer > box { padding: 9px 12px; }"
                                 ".neatpad-bar entry { min-height: 38px; }"
                                 ".zoom-row > button:not(.circular) { min-width: 64px; }"
                                 ".recent-files { min-width: 300px; }"
@@ -2539,6 +2556,8 @@ static GtkWindow *editor_window_new(GtkApplication *app, GFile *file)
     adw_toolbar_view_add_bottom_bar(ADW_TOOLBAR_VIEW(toolbar), goto_bar(editor));
     editor->status_bar = status_bar(editor);
     adw_toolbar_view_add_bottom_bar(ADW_TOOLBAR_VIEW(toolbar), editor->status_bar);
+    g_signal_connect(editor->search_bar, "notify::visible", G_CALLBACK(on_bar_visible), editor);
+    g_signal_connect(editor->goto_bar, "notify::visible", G_CALLBACK(on_bar_visible), editor);
     adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(toolbar), GTK_WIDGET(editor->toasts));
     adw_application_window_set_content(ADW_APPLICATION_WINDOW(window), toolbar);
 
