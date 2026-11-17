@@ -41,6 +41,8 @@ typedef struct
     GtkEntry        *replace_entry;
     GtkSearchBar    *goto_bar;
     GtkEntry        *goto_entry;
+    GtkButton       *goto_button; // Go, or Index File for a line not indexed yet
+    GtkLabel        *goto_status; // why the line can't be gone to yet, or at all
     GtkWidget       *status_bar;
     GtkLabel        *position; // the status bar's panes, as Win32 Neatpad's
     GtkLabel        *doc_stats;
@@ -446,7 +448,7 @@ static void update_index(Editor *editor)
     gboolean indexing;
     char     markup[64] = "";
 
-    neatpad_text_view_get_index_info(editor->view, &percent, &indexing);
+    neatpad_text_view_get_index_info(editor->view, &percent, &indexing, 0);
 
     if (indexing)
         g_snprintf(markup, sizeof(markup), "<a href=\"index\">Indexing %u%%</a>", percent);
@@ -488,7 +490,7 @@ static gboolean toggle_indexing(gpointer data)
     gboolean indexing;
 
     editor->index_idle = 0;
-    neatpad_text_view_get_index_info(editor->view, 0, &indexing);
+    neatpad_text_view_get_index_info(editor->view, 0, &indexing, 0);
     neatpad_text_view_index_file(editor->view, !indexing);
     update_index(editor);
     return G_SOURCE_REMOVE;
@@ -1579,22 +1581,81 @@ static void on_replace_all_clicked(GtkButton *button, gpointer data)
 }
 
 //
-//	Go to line: a line number, from 1
+//	Go to line: a line number, from 1. A line past the indexed part of a large
+//	file can't be gone to until indexing gets there, so the bar says so, and
+//	its button indexes the file, as Win32's Go to Line does.
 //
-static void go_to_line(Editor *editor)
+static TEXT_RESULT typed_line(Editor *editor, guint64 *line)
 {
     const char *text = gtk_editable_get_text(GTK_EDITABLE(editor->goto_entry));
-    guint64     line = 0;
 
-    if (g_ascii_string_to_unsigned(text, 10, 1, G_MAXUINT64, &line, 0) &&
-        neatpad_text_view_goto_line(editor->view, line - 1))
+    *line = 0;
+
+    if (!g_ascii_string_to_unsigned(text, 10, 1, G_MAXUINT64, line, 0))
+        return TDR_FAILED;
+
+    return neatpad_text_view_can_goto_line(editor->view, *line - 1);
+}
+
+static void update_goto(Editor *editor)
+{
+    guint64     line;
+    TEXT_RESULT result;
+    guint       percent;
+    gboolean    indexing;
+    guint64     lines;
+    char        count[32];
+    char        status[100] = "";
+    gboolean    past_end;
+
+    if (!gtk_search_bar_get_search_mode(editor->goto_bar))
+        return;
+
+    result = typed_line(editor, &line);
+    neatpad_text_view_get_index_info(editor->view, &percent, &indexing, &lines);
+    format_count(count, sizeof(count), lines ? lines : 1);
+
+    // a line past the index: offer to index the file
+    if (result == TDR_PENDING_INDEX && !indexing)
     {
+        gtk_button_set_label(editor->goto_button, "Index File");
+        gtk_label_set_text(editor->goto_status, "That line hasn't been indexed yet");
+        gtk_widget_set_sensitive(GTK_WIDGET(editor->goto_button), TRUE);
         gtk_widget_remove_css_class(GTK_WIDGET(editor->goto_entry), "error");
-        gtk_search_bar_set_search_mode(editor->goto_bar, FALSE);
         return;
     }
 
-    gtk_widget_add_css_class(GTK_WIDGET(editor->goto_entry), "error");
+    past_end = result == TDR_FAILED && line > 0 && percent == 100;
+
+    if (result == TDR_PENDING_INDEX)
+        g_snprintf(status, sizeof(status), "Indexing %u%%\xe2\x80\xa6", percent);
+    else if (past_end)
+        g_snprintf(status, sizeof(status), "The file has %s lines", count);
+
+    gtk_button_set_label(editor->goto_button, "Go");
+    gtk_label_set_text(editor->goto_status, status);
+    gtk_widget_set_sensitive(GTK_WIDGET(editor->goto_button), result == TDR_OK);
+
+    if (past_end)
+        gtk_widget_add_css_class(GTK_WIDGET(editor->goto_entry), "error");
+    else
+        gtk_widget_remove_css_class(GTK_WIDGET(editor->goto_entry), "error");
+}
+
+static void go_to_line(Editor *editor)
+{
+    guint64     line;
+    TEXT_RESULT result = typed_line(editor, &line);
+    gboolean    indexing;
+
+    neatpad_text_view_get_index_info(editor->view, 0, &indexing, 0);
+
+    if (result == TDR_PENDING_INDEX && !indexing)
+        neatpad_text_view_index_file(editor->view, TRUE);
+    else if (result == TDR_OK && neatpad_text_view_goto_line(editor->view, line - 1))
+        gtk_search_bar_set_search_mode(editor->goto_bar, FALSE);
+
+    update_goto(editor);
 }
 
 static void on_goto_activate(GtkEntry *entry, gpointer data)
@@ -1611,8 +1672,15 @@ static void on_goto_clicked(GtkButton *button, gpointer data)
 
 static void on_goto_changed(GtkEditable *entry, gpointer data)
 {
-    (void)data;
-    gtk_widget_remove_css_class(GTK_WIDGET(entry), "error");
+    (void)entry;
+    update_goto(data);
+}
+
+// Indexing has got further: the typed line may be there now
+static void on_goto_index_changed(NeatpadTextView *view, gpointer data)
+{
+    (void)view;
+    update_goto(data);
 }
 
 // Escape closes the bar, back to the text
@@ -1651,6 +1719,7 @@ static void show_goto(Editor *editor)
     gtk_search_bar_set_search_mode(editor->goto_bar, TRUE);
     gtk_widget_grab_focus(GTK_WIDGET(editor->goto_entry));
     gtk_editable_select_region(GTK_EDITABLE(editor->goto_entry), 0, -1);
+    update_goto(editor);
 }
 
 //
@@ -2302,8 +2371,9 @@ static GtkWidget *goto_bar(Editor *editor)
     GtkWidget          *box   = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
     GtkWidget          *label = gtk_label_new_with_mnemonic("_Go to Line");
     GtkWidget          *entry = gtk_entry_new();
-    GtkWidget          *go    = gtk_button_new_with_label("Go");
-    GtkEventController *keys  = gtk_event_controller_key_new();
+    GtkWidget          *go     = gtk_button_new_with_label("Go");
+    GtkWidget          *status = gtk_label_new("");
+    GtkEventController *keys   = gtk_event_controller_key_new();
 
     gtk_widget_add_css_class(bar, "neatpad-bar");
     gtk_widget_add_css_class(label, "heading");
@@ -2312,10 +2382,13 @@ static GtkWidget *goto_bar(Editor *editor)
     gtk_entry_set_placeholder_text(GTK_ENTRY(entry), "Line number");
     gtk_entry_set_input_purpose(GTK_ENTRY(entry), GTK_INPUT_PURPOSE_DIGITS);
     gtk_widget_add_css_class(go, "suggested-action");
+    gtk_widget_add_css_class(status, "dim-label");
+    gtk_widget_set_margin_start(status, 6);
 
     gtk_box_append(GTK_BOX(box), label);
     gtk_box_append(GTK_BOX(box), entry);
     gtk_box_append(GTK_BOX(box), go);
+    gtk_box_append(GTK_BOX(box), status);
     gtk_search_bar_set_child(GTK_SEARCH_BAR(bar), box);
     gtk_search_bar_set_show_close_button(GTK_SEARCH_BAR(bar), TRUE);
 
@@ -2328,8 +2401,10 @@ static GtkWidget *goto_bar(Editor *editor)
     gtk_widget_set_visible(bar, FALSE);
     g_signal_connect(bar, "notify::search-mode-enabled", G_CALLBACK(on_search_mode), 0);
 
-    editor->goto_bar   = GTK_SEARCH_BAR(bar);
-    editor->goto_entry = GTK_ENTRY(entry);
+    editor->goto_bar    = GTK_SEARCH_BAR(bar);
+    editor->goto_entry  = GTK_ENTRY(entry);
+    editor->goto_button = GTK_BUTTON(go);
+    editor->goto_status = GTK_LABEL(status);
     return bar;
 }
 
@@ -2473,6 +2548,7 @@ static GtkWindow *editor_window_new(GtkApplication *app, GFile *file)
     g_signal_connect(view, "cursor-changed", G_CALLBACK(on_cursor_changed), editor);
     g_signal_connect(view, "selection-changed", G_CALLBACK(on_cursor_changed), editor);
     g_signal_connect(view, "index-changed", G_CALLBACK(on_cursor_changed), editor);
+    g_signal_connect(view, "index-changed", G_CALLBACK(on_goto_index_changed), editor);
     g_signal_connect(window, "close-request", G_CALLBACK(on_close_request), editor);
     g_signal_connect_object(gtk_recent_manager_get_default(), "changed", G_CALLBACK(on_recent_changed), window, 0);
     g_signal_connect_object(adw_style_manager_get_default(), "notify::dark", G_CALLBACK(on_style_changed), window, 0);

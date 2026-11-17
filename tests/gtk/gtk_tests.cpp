@@ -313,6 +313,8 @@ void widget_replaces_and_goes_to_lines()
     neatpad_text_view_get_cursor(view, &line, &column, 0);
     CHECK(line == 2 && column == 0);
     CHECK(!neatpad_text_view_goto_line(view, 7));
+    CHECK(neatpad_text_view_can_goto_line(view, 2) == TDR_OK);
+    CHECK(neatpad_text_view_can_goto_line(view, 7) == TDR_FAILED);
 
     delete_file(path);
 }

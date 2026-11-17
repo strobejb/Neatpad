@@ -94,7 +94,7 @@ gboolean neatpad_text_view_get_doc_stats(NeatpadTextView *view, NeatpadDocStats 
 
 // How far the file is indexed, as a percentage, and whether indexing is going
 // on; and starting or stopping it
-void neatpad_text_view_get_index_info(NeatpadTextView *view, guint *percent, gboolean *indexing);
+void neatpad_text_view_get_index_info(NeatpadTextView *view, guint *percent, gboolean *indexing, guint64 *lines);
 void neatpad_text_view_index_file(NeatpadTextView *view, gboolean index);
 
 // Find text from the caret, wrapping round the end, and select it
@@ -135,6 +135,11 @@ void neatpad_text_view_set_line_spacing(NeatpadTextView *view, guint above, guin
 // Move the caret to the start of a line, from 0. FALSE if the document hasn't
 // that line, or hasn't indexed as far yet.
 gboolean neatpad_text_view_goto_line(NeatpadTextView *view, guint64 line);
+
+// Whether goto_line can go to a line, from 0, as it stands: TDR_OK, TDR_PENDING_INDEX
+// for one past the indexed part (index the file, then ask again), or TDR_FAILED
+// for one the document hasn't
+TEXT_RESULT neatpad_text_view_can_goto_line(NeatpadTextView *view, guint64 line);
 
 // The font, as Pango describes one: "Monospace 11"
 void neatpad_text_view_set_font(NeatpadTextView *view, const char *font);

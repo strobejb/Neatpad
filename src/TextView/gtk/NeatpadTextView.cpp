@@ -817,7 +817,7 @@ gboolean neatpad_text_view_get_doc_stats(NeatpadTextView *view, NeatpadDocStats 
     return TRUE;
 }
 
-void neatpad_text_view_get_index_info(NeatpadTextView *view, guint *percent, gboolean *indexing)
+void neatpad_text_view_get_index_info(NeatpadTextView *view, guint *percent, gboolean *indexing, guint64 *lines)
 {
     TextViewIndexInfo info = {};
 
@@ -830,6 +830,9 @@ void neatpad_text_view_get_index_info(NeatpadTextView *view, guint *percent, gbo
 
     if (indexing)
         *indexing = info.fIndexing;
+
+    if (lines)
+        *lines = info.nLineCount;
 }
 
 void neatpad_text_view_index_file(NeatpadTextView *view, gboolean index)
@@ -937,6 +940,13 @@ gboolean neatpad_text_view_goto_line(NeatpadTextView *view, guint64 line)
 
     gtk_widget_grab_focus(GTK_WIDGET(view));
     return TRUE;
+}
+
+TEXT_RESULT neatpad_text_view_can_goto_line(NeatpadTextView *view, guint64 line)
+{
+    g_return_val_if_fail(NEATPAD_IS_TEXT_VIEW(view), TDR_FAILED);
+
+    return view_of(view)->GotoLine(line, false);
 }
 
 void neatpad_text_view_set_font(NeatpadTextView *view, const char *font)
