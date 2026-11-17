@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: CC0-1.0 -->
+<component type="desktop-application">
+  <id>net.catch22.Neatpad</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+
+  <name>Neatpad</name>
+  <summary>Edit text files, however large</summary>
+  <developer id="net.catch22">
+    <name>James Brown</name>
+  </developer>
+
+  <description>
+    <p>
+      Neatpad is a plain text editor that opens files of any size at once, from a
+      short note to a log or disk image several gigabytes long. It reads only what
+      it shows, so scrolling and editing stay quick however large the file is.
+    </p>
+    <ul>
+      <li>Unsaved changes are kept as you type, and come back after a crash or when the window is closed</li>
+      <li>UTF-8, UTF-16, UTF-32 and Latin-1, with Windows, Unix and Mac line endings, each kept as the file has them</li>
+      <li>Find and replace, with every match highlighted, or only the matching lines shown</li>
+      <li>Follow File shows what another program adds to a log as it writes it</li>
+      <li>Line numbers, changed lines marked in the margin, and control characters shown</li>
+      <li>Light and dark styles, and colour palettes of your own</li>
+    </ul>
+  </description>
+
+  <launchable type="desktop-id">net.catch22.Neatpad.desktop</launchable>
+  <provides>
+    <binary>neatpad</binary>
+  </provides>
+
+  <url type="homepage">https://www.catch22.net/projects/neatpad</url>
+  <url type="vcs-browser">https://github.com/strobejb/Neatpad</url>
+  <url type="bugtracker">https://github.com/strobejb/Neatpad/issues</url>
+
+  <supports>
+    <control>keyboard</control>
+    <control>pointing</control>
+  </supports>
+
+  <content_rating type="oars-1.1"/>
+
+  <releases>
+    <release version="1.1.0" date="2026-11-07"/>
+  </releases>
+</component>

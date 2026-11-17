@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Neatpad
+GenericName=Text Editor
+Comment=Edit text files, however large
+Exec=neatpad %F
+Icon=net.catch22.Neatpad
+StartupWMClass=neatpad
+Categories=GTK;Utility;TextEditor;
+MimeType=text/plain;
+Keywords=text;editor;log;
+StartupNotify=true
+Terminal=false

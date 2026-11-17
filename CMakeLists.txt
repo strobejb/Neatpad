@@ -102,6 +102,18 @@ if(GTK4_FOUND)
                                src/Neatpad/gtk/recovery.c ${CMAKE_CURRENT_BINARY_DIR}/neatpad-resources.c)
         target_link_libraries(neatpad PRIVATE TextViewGtk PkgConfig::ADWAITA)
         target_compile_definitions(neatpad PRIVATE NEATPAD_VERSION="${PROJECT_VERSION}")
+
+        # Installed as a desktop app, named for its ID as GNOME matches windows by it:
+        #	cmake --install build --prefix ~/.local
+        include(GNUInstallDirs)
+        install(TARGETS neatpad RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+        install(FILES ${NEATPAD_GTK}/net.catch22.Neatpad.desktop
+                DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+        install(FILES ${NEATPAD_GTK}/net.catch22.Neatpad.metainfo.xml
+                DESTINATION ${CMAKE_INSTALL_DATADIR}/metainfo)
+        install(FILES ${NEATPAD_GTK}/icons/neatpad-gnome-512.png
+                DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/512x512/apps
+                RENAME net.catch22.Neatpad.png)
     endif()
 endif()
 
@@ -125,4 +137,18 @@ add_test(NAME CoreTests COMMAND CoreTests)
 if(GTK4_FOUND)
     add_test(NAME GtkTests COMMAND GtkTests)
     set_tests_properties(GtkTests PROPERTIES SKIP_RETURN_CODE 77)
+endif()
+
+# The desktop entry and the AppStream data, where the tools to check them are
+if(ADWAITA_FOUND)
+    find_program(DESKTOP_FILE_VALIDATE desktop-file-validate)
+    find_program(APPSTREAMCLI appstreamcli)
+
+    if(DESKTOP_FILE_VALIDATE)
+        add_test(NAME DesktopFile COMMAND ${DESKTOP_FILE_VALIDATE} ${NEATPAD_GTK}/net.catch22.Neatpad.desktop)
+    endif()
+
+    if(APPSTREAMCLI)
+        add_test(NAME AppStream COMMAND ${APPSTREAMCLI} validate --no-net ${NEATPAD_GTK}/net.catch22.Neatpad.metainfo.xml)
+    endif()
 endif()

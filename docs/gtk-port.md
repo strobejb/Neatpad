@@ -328,7 +328,14 @@ Each step is its own commit on `main`, and moves and formatting changes stay sep
   - **Done:** files dropped on a window open: the first in that window, as Win32's, after asking about unsaved
     changes; the rest each in a window of its own, as the command line's.
   - **Done:** Shift+F10 and the Menu key show the view's context menu at the caret, as GTK's text views do.
-- **Next:** smaller gaps, as wanted: input-method preedit.
+  - **Done:** CMake installs the app: `neatpad`, its desktop entry, its AppStream data
+    (`net.catch22.Neatpad.metainfo.xml`, in `src/Neatpad/gtk`) and its icon. ctest checks the entry and the
+    AppStream data where `desktop-file-validate` and `appstreamcli` are installed.
+    `scripts/install-dev-desktop.sh` still installs an entry for the build in a checkout.
+- **Next:** shipping beyond Fedora: a Flatpak manifest with access to the host's files (`--filesystem=host`), so
+  large files aren't read through the document portal and the clone still works, then Flathub (it needs
+  screenshots in the AppStream data). Perhaps a COPR spec for Fedora, from the same install rules. Smaller gaps,
+  as wanted: input-method preedit.
 
 ## Open decisions
 
@@ -338,7 +345,7 @@ Each step is its own commit on `main`, and moves and formatting changes stay sep
 | Pango spike | Before step 3 if it should shape `TextLayout` | Do it, timeboxed |
 | ANSI code pages on Linux (`Unicode.c`) | Step 5 | glibc `iconv`: part of the C library, so no new dependency |
 | Oldest GTK4 and libadwaita versions | Step 8 | Whatever the oldest distro you support ships; CI builds against that |
-| How the GTK app ships | Step 9 | Flatpak, distro packages or from source. Flatpak opens files through its document portal, so check multi-GB file performance |
+| How the GTK app ships | Step 9 | Leaning to Flatpak on Flathub, with host file access, for every distro; COPR perhaps for Fedora. AppImage and Snap were turned down |
 | Where Linux settings are stored | Step 9 | Decided: `GKeyFile` in `~/.config/catch22/neatpad` (part of GLib, nothing to install) |
 
 ## Details to settle during the refactor
