@@ -2100,7 +2100,13 @@ static const char app_css[] = ".style-switcher { margin: 6px 0; }"
                                 ".neatpad-bar entry { min-height: 38px; }"
                                 ".zoom-row > button:not(.circular) { min-width: 64px; }"
                                 ".recent-files { min-width: 300px; }"
-                                ".recent-files row { padding: 4px 4px 4px 10px; }";
+                                ".recent-files row { padding: 4px 4px 4px 10px; }"
+                                // the banner in the warning colour, as Text Editor's info bar,
+                                // paler in the background, as libadwaita's banner is
+                                ".neatpad-banner > revealer > widget {"
+                                "  background-color: mix(@window_bg_color, @warning_bg_color, 0.3); }"
+                                ".neatpad-banner > revealer > widget:backdrop {"
+                                "  background-color: mix(@window_bg_color, @warning_bg_color, 0.15); }";
 
 // Zoom out, the zoom (to reset it) and zoom in, as Text Editor's menu has them
 static GtkWidget *zoom_row(Editor *editor)
@@ -2430,6 +2436,7 @@ static GtkWindow *editor_window_new(GtkApplication *app, GFile *file)
     // below the text, above the status bar
     editor->banner = ADW_BANNER(adw_banner_new(""));
     adw_banner_set_use_markup(editor->banner, FALSE);
+    gtk_widget_add_css_class(GTK_WIDGET(editor->banner), "neatpad-banner");
     g_signal_connect(editor->banner, "button-clicked", G_CALLBACK(on_banner_clicked), editor);
 
     adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(toolbar), header_bar(editor));
