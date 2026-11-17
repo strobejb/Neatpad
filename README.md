@@ -10,6 +10,8 @@ It began as the example program for the tutorial series
 on catch22.net, and has grown from there into a full editor. All the source is
 here, to read, borrow from or build on.
 
+![Neatpad filtering a 34 MB server log down to its errors](docs/screenshots/filter.png)
+
 ### What it's good at
 
 - **Huge files.** Open text and log files, data dumps and other huge files in moments, even

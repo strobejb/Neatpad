@@ -27,6 +27,17 @@
     </ul>
   </description>
 
+  <screenshots>
+    <screenshot type="default">
+      <caption>Filter a large log down to the lines that matter</caption>
+      <image type="source" width="1457" height="779">https://raw.githubusercontent.com/strobejb/Neatpad/main/docs/screenshots/filter.png</image>
+    </screenshot>
+    <screenshot environment="gnome:dark">
+      <caption>Follow a log as it's written</caption>
+      <image type="source" width="1457" height="779">https://raw.githubusercontent.com/strobejb/Neatpad/main/docs/screenshots/follow.png</image>
+    </screenshot>
+  </screenshots>
+
   <launchable type="desktop-id">net.catch22.Neatpad.desktop</launchable>
   <provides>
     <binary>neatpad</binary>
