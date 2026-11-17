@@ -61,10 +61,12 @@ class TextViewGtk : public TextViewHost
     //
     //	From the widget: its text area's size, painting, scrollbars, input state
     //	and the clipboard's text when it has been read. The widget's points are
-    //	in its own coordinates; EnginePoint gives the engine's, inside the padding.
+    //	in its own coordinates; EnginePoint gives the engine's, inside the padding,
+    //	and CaretRect the caret's in the widget's, kept inside it.
     //
     void Resize(int width, int height);
     void EnginePoint(double x, double y, int *engineX, int *engineY) const;
+    void CaretRect(GdkRectangle *rect) const;
     void Snapshot(GtkSnapshot *snapshot);
 
     void AttachScrollbars(GtkAdjustment *vertical, GtkAdjustment *horizontal);

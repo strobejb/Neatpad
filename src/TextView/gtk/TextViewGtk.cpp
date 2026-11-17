@@ -167,6 +167,17 @@ void TextViewGtk::EnginePoint(double x, double y, int *engineX, int *engineY) co
     *engineY = (int)floor(y) - PAD_Y;
 }
 
+void TextViewGtk::CaretRect(GdkRectangle *rect) const
+{
+    int width  = gtk_widget_get_width(m_widget);
+    int height = gtk_widget_get_height(m_widget);
+
+    rect->width  = 1;
+    rect->height = m_caretHeight > 0 ? m_caretHeight : 1;
+    rect->x      = CLAMP(m_caretX + PAD_X, 0, MAX(width - 1, 0));
+    rect->y      = CLAMP(m_caretY + PAD_Y, 0, MAX(height - rect->height, 0));
+}
+
 //
 //	The padding is the text's background. Inside it the engine paints its area,
 //	row by row, and the caret goes on top.

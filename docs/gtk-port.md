@@ -327,7 +327,8 @@ Each step is its own commit on `main`, and moves and formatting changes stay sep
     makes the change and runs where the temp folder can clone: set `TMPDIR` to a folder on btrfs.
   - **Done:** files dropped on a window open: the first in that window, as Win32's, after asking about unsaved
     changes; the rest each in a window of its own, as the command line's.
-- **Next:** smaller gaps, as wanted: the context menu from the keyboard, input-method preedit.
+  - **Done:** Shift+F10 and the Menu key show the view's context menu at the caret, as GTK's text views do.
+- **Next:** smaller gaps, as wanted: input-method preedit.
 
 ## Open decisions
 

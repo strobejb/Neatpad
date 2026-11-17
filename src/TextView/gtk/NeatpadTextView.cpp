@@ -135,6 +135,8 @@ static uint32_t engine_key(guint keyval)
     }
 }
 
+static void show_menu_at_caret(NeatpadTextView *self);
+
 static gboolean on_key_pressed(GtkEventControllerKey *controller, guint keyval, guint, GdkModifierType state,
                                gpointer data)
 {
@@ -143,6 +145,12 @@ static gboolean on_key_pressed(GtkEventControllerKey *controller, guint keyval, 
     uint32_t         key  = engine_key(keyval);
 
     set_modifiers(self, GTK_EVENT_CONTROLLER(controller));
+
+    if (keyval == GDK_KEY_Menu || (keyval == GDK_KEY_F10 && (state & GDK_SHIFT_MASK)))
+    {
+        show_menu_at_caret(self);
+        return TRUE;
+    }
 
     if (key)
     {
@@ -268,17 +276,15 @@ static gboolean on_scroll(GtkEventControllerScroll *controller, double, double d
 }
 
 //
-//	The context menu, as Win32's: undo and redo, the clipboard, and select all,
+//	The context menu, as Win32's: the clipboard, undo and redo, and select all,
 //	each only when it would do something
 //
-static void on_menu_pressed(GtkGestureClick *, int, double x, double y, gpointer data)
+static void show_menu(NeatpadTextView *self, const GdkRectangle *at)
 {
-    NeatpadTextView   *self      = NEATPAD_TEXT_VIEW(data);
     GtkWidget         *widget    = GTK_WIDGET(self);
     TextView          *view      = view_of(self);
     bool               selection = view->SelectionSize() > 0;
     GdkContentFormats *formats   = gdk_clipboard_get_formats(gtk_widget_get_clipboard(widget));
-    GdkRectangle       at        = {(int)x, (int)y, 1, 1};
 
     gtk_widget_grab_focus(widget);
 
@@ -289,8 +295,24 @@ static void on_menu_pressed(GtkGestureClick *, int, double x, double y, gpointer
     gtk_widget_action_set_enabled(widget, "text.paste", gdk_content_formats_contain_gtype(formats, G_TYPE_STRING));
     gtk_widget_action_set_enabled(widget, "text.delete", selection);
 
-    gtk_popover_set_pointing_to(GTK_POPOVER(self->menu), &at);
+    gtk_popover_set_pointing_to(GTK_POPOVER(self->menu), at);
     gtk_popover_popup(GTK_POPOVER(self->menu));
+}
+
+static void on_menu_pressed(GtkGestureClick *, int, double x, double y, gpointer data)
+{
+    GdkRectangle at = {(int)x, (int)y, 1, 1};
+
+    show_menu(NEATPAD_TEXT_VIEW(data), &at);
+}
+
+// Shift+F10 and the Menu key show it at the caret
+static void show_menu_at_caret(NeatpadTextView *self)
+{
+    GdkRectangle at;
+
+    self->host->CaretRect(&at);
+    show_menu(self, &at);
 }
 
 static void on_menu_action(GtkWidget *widget, const char *action, GVariant *)
@@ -313,28 +335,61 @@ static void on_menu_action(GtkWidget *widget, const char *action, GVariant *)
         neatpad_text_view_select_all(self);
 }
 
+// Wider than libadwaita's menus (120px, shortcuts 12px from the text), as Win32's is
+static const char menu_css[] = "popover.menu.neatpad-context > contents { min-width: 240px; }\n"
+                               "popover.menu.neatpad-context accelerator:dir(ltr) { margin-left: 32px; }\n"
+                               "popover.menu.neatpad-context accelerator:dir(rtl) { margin-right: 32px; }\n";
+
+static void add_menu_css(GtkWidget *widget)
+{
+    static gboolean added = FALSE;
+    GtkCssProvider *css;
+
+    if (added)
+        return;
+
+    css = gtk_css_provider_new();
+    gtk_css_provider_load_from_string(css, menu_css);
+    gtk_style_context_add_provider_for_display(gtk_widget_get_display(widget), GTK_STYLE_PROVIDER(css),
+                                               GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+    g_object_unref(css);
+    added = TRUE;
+}
+
 static GtkWidget *context_menu(GtkWidget *widget)
 {
     GMenu     *model = g_menu_new();
     GMenu     *undo  = g_menu_new();
     GMenu     *edit  = g_menu_new();
     GMenu     *all   = g_menu_new();
+    GMenuItem *item;
     GtkWidget *menu;
 
-    g_menu_append(undo, "_Undo", "text.undo");
-    g_menu_append(undo, "_Redo", "text.redo");
+    // the menu shows each item's "accel"; Redo shows GNOME's, though Ctrl+Y works too
+    item = g_menu_item_new("_Undo", "text.undo");
+    g_menu_item_set_attribute(item, "accel", "s", "<Control>z");
+    g_menu_append_item(undo, item);
+    g_object_unref(item);
+
+    item = g_menu_item_new("_Redo", "text.redo");
+    g_menu_item_set_attribute(item, "accel", "s", "<Shift><Control>z");
+    g_menu_append_item(undo, item);
+    g_object_unref(item);
+
     g_menu_append(edit, "Cu_t", "text.cut");
     g_menu_append(edit, "_Copy", "text.copy");
     g_menu_append(edit, "_Paste", "text.paste");
     g_menu_append(edit, "_Delete", "text.delete");
     g_menu_append(all, "Select _All", "text.select-all");
 
-    g_menu_append_section(model, 0, G_MENU_MODEL(undo));
     g_menu_append_section(model, 0, G_MENU_MODEL(edit));
+    g_menu_append_section(model, 0, G_MENU_MODEL(undo));
     g_menu_append_section(model, 0, G_MENU_MODEL(all));
 
     menu = gtk_popover_menu_new_from_model(G_MENU_MODEL(model));
     gtk_popover_set_has_arrow(GTK_POPOVER(menu), FALSE);
+    gtk_widget_add_css_class(menu, "neatpad-context");
+    add_menu_css(widget);
     gtk_widget_set_halign(menu, GTK_ALIGN_START);
     gtk_widget_set_parent(menu, widget);
 
