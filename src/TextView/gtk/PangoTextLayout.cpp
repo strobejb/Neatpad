@@ -288,10 +288,12 @@ void PangoTextLayout::Draw(TextCanvas &canvas, int x, int y, int lineHeight, int
         start = end;
     }
 
+    // the line's end is in the line, as a space, so it's selected with it, as
+    // on Win32: nothing more is added past the end
     if (m_selStart < m_selEnd)
     {
         int     left  = OffsetToX(m_selStart, false);
-        int     right = m_selEnd >= m_length ? Width() + m_host->CharWidth() : OffsetToX(m_selEnd, false);
+        int     right = OffsetToX(m_selEnd, false);
         GdkRGBA rgba  = RgbaFromColour(m_selBg);
 
         gtk_snapshot_append_color(snapshot, &rgba,
@@ -305,7 +307,7 @@ void PangoTextLayout::Draw(TextCanvas &canvas, int x, int y, int lineHeight, int
     if (m_selStart < m_selEnd)
     {
         int     left  = x + OffsetToX(m_selStart, false);
-        int     right = x + (m_selEnd >= m_length ? Width() + m_host->CharWidth() : OffsetToX(m_selEnd, false));
+        int     right = x + OffsetToX(m_selEnd, false);
         GdkRGBA fg    = RgbaFromColour(m_selFg);
 
         DrawText(snapshot, x, y + adjustY, clipLeft, left, 0);
