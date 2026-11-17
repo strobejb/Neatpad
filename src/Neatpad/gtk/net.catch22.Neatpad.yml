@@ -1,0 +1,33 @@
+# Neatpad as a Flatpak, built from this checkout:
+#
+#	flatpak-builder --user --install --install-deps-from=flathub --force-clean \
+#		--state-dir=build/flatpak-state build/flatpak src/Neatpad/gtk/net.catch22.Neatpad.yml
+#	flatpak run net.catch22.Neatpad
+#
+# Neatpad sees the host's files as they are (--filesystem=host), rather than
+# through the document portal: a multi-GB file is read directly, and the
+# copy-on-write clone is made in the file's own folder.
+id: net.catch22.Neatpad
+runtime: org.gnome.Platform
+runtime-version: '51'
+sdk: org.gnome.Sdk
+command: neatpad
+
+finish-args:
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=dri
+  - --filesystem=host
+
+modules:
+  - name: neatpad
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+    sources:
+      - type: dir
+        path: ../../..
+        skip:
+          - build
+          - .git
