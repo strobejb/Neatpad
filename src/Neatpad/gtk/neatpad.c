@@ -79,7 +79,9 @@ enum
 // What to do once a document's changes are saved or discarded
 typedef void (*EditorThen)(Editor *editor);
 
-// GNOME's own settings, for its monospace font: 0 where they aren't installed
+// GNOME's monospace font, as the settings portal or GNOME's own settings give
+// it: 0 where neither does
+static char      *desktop_font;
 static GSettings *desktop;
 
 // Neatpad has started: later starts are a new window
@@ -206,7 +208,7 @@ static void apply_settings(Editor *editor)
                    (settings.show_line_endings ? TXS_SHOWLINEENDINGS : 0) |
                    (settings.insert_spaces ? TXS_INSERTSPACES : 0) | (settings.auto_indent ? TXS_AUTOINDENT : 0);
 
-    char *system = settings.system_font && desktop ? g_settings_get_string(desktop, "monospace-font-name") : 0;
+    const char *system = settings.system_font ? desktop_font : 0;
 
     PangoFontDescription *font = pango_font_description_from_string(system && *system ? system : settings.font);
     char                 *zoomed;
@@ -221,7 +223,6 @@ static void apply_settings(Editor *editor)
 
     g_free(zoomed);
     pango_font_description_free(font);
-    g_free(system);
     neatpad_text_view_set_tab_width(editor->view, (guint)settings.tab_width);
     neatpad_text_view_set_long_line(editor->view, (guint)settings.long_line_column);
     neatpad_text_view_set_filter_context(editor->view, (guint)settings.filter_context);
@@ -2496,25 +2497,128 @@ static void action_about(GSimpleAction *action, GVariant *parameter, gpointer da
     adw_dialog_present(about, GTK_WIDGET(gtk_application_get_active_window(app)));
 }
 
-// GNOME's monospace font, which Use System Font follows as it changes
+//
+//	GNOME's monospace font, which Use System Font follows as it changes. The
+//	settings portal gives the desktop's, also in a sandbox, where GNOME's own
+//	settings are the sandbox's; without a portal they're read directly.
+//
+#define PORTAL_NAME      "org.freedesktop.portal.Desktop"
+#define PORTAL_PATH      "/org/freedesktop/portal/desktop"
+#define PORTAL_SETTINGS  "org.freedesktop.portal.Settings"
+#define DESKTOP_SCHEMA   "org.gnome.desktop.interface"
+#define DESKTOP_FONT_KEY "monospace-font-name"
+
+static void set_desktop_font(const char *font)
+{
+    if (g_strcmp0(font, desktop_font) == 0)
+        return;
+
+    g_free(desktop_font);
+    desktop_font = g_strdup(font);
+    apply_settings_everywhere();
+}
+
+// The string in a value, under the variants older portals wrap round it
+static const char *portal_string(GVariant *value)
+{
+    while (value && g_variant_is_of_type(value, G_VARIANT_TYPE_VARIANT))
+    {
+        GVariant *inner = g_variant_get_variant(value);
+
+        g_variant_unref(inner); // still held by value
+        value = inner;
+    }
+
+    return value && g_variant_is_of_type(value, G_VARIANT_TYPE_STRING) ? g_variant_get_string(value, 0) : 0;
+}
+
+static void on_portal_setting(GDBusConnection *bus, const char *sender, const char *path, const char *iface,
+                              const char *signal, GVariant *parameters, gpointer data)
+{
+    const char *ns;
+    const char *key;
+    GVariant   *value;
+
+    (void)bus;
+    (void)sender;
+    (void)path;
+    (void)iface;
+    (void)signal;
+    (void)data;
+
+    g_variant_get(parameters, "(&s&sv)", &ns, &key, &value);
+
+    if (g_str_equal(ns, DESKTOP_SCHEMA) && g_str_equal(key, DESKTOP_FONT_KEY) && portal_string(value))
+        set_desktop_font(portal_string(value));
+
+    g_variant_unref(value);
+}
+
+// The font from the portal, ReadOne's or, before version 2, Read's: false
+// where there's no portal or it doesn't have it
+static gboolean read_portal_font(GDBusConnection *bus)
+{
+    static const char *const methods[] = {"ReadOne", "Read"};
+
+    for (size_t i = 0; i < G_N_ELEMENTS(methods); i++)
+    {
+        GVariant *reply = g_dbus_connection_call_sync(bus, PORTAL_NAME, PORTAL_PATH, PORTAL_SETTINGS, methods[i],
+                                                      g_variant_new("(ss)", DESKTOP_SCHEMA, DESKTOP_FONT_KEY),
+                                                      G_VARIANT_TYPE("(v)"), G_DBUS_CALL_FLAGS_NONE, 2000, 0, 0);
+        GVariant *value;
+
+        if (!reply)
+            continue;
+
+        g_variant_get(reply, "(v)", &value);
+
+        if (portal_string(value))
+        {
+            g_free(desktop_font);
+            desktop_font = g_strdup(portal_string(value));
+        }
+
+        g_variant_unref(value);
+        g_variant_unref(reply);
+        return desktop_font != 0;
+    }
+
+    return FALSE;
+}
+
 static void on_desktop_font(GSettings *changed, const char *key, gpointer data)
 {
-    (void)changed;
-    (void)key;
+    char *font = g_settings_get_string(changed, key);
+
     (void)data;
-    apply_settings_everywhere();
+    set_desktop_font(font);
+    g_free(font);
 }
 
 static void watch_desktop_font(void)
 {
+    GDBusConnection       *bus    = g_bus_get_sync(G_BUS_TYPE_SESSION, 0, 0);
     GSettingsSchemaSource *source = g_settings_schema_source_get_default();
-    GSettingsSchema       *schema =
-        source ? g_settings_schema_source_lookup(source, "org.gnome.desktop.interface", TRUE) : 0;
+    GSettingsSchema       *schema;
 
-    if (schema && g_settings_schema_has_key(schema, "monospace-font-name"))
+    if (bus && read_portal_font(bus))
     {
-        desktop = g_settings_new("org.gnome.desktop.interface");
-        g_signal_connect(desktop, "changed::monospace-font-name", G_CALLBACK(on_desktop_font), 0);
+        g_dbus_connection_signal_subscribe(bus, PORTAL_NAME, PORTAL_SETTINGS, "SettingChanged", PORTAL_PATH, 0,
+                                           G_DBUS_SIGNAL_FLAGS_NONE, on_portal_setting, 0, 0);
+        g_object_unref(bus);
+        return;
+    }
+
+    if (bus)
+        g_object_unref(bus);
+
+    schema = source ? g_settings_schema_source_lookup(source, DESKTOP_SCHEMA, TRUE) : 0;
+
+    if (schema && g_settings_schema_has_key(schema, DESKTOP_FONT_KEY))
+    {
+        desktop      = g_settings_new(DESKTOP_SCHEMA);
+        desktop_font = g_settings_get_string(desktop, DESKTOP_FONT_KEY);
+        g_signal_connect(desktop, "changed::" DESKTOP_FONT_KEY, G_CALLBACK(on_desktop_font), 0);
     }
 
     if (schema)
@@ -2705,6 +2809,7 @@ static void on_shutdown(GApplication *app, gpointer data)
     (void)data;
 
     g_clear_object(&desktop);
+    g_clear_pointer(&desktop_font, g_free);
 }
 
 int main(int argc, char *argv[])

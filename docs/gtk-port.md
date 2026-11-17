@@ -275,7 +275,8 @@ Each step is its own commit on `main`, and moves and formatting changes stay sep
     Started without files, Neatpad opens the document last worked on: the newest of the kept changes and the recent
     files. Started with files, it opens just those. Unsaved documents the recent files don't bring back (untitled,
     or for a file not listed) head the recent list, to restore or discard.
-    Use System Font follows GNOME's monospace font. The engine's recovery state is
+    Use System Font follows GNOME's monospace font, read through the settings portal (also from a Flatpak), or
+    GNOME's own settings where there's no portal. The engine's recovery state is
     now tested on Linux too.
   - **Done:** a banner (`AdwBanner`) for what Win32 Neatpad's notification bar says: recovered or restored changes
     (Revert to Saved, or Discard Document), recovery data that can't be written, another program changing the file
