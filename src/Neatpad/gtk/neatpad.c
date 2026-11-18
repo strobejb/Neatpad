@@ -2201,8 +2201,15 @@ static const char app_css[] = ".style-switcher { margin: 6px 0; }"
                                 ".neatpad-status { padding: 7px 12px; }"
                                 // the find and go-to bars as Text Editor's: roomier, with taller
                                 // entries
-                                ".neatpad-bar > revealer > box { padding: 9px 12px; }"
+                                // 3px less above, as the toolbar view pads its bottom bars
+                                // with 3px above them: 6px each side of the controls
+                                ".neatpad-bar > revealer > box { padding: 3px 12px 6px 12px; }"
                                 ".neatpad-bar entry { min-height: 38px; }"
+                                // its buttons and the highlight/filter group as tall as the
+                                // entries: 28px inside a button's padding, 32px inside the
+                                // group's; not the close button, which is round
+                                ".neatpad-bar button:not(.close) { min-height: 28px; }"
+                                ".neatpad-bar toggle-group > toggle { min-height: 32px; }"
                                 ".zoom-row > button:not(.circular) { min-width: 64px; }"
                                 ".recent-files { min-width: 300px; }"
                                 ".recent-files row { padding: 4px 4px 4px 10px; }"
@@ -2316,11 +2323,22 @@ static GtkWidget *header_bar(Editor *editor)
     return header;
 }
 
+static void on_find_close_clicked(GtkButton *button, gpointer data)
+{
+    Editor *editor = data;
+
+    (void)button;
+    gtk_search_bar_set_search_mode(editor->search_bar, FALSE);
+    gtk_widget_grab_focus(GTK_WIDGET(editor->view));
+}
+
 static GtkWidget *search_bar(Editor *editor)
 {
     GtkWidget *bar         = gtk_search_bar_new();
     GtkWidget *rows        = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
+    GtkWidget *find_line   = gtk_center_box_new();
     GtkWidget *find_row    = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+    GtkWidget *close       = gtk_button_new_from_icon_name("window-close-symbolic");
     GtkWidget *replace_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
     GtkWidget *entry       = gtk_search_entry_new();
     GtkWidget *previous    = gtk_button_new_from_icon_name("go-up-symbolic");
@@ -2351,12 +2369,23 @@ static GtkWidget *search_bar(Editor *editor)
     gtk_box_append(GTK_BOX(replace_row), one);
     gtk_box_append(GTK_BOX(replace_row), all);
 
-    gtk_box_append(GTK_BOX(rows), find_row);
+    // the close button at the end of the find row, level with it, rather than
+    // the search bar's own, which is centred on both rows
+    gtk_widget_add_css_class(close, "flat");
+    gtk_widget_add_css_class(close, "circular");
+    gtk_widget_add_css_class(close, "close");
+    gtk_widget_set_valign(close, GTK_ALIGN_CENTER);
+    gtk_widget_set_tooltip_text(close, "Close");
+    gtk_center_box_set_center_widget(GTK_CENTER_BOX(find_line), find_row);
+    gtk_center_box_set_end_widget(GTK_CENTER_BOX(find_line), close);
+
+    gtk_widget_set_halign(replace_row, GTK_ALIGN_CENTER);
+    gtk_widget_set_hexpand(rows, TRUE);
+    gtk_box_append(GTK_BOX(rows), find_line);
     gtk_box_append(GTK_BOX(rows), replace_row);
 
     gtk_search_bar_set_child(GTK_SEARCH_BAR(bar), rows);
     gtk_search_bar_connect_entry(GTK_SEARCH_BAR(bar), GTK_EDITABLE(entry));
-    gtk_search_bar_set_show_close_button(GTK_SEARCH_BAR(bar), TRUE);
 
     g_signal_connect(entry, "activate", G_CALLBACK(on_search_activate), editor);
     g_signal_connect(entry, "next-match", G_CALLBACK(on_search_next), editor);
@@ -2369,6 +2398,7 @@ static GtkWidget *search_bar(Editor *editor)
     g_signal_connect(one, "clicked", G_CALLBACK(on_replace_clicked), editor);
     g_signal_connect(all, "clicked", G_CALLBACK(on_replace_all_clicked), editor);
     g_signal_connect(matching, "toggled", G_CALLBACK(on_match_toggled), editor);
+    g_signal_connect(close, "clicked", G_CALLBACK(on_find_close_clicked), editor);
 
     gtk_widget_set_visible(bar, FALSE);
     g_signal_connect(bar, "notify::search-mode-enabled", G_CALLBACK(on_search_mode), 0);
