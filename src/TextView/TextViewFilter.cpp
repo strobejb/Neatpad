@@ -23,6 +23,11 @@
 // Filtering in the background: a megabyte at a time, for this long each tick
 static const size_w FILTER_CHUNK = 0x100000;
 static const int    FILTER_SLICE_MS = 15;
+// A filter starting looks for the caret's place before anything is shown, so
+// the view doesn't jump to the top and back. The compromise: the window waits
+// meanwhile (each key typed with Filter on restarts it), so it waits this long
+// at most. A file it can't search that far in time still shows the top first.
+static const int    FILTER_SEEK_MS  = 1000;
 
 //
 //	The whole document: the one shown, unless it's filtered
@@ -96,7 +101,18 @@ bool TextView::StartFilter()
 	m_selAnchor = m_cursorPos;
 	SetScrollCoord(&m_cursorPos);
 
-	if(FilterSlice())
+	// look for the caret's place before anything is shown, so the lines at the
+	// top don't show on the way to it - for as long as the window can wait
+	auto start = std::chrono::steady_clock::now();
+	bool more  = FilterSlice();
+
+	while(more && m_fFilterSeek && !FilterSeekFound() &&
+		  std::chrono::steady_clock::now() - start < std::chrono::milliseconds(FILTER_SEEK_MS))
+	{
+		more = FilterSlice();
+	}
+
+	if(more)
 		m_pHost->StartTimer(FILTER_TIMER, 0);
 
 	ShowFilteredLines();
@@ -131,11 +147,20 @@ void TextView::EndFilter(bool fKeepPlace)
 
 	m_pHost->StopTimer(FILTER_TIMER);
 
-	if(fKeepPlace && m_pTextDoc->lineno_from_pos(m_cursorPos, &lineno) == TDR_OK && lineno < m_filterOrigins.size())
+	// the place the caret was to go back to, if the filter hasn't found it yet
+	if(fKeepPlace && m_fFilterSeek)
+	{
+		origin = m_filterSeekLine;
+		row	   = m_nFilterSeekRow;
+	}
+	else if(fKeepPlace && m_pTextDoc->lineno_from_pos(m_cursorPos, &lineno) == TDR_OK &&
+			lineno < m_filterOrigins.size())
 	{
 		origin = m_filterOrigins[(size_t)lineno];
 		ViewportRowFromLine(&m_cursorPos, &row);
 	}
+
+	m_fFilterSeek = false;
 
 	delete m_pTextDoc;
 	m_filterFile.close();
@@ -291,13 +316,22 @@ void TextView::ShowFilteredLines()
 }
 
 //
+//	Whether the filter has found the caret's place: the first line from its
+//	line on, or the end of the document
+//
+bool TextView::FilterSeekFound()
+{
+	return m_filterFrom.byte_offset >= m_pSourceDoc->byte_length() ||
+		   (!m_filterOrigins.empty() && m_filterOrigins.back() >= m_filterSeekLine);
+}
+
+//
 //	Once the filter has found it, put the caret at the first line shown from
 //	the line it was on (or the last line, if none is), on the window's row it
 //	was on, as EndFilter keeps the place going back
 //
 void TextView::SeekFilteredPlace()
 {
-	bool		 done;
 	size_t		 lineno;
 	TextCoord	 coord;
 	TextCoord	 top;
@@ -313,17 +347,14 @@ void TextView::SeekFilteredPlace()
 		return;
 	}
 
-	done   = m_filterFrom.byte_offset >= m_pSourceDoc->byte_length();
+	if(!FilterSeekFound())
+		return;
+
 	lineno = std::lower_bound(m_filterOrigins.begin(), m_filterOrigins.end(), m_filterSeekLine) -
 			 m_filterOrigins.begin();
 
 	if(lineno == m_filterOrigins.size())
-	{
-		if(!done)
-			return;
-
 		lineno = lineno ? lineno - 1 : 0;
-	}
 
 	m_fFilterSeek = false;
 

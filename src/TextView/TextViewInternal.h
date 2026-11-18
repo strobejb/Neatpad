@@ -320,6 +320,7 @@ private:
 	bool		FilterSlice();
 	void		WriteFilterLine(TextPos begin, TextPos next);
 	void		ShowFilteredLines();
+	bool		FilterSeekFound();
 	void		SeekFilteredPlace();
 	int32_t		OnFilterTimer();
 	bool		GetSelection(TextCoord *start, TextCoord *end);

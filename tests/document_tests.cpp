@@ -1145,6 +1145,40 @@ void textdocument_find_text_reports_begin_and_end()
     delete_file(path);
 }
 
+// Case-insensitive ASCII search in UTF-8 compares ASCII blocks a byte at a
+// time: matches across a block's edge, and in a block with other characters
+void textdocument_finds_ascii_regardless_of_case()
+{
+    TextDocument doc;
+    seqfilechar  path[TEST_PATH_MAX];
+    tstring      error = tstr(U"error");
+    std::string  text  = std::string(65533, 'x') + "eRrOr" + std::string(70000, 'y') + "\xc3\xa9 ErroR" + "z";
+    size_w       second = 65533 + 5 + 70000 + 3;
+    TextPos      begin;
+    TextPos      end;
+
+    CHECK(write_temp_file(text.data(), text.size(), path));
+    CHECK(doc.init(path));
+
+    CHECK(doc.find_text(error.c_str(), (uint32_t)error.size(), TextPos(0), TextPos(doc.byte_length()), false, false,
+                        &begin, &end));
+    CHECK(begin == TextPos(65533));
+    CHECK(end == TextPos(65538));
+
+    CHECK(doc.find_text(error.c_str(), (uint32_t)error.size(), TextPos(65534), TextPos(doc.byte_length()), false,
+                        false, &begin, &end));
+    CHECK(begin == TextPos(second));
+    CHECK(end == TextPos(second + 5));
+
+    CHECK(!doc.find_text(error.c_str(), (uint32_t)error.size(), TextPos(second + 1), TextPos(doc.byte_length()),
+                         false, false, &begin, &end));
+    CHECK(!doc.find_text(error.c_str(), (uint32_t)error.size(), TextPos(0), TextPos(doc.byte_length()), false, true,
+                         &begin, &end));
+
+    doc.clear();
+    delete_file(path);
+}
+
 void textreader_reads_whole_characters()
 {
     TextDocument doc;
@@ -2399,6 +2433,7 @@ const test_case tests[] =
     { "textdocument_coord_from_line_pos_rounds_back_inside_pair", textdocument_coord_from_line_pos_rounds_back_inside_pair },
     { "textdocument_pos_after_change", textdocument_pos_after_change },
     { "textdocument_find_text_reports_begin_and_end", textdocument_find_text_reports_begin_and_end },
+    { "textdocument_finds_ascii_regardless_of_case", textdocument_finds_ascii_regardless_of_case },
     { "textreader_reads_whole_characters", textreader_reads_whole_characters },
     { "lineiterator_walks_lines", lineiterator_walks_lines },
     { "lineiterator_ends_with_empty_line_after_final_break", lineiterator_ends_with_empty_line_after_final_break },

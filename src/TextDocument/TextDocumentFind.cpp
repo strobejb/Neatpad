@@ -11,6 +11,8 @@
 
 #include <limits.h>
 #include <string.h>
+#include <memory>
+#include <vector>
 #include "TextDocument.h"
 #include "Unicode.h"
 
@@ -163,6 +165,94 @@ bool TextDocument::find_text_nocase(const tchar_t *text, uint32_t length, size_w
 	return matched;
 }
 
+//
+//	Case-insensitive search forwards for ASCII text in UTF-8 or Latin-1, as
+//	logs mostly are, where an ASCII byte is always a whole character. Where
+//	the text is ASCII it can only match by ASCII case, so it's compared a byte
+//	at a time, about as fast as a search matching case. Where it reaches any
+//	other character, find_text_nocase folds that character's case, so the
+//	matches are the same.
+//
+bool TextDocument::find_ascii_nocase(const tchar_t *text, uint32_t length, size_w from, size_w to, size_w *match,
+									 size_w *match_length)
+{
+	const size_w chunkSize = 0x10000;
+
+	size_w				 docLength = byte_length();
+	size_w				 startLimit;
+	size_w				 chunkStart;
+	size_w				 chunk = 0x1000;
+	std::vector<uint8_t> pattern(length);
+	std::unique_ptr<uint8_t[]> block;
+
+	auto lower = [](uint32_t ch)
+	{
+		return ch >= 'A' && ch <= 'Z' ? ch + ('a' - 'A') : ch;
+	};
+
+	for(uint32_t i = 0; i < length; i++)
+		pattern[i] = (uint8_t)lower((uint32_t)text[i]);
+
+	from = min_of(from, docLength);
+	to	 = min_of(to, docLength);
+
+	if(from > to || length > to - from)
+		return false;
+
+	startLimit = to - length + 1;
+	chunkStart = from;
+	block.reset(new uint8_t[(size_t)min_of(chunkSize + length - 1, to - from)]);
+
+	// small blocks first, as the next match is often near (the filter looks
+	// again after each one), then larger ones
+	while(chunkStart < startLimit)
+	{
+		size_w candidates = min_of(chunk, startLimit - chunkStart);
+		size_w rendered	  = m_seq.render(chunkStart + m_nHeaderSize, block.get(), candidates + length - 1);
+
+		if(rendered < length)
+			break;
+
+		for(size_w pos = 0; pos < candidates && pos + length <= rendered; pos++)
+		{
+			const uint8_t *at = block.get() + (size_t)pos;
+			size_w		   offset;
+			uint32_t	   i = 0;
+
+			// not a character's start in UTF-8, and no ASCII letter's case in Latin-1
+			if(at[0] >= 0x80 && at[0] < 0xC0)
+				continue;
+
+			while(i < length && at[i] < 0x80 && lower(at[i]) == pattern[i])
+				i++;
+
+			if(i == length)
+			{
+				*match		  = chunkStart + pos;
+				*match_length = length;
+				return true;
+			}
+
+			// another character, which may fold to an ASCII one: compared as
+			// find_text_nocase compares it (a match can be longer in bytes)
+			if(i < length && at[i] >= 0x80)
+			{
+				offset = chunkStart + pos;
+
+				if(find_text_nocase(text, length, offset, min_of(to, offset + (size_w)length * 4), false, match,
+									match_length) &&
+				   *match == offset)
+					return true;
+			}
+		}
+
+		chunkStart += candidates;
+		chunk = min_of(chunk * 2, chunkSize);
+	}
+
+	return false;
+}
+
 TextPos TextDocument::filter_lines(const tchar_t *text, uint32_t length, bool matchcase, TextPos from, size_w bytes,
 								   const std::function<void(TextPos line_begin, TextPos line_next)> &found)
 {
@@ -216,7 +306,14 @@ bool TextDocument::find_text(const tchar_t *text, uint32_t length, TextPos from_
 
 	if(!matchcase)
 	{
-		if(!find_text_nocase(text, length, from, to, backwards, &found, &foundLength))
+		// UTF-8, or Latin-1 (Windows' ANSI code page can have two-byte characters)
+		bool ascii = !backwards && (m_nFileFormat == NCP_UTF8 || (m_nFileFormat == NCP_ASCII && TCHAR_UTF8));
+
+		for(uint32_t i = 0; i < length && ascii; i++)
+			ascii = (uint32_t)text[i] < 0x80;
+
+		if(ascii ? !find_ascii_nocase(text, length, from, to, &found, &foundLength)
+				 : !find_text_nocase(text, length, from, to, backwards, &found, &foundLength))
 			return false;
 
 		*match_begin = TextPos(found);
@@ -295,9 +392,12 @@ bool TextDocument::find_text(const tchar_t *text, uint32_t length, TextPos from_
 	}
 	else
 	{
+		size_w chunk = 0x1000;
+
+		// small blocks first, as the next match is often near
 		while(chunkStart < startLimit && !matched)
 		{
-			size_w candidates = min_of(chunkSize, startLimit - chunkStart);
+			size_w candidates = min_of(chunk, startLimit - chunkStart);
 			size_w rendered = m_seq.render(chunkStart + m_nHeaderSize, block, candidates + patternLength - 1);
 
 			if(rendered < patternLength)
@@ -315,6 +415,7 @@ bool TextDocument::find_text(const tchar_t *text, uint32_t length, TextPos from_
 			}
 
 			chunkStart += candidates;
+			chunk = min_of(chunk * 2, chunkSize);
 		}
 	}
 

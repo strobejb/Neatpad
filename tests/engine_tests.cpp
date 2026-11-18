@@ -763,6 +763,23 @@ void engine_filter_keeps_the_caret_place()
     CHECK(view->CursorLine(&line) == TDR_OK);
     CHECK(line == 30001);
 
+    // typed a character at a time, each filter starting before the last has
+    // found the place: the place is still kept
+    view->ShowMatches(0, false);
+    CHECK(view->GotoLine(300005, true) == TDR_OK);
+
+    for (size_t length = 1; length <= pattern.size(); length++)
+    {
+        find.length = (uint32_t)length;
+        view->ShowMatches(&find, true);
+    }
+
+    for (int i = 0; i < 100000; i++)
+        view->OnTimer(FILTER_TIMER);
+
+    CHECK(view->CursorLine(&line) == TDR_OK);
+    CHECK(line == 30001);
+
     delete view;
     delete_file(path);
 }

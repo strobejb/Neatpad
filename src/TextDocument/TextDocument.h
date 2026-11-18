@@ -355,6 +355,7 @@ private:
 	bool line_bounds_from_offset(size_w offset_bytes, size_w *line_begin, size_w *line_next);
 	void coord_in_line(size_w line_begin, size_w line_next, size_w column, TextCoord *coord);
 	bool find_text_nocase(const tchar_t *text, uint32_t length, size_w from, size_w to, bool backwards, size_w *match, size_w *match_length);
+	bool find_ascii_nocase(const tchar_t *text, uint32_t length, size_w from, size_w to, size_w *match, size_w *match_length);
 
 	//
 	//	tchar_t text / backing-byte conversion
