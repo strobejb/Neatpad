@@ -11,7 +11,7 @@ repo_root="$(cd -- "${script_dir}/.." && pwd)"
 
 app_id="net.catch22.Neatpad"
 default_build_dir="${repo_root}/build"
-default_icon_source="${repo_root}/src/Neatpad/gtk/icons/neatpad-gnome-512.png"
+default_icon_source="${repo_root}/src/Neatpad/gtk/icons/neatpad-gnome.svg"
 
 if [[ $# -gt 2 ]]; then
     echo "Usage: ${0##*/} [build-dir] [icon-file]" >&2
@@ -40,19 +40,28 @@ if [[ ! -f "${icon_source}" ]]; then
     exit 1
 fi
 
-# The icon goes in the folder for its size: a PNG's width is bytes 16-19. The
-# theme's largest is 512, and GTK scales a larger icon down from there.
-icon_size="$(od -An -tu1 -j16 -N4 "${icon_source}" | awk '{ print $1 * 16777216 + $2 * 65536 + $3 * 256 + $4 }')"
+# The icon goes in the folder for its size: an SVG in the scalable one, a
+# PNG in its width's (bytes 16-19). The theme's largest is 512, and GTK
+# scales a larger icon down from there.
+if [[ "${icon_source}" == *.svg ]]; then
+    icon_folder="scalable"
+    icon_ext="svg"
+else
+    icon_size="$(od -An -tu1 -j16 -N4 "${icon_source}" | awk '{ print $1 * 16777216 + $2 * 65536 + $3 * 256 + $4 }')"
 
-if (( icon_size > 512 )); then
-    icon_size=512
+    if (( icon_size > 512 )); then
+        icon_size=512
+    fi
+
+    icon_folder="${icon_size}x${icon_size}"
+    icon_ext="png"
 fi
 
 data_dir="${XDG_DATA_HOME:-${HOME}/.local/share}"
 applications_dir="${data_dir}/applications"
-icons_dir="${data_dir}/icons/hicolor/${icon_size}x${icon_size}/apps"
+icons_dir="${data_dir}/icons/hicolor/${icon_folder}/apps"
 desktop_file="${applications_dir}/${app_id}.desktop"
-icon_file="${icons_dir}/${app_id}.png"
+icon_file="${icons_dir}/${app_id}.${icon_ext}"
 desktop_tmp=""
 icon_tmp=""
 
@@ -65,10 +74,11 @@ trap cleanup EXIT
 
 mkdir -p "${applications_dir}" "${icons_dir}"
 
-# an icon installed before at another size would still be used at that size
-rm -f "${data_dir}"/icons/hicolor/*/apps/"${app_id}".png
+# an icon installed before at another size, or as a PNG or an SVG, would
+# still be used there
+rm -f "${data_dir}"/icons/hicolor/*/apps/"${app_id}".png "${data_dir}"/icons/hicolor/*/apps/"${app_id}".svg
 
-icon_tmp="$(mktemp "${icons_dir}/${app_id}.png.XXXXXX")"
+icon_tmp="$(mktemp "${icons_dir}/${app_id}.${icon_ext}.XXXXXX")"
 cp "${icon_source}" "${icon_tmp}"
 chmod 0644 "${icon_tmp}"
 mv -f "${icon_tmp}" "${icon_file}"

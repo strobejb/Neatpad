@@ -111,9 +111,9 @@ if(GTK4_FOUND)
                 DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
         install(FILES ${NEATPAD_GTK}/net.catch22.Neatpad.metainfo.xml
                 DESTINATION ${CMAKE_INSTALL_DATADIR}/metainfo)
-        install(FILES ${NEATPAD_GTK}/icons/neatpad-gnome-512.png
-                DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/512x512/apps
-                RENAME net.catch22.Neatpad.png)
+        install(FILES ${NEATPAD_GTK}/icons/neatpad-gnome.svg
+                DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps
+                RENAME net.catch22.Neatpad.svg)
     endif()
 endif()
 
