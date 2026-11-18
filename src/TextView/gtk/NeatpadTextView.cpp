@@ -981,7 +981,7 @@ static uint32_t mix(uint32_t from, uint32_t to, double amount)
 
 //
 //	The colours of GtkSourceView's Adwaita and Adwaita Dark schemes, as GNOME
-//	Text Editor shows text. A selection is the accent colour a quarter over the
+//	Text Editor shows text. A selection is the accent colour 30% over the
 //	background, as libadwaita selects text, and a tenth of the text's colour
 //	when the view isn't focused.
 //
@@ -1011,7 +1011,7 @@ void neatpad_text_view_set_scheme(NeatpadTextView *view, gboolean dark, const Gd
         {TXC_FOREGROUND, text},
         {TXC_BACKGROUND, background},
         {TXC_HIGHLIGHTTEXT, text},
-        {TXC_HIGHLIGHT, mix(background, highlight, 0.25)},
+        {TXC_HIGHLIGHT, mix(background, highlight, 0.3)},
         {TXC_HIGHLIGHTTEXT2, text},
         {TXC_HIGHLIGHT2, mix(background, text, 0.1)},
         {TXC_SELMARGIN1, background},
