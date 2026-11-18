@@ -658,6 +658,115 @@ void engine_indexes_a_followed_file()
     delete_file(path);
 }
 
+//	A followed file, filtered: the caret stays at the end of the lines found,
+//	while the filter is still finding them and as more are appended
+void engine_follows_the_end_of_a_filtered_file()
+{
+    FakeHost     host;
+    TextView    *view = new TextView(&host);
+    seqfilechar  path[TEST_PATH_MAX];
+    std::string  text;
+    tstring      pattern = tstr(U"ERROR");
+    TextViewFind find    = {};
+    size_w       line    = 0;
+    FILE        *fp;
+
+    // long enough for the filter to take more than one slice
+    for (int i = 0; i < 600000; i++)
+        text += "2026-11-17 06:00:00 ERROR [exec-1] Pool: Timeout waiting for a connection\n";
+
+    find.text      = pattern.c_str();
+    find.length    = (uint32_t)pattern.size();
+    find.matchcase = true;
+
+    view->OnSize(0, 640, 480);
+    CHECK(write_temp_file(text.data(), text.size(), path));
+    view->ShowMatches(&find, true);
+    CHECK(view->TailFile(path));
+
+    for (int i = 0; i < 100000; i++)
+        view->OnTimer(FILTER_TIMER);
+
+    CHECK(view->CursorLine(&line) == TDR_OK);
+    CHECK(line == 600000);
+    CHECK(view->SelectionSize() == 0);
+
+    fp = open_file(path, "ab");
+    CHECK(fp != 0);
+    fputs("2026-11-17 06:00:01 ERROR [exec-2] one more\n", fp);
+    fclose(fp);
+
+    CHECK(view->UpdateTail());
+
+    for (int i = 0; i < 100; i++)
+        view->OnTimer(FILTER_TIMER);
+
+    CHECK(view->CursorLine(&line) == TDR_OK);
+    CHECK(line == 600001);
+
+    // the filter ended and started again, the caret still at the end
+    for (int i = 0; i < 10000; i++)
+        view->OnTimer(INDEX_TIMER);
+
+    view->ShowMatches(0, false);
+    CHECK(view->CursorLine(&line) == TDR_OK);
+    CHECK(line == 600001);
+    CHECK(view->SelectionSize() == 0);
+
+    view->ShowMatches(&find, true);
+
+    for (int i = 0; i < 100000; i++)
+        view->OnTimer(FILTER_TIMER);
+
+    CHECK(view->CursorLine(&line) == TDR_OK);
+    CHECK(line == 600001);
+
+    delete view;
+    delete_file(path);
+}
+
+//	Filtering keeps the caret's place: at the first line shown from its line on,
+//	once the filter has found it, rather than at the top
+void engine_filter_keeps_the_caret_place()
+{
+    FakeHost     host;
+    TextView    *view = new TextView(&host);
+    seqfilechar  path[TEST_PATH_MAX];
+    std::string  text;
+    tstring      pattern = tstr(U"ERROR");
+    TextViewFind find    = {};
+    size_w       line    = 0;
+
+    // every tenth line matches; long enough to take more than one slice
+    for (int i = 0; i < 600000; i++)
+        text += "a line of the log, number " + std::to_string(i) + (i % 10 == 0 ? " ERROR\n" : "\n");
+
+    find.text      = pattern.c_str();
+    find.length    = (uint32_t)pattern.size();
+    find.matchcase = true;
+
+    view->OnSize(0, 640, 480);
+    CHECK(write_temp_file(text.data(), text.size(), path));
+    CHECK(view->OpenFile(path, -1, false));
+    view->SetFilterContext(0);
+
+    for (int i = 0; i < 10000; i++)
+        view->OnTimer(INDEX_TIMER);
+
+    CHECK(view->GotoLine(300005, true) == TDR_OK);
+    view->ShowMatches(&find, true);
+
+    for (int i = 0; i < 100000; i++)
+        view->OnTimer(FILTER_TIMER);
+
+    // the match on line 300010 is the 30001st shown
+    CHECK(view->CursorLine(&line) == TDR_OK);
+    CHECK(line == 30001);
+
+    delete view;
+    delete_file(path);
+}
+
 void engine_restores_its_recovery_state()
 {
     EngineView                     v(U"one two");
@@ -707,6 +816,8 @@ const test_case tests[] =
     { "engine_selects_and_copies_whole_characters", engine_selects_and_copies_whole_characters },
     { "engine_overwrites_a_character_with_a_character", engine_overwrites_a_character_with_a_character },
     { "engine_indexes_a_followed_file", engine_indexes_a_followed_file },
+    { "engine_follows_the_end_of_a_filtered_file", engine_follows_the_end_of_a_filtered_file },
+    { "engine_filter_keeps_the_caret_place", engine_filter_keeps_the_caret_place },
     { "engine_tab_spaces_count_characters", engine_tab_spaces_count_characters },
     { "engine_types_and_tells_its_host", engine_types_and_tells_its_host },
     { "engine_types_into_a_new_view", engine_types_into_a_new_view },

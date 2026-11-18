@@ -320,6 +320,7 @@ private:
 	bool		FilterSlice();
 	void		WriteFilterLine(TextPos begin, TextPos next);
 	void		ShowFilteredLines();
+	void		SeekFilteredPlace();
 	int32_t		OnFilterTimer();
 	bool		GetSelection(TextCoord *start, TextCoord *end);
 	void		SelectionColumns(TextCoord *line, uint32_t lineLen, uint32_t *start, uint32_t *end);
@@ -415,6 +416,7 @@ private:
 	bool		ViewportRowFromLine(TextCoord *line, uint32_t *row);
 	int			ScrollVByLines(int dy);
 	void		ScrollToCaret();
+	void		CaretToEnd();
 	void		ScrollToCoord(int xpos, TextCoord *coord);
 	void		ScrollToDocumentEnd();
 	void		SetupScrollbars();
@@ -517,11 +519,15 @@ private:
     uint32_t                 m_filterAfter     = 0; // context still wanted if the source grows
     uint32_t                 m_nFilterContext  = 2;
     uint32_t		m_nFilterEditMode = 0;			// the whole document's edit mode, meanwhile
+	bool		m_fFilterSeek = false;			// the caret's place is still to be found
+	TextPos		m_filterSeekLine;				// the source line it was on
+	uint32_t	m_nFilterSeekRow = 0;			// and the window's row it was on
 
 	// Runtime data
 	uintptr_t	m_nScrollTimer;
 	int			m_nScrollCounter;
 	bool		m_fIndexing;		// the index timer is running
+	bool		m_fTailing;			// the file is followed (TailFile)
 	uint32_t		m_nIndexPercent;	// as the parent was last told
 	bool		m_fHideCaret;
 	//bool		m_fTransparent;

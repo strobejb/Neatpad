@@ -84,6 +84,7 @@ TextView::TextView(TextViewHost *host)
 	m_nEditMode			= MODE_INSERT;
 	m_nScrollTimer		= 0;
 	m_fIndexing			= false;
+	m_fTailing			= false;
 	m_nIndexPercent		= 100;
 	m_fHideCaret		= false;
 	

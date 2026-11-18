@@ -16,6 +16,7 @@
 //				disk as it's needed too. The file goes when it's closed.
 //
 
+#include <algorithm>
 #include <chrono>
 #include "TextViewInternal.h"
 
@@ -47,8 +48,9 @@ uint32_t TextView::SetFilterContext(uint32_t lines)
 }
 
 //
-//	Show matching lines and their context, read-only, from
-//	the top: the first of them at once, and the rest as they're found
+//	Show matching lines and their context, read-only: the first of them at
+//	once, and the rest as they're found. The caret keeps its place, at the
+//	first of them from its line on, once that's found
 //
 bool TextView::StartFilter()
 {
@@ -56,7 +58,10 @@ bool TextView::StartFilter()
 	const uint16_t bom16  = 0xFEFF;
 	const void	  *bom    = TCHAR_UTF8 ? (const void *)"\xEF\xBB\xBF" : (const void *)&bom16;
 	size_t		   bomlen = TCHAR_UTF8 ? 3 : sizeof(bom16);
+	size_w		   length = m_pTextDoc->byte_length();
+	bool		   atEnd  = m_fTailing && m_cursorPos.byte_offset == length && m_selAnchor.byte_offset == length;
 	TextDocument  *filtered;
+	uint32_t	   row    = 0;
 
 	if(!m_filterFile.create())
 		return false;
@@ -78,6 +83,15 @@ bool TextView::StartFilter()
     m_nFilterEditMode = m_nEditMode;
     m_nEditMode       = MODE_READONLY;
 
+	// the place to keep: the caret's line, on the same row of the window
+	m_fFilterSeek    = !atEnd && m_cursorPos.byte_offset != 0;
+	m_filterSeekLine = m_cursorPos.line_begin;
+
+	if(m_fFilterSeek)
+		ViewportRowFromLine(&m_cursorPos, &row);
+
+	m_nFilterSeekRow = row;
+
     m_pTextDoc->coord_from_pos(TextPos(0), &m_cursorPos);
 	m_selAnchor = m_cursorPos;
 	SetScrollCoord(&m_cursorPos);
@@ -86,6 +100,11 @@ bool TextView::StartFilter()
 		m_pHost->StartTimer(FILTER_TIMER, 0);
 
 	ShowFilteredLines();
+	SeekFilteredPlace();
+
+	// following the file's end, follow the end of its matches
+	if(atEnd)
+		CaretToEnd();
 
     // Source line numbers become available through the existing index timer.
     IndexFile(true);
@@ -101,9 +120,14 @@ void TextView::EndFilter(bool fKeepPlace)
 	TextPos origin;
 	size_w  lineno;
 	uint32_t   row = 0;
+	size_w  length;
+	bool    atEnd;
 
 	if(m_pSourceDoc == 0)
 		return;
+
+	length = m_pTextDoc->byte_length();
+	atEnd  = m_fTailing && m_cursorPos.byte_offset == length && m_selAnchor.byte_offset == length;
 
 	m_pHost->StopTimer(FILTER_TIMER);
 
@@ -138,6 +162,10 @@ void TextView::EndFilter(bool fKeepPlace)
 		ResetLineCache();
 		UpdateViewState(true);
 		RefreshWindow();
+
+		// following the end of the matches, follow the file's end
+		if(atEnd)
+			CaretToEnd();
 	}
 }
 
@@ -262,13 +290,81 @@ void TextView::ShowFilteredLines()
 	RefreshWindow();
 }
 
+//
+//	Once the filter has found it, put the caret at the first line shown from
+//	the line it was on (or the last line, if none is), on the window's row it
+//	was on, as EndFilter keeps the place going back
+//
+void TextView::SeekFilteredPlace()
+{
+	bool		 done;
+	size_t		 lineno;
+	TextCoord	 coord;
+	TextCoord	 top;
+	uint32_t	 row = m_nFilterSeekRow;
+
+	if(!m_fFilterSeek)
+		return;
+
+	// moved meanwhile, the caret stays where it's been put
+	if(m_cursorPos.byte_offset != 0 || m_selAnchor.byte_offset != 0)
+	{
+		m_fFilterSeek = false;
+		return;
+	}
+
+	done   = m_filterFrom.byte_offset >= m_pSourceDoc->byte_length();
+	lineno = std::lower_bound(m_filterOrigins.begin(), m_filterOrigins.end(), m_filterSeekLine) -
+			 m_filterOrigins.begin();
+
+	if(lineno == m_filterOrigins.size())
+	{
+		if(!done)
+			return;
+
+		lineno = lineno ? lineno - 1 : 0;
+	}
+
+	m_fFilterSeek = false;
+
+	if(m_pTextDoc->coord_from_lineno(lineno, &coord) != TDR_OK)
+		return;
+
+	LineIterator line = m_pTextDoc->line_at(coord);
+
+	while(row-- > 0 && line.prev())
+		;
+
+	top = line.line();
+	SetScrollCoord(&top);
+
+	m_cursorPos = coord;
+	m_selAnchor = m_cursorPos;
+
+	ResetLineCache();
+	UpdateViewState(true);
+	RefreshWindow();
+	NotifyCursorChange();
+}
+
 int32_t TextView::OnFilterTimer()
 {
+	// following a file, a caret at the end of the lines found so far stays at
+	// the end as more are found, as UpdateTail keeps it there
+	size_w length = m_pTextDoc->byte_length();
+	bool   atEnd  = m_fTailing && m_cursorPos.byte_offset == length && m_selAnchor.byte_offset == length;
+
 	if(m_pSourceDoc == 0 || !FilterSlice())
 		m_pHost->StopTimer(FILTER_TIMER);
 
 	if(m_pSourceDoc != 0)
+	{
 		ShowFilteredLines();
+		SeekFilteredPlace();
+
+		if(atEnd && m_pTextDoc->byte_length() != length)
+			CaretToEnd();
+	}
 
 	return 0;
 }

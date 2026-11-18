@@ -112,6 +112,16 @@ int32_t TextView::TailFile(const seqfilechar *szFileName)
 
 	IndexFile(true);
 
+	m_fTailing = true;
+	CaretToEnd();
+	return true;
+}
+
+//
+//	Put the caret at the end, with nothing selected, and keep it in view
+//
+void TextView::CaretToEnd()
+{
 	MoveFileEnd();
 	m_selAnchor = m_cursorPos;
 
@@ -119,7 +129,6 @@ int32_t TextView::TailFile(const seqfilechar *szFileName)
 	m_nAnchorPosX = m_nCaretPosX;
 	RepositionCaret();
 	NotifyCursorChange();
-	return true;
 }
 
 //
@@ -200,6 +209,7 @@ int32_t TextView::ClearFile()
 
 	m_nLineCount		= m_pTextDoc->linecount();
 	m_nLongestLine		= 0;	// grows as lines are laid out
+	m_fTailing			= false;
 	m_nCRLFMode			= DEFAULT_LINE_FORMAT;
 
 	m_nHScrollPos		= 0;
