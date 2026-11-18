@@ -36,31 +36,14 @@
       <stop offset="0.88" stop-color="#d57031"/>
       <stop offset="1" stop-color="#a64c20"/>
     </linearGradient>
-    <filter id="outerShadow" x="-20%" y="-15%" width="140%" height="140%">
-      <feGaussianBlur in="SourceAlpha" stdDeviation="4" result="blur"/>
-      <feOffset in="blur" dy="6" result="offset"/>
-      <feColorMatrix in="offset" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 .28 0" result="shadow"/>
-      <feMerge><feMergeNode in="shadow"/><feMergeNode in="SourceGraphic"/></feMerge>
-    </filter>
-    <filter id="coverShadow" x="-12%" y="-10%" width="124%" height="128%">
-      <feGaussianBlur in="SourceAlpha" stdDeviation="3" result="blur"/>
-      <feOffset in="blur" dy="5" result="offset"/>
-      <feColorMatrix in="offset" type="matrix" values="0 0 0 0 0  0 0 0 0 0.18  0 0 0 0 0.2  0 0 0 .38 0" result="shadow"/>
-      <feMerge><feMergeNode in="shadow"/><feMergeNode in="SourceGraphic"/></feMerge>
-    </filter>
-    <filter id="holeShadow" x="-35%" y="-30%" width="170%" height="175%">
-      <feGaussianBlur in="SourceAlpha" stdDeviation="2.1" result="blur"/>
-      <feOffset in="blur" dy="2" result="offset"/>
-      <feColorMatrix in="offset" type="matrix" values="0 0 0 0 0  0 0 0 0 0.1  0 0 0 0 0.1  0 0 0 .7 0" result="shadow"/>
-      <feMerge><feMergeNode in="shadow"/><feMergeNode in="SourceGraphic"/></feMerge>
-    </filter>
     <clipPath id="coverClip">
       <rect x="83" y="65" width="346" height="387" rx="49"/>
     </clipPath>
   </defs>
 
-  <!-- Brown-grey rear cover: dark lower face beneath a lighter upper face. -->
-  <g filter="url(#outerShadow)">
+  <!-- Brown-grey rear cover: dark lower face beneath a lighter upper face.
+       No drop shadow: GNOME adds its own to app icons. -->
+  <g>
     <rect x="83" y="71" width="346" height="418" rx="50" fill="url(#backEdge)"/>
     <rect x="83" y="69" width="346" height="411" rx="50" fill="url(#backCover)"/>
   </g>
@@ -70,8 +53,10 @@
   <rect x="84" y="65" width="344" height="402" rx="49" fill="url(#paper)"/>
   <path d="M102 459 Q256 468 410 459" fill="none" stroke="#d0d0d0" stroke-width="2" opacity="0.72"/>
 
-  <!-- Cyan top cover and restrained depth. -->
-  <g filter="url(#coverShadow)">
+  <!-- Cyan top cover and restrained depth: its shadow on the paper is a
+       plain offset shape, as GTK's icon loading doesn't blur filters well. -->
+  <rect x="83" y="70" width="346" height="387" rx="49" fill="#002e33" opacity="0.2"/>
+  <g>
     <rect x="83" y="65" width="346" height="387" rx="49" fill="url(#cover)" stroke="#168b9b" stroke-width="1.4"/>
     <rect x="83" y="65" width="346" height="387" rx="49" fill="url(#coverGlow)" clip-path="url(#coverClip)"/>
   </g>
@@ -83,8 +68,14 @@
     <rect x="123" y="304" width="267" height="25" rx="12.5"/>
   </g>
 
-  <!-- Binder holes. -->
-  <g fill="#004c48" stroke="#7de1eb" stroke-width="2" filter="url(#holeShadow)">
+  <!-- Binder holes, each with a plain offset shadow. -->
+  <g fill="#001a1c" opacity="0.45">
+    <ellipse cx="149" cy="104" rx="25.5" ry="26"/>
+    <ellipse cx="220" cy="104" rx="25.5" ry="26"/>
+    <ellipse cx="291" cy="104" rx="25.5" ry="26"/>
+    <ellipse cx="362" cy="104" rx="25.5" ry="26"/>
+  </g>
+  <g fill="#004c48" stroke="#7de1eb" stroke-width="2">
     <ellipse cx="149" cy="102" rx="24.5" ry="25"/>
     <ellipse cx="220" cy="102" rx="24.5" ry="25"/>
     <ellipse cx="291" cy="102" rx="24.5" ry="25"/>
