@@ -252,8 +252,9 @@ Each step is its own commit on `main`, and moves and formatting changes stay sep
     the command line each open a window. The widget gained `new_file`, `save_file`, `get_modified`,
     `get_encoding` and `find`, and its column counts characters (`TextView::CursorCharColumn`).
   - Rows start and end on whole device pixels, so a fractional display scale draws no lines between them.
-  - **Done:** the first UX pass. Padding round the text (12px across, 6px down; GNOME Text Editor's 12px margins
-    scroll with the text, which the line-based scroll model can't do cheaply). Open is a split button with recent
+  - **Done:** the first UX pass. The text has no padding above it, as in Text Editor;
+    the selection margin, always shown and 12px wide, is the space at its left, and 12px pad its right (Text
+    Editor's margins scroll with the text, which the line-based scroll model can't do cheaply). Open is a split button with recent
     files (GNOME's list, those Neatpad opened or saved), each with its folder and a button to remove it, as Text
     Editor shows them. The main menu has Find, Replace and Go to Line in a
     section. The view has a context menu as on Win32, without its two edit-control items that do nothing.
@@ -301,8 +302,8 @@ Each step is its own commit on `main`, and moves and formatting changes stay sep
     in the selection or the whole document; show them all or only mismatched ones). Preferences has Highlight Long
     Lines and its column, and Change Indicators. Recent files can be cleared, and Ctrl+Shift+R opens the
     previous one, as on Win32. A new document's line endings are the platform's: LF off Windows.
-  - **Done:** Extra Line Spacing in Preferences, as Win32's option. Win32's Selection Margin shows with Change
-    Indicators, which are drawn in it: the line numbers select lines without it. Preferences is grouped as
+  - **Done:** Extra Line Spacing in Preferences, as Win32's option. The selection margin is always shown, and the
+    change indicators are drawn in it. Preferences is grouped as
     Appearance, Margin, Highlighting, Indentation, Filter and Behavior, with Restore Defaults at the bottom (not the
     style or the line endings shown, which are the main menu's). The find bar highlights
     every match as it's typed, and Filter shows only the lines that match (a Highlight/Filter toggle group with

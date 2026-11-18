@@ -141,8 +141,8 @@ void TextViewGtk::Measure()
 
 void TextViewGtk::Resize(int width, int height)
 {
-    m_width  = MAX(width - 2 * PAD_X, 0);
-    m_height = MAX(height - 2 * PAD_Y, 0);
+    m_width  = MAX(width - PAD_RIGHT, 0);
+    m_height = MAX(height, 0);
     m_view->OnSize(0, m_width, m_height);
 }
 
@@ -163,8 +163,8 @@ void TextViewGtk::PaletteColours(uint32_t *window, uint32_t *text, uint32_t *car
 
 void TextViewGtk::EnginePoint(double x, double y, int *engineX, int *engineY) const
 {
-    *engineX = (int)floor(x) - PAD_X;
-    *engineY = (int)floor(y) - PAD_Y;
+    *engineX = (int)floor(x);
+    *engineY = (int)floor(y);
 }
 
 void TextViewGtk::CaretRect(GdkRectangle *rect) const
@@ -174,13 +174,13 @@ void TextViewGtk::CaretRect(GdkRectangle *rect) const
 
     rect->width  = 1;
     rect->height = m_caretHeight > 0 ? m_caretHeight : 1;
-    rect->x      = CLAMP(m_caretX + PAD_X, 0, MAX(width - 1, 0));
-    rect->y      = CLAMP(m_caretY + PAD_Y, 0, MAX(height - rect->height, 0));
+    rect->x      = CLAMP(m_caretX, 0, MAX(width - 1, 0));
+    rect->y      = CLAMP(m_caretY, 0, MAX(height - rect->height, 0));
 }
 
 //
-//	The padding is the text's background. Inside it the engine paints its area,
-//	row by row, and the caret goes on top.
+//	The padding at the right is the text's background. The engine paints the
+//	rest, row by row, and the caret goes on top.
 //
 void TextViewGtk::Snapshot(GtkSnapshot *snapshot)
 {
@@ -198,7 +198,7 @@ void TextViewGtk::Snapshot(GtkSnapshot *snapshot)
 
         gtk_native_get_surface_transform(native, &surfaceX, &surfaceY);
 
-        if (gtk_widget_compute_point(m_widget, GTK_WIDGET(native), PointArg(0, PAD_Y), &at))
+        if (gtk_widget_compute_point(m_widget, GTK_WIDGET(native), PointArg(0, 0), &at))
             originY = at.y + surfaceY;
 
         if (GdkSurface *surface = gtk_native_get_surface(native))
@@ -210,10 +210,9 @@ void TextViewGtk::Snapshot(GtkSnapshot *snapshot)
     GdkRGBA   background = RgbaFromColour(SystemColour(TVSC_WINDOW));
 
     gtk_snapshot_append_color(snapshot, &background,
-                              RectArg(0, 0, (float)(m_width + 2 * PAD_X), (float)(m_height + 2 * PAD_Y)));
+                              RectArg(0, 0, (float)(m_width + PAD_RIGHT), (float)m_height));
 
     gtk_snapshot_save(snapshot);
-    gtk_snapshot_translate(snapshot, PointArg(PAD_X, PAD_Y));
     gtk_snapshot_push_clip(snapshot, RectArg(0, 0, (float)m_width, (float)m_height));
 
     m_painting = true;
@@ -618,11 +617,16 @@ int TextViewGtk::TextWidth(const tchar_t *text, int length)
     return width;
 }
 
+//
+//	No images are drawn in the margin, but the engine makes the selection
+//	margin room for them: 8px wide (and 4px beside them) gives 12px, the left
+//	padding GNOME's editors leave
+//
 bool TextViewGtk::MarginImageSize(int *width, int *height)
 {
-    *width  = 0;
+    *width  = 8;
     *height = 0;
-    return false;
+    return true;
 }
 
 TextLayout *TextViewGtk::CreateLayout()

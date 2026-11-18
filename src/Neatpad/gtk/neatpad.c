@@ -203,10 +203,10 @@ static void hide_notice(Editor *editor)
 
 static void apply_settings(Editor *editor)
 {
-    // the change indicators are drawn in the selection margin; the line
-    // numbers select lines without it
-    guint styles = (settings.line_numbers ? TXS_LINENUMBERS : 0) |
-                   (settings.change_markers ? TXS_SELMARGIN | TXS_CHANGEMARKERS : 0) |
+    // the selection margin is always there: it's the space left of the text,
+    // and the change indicators are drawn in it
+    guint styles = TXS_SELMARGIN | (settings.line_numbers ? TXS_LINENUMBERS : 0) |
+                   (settings.change_markers ? TXS_CHANGEMARKERS : 0) |
                    (settings.current_line ? TXS_HIGHLIGHTCURLINE : 0) |
                    (settings.highlight_changes ? TXS_HIGHLIGHTCHANGES : 0) | (settings.long_lines ? TXS_LONGLINES : 0) |
                    (settings.show_line_endings ? TXS_SHOWLINEENDINGS : 0) |

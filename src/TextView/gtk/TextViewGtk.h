@@ -54,9 +54,10 @@ class TextViewGtk : public TextViewHost
     void SetPalette(uint32_t window, uint32_t text, uint32_t caret);
     void PaletteColours(uint32_t *window, uint32_t *text, uint32_t *caret) const;
 
-    // Space between the text and the edge of its area, as GNOME's editors leave
-    static const int PAD_X = 12;
-    static const int PAD_Y = 6;
+    // Space between the text and the right edge of its area, clear of an
+    // overlay scrollbar. There's none at the top, as in GNOME Text Editor, and
+    // the selection margin is the space at the left (see MarginImageSize).
+    static const int PAD_RIGHT = 12;
 
     //
     //	From the widget: its text area's size, painting, scrollbars, input state
