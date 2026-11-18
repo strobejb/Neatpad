@@ -6,7 +6,9 @@
 //
 #include "tests.h"
 
-#ifndef _WIN32
+#ifdef _WIN32
+#include <share.h>
+#else
 #include <stdlib.h>
 #include <unistd.h>
 #endif
@@ -95,15 +97,15 @@ bool delete_file(const seqfilechar *path)
     return std::filesystem::remove(path, error);
 }
 
-// fopen, for a path in the platform's own form
+// fopen, for a path in the platform's own form. On Windows the file is
+// shared, as POSIX files are: _wfopen_s opens a file for writing unshared,
+// so a test couldn't append to one a document has open.
 FILE *open_file(const std::filesystem::path &path, const char *mode)
 {
 #ifdef _WIN32
     std::wstring wide(mode, mode + strlen(mode));
-    FILE        *fp = 0;
 
-    _wfopen_s(&fp, path.c_str(), wide.c_str());
-    return fp;
+    return _wfsopen(path.c_str(), wide.c_str(), _SH_DENYNO);
 #else
     return fopen(path.c_str(), mode);
 #endif
