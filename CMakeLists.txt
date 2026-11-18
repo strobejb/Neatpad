@@ -14,7 +14,7 @@ cmake_minimum_required(VERSION 3.16)
 
 # The version is the Win32 app's too (resource.rc), which release.yml stamps
 # from the tag
-project(Neatpad VERSION 1.1.0 LANGUAGES C CXX)
+project(Neatpad VERSION 1.2.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
