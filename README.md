@@ -38,20 +38,22 @@ Both versions share the same editing engine, so they behave the same way, but
 each one looks and feels at home on its own desktop.
 
 - **Windows:** a small, classic Win32 program. No installer: download
-  `Neatpad.exe` and run it.
+  `neatpad.exe` and run it.
 - **Linux:** a GNOME app built with GTK 4 and libadwaita, with light and dark
   styles, your accent colour and a choice of colour palettes.
 
 ### Getting Neatpad
 
-**Windows:** download the latest `Neatpad.exe` from the
-[Releases](https://github.com/strobejb/Neatpad/releases) page.
+**Windows:** download the latest
+[`neatpad.exe`](https://github.com/strobejb/Neatpad/releases/latest/download/neatpad.exe),
+or `neatpad-v….zip` from the [Releases](https://github.com/strobejb/Neatpad/releases)
+page, which has the readme and licence with it.
 
 **Linux:** download the latest `neatpad-v….flatpak` from the
 [Releases](https://github.com/strobejb/Neatpad/releases) page and install it:
 
 ```sh
-flatpak install --user neatpad-v1.2.1.flatpak
+flatpak install --user neatpad-v….flatpak    # the file you downloaded
 ```
 
 It needs Flatpak, and fetches the GNOME runtime it runs on from Flathub. A new
@@ -93,7 +95,7 @@ flatpak run net.catch22.Neatpad
 ### The tutorials
 
 The [Neatpad tutorial series](https://www.catch22.net/tuts/neatpad) walks through
-how a text editor like this is put together, from first principles like drawing text, scrolling, mouse and keyboard input, all the through to advanced data structures for storing and editing text efficiently.
+how a text editor like this is put together, from first principles like drawing text, scrolling, mouse and keyboard input, all the way through to advanced data structures for storing and editing text efficiently.
 
 The code has moved on since many of the tutorials were written, so each part's
 code is kept in the repository as it was, tagged `tutorial/part-01`,

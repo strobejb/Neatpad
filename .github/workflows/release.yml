@@ -129,7 +129,7 @@ jobs:
               f.write(rc)
 
           with open(os.environ["GITHUB_OUTPUT"], "a") as f:
-              f.write(f"version={display}\ntitle={title}\nasset=neatpad-v{display}.exe\n")
+              f.write(f"version={display}\ntitle={title}\nzip=neatpad-v{display}.zip\n")
           print(f"{tag} -> {numeric} / FileVersion \"{file_version}\" / ProductVersion \"{display}\"")
 
       - uses: microsoft/setup-msbuild@v2
@@ -146,17 +146,21 @@ jobs:
           & "build/$env:PLATFORM/$env:CONFIGURATION/SequenceTests.exe"
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
 
-      - name: Collect artifact
+      # neatpad.exe on its own, and a zip of it with the readme and licence
+      - name: Collect artifacts
         shell: bash
         env:
-          ASSET: ${{ steps.version.outputs.asset }}
+          ZIP: ${{ steps.version.outputs.zip }}
         run: |
-          mkdir dist
+          mkdir -p dist/zip
           # Since the directory restructure, projects build to build/<Platform>/<Configuration>;
           # older tags built to <Configuration>.
           for exe in "build/$PLATFORM/$CONFIGURATION/Neatpad.exe" "$CONFIGURATION/Neatpad.exe"; do
             if [ -f "$exe" ]; then
-              cp "$exe" "dist/$ASSET"
+              cp "$exe" dist/neatpad.exe
+              cp "$exe" dist/zip/neatpad.exe
+              cp README.md LICENCE.TXT dist/zip/
+              (cd dist/zip && 7z a -tzip "../$ZIP" neatpad.exe README.md LICENCE.TXT)
               exit 0
             fi
           done
@@ -168,7 +172,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TITLE: ${{ steps.version.outputs.title }}
-          ASSET: ${{ steps.version.outputs.asset }}
+          ZIP: ${{ steps.version.outputs.zip }}
         run: |
           # Tutorial releases must never become "Latest", even when run retrospectively.
           latest=true
@@ -179,7 +183,7 @@ jobs:
             gh release create "$TAG" -R "$GITHUB_REPOSITORY" --verify-tag \
               --title "$TITLE" --generate-notes --latest=$latest
           fi
-          gh release upload "$TAG" "dist/$ASSET" -R "$GITHUB_REPOSITORY" --clobber
+          gh release upload "$TAG" dist/neatpad.exe "dist/$ZIP" -R "$GITHUB_REPOSITORY" --clobber
 
   # The GNOME app as a Flatpak bundle, added to the release the Windows job
   # made. Installing it fetches the GNOME runtime from Flathub.
