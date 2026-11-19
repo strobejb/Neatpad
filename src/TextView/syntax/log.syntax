@@ -1,0 +1,23 @@
+# neatpad-syntax-v1
+#
+#   Log files: levels, numbers and quoted text
+#
+language Log
+files    *.log
+
+list errors    ERROR FATAL CRITICAL SEVERE PANIC
+list warnings  WARN WARNING
+list info      INFO NOTICE
+list debug     DEBUG TRACE VERBOSE
+
+context main
+    word in errors     error
+    word in warnings   warning
+    word in info       info
+    word in debug      debug
+    number             number
+    '"'                string   enter string
+
+context string  string  end-of-line
+    escape             escape
+    '"'                string   leave

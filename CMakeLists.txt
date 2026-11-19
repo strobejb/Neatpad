@@ -56,6 +56,8 @@ add_library(TextViewEngine STATIC
     src/TextView/TextViewRecovery.cpp
     src/TextView/TextViewScroll.cpp
     src/TextView/TextViewSyntax.cpp
+    src/TextView/SyntaxLexer.cpp
+    src/TextView/SyntaxParser.cpp
 )
 
 target_link_libraries(TextViewEngine PUBLIC TextDocument)
@@ -127,9 +129,12 @@ add_executable(CoreTests
     tests/char_tests.cpp
     tests/document_tests.cpp
     tests/engine_tests.cpp
+    tests/syntax_tests.cpp
 )
 
 target_link_libraries(CoreTests PRIVATE TextDocument TextViewEngine)
+# the syntax definitions Neatpad has, for the tests to read
+target_compile_definitions(CoreTests PRIVATE NEATPAD_SYNTAX_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src/TextView/syntax")
 
 enable_testing()
 add_test(NAME CoreTests COMMAND CoreTests)

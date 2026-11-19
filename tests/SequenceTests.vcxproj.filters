@@ -27,6 +27,9 @@
     <ClCompile Include="engine_tests.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="syntax_tests.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="textview_tests.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -98,6 +101,12 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="..\src\TextView\TextViewSyntax.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\TextView\SyntaxLexer.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\TextView\SyntaxParser.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="..\src\TextView\win32\TextViewWin32.cpp">

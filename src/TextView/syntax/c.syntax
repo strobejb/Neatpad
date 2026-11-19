@@ -1,0 +1,46 @@
+# neatpad-syntax-v1
+#
+#   C and C++
+#
+language C
+files    *.c *.h *.cpp *.hpp *.cc *.cxx *.hxx
+
+list keywords  if else for while do switch case default break continue goto return
+list keywords  typedef sizeof static extern const volatile inline register restrict
+list keywords  class namespace template typename public private protected virtual override
+list keywords  new delete this operator using friend explicit mutable constexpr noexcept
+list keywords  try catch throw static_cast dynamic_cast const_cast reinterpret_cast
+
+list types     void char short int long float double signed unsigned bool auto
+list types     struct union enum size_t wchar_t char16_t char32_t
+list types     int8_t int16_t int32_t int64_t uint8_t uint16_t uint32_t uint64_t
+
+list constants true false NULL nullptr
+
+context main
+    "//"               comment       enter line-comment
+    "/*"               comment       enter block-comment
+    '"'                string        enter string
+    "'"                string        enter character
+    "#"                preprocessor  enter directive
+    number             number
+    word in keywords   keyword
+    word in types      type
+    word in constants  constant
+
+context line-comment  comment  end-of-line
+
+context block-comment  comment
+    "*/"               comment       leave
+
+context string  string  end-of-line
+    escape             escape
+    '"'                string        leave
+
+context character  string  end-of-line
+    escape             escape
+    "'"                string        leave
+
+context directive  preprocessor  end-of-line
+    "//"               comment       enter line-comment
+    "/*"               comment       enter block-comment

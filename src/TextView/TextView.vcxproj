@@ -124,6 +124,8 @@
     <ClCompile Include="TextViewPaint.cpp" />
     <ClCompile Include="TextViewScroll.cpp" />
     <ClCompile Include="TextViewSyntax.cpp" />
+    <ClCompile Include="SyntaxLexer.cpp" />
+    <ClCompile Include="SyntaxParser.cpp" />
     <ClCompile Include="win32\TextViewWin32.cpp" />
     <ClCompile Include="win32\TextViewWndProc.cpp" />
     <ClCompile Include="win32\Win32Canvas.cpp" />
@@ -135,6 +137,8 @@
     <ClInclude Include="TextViewHost.h" />
     <ClInclude Include="TextCanvas.h" />
     <ClInclude Include="TextLayout.h" />
+    <ClInclude Include="Syntax.h" />
+    <ClInclude Include="SyntaxLexer.h" />
     <ClInclude Include="TextViewInternal.h" />
     <ClInclude Include="win32\TextViewWin32.h" />
     <ClInclude Include="win32\Win32Canvas.h" />

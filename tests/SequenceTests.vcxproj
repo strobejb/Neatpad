@@ -141,6 +141,7 @@
     <ClCompile Include="char_tests.cpp" />
     <ClCompile Include="document_tests.cpp" />
     <ClCompile Include="engine_tests.cpp" />
+    <ClCompile Include="syntax_tests.cpp" />
     <ClCompile Include="textview_tests.cpp" />
     <ClCompile Include="..\src\Neatpad\win32\Recovery.c">
       <PreprocessorDefinitions>RECOVERY_TESTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
@@ -170,6 +171,8 @@
     <ClCompile Include="..\src\TextView\TextViewPaint.cpp" />
     <ClCompile Include="..\src\TextView\TextViewScroll.cpp" />
     <ClCompile Include="..\src\TextView\TextViewSyntax.cpp" />
+    <ClCompile Include="..\src\TextView\SyntaxLexer.cpp" />
+    <ClCompile Include="..\src\TextView\SyntaxParser.cpp" />
     <ClCompile Include="..\src\TextView\win32\TextViewWin32.cpp" />
     <ClCompile Include="..\src\TextView\win32\TextViewWndProc.cpp" />
     <ClCompile Include="..\src\TextView\win32\Win32Canvas.cpp" />
