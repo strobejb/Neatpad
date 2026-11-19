@@ -30,11 +30,11 @@
   <screenshots>
     <screenshot type="default">
       <caption>Filter a large log down to the lines that matter</caption>
-      <image type="source" width="1457" height="779">https://raw.githubusercontent.com/strobejb/Neatpad/v1.2.0/docs/screenshots/filter.png</image>
+      <image type="source" width="1457" height="779">https://raw.githubusercontent.com/strobejb/Neatpad/v1.2.1/docs/screenshots/filter.png</image>
     </screenshot>
     <screenshot environment="gnome:dark">
       <caption>Follow a log as it's written</caption>
-      <image type="source" width="1453" height="795">https://raw.githubusercontent.com/strobejb/Neatpad/v1.2.0/docs/screenshots/follow.png</image>
+      <image type="source" width="1453" height="795">https://raw.githubusercontent.com/strobejb/Neatpad/v1.2.1/docs/screenshots/follow.png</image>
     </screenshot>
   </screenshots>
 
@@ -55,6 +55,16 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="1.2.1" date="2026-11-19">
+      <description>
+        <p>Filtering keeps your place.</p>
+        <ul>
+          <li>Turning Filter on or off keeps the caret on its line, rather than jumping to the start of the file</li>
+          <li>Following a file with Filter on shows new matching lines as they're written</li>
+          <li>Faster search when not matching case</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.2.0" date="2026-11-18">
       <description>
         <p>The first release for Linux: Neatpad as a GNOME app, alongside the Windows version.</p>
