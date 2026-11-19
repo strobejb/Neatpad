@@ -331,6 +331,9 @@ void TextViewGtk::SetVScroll(uint64_t max, uint64_t pos, uint64_t page)
         return;
     }
 
+    // newer than any range painting left to set, which would put it back
+    m_vpending.pending = false;
+
     m_settingScroll = true;
     gtk_adjustment_configure(m_vadjust, (double)pos, 0, MAX((double)max + 1, (double)page), 1, (double)page,
                              (double)page);
@@ -358,6 +361,8 @@ void TextViewGtk::SetHScroll(int max, int pos, int page)
 
         return;
     }
+
+    m_hpending.pending = false;
 
     m_settingScroll = true;
     gtk_adjustment_configure(m_hadjust, pos, 0, MAX(max + 1, page), 1, page, page);
