@@ -47,8 +47,16 @@ each one looks and feels at home on its own desktop.
 **Windows:** download the latest `Neatpad.exe` from the
 [Releases](https://github.com/strobejb/Neatpad/releases) page.
 
-**Linux:** a Flatpak on Flathub is on its way. Until then, build it yourself
-(below). It takes a minute or two.
+**Linux:** download the latest `neatpad-v….flatpak` from the
+[Releases](https://github.com/strobejb/Neatpad/releases) page and install it:
+
+```sh
+flatpak install --user neatpad-v1.2.1.flatpak
+```
+
+It needs Flatpak, and fetches the GNOME runtime it runs on from Flathub. A new
+version is installed the same way. Or build it yourself (below): it takes a
+minute or two.
 
 ### Building it yourself
 

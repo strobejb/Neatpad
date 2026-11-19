@@ -180,3 +180,49 @@ jobs:
               --title "$TITLE" --generate-notes --latest=$latest
           fi
           gh release upload "$TAG" "dist/$ASSET" -R "$GITHUB_REPOSITORY" --clobber
+
+  # The GNOME app as a Flatpak bundle, added to the release the Windows job
+  # made. Installing it fetches the GNOME runtime from Flathub.
+  flatpak:
+    needs: release
+    if: startsWith(inputs.tag || github.ref_name, 'v')
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ env.TAG }}
+
+      # Older tags have no manifest
+      - name: Check for the manifest
+        id: manifest
+        shell: bash
+        run: |
+          if [ -f src/Neatpad/gtk/net.catch22.Neatpad.yml ]; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install flatpak-builder
+        if: steps.manifest.outputs.found
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder
+          flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+
+      - name: Build the bundle
+        if: steps.manifest.outputs.found
+        shell: bash
+        run: |
+          ASSET="neatpad-$TAG.flatpak"
+          flatpak-builder --user --install-deps-from=flathub --force-clean --disable-rofiles-fuse \
+            --state-dir=build/flatpak-state --repo=build/flatpak-repo build/flatpak \
+            src/Neatpad/gtk/net.catch22.Neatpad.yml
+          flatpak build-bundle --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo \
+            build/flatpak-repo "$ASSET" net.catch22.Neatpad
+          echo "ASSET=$ASSET" >> "$GITHUB_ENV"
+
+      - name: Publish the bundle
+        if: steps.manifest.outputs.found
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$TAG" "$ASSET" -R "$GITHUB_REPOSITORY" --clobber
