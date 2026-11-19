@@ -334,10 +334,19 @@ Each step is its own commit on `main`, and moves and formatting changes stay sep
     (`net.catch22.Neatpad.metainfo.xml`, in `src/Neatpad/gtk`) and its icon. ctest checks the entry and the
     AppStream data where `desktop-file-validate` and `appstreamcli` are installed.
     `scripts/install-dev-desktop.sh` still installs an entry for the build in a checkout.
-- **Next:** shipping beyond Fedora: a Flatpak manifest with access to the host's files (`--filesystem=host`), so
-  large files aren't read through the document portal and the clone still works, then Flathub (it needs
-  screenshots in the AppStream data). Perhaps a COPR spec for Fedora, from the same install rules. Smaller gaps,
-  as wanted: input-method preedit.
+- **Done:** shipping. The Flatpak manifest (`src/Neatpad/gtk/net.catch22.Neatpad.yml`) has access to the host's
+  files (`--filesystem=host`), so large files aren't read through the document portal and the clone still works.
+  Flathub doesn't take apps with AI-assisted code, so each `v*` release has a Flatpak bundle,
+  `neatpad-vX.Y.Z.flatpak`, beside `neatpad.exe` and a zip of it.
+- **Done:** syntax colouring in the engine and the GTK app. Definitions are `.syntax` files in
+  `src/TextView/syntax`, whose `README.md` is the format's reference: `SyntaxParser.cpp` reads one and
+  `SyntaxLexer.cpp` colours a line by it, from the state the line before ended in. Painting keeps some of those
+  states, which the line cache's reset forgets; a document over 1 MB, or a language whose lines carry no state
+  (a log), colours each line on its own. The GTK app compiles the definitions in as a GResource and chooses one
+  by the file's name, in GNOME palette colours for light and dark.
+- **Next:** syntax colouring in the Win32 app (the definitions as resources, colours in its options) and in the
+  palettes. Perhaps a COPR spec for Fedora, from the same install rules. Smaller gaps, as wanted: input-method
+  preedit.
 
 ## Open decisions
 

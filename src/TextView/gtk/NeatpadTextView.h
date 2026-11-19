@@ -160,6 +160,11 @@ void neatpad_text_view_set_scheme(NeatpadTextView *view, gboolean dark, const Gd
 
 void neatpad_text_view_set_colour(NeatpadTextView *view, guint index, guint32 colour);
 
+// Colours the text by the first of the syntax definitions (src/TextView/syntax)
+// whose file patterns match the file's name, or by none: returns which, or -1
+int neatpad_text_view_choose_syntax(NeatpadTextView *view, const char *const *definitions, int count,
+                                    const char *filename);
+
 // The caret's line (from 0; an estimate past the indexed part of a large file)
 // and its column, in characters from the line's start
 void neatpad_text_view_get_cursor(NeatpadTextView *view, guint64 *line, guint64 *column, gboolean *line_known);

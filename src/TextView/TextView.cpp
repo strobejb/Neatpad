@@ -79,6 +79,21 @@ TextView::TextView(TextViewHost *host)
     m_rgbColourList[TXC_CHANGEDLINE]   = TV_RGB(88, 132, 164);
     m_rgbColourList[TXC_CHANGEDLINEBG] = SYSCOL(TVSC_3DFACE);
 
+    // syntax colours, as Visual Studio's light theme has them
+    m_rgbSyntaxColours[(int)SyntaxKind::Plain]        = SYSCOL(TVSC_WINDOWTEXT);
+    m_rgbSyntaxColours[(int)SyntaxKind::Comment]      = TV_RGB(0, 128, 0);
+    m_rgbSyntaxColours[(int)SyntaxKind::Keyword]      = TV_RGB(0, 0, 255);
+    m_rgbSyntaxColours[(int)SyntaxKind::Type]         = TV_RGB(43, 145, 175);
+    m_rgbSyntaxColours[(int)SyntaxKind::Constant]     = TV_RGB(111, 0, 138);
+    m_rgbSyntaxColours[(int)SyntaxKind::String]       = TV_RGB(163, 21, 21);
+    m_rgbSyntaxColours[(int)SyntaxKind::Escape]       = TV_RGB(183, 118, 0);
+    m_rgbSyntaxColours[(int)SyntaxKind::Number]       = TV_RGB(9, 134, 88);
+    m_rgbSyntaxColours[(int)SyntaxKind::Preprocessor] = TV_RGB(128, 128, 128);
+    m_rgbSyntaxColours[(int)SyntaxKind::Error]        = TV_RGB(205, 0, 0);
+    m_rgbSyntaxColours[(int)SyntaxKind::Warning]      = TV_RGB(176, 112, 0);
+    m_rgbSyntaxColours[(int)SyntaxKind::Info]         = TV_RGB(0, 96, 192);
+    m_rgbSyntaxColours[(int)SyntaxKind::Debug]        = TV_RGB(128, 128, 128);
+
 	// Runtime data
 	m_nSelectionMode	= SEL_NONE;
 	m_nEditMode			= MODE_INSERT;

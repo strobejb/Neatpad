@@ -76,8 +76,42 @@ std::basic_string<tchar_t> FromUtf8(const std::string &text)
     return units;
 }
 
+// Which list of rules a unit is in: its own for ASCII, one for the rest
+int FirstUnit(uint32_t ch)
+{
+    return ch < 0x80 ? (int)ch : 0x80;
+}
+
+// Whether a rule can match at a character starting with this unit
+bool CanStart(SyntaxPattern pattern, uint32_t first, uint32_t ch)
+{
+    switch (pattern)
+    {
+    case SyntaxPattern::Text:
+        return FirstUnit(first) == FirstUnit(ch);
+
+    case SyntaxPattern::Number:
+        return IsDigit(ch) || ch == '.';
+
+    case SyntaxPattern::Word:
+    case SyntaxPattern::WordIn:
+        return IsWordStart(ch);
+
+    case SyntaxPattern::Space:
+        return ch == ' ' || ch == '\t';
+
+    case SyntaxPattern::Escape:
+        return ch == '\\';
+    }
+
+    return false;
+}
+
 void Fill(SyntaxKind *kinds, int count, SyntaxKind kind)
 {
+    if (kinds == 0)
+        return;
+
     for (int i = 0; i < count; i++)
         kinds[i] = kind;
 }
@@ -116,6 +150,19 @@ SyntaxLexer::SyntaxLexer(const SyntaxDefinition &definition)
             ready.rules.push_back(r);
         }
 
+        // for each first unit, the rules that can start there
+        for (int ch = 0; ch < FIRST_UNITS; ch++)
+        {
+            for (size_t i = 0; i < ready.rules.size(); i++)
+            {
+                const Rule &r     = ready.rules[i];
+                uint32_t    first = r.text.empty() ? 0 : Unit(r.text[0]);
+
+                if (CanStart(r.pattern, first, (uint32_t)ch))
+                    ready.first[ch].push_back((int)i);
+            }
+        }
+
         m_contexts.push_back(ready);
     }
 
@@ -137,13 +184,13 @@ int SyntaxLexer::Line(int state, const tchar_t *text, int length, SyntaxKind *ki
         const Rule    *rule    = 0;
         int            matched = 0;
 
-        for (const Rule &r : context.rules)
+        for (int r : context.first[FirstUnit(Unit(text[at]))])
         {
-            matched = Match(r, text, at, length);
+            matched = Match(context.rules[r], text, at, length);
 
             if (matched > 0)
             {
-                rule = &r;
+                rule = &context.rules[r];
                 break;
             }
         }
@@ -153,11 +200,11 @@ int SyntaxLexer::Line(int state, const tchar_t *text, int length, SyntaxKind *ki
         if (rule == 0)
         {
             matched = IsWordStart(Unit(text[at])) ? WordLength(text, at, length) : 1;
-            Fill(kinds + at, matched, context.kind);
+            Fill(kinds ? kinds + at : 0, matched, context.kind);
         }
         else
         {
-            Fill(kinds + at, matched, rule->kind);
+            Fill(kinds ? kinds + at : 0, matched, rule->kind);
 
             if (rule->action == SyntaxAction::Enter && stack.size() < MAX_DEPTH)
                 stack.push_back(rule->enter);
@@ -176,10 +223,24 @@ int SyntaxLexer::Line(int state, const tchar_t *text, int length, SyntaxKind *ki
     return State(stack);
 }
 
+bool SyntaxLexer::Stateless() const
+{
+    for (const Context &context : m_contexts)
+    {
+        for (const Rule &rule : context.rules)
+        {
+            if (rule.action == SyntaxAction::Enter && !m_contexts[rule.enter].endOfLine)
+                return false;
+        }
+    }
+
+    return true;
+}
+
 //
 //	How many units a rule matches at, or 0 if it doesn't
 //
-int SyntaxLexer::Match(const Rule &rule, const tchar_t *text, int at, int length) const
+int SyntaxLexer::Match(const Rule &rule, const tchar_t *text, int at, int length)
 {
     uint32_t ch   = Unit(text[at]);
     int      left = length - at;
@@ -210,8 +271,9 @@ int SyntaxLexer::Match(const Rule &rule, const tchar_t *text, int at, int length
             return 0;
 
         end = at + WordLength(text, at, length);
+        m_word.assign(text + at, end - at);
 
-        return m_lists[rule.list].count(Text(text + at, end - at)) ? end - at : 0;
+        return m_lists[rule.list].count(m_word) ? end - at : 0;
 
     case SyntaxPattern::Space:
         while (end < length && (text[end] == ' ' || text[end] == '\t'))

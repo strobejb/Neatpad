@@ -898,6 +898,39 @@ static void on_file_changed(GFileMonitor *monitor, GFile *file, GFile *other, GF
     check_file(data);
 }
 
+// Colour the document by the built-in syntax definition its file's name
+// matches, if any. The definitions are compiled in (src/TextView/syntax).
+static void choose_syntax(Editor *editor)
+{
+    static GPtrArray *definitions;
+    char             *path = editor->file ? g_file_get_path(editor->file) : NULL;
+
+    // loaded once: GResource data stays put, and ends with a NUL
+    if (!definitions)
+    {
+        char **names = g_resources_enumerate_children("/net/catch22/Neatpad/syntax", 0, NULL);
+
+        definitions = g_ptr_array_new();
+
+        for (char **name = names; name && *name; name++)
+        {
+            char   *resource = g_strconcat("/net/catch22/Neatpad/syntax/", *name, NULL);
+            GBytes *bytes    = g_resources_lookup_data(resource, 0, NULL);
+
+            if (bytes)
+                g_ptr_array_add(definitions, (gpointer)g_bytes_get_data(bytes, NULL));
+
+            g_free(resource);
+        }
+
+        g_strfreev(names);
+    }
+
+    neatpad_text_view_choose_syntax(editor->view, (const char *const *)definitions->pdata, (int)definitions->len,
+                                    path);
+    g_free(path);
+}
+
 // Watch the window's file, as it is now
 static void watch_file(Editor *editor)
 {
@@ -940,6 +973,7 @@ static gboolean load(Editor *editor, GFile *file)
         set_following(editor, FALSE);
         g_set_object(&editor->file, file);
         watch_file(editor);
+        choose_syntax(editor);
         remember(file);
     }
     else
@@ -969,6 +1003,7 @@ static gboolean restore_store(Editor *editor, const char *store)
         editor->file = g_file_new_for_path(filename);
 
     watch_file(editor);
+    choose_syntax(editor);
     update_title(editor);
     update_status(editor);
 
@@ -1073,6 +1108,7 @@ static void save_to(Editor *editor, GFile *file, guint encoding, gboolean bom, g
     hide_notice(editor);
     g_set_object(&editor->file, file);
     watch_file(editor);
+    choose_syntax(editor);
     remember(file);
     update_title(editor);
     update_status(editor);
@@ -1742,6 +1778,7 @@ static void follow_now(Editor *editor)
         recovery_reset(editor->recovery);
         set_following(editor, TRUE);
         watch_file(editor);
+        choose_syntax(editor);
         show_notice(editor, NOTICE_FOLLOWING);
     }
     else
@@ -1807,6 +1844,7 @@ static void on_banner_clicked(AdwBanner *banner, gpointer data)
     {
         neatpad_text_view_new_file(editor->view);
         recovery_reset(editor->recovery);
+        choose_syntax(editor);
         hide_notice(editor);
         update_title(editor);
         update_status(editor);

@@ -27,8 +27,10 @@ bool starts_character(const tstring &text, size_t i)
     return unit < 0xDC00 || unit > 0xDFFF;
 }
 
-// Each unit's background, as the last line laid out with colours had it
+// Each unit's background and text colour, as the last line laid out with
+// colours had them
 static std::vector<uint32_t> last_backgrounds;
+static std::vector<uint32_t> last_foregrounds;
 
 //
 //	A line laid out a character to a cell, with tab stops every tabWidth cells.
@@ -44,9 +46,13 @@ class FakeLayout : public TextLayout
         if (runs)
         {
             last_backgrounds.clear();
+            last_foregrounds.clear();
 
             for (int i = 0; i < length; i++)
+            {
                 last_backgrounds.push_back(runs[i].bg);
+                last_foregrounds.push_back(runs[i].fg);
+            }
         }
 
         m_text.assign(text, length);
@@ -608,6 +614,47 @@ void engine_highlights_matches_regardless_of_case()
     CHECK(marked == 2 * tstr(U"\u00e9clair").size());
 }
 
+//
+//	Syntax colouring: a comment begun on one line colours the next, which is
+//	the last laid out. The language is chosen by the file's name.
+//
+void engine_colours_syntax_across_lines()
+{
+    EngineView  v(U"int a; /* one\ntwo */ b");
+    FakeCanvas  canvas;
+    TextRect    rect    = {0, 0, 640, 480};
+    uint32_t    comment = TV_RGB(0, 128, 0);
+    const char *c       = "# neatpad-syntax-v1\n"
+                          "language C\n"
+                          "files *.c *.h\n"
+                          "context main\n"
+                          "    \"/*\"  comment  enter block-comment\n"
+                          "context block-comment  comment\n"
+                          "    \"*/\"  comment  leave\n";
+    const char *log     = "# neatpad-syntax-v1\n"
+                          "language Log\n"
+                          "files *.log\n"
+                          "context main\n";
+    const char *const definitions[] = { c, log };
+
+    CHECK(v.view->ChooseSyntax(definitions, 2, "/var/log/server.LOG") == 1);
+    CHECK(v.view->ChooseSyntax(definitions, 2, "notes.txt") == -1);
+    CHECK(v.view->ChooseSyntax(definitions, 2, "src/main.c") == 0);
+
+    v.view->Paint(canvas, &rect);
+
+    CHECK(last_foregrounds.size() >= 8);
+    CHECK(last_foregrounds[0] == comment); // t
+    CHECK(last_foregrounds[5] == comment); // the / of */
+    CHECK(last_foregrounds[7] != comment); // b
+
+    // a definition with a mistake isn't used
+    CHECK(!v.view->SetSyntax("# neatpad-syntax-v1\nlanguage C\n"));
+    CHECK(v.view->SetSyntax(0));
+    v.view->Paint(canvas, &rect);
+    CHECK(last_foregrounds[0] != comment);
+}
+
 // Unsaved edits saved as recovery state, and restored into a new view: the
 // text, the file it's for, and the caret
 //
@@ -841,6 +888,7 @@ const test_case tests[] =
     { "engine_paints_every_line", engine_paints_every_line },
     { "engine_restores_its_recovery_state", engine_restores_its_recovery_state },
     { "engine_highlights_matches_regardless_of_case", engine_highlights_matches_regardless_of_case },
+    { "engine_colours_syntax_across_lines", engine_colours_syntax_across_lines },
 };
 }
 

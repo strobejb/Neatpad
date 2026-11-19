@@ -17,6 +17,8 @@
 #define LINENO_PAD	 8
 
 #include <functional>
+#include <map>
+#include <memory>
 #include <stdint.h>
 #include <string>
 #include <vector>
@@ -42,6 +44,7 @@ HRESULT (WINAPI * DrawThemeBackground_Proc)(HTHEME hTheme, HDC hdc, int, int, co
 #include "TextViewHost.h"
 #include "TextLayout.h"
 #include "TextCanvas.h"
+#include "SyntaxLexer.h"
 
 //
 //	LINECACHE - a line laid out, kept while it's in use
@@ -284,6 +287,14 @@ public:
 	uint32_t		GetEditMode();
 	uint32_t		SetEditMode(uint32_t mode);
 	bool		GetDocStats(TextViewDocStats *stats);
+
+	// Syntax colouring by a definition's rules (syntax/README.md). Choose the
+	// first of the definitions whose files match the file's name (UTF-8), and
+	// return which, or -1 for none. Or set one: 0 for none, and false if it has
+	// a mistake.
+	int			ChooseSyntax(const char *const *definitions, int count, const char *filename);
+	bool		SetSyntax(const char *definition);
+	void		SetSyntaxColour(SyntaxKind kind, uint32_t rgbColour);
 	
 private:
 
@@ -347,7 +358,9 @@ private:
 
 	int			ApplyTextAttributes(TextCoord *line, uint32_t &nColumn, tchar_t *szText, int nTextLen, TextRun *attr);
 	int			ApplySelection(TextLayout *layout, TextCoord *line, uint32_t nTextLen);
-	int			SyntaxColour(tchar_t *szText, uint32_t nTextLen, TextRun *attr);
+	void		UseSyntax(const SyntaxDefinition *definition);
+	void		SyntaxColour(TextCoord *line, tchar_t *szText, int nTextLen, TextRun *attr);
+	int			SyntaxState(const TextCoord *line);
 	int			StripCRLF(tchar_t *szText, TextRun *attrList, int nLength, bool fAllow);
 	int			CRLF_size(tchar_t *szText, int nLength);
 
@@ -503,6 +516,13 @@ private:
 	//TextRect		m_rcBorder;
 
 	uint32_t	m_rgbColourList[TXC_MAX_COLOURS];
+
+	// Syntax colouring: the language's rules (none for plain text), each kind's
+	// colour, and the state lines start in, by where they start, for some of
+	// the lines coloured so far. The states go when the line cache is reset.
+	std::unique_ptr<SyntaxLexer> m_pSyntax;
+	uint32_t	m_rgbSyntaxColours[SYNTAX_KINDS];
+	std::map<size_w, int> m_syntaxStates;
 
 	// The text ShowMatches highlights (none while empty), and whether its case matters
 	std::basic_string<tchar_t> m_sMatchText;

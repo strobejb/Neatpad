@@ -96,9 +96,12 @@ if(GTK4_FOUND)
         add_custom_command(
             OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/neatpad-resources.c
             COMMAND ${GLIB_COMPILE_RESOURCES} --generate-source --sourcedir=${NEATPAD_GTK}
+                    --sourcedir=${CMAKE_CURRENT_SOURCE_DIR}/src/TextView/syntax
                     --target=${CMAKE_CURRENT_BINARY_DIR}/neatpad-resources.c ${NEATPAD_GTK}/neatpad.gresource.xml
             DEPENDS ${NEATPAD_GTK}/neatpad.gresource.xml ${NEATPAD_GTK}/icons/neatpad-highlight-symbolic.svg
-                    ${NEATPAD_GTK}/icons/neatpad-filter-symbolic.svg ${NEATPAD_GTK}/shortcuts-dialog.ui)
+                    ${NEATPAD_GTK}/icons/neatpad-filter-symbolic.svg ${NEATPAD_GTK}/shortcuts-dialog.ui
+                    ${CMAKE_CURRENT_SOURCE_DIR}/src/TextView/syntax/c.syntax
+                    ${CMAKE_CURRENT_SOURCE_DIR}/src/TextView/syntax/log.syntax)
 
         add_executable(neatpad src/Neatpad/gtk/neatpad.c src/Neatpad/gtk/palette.c src/Neatpad/gtk/preferences.c
                                src/Neatpad/gtk/recovery.c ${CMAKE_CURRENT_BINARY_DIR}/neatpad-resources.c)

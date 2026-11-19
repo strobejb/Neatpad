@@ -161,6 +161,9 @@ void TextView::ResetLineCache()
 
 	// and LastScrollCoord's answer: the cache is reset as the text changes
 	m_nLastScrollLines = -1;
+
+	// and the states syntax colouring found, which an edit can change
+	m_syntaxStates.clear();
 }
 
 //
@@ -737,8 +740,10 @@ int TextView::ApplyTextAttributes(TextCoord *line, uint32_t &nColumn, tchar_t *s
 	}
 
 	//
-	//	TODO: 1. Apply syntax colouring first of all
+	//	Syntax colouring, over the base coat
 	//
+	if(m_pSyntax)
+		SyntaxColour(line, szText, nTextLen, attr);
 
     // Changed text precedes search and selection, which keep their colours.
     if (CheckStyle(TXS_HIGHLIGHTCHANGES))
@@ -779,8 +784,6 @@ int TextView::ApplyTextAttributes(TextCoord *line, uint32_t &nColumn, tchar_t *s
 	else if(m_nSelectionType == SEL_BLOCK)
 	{
 	}
-
-	//SyntaxColour(szText, nTextLen, attr);
 
 	//
 	//	Turn a CR/LF at the end of a line that matches the line format into a single

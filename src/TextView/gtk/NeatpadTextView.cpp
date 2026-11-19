@@ -1032,7 +1032,39 @@ void neatpad_text_view_set_scheme(NeatpadTextView *view, gboolean dark, const Gd
     for (const auto &colour : colours)
         engine->SetColour(colour.index, colour.colour);
 
+    // syntax colours from GNOME's palette, darker on light, lighter on dark
+    const struct
+    {
+        SyntaxKind kind;
+        uint32_t   colour;
+    } syntax[] = {
+        {SyntaxKind::Plain, text},
+        {SyntaxKind::Comment, dark ? TV_RGB(0x9a, 0x99, 0x96) : TV_RGB(0x77, 0x76, 0x7b)},
+        {SyntaxKind::Keyword, dark ? TV_RGB(0xdc, 0x8a, 0xdd) : TV_RGB(0x91, 0x41, 0xac)},
+        {SyntaxKind::Type, dark ? TV_RGB(0x62, 0xa0, 0xea) : TV_RGB(0x1a, 0x5f, 0xb4)},
+        {SyntaxKind::Constant, dark ? TV_RGB(0xff, 0xa3, 0x48) : TV_RGB(0xc6, 0x46, 0x00)},
+        {SyntaxKind::String, dark ? TV_RGB(0x8f, 0xf0, 0xa4) : TV_RGB(0x26, 0xa2, 0x69)},
+        {SyntaxKind::Escape, dark ? TV_RGB(0xff, 0xbe, 0x6f) : TV_RGB(0xc6, 0x46, 0x00)},
+        {SyntaxKind::Number, dark ? TV_RGB(0xff, 0xa3, 0x48) : TV_RGB(0xc6, 0x46, 0x00)},
+        {SyntaxKind::Preprocessor, dark ? TV_RGB(0xcd, 0xab, 0x8f) : TV_RGB(0x86, 0x5e, 0x3c)},
+        {SyntaxKind::Error, dark ? TV_RGB(0xf6, 0x61, 0x51) : TV_RGB(0xc0, 0x1c, 0x28)},
+        {SyntaxKind::Warning, dark ? TV_RGB(0xf8, 0xe4, 0x5c) : TV_RGB(0x9c, 0x6e, 0x03)},
+        {SyntaxKind::Info, dark ? TV_RGB(0x99, 0xc1, 0xf1) : TV_RGB(0x1c, 0x71, 0xd8)},
+        {SyntaxKind::Debug, dark ? TV_RGB(0x9a, 0x99, 0x96) : TV_RGB(0x77, 0x76, 0x7b)},
+    };
+
+    for (const auto &colour : syntax)
+        engine->SetSyntaxColour(colour.kind, colour.colour);
+
     view->host->SetPalette(background, text, dark ? TV_RGB(0xc0, 0xbf, 0xbc) : TV_RGB(0x77, 0x76, 0x7b));
+}
+
+int neatpad_text_view_choose_syntax(NeatpadTextView *view, const char *const *definitions, int count,
+                                    const char *filename)
+{
+    g_return_val_if_fail(NEATPAD_IS_TEXT_VIEW(view), -1);
+
+    return view_of(view)->ChooseSyntax(definitions, count, filename);
 }
 
 void neatpad_text_view_set_colour(NeatpadTextView *view, guint index, guint32 colour)

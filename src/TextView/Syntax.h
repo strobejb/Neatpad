@@ -34,6 +34,9 @@ enum class SyntaxKind
     Debug,
 };
 
+// How many kinds there are
+const int SYNTAX_KINDS = (int)SyntaxKind::Debug + 1;
+
 // What a rule matches
 enum class SyntaxPattern
 {

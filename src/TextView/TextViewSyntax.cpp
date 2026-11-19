@@ -2,211 +2,183 @@
 // SPDX-License-Identifier: MIT
 
 //
-//	MODULE:		TextView.cpp
+//	MODULE:		TextViewSyntax.cpp
 //
-//	PURPOSE:	Implementation of the TextView control
+//	PURPOSE:	Syntax colouring: choosing a language's rules for a file, and
+//				colouring each line as it's laid out, from the state the line
+//				before it ended in.
 //
-//	NOTES:		www.catch22.net
-//
-
-#include <string.h>
 #include "TextViewInternal.h"
 
-#define COOKIE_BEGIN 0
-#define COOKIE_END   1
-
-//typedef struct LEX;
-
-typedef struct
+namespace
 {
-	TextRun		attr;
-	uint32_t	   type;
-	
-} TYPE;
+// In a longer document every line starts afresh, rather than colouring the
+// lines before it to find its state: a comment over many lines can be wrong,
+// but an edit stays quick however large the file is. An edit forgets the
+// states, and the lexer colours about 50 MB a second, so up to this size the
+// lines down to the window take 20ms at most.
+const size_w SYNTAX_STATE_LIMIT = 1024 * 1024;
 
-typedef struct LEX _LEX;
-struct LEX
+// How many lines apart states are kept, colouring the lines before a line
+const int SYNTAX_STATE_EVERY = 64;
+
+char LowerAscii(char ch)
 {
-	TYPE *type;
-
-	int	  num_branches;
-	_LEX  *branch[1];
-};
-
-LEX firstchar[256];
-
-uint32_t lexer(uint32_t cookie, tchar_t *buf, uint32_t len, TextRun *attr)
-{
-	LEX *state = 0;
-	int	  i  = 0;
-	uint32_t ch = buf[i++];
-
-	// start at the correct place in our state machine
-	LEX *node = &state[cookie];
-
-	// look for a match against the current character
-//	for(i = 0; i < node->num_branches; i++)
-//	{
-	//	if(node->branch[i].
-//	}
-	
-
-	if(ch < 256)
-	{
-
-	}
-
-	//switc
-	return COOKIE_END;	
+    return ch >= 'A' && ch <= 'Z' ? ch + ('a' - 'A') : ch;
 }
 
-tchar_t *gettok(tchar_t *ptr, tchar_t *buf, int buflen)
+// Whether a name matches a pattern of * and ?, regardless of ASCII case
+bool MatchesPattern(const char *pattern, const char *name)
 {
-	int ch = *ptr++;
-	int i = 0;
+    if (*pattern == 0)
+        return *name == 0;
 
-	if(buf == 0)
-		return 0;
+    if (*pattern == '*')
+        return MatchesPattern(pattern + 1, name) || (*name && MatchesPattern(pattern, name + 1));
 
-	// end of string?
-	if(ptr == 0 || ch == 0)
-	{
-		buf[0] = '\0';	
-		return 0;
-	}
+    if (*name == 0)
+        return false;
 
-	// strip any leading whitespace
-	// whitspace: { <space> | <tab> | <new line> }
-	while(ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r')
-	{
-		if(*ptr == 0)
-			return 0;
+    if (*pattern != '?' && LowerAscii(*pattern) != LowerAscii(*name))
+        return false;
 
-		ch = *ptr++;
-	}
-
-	// found a quote - skip to matching pair
-/*	if(ch == '\"')
-	{
-		ch = *ptr++;
-		while(i < buflen && ch != '\0' && ch != '\"' && ch != '\n' && ch != '\r')
-		{
-			buf[i++] = ch;
-			ch = *ptr++;
-		}
-	}
-	else*/
-	{
-		while(i < buflen && ch)
-		{
-			if(ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r')// || ch == '\"')
-				break;
-
-			buf[i++] = ch;
-
-			if(ch = *ptr) ptr++;
-
-		}
-	}
-
-	buf[i] = 0;
-
-	return ptr;
+    return MatchesPattern(pattern + 1, name + 1);
 }
 
-void xSetStyle(TextRun *attr, uint32_t nPos, uint32_t nLen, uint32_t fg, uint32_t bg, int bold=0)
+// A path's file name, without its folder
+const char *FileName(const char *path)
 {
-	for(uint32_t i = nPos; i < nPos+nLen; i++)
-	{
-		attr[i].fg = fg;
-		//attr[i].bg = bg;
-		
-		//if(bold)
-		//	attr[i].font = 1;
-	}
+    const char *name = path;
+
+    for (const char *ch = path; *ch; ch++)
+    {
+        if (*ch == '/' || *ch == '\\')
+            name = ch + 1;
+    }
+
+    return name;
+}
 }
 
-static uint32_t TextOffset(tchar_t *base, tchar_t *ptr)
+//
+//	The first definition whose files match the file's name
+//
+int TextView::ChooseSyntax(const char *const *definitions, int count, const char *filename)
 {
-	return (uint32_t)(ptr - base);
+    const char *name = FileName(filename ? filename : "");
+
+    for (int i = 0; i < count; i++)
+    {
+        SyntaxDefinition definition;
+
+        if (!ParseSyntax(definitions[i], &definition, 0))
+            continue;
+
+        for (const std::string &pattern : definition.files)
+        {
+            if (MatchesPattern(pattern.c_str(), name))
+            {
+                UseSyntax(&definition);
+                return i;
+            }
+        }
+    }
+
+    UseSyntax(0);
+    return -1;
 }
 
-static uint32_t TextLength(tchar_t *first, tchar_t *last)
+bool TextView::SetSyntax(const char *definition)
 {
-	return (uint32_t)(last - first);
+    SyntaxDefinition read;
+
+    if (definition == 0)
+    {
+        UseSyntax(0);
+        return true;
+    }
+
+    if (!ParseSyntax(definition, &read, 0))
+        return false;
+
+    UseSyntax(&read);
+    return true;
 }
 
-typedef struct
+void TextView::SetSyntaxColour(SyntaxKind kind, uint32_t rgbColour)
 {
-	tchar_t firstchar[256];
+    m_rgbSyntaxColours[(int)kind] = rgbColour;
 
-} SYNTAX_NODE;
-
-// Compare two strings of tchar_t text, as lstrcmp does
-static int tstrcmp(const tchar_t *a, const tchar_t *b)
-{
-	while(*a && *a == *b)
-	{
-		a++;
-		b++;
-	}
-
-	return *a < *b ? -1 : *a > *b ? 1 : 0;
+    ResetLineCache();
+    RefreshWindow();
 }
 
-int TextView::SyntaxColour(tchar_t *szText, uint32_t nTextLen, TextRun *attr)
+void TextView::UseSyntax(const SyntaxDefinition *definition)
 {
-	tchar_t tok[128];
+    m_pSyntax.reset(definition ? new SyntaxLexer(*definition) : 0);
 
-	tchar_t *ptr1 = szText;
-	tchar_t *ptr2;
+    ResetLineCache();
+    RefreshWindow();
+}
 
-	if(nTextLen == 0)
-		return 0;
+//
+//	Colour a line's text, over the base coat, by the kind of each unit
+//
+void TextView::SyntaxColour(TextCoord *line, tchar_t *szText, int nTextLen, TextRun *attr)
+{
+    std::vector<SyntaxKind> kinds(nTextLen);
+    int                     state = SyntaxState(line);
 
-	szText[nTextLen]=0;
+    state = m_pSyntax->Line(state, szText, nTextLen, kinds.data());
 
-	while((ptr2 = gettok(ptr1, tok, 128)) != 0)
-	{
-		if(tok[0] >= '0' && tok[0] <= '9')
-		{
-			//xSetStyle(attr, ptr1 - szText, ptr2-ptr1, TV_RGB(200,0,0), TV_RGB(255,255,255), 0);
-			xSetStyle(attr, TextOffset(szText, ptr1), TextLength(ptr1, ptr2), TV_RGB(255,80,80), TV_RGB(255,255,255), 0);
-		}
-		else if(memcmp(tok, TSTR("if"), 2) == 0 || 
-			memcmp(tok, TSTR("for"), 3) == 0)
-		{
-			//xSetStyle(attr, ptr1 - szText, ptr2-ptr1, TV_RGB(0,0,128), TV_RGB(255,255,255), 1);
-			xSetStyle(attr, TextOffset(szText, ptr1), TextLength(ptr1, ptr2), TV_RGB(240,240,240), TV_RGB(255,255,255), 1);
-		}
-		else if(tok[0] == '\"' || tok[0] == '<' || tok[0] == '\'')
-		{
-			//xSetStyle(attr, ptr1 - szText, ptr2-ptr1, TV_RGB(128,0,128), TV_RGB(255,255,255));
-			xSetStyle(attr, TextOffset(szText, ptr1), TextLength(ptr1, ptr2), TV_RGB(200,100,200), TV_RGB(255,255,255));
-		}
-		else if(tok[0] == '#')//lstrcmp(tok, _T("#include")) == 0)
-		{
-			//SetStyle(attr, ptr1 - szText, ptr2 - ptr1, TV_RGB(255,255,0), TV_RGB(255,0,0));
-			//xSetStyle(attr, ptr1 - szText, ptr2-ptr1, TV_RGB(65,102,190), TV_RGB(255,255,255));
-			xSetStyle(attr, TextOffset(szText, ptr1), TextLength(ptr1, ptr2), TV_RGB(100,150,200), TV_RGB(255,255,255));
-		}		
-		else if(tstrcmp(tok, TSTR("ULONG")) == 0)
-		{
-			xSetStyle(attr, TextOffset(szText, ptr1), TextLength(ptr1, ptr2), TV_RGB(100,200,255), TV_RGB(255,255,255));
-		}
-		else if(tstrcmp(tok, TSTR("//")) == 0)
-		{
-			//xSetStyle(attr, ptr1 - szText, nTextLen - (ptr1-szText), TV_RGB(128,90,20), TV_RGB(255,255,255));
-			xSetStyle(attr, TextOffset(szText, ptr1), (uint32_t)(nTextLen - (ptr1-szText)), TV_RGB(128,110,90), TV_RGB(255,255,255));
-			break;
-		}
-		else
-		{
-			//xSetStyle(attr, ptr1 - szText, nTextLen - (ptr1-szText), TV_RGB(200,200,200), TV_RGB(255,255,255));
-		}
+    // the next line starts where this one ended
+    m_syntaxStates[line->line_next.byte_offset] = state;
 
-		ptr1 = ptr2;
-	}
+    for (int i = 0; i < nTextLen; i++)
+    {
+        if (kinds[i] != SyntaxKind::Plain)
+            attr[i].fg = ResolveColour(m_rgbSyntaxColours[(int)kinds[i]]);
+    }
+}
 
-	return 0;
+//
+//	The state a line starts in: from the nearest line before it whose state is
+//	known (or the first line), colouring the lines between, a state kept every
+//	so often on the way
+//
+int TextView::SyntaxState(const TextCoord *line)
+{
+    std::vector<tchar_t> text(LINE_LAYOUT_LIMIT);
+    size_w               from  = 0;
+    int                  state = SyntaxLexer::START;
+    int                  count = 0;
+
+    if (m_pSyntax->Stateless() || m_pTextDoc->byte_length() > SYNTAX_STATE_LIMIT)
+        return SyntaxLexer::START;
+
+    auto known = m_syntaxStates.upper_bound(line->line_begin.byte_offset);
+
+    if (known != m_syntaxStates.begin())
+    {
+        --known;
+        from  = known->first;
+        state = known->second;
+    }
+
+    LineIterator lines = m_pTextDoc->line_at(TextPos(from));
+
+    while (lines.line().line_begin.byte_offset < line->line_begin.byte_offset)
+    {
+        uint32_t length = lines.text(text.data(), (uint32_t)text.size());
+
+        state = m_pSyntax->Line(state, text.data(), (int)length, 0);
+
+        if (!lines.next())
+            break;
+
+        if (++count % SYNTAX_STATE_EVERY == 0)
+            m_syntaxStates[lines.line().line_begin.byte_offset] = state;
+    }
+
+    return state;
 }

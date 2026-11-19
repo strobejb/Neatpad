@@ -28,8 +28,13 @@ class SyntaxLexer
     static const int START = 0;
 
     // Colours a line, starting in the state the line before ended in: a kind
-    // for each of its units. Returns the state the line ends in.
+    // for each of its units, unless kinds is 0. Returns the state the line
+    // ends in.
     int Line(int state, const tchar_t *text, int length, SyntaxKind *kinds);
+
+    // Whether every line starts in START, so any line can be coloured on its
+    // own: true when every context a rule enters ends with its line
+    bool Stateless() const;
 
   private:
     typedef std::basic_string<tchar_t> Text;
@@ -45,20 +50,26 @@ class SyntaxLexer
         int           enter;
     };
 
+    // The rules that can match at a character, by its first unit: one list for
+    // each ASCII character, and one for everything beyond
+    static const int FIRST_UNITS = 129;
+
     struct Context
     {
         SyntaxKind        kind;
         bool              endOfLine;
         std::vector<Rule> rules;
+        std::vector<int>  first[FIRST_UNITS]; // rules, in order, by first unit
     };
 
-    int Match(const Rule &rule, const tchar_t *text, int at, int length) const;
+    int Match(const Rule &rule, const tchar_t *text, int at, int length);
     int State(const std::vector<int> &stack);
 
     std::vector<Context>                  m_contexts;
     std::vector<std::unordered_set<Text>> m_lists;
     std::vector<std::vector<int>>         m_stacks; // the stack of contexts each state is
     std::map<std::vector<int>, int>       m_states; // and the state each stack is
+    Text                                  m_word;   // a word to look up, kept to reuse its memory
 };
 
 #endif
