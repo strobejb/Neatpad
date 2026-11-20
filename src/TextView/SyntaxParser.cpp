@@ -31,10 +31,11 @@ struct NamedPattern
 
 const NamedPattern PATTERNS[] =
 {
-    { "number", SyntaxPattern::Number },
-    { "word",   SyntaxPattern::Word   },
-    { "space",  SyntaxPattern::Space  },
-    { "escape", SyntaxPattern::Escape },
+    { "number",    SyntaxPattern::Number    },
+    { "timestamp", SyntaxPattern::Timestamp },
+    { "word",      SyntaxPattern::Word      },
+    { "space",     SyntaxPattern::Space     },
+    { "escape",    SyntaxPattern::Escape    },
 };
 
 // A word of a line, and whether it was in quotes

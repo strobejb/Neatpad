@@ -64,6 +64,7 @@ that enters or leaves a context.
 | --- | --- |
 | `"text"` or `'text'` | That text, exactly as written. |
 | `number` | A digit, or `.` and a digit, and the letters, digits, `.` and `_` after it: `42`, `0x1F`, `3.14`, `10ms`. |
+| `timestamp` | A date or a time, as a log's lines start with: `2026-11-20`, `20/11/2026`, `12:34:56.789`, `2026-11-20T12:34:56Z`. Put it before `number`, which would match its first digits. |
 | `word` | A word: a letter, `_` or any character beyond ASCII, then any of those or digits. |
 | `word in NAME` | A word in the list `NAME`, matching case. |
 | `space` | Spaces and tabs. |

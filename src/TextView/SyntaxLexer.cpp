@@ -59,6 +59,56 @@ int WordLength(const tchar_t *text, int at, int length)
     return end - at;
 }
 
+// How many digits there are from end on, moving end past them
+int Digits(const tchar_t *text, int *end, int length)
+{
+    int from = *end;
+
+    while (*end < length && IsDigit(Unit(text[*end])))
+        (*end)++;
+
+    return *end - from;
+}
+
+// How many units from at are a date or a time, as a log's lines start with:
+// 2026-11-20, 20/11/2026, 12:34:56.789, or both as one, 2026-11-20T12:34:56Z.
+// It's groups of digits joined by - or / (a date has two), or by : (a time:
+// two digits after each, one or two before). A time can go on with a fraction
+// (.789 or ,789) and a zone (Z or +01:00). Anything else is 0, for a number.
+int TimestampLength(const tchar_t *text, int at, int length)
+{
+    int  end   = at;
+    int  group = Digits(text, &end, length);
+    int  dates = 0;
+    bool time  = false;
+
+    while (end + 1 < length && IsDigit(Unit(text[end + 1])))
+    {
+        tchar_t join  = text[end];
+        int     next  = end + 1;
+        int     after = Digits(text, &next, length);
+
+        if (join == ':' && group <= 2 && after == 2)
+            time = true;
+        else if ((join == '-' || join == '/') && !time)
+            dates++;
+        else if (join == 'T' && dates >= 2 && !time)
+            ;
+        else if ((join == '.' || join == ',' || join == '+' || join == '-') && time)
+            ;
+        else
+            break;
+
+        end   = next;
+        group = after;
+    }
+
+    if (time && end < length && text[end] == 'Z')
+        end++;
+
+    return time || dates >= 2 ? end - at : 0;
+}
+
 // Text from a definition (UTF-8) in the build's units
 std::basic_string<tchar_t> FromUtf8(const std::string &text)
 {
@@ -92,6 +142,9 @@ bool CanStart(SyntaxPattern pattern, uint32_t first, uint32_t ch)
 
     case SyntaxPattern::Number:
         return IsDigit(ch) || ch == '.';
+
+    case SyntaxPattern::Timestamp:
+        return IsDigit(ch);
 
     case SyntaxPattern::Word:
     case SyntaxPattern::WordIn:
@@ -265,6 +318,9 @@ int SyntaxLexer::Match(const Rule &rule, const tchar_t *text, int at, int length
             end++;
 
         return end - at;
+
+    case SyntaxPattern::Timestamp:
+        return TimestampLength(text, at, length);
 
     case SyntaxPattern::Word:
         return IsWordStart(ch) ? WordLength(text, at, length) : 0;

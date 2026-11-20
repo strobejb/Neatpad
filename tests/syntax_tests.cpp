@@ -334,6 +334,21 @@ void lexer_colours_markdown()
 #endif
 }
 
+void lexer_colours_dates_and_times()
+{
+    Colourer c(definition("language L\n"
+                          "context main\n"
+                          "    timestamp  debug\n"
+                          "    number     number\n"));
+
+    CHECK(c.colour(U"2026-11-20 12:34:56,789 x") == "DDDDDDDDDD.DDDDDDDDDDDD..");
+    CHECK(c.colour(U"2026-11-20T12:34:56.5+01:00") == "DDDDDDDDDDDDDDDDDDDDDDDDDDD");
+    CHECK(c.colour(U"20/11/2026 9:05Z") == "DDDDDDDDDD.DDDDD");
+
+    // numbers, versions and a file's line and column aren't times
+    CHECK(c.colour(U"42 1.2.3 10-20 x.c:123:4") == "nn.nnnnn.nn.nn.....nnn.n");
+}
+
 void lexer_reads_the_definitions_neatpad_has()
 {
 #ifdef NEATPAD_SYNTAX_DIR
@@ -362,6 +377,7 @@ const test_case tests[] =
     { "lexer_colours_whole_characters", lexer_colours_whole_characters },
     { "lexer_matches_at_line_start", lexer_matches_at_line_start },
     { "lexer_colours_markdown", lexer_colours_markdown },
+    { "lexer_colours_dates_and_times", lexer_colours_dates_and_times },
     { "lexer_reads_the_definitions_neatpad_has", lexer_reads_the_definitions_neatpad_has },
 };
 }

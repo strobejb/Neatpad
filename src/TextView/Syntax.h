@@ -54,12 +54,13 @@ struct SyntaxStyle
 // What a rule matches
 enum class SyntaxPattern
 {
-    Text,   // the rule's text, exactly
-    Number, // a number, and the letters and digits after it
-    Word,   // any word
-    WordIn, // a word in the list the rule's text names
-    Space,  // spaces and tabs
-    Escape, // a backslash and the character after it
+    Text,      // the rule's text, exactly
+    Number,    // a number, and the letters and digits after it
+    Timestamp, // a date or a time: 2026-11-20, 12:34:56.789
+    Word,      // any word
+    WordIn,    // a word in the list the rule's text names
+    Space,     // spaces and tabs
+    Escape,    // a backslash and the character after it
 };
 
 // What a rule does after colouring what it matched

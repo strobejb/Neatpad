@@ -1,6 +1,6 @@
 # neatpad-syntax-v1
 #
-#   Log files: levels, numbers and quoted text
+#   Log files: levels, dates and times, numbers and quoted text
 #
 language Log
 files    *.log
@@ -15,6 +15,7 @@ context main
     word in warnings   warning
     word in info       info
     word in debug      debug
+    timestamp          debug
     number             number
     '"'                string   enter string
 
