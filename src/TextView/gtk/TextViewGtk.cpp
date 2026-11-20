@@ -12,6 +12,7 @@
 #include "../TextViewInternal.h"
 
 #include <math.h>
+#include <pango/pangocairo.h>
 #include <vector>
 
 TextViewGtk::TextViewGtk(GtkWidget *widget)
@@ -26,6 +27,18 @@ TextViewGtk::TextViewGtk(GtkWidget *widget)
     // the engine works in whole pixels: so do glyphs, so an x always finds the
     // character it was measured from
     pango_context_set_round_glyph_positions(m_context, TRUE);
+
+    // hinted, as GNOME asks and GTK 3 drew text. GTK 4 doesn't hint by
+    // default, and at some sizes a stroke along the top of the capitals then
+    // falls across two rows of pixels and fades. Hinted metrics keep each
+    // character a whole number of pixels wide, as the engine measures them.
+    const cairo_font_options_t *given   = pango_cairo_context_get_font_options(m_context);
+    cairo_font_options_t       *options = given ? cairo_font_options_copy(given) : cairo_font_options_create();
+
+    cairo_font_options_set_hint_style(options, CAIRO_HINT_STYLE_SLIGHT);
+    cairo_font_options_set_hint_metrics(options, CAIRO_HINT_METRICS_ON);
+    pango_cairo_context_set_font_options(m_context, options);
+    cairo_font_options_destroy(options);
 
     Measure();
 
