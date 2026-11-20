@@ -15,6 +15,9 @@
 #include <pango/pangocairo.h>
 #include <vector>
 
+// How long the user stops scrolling for before the vertical range is set (ms)
+static const guint SCROLL_PAUSE = 250;
+
 TextViewGtk::TextViewGtk(GtkWidget *widget)
     : m_widget(widget), m_context(gtk_widget_create_pango_context(widget)),
       m_font(pango_font_description_from_string("Monospace 11")), m_measure(pango_layout_new(m_context)),
@@ -22,7 +25,7 @@ TextViewGtk::TextViewGtk(GtkWidget *widget)
       m_caretColour(TV_RGB(0, 0, 0)), m_width(0), m_height(0), m_caretCreated(false), m_caretHidden(1), m_caretX(0),
       m_caretY(0), m_caretWidth(0), m_caretHeight(0), m_caretOn(true),
       m_blinkTimer(0), m_blinkUntil(0), m_vadjust(0), m_hadjust(0), m_settingScroll(false),
-      m_painting(false), m_vpending(), m_hpending(), m_scrollIdle(0), m_modifiers(0), m_mouseX(0), m_mouseY(0)
+      m_painting(false), m_vpending(), m_hpending(), m_scrollIdle(0), m_tracking(false), m_scrollPause(0), m_modifiers(0), m_mouseX(0), m_mouseY(0)
 {
     // the engine works in whole pixels: so do glyphs, so an x always finds the
     // character it was measured from
@@ -57,6 +60,9 @@ TextViewGtk::~TextViewGtk()
 
     if (m_scrollIdle)
         g_source_remove(m_scrollIdle);
+
+    if (m_scrollPause)
+        g_source_remove(m_scrollPause);
 
     delete m_view;
 
@@ -257,10 +263,20 @@ void TextViewGtk::Scrolled(bool vertical)
     if (m_settingScroll)
         return;
 
-    if (vertical)
-        m_view->OnVScroll(TVSB_THUMBTRACK, 0);
-    else
+    if (!vertical)
+    {
         m_view->OnHScroll(TVSB_THUMBTRACK, 0);
+        return;
+    }
+
+    m_tracking = true;
+    m_view->OnVScroll(TVSB_THUMBTRACK, 0);
+    m_tracking = false;
+
+    if (m_scrollPause)
+        g_source_remove(m_scrollPause);
+
+    m_scrollPause = g_timeout_add(SCROLL_PAUSE, OnScrollPause, this);
 }
 
 void TextViewGtk::SetModifiers(GdkModifierType state)
@@ -317,14 +333,32 @@ gboolean TextViewGtk::OnPaintedScroll(gpointer data)
     Range        h    = host->m_hpending;
 
     host->m_scrollIdle       = 0;
-    host->m_vpending.pending = false;
     host->m_hpending.pending = false;
 
-    if (v.pending)
+    // the vertical range waits on, while the user scrolls
+    if (v.pending && host->m_scrollPause == 0)
+    {
+        host->m_vpending.pending = false;
         host->SetVScroll(v.max, v.pos, v.page);
+    }
 
     if (h.pending)
         host->SetHScroll((int)h.max, (int)h.pos, (int)h.page);
+
+    return G_SOURCE_REMOVE;
+}
+
+// The user has stopped scrolling, for now: the vertical range catches up
+gboolean TextViewGtk::OnScrollPause(gpointer data)
+{
+    TextViewGtk *host = (TextViewGtk *)data;
+    Range        v    = host->m_vpending;
+
+    host->m_scrollPause      = 0;
+    host->m_vpending.pending = false;
+
+    if (v.pending)
+        host->SetVScroll(v.max, v.pos, v.page);
 
     return G_SOURCE_REMOVE;
 }
@@ -333,6 +367,13 @@ void TextViewGtk::SetVScroll(uint64_t max, uint64_t pos, uint64_t page)
 {
     if (m_vadjust == 0)
         return;
+
+    // the scrollbar already shows where the user put it
+    if (m_tracking)
+    {
+        m_vpending = {true, max, pos, page};
+        return;
+    }
 
     if (m_painting)
     {
@@ -344,8 +385,15 @@ void TextViewGtk::SetVScroll(uint64_t max, uint64_t pos, uint64_t page)
         return;
     }
 
-    // newer than any range painting left to set, which would put it back
+    // newer than any range left to set, which would put it back; and the
+    // view moved itself, so the user's scrolling is over
     m_vpending.pending = false;
+
+    if (m_scrollPause)
+    {
+        g_source_remove(m_scrollPause);
+        m_scrollPause = 0;
+    }
 
     m_settingScroll = true;
     gtk_adjustment_configure(m_vadjust, (double)pos, 0, MAX((double)max + 1, (double)page), 1, (double)page,

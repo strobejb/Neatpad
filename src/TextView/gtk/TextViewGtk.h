@@ -133,6 +133,7 @@ class TextViewGtk : public TextViewHost
     static gboolean OnTimer(gpointer data);
     static gboolean OnBlink(gpointer data);
     static gboolean OnPaintedScroll(gpointer data);
+    static gboolean OnScrollPause(gpointer data);
 
     void Measure();
     void ForgetControls() const;
@@ -187,6 +188,13 @@ class TextViewGtk : public TextViewHost
     Range m_vpending;
     Range m_hpending;
     guint m_scrollIdle;
+
+    // While the user scrolls, the vertical range waits until they pause. Its
+    // page is the bytes shown, which change with the top line, and the
+    // scrollbar takes the page into the value it gives: set as it's dragged,
+    // the two would move each other, and the text jitter
+    bool  m_tracking;
+    guint m_scrollPause;
 
     std::map<unsigned, guint> m_timers;
 
