@@ -15,6 +15,7 @@
 #include <tchar.h>
 #include <shellapi.h>
 #include "../src/Neatpad/win32/Neatpad.h"
+#include "../src/Neatpad/win32/resource.h"
 
 // Minimal host for the real C recovery controller. Controls remain hidden,
 // and RECOVERY_TESTS routes all store I/O to a disposable test directory.
@@ -56,6 +57,11 @@ class TextViewMarginProbe
     static TextView *view_of(HWND hwnd)
     {
         return ((TextViewWin32 *)GetWindowLongPtr(hwnd, 0))->View();
+    }
+
+    static COLORREF colour(HWND hwnd, int index)
+    {
+        return view_of(hwnd)->GetColour(index);
     }
 
     static std::vector<TextRun> attributes(HWND hwnd, size_w lineno)
@@ -2403,6 +2409,121 @@ uint32_t dib_pixel(COLORREF colour)
     return (GetRValue(colour) << 16) | (GetGValue(colour) << 8) | GetBValue(colour);
 }
 
+void textview_keeps_the_editor_font_for_spaces()
+{
+    EditPair pair = {};
+
+    if (!open_edit_pair(&pair, L"typedef struct Version_Info\r\n{\r\n\tTCHAR query[128];\r\n}\r\n", NCP_UTF8))
+    {
+        CHECK(false);
+        close_edit_pair(&pair);
+        return;
+    }
+
+    HFONT editor = CreateFont(-20, 0, 0, 0, FW_NORMAL, 0, 0, 0, DEFAULT_CHARSET, 0, 0, 0, 0, L"Courier New");
+    HFONT fallback = CreateFont(-20, 0, 0, 0, FW_NORMAL, 0, 0, 0, DEFAULT_CHARSET, 0, 0, 0, 0, L"Segoe UI");
+
+    CHECK(editor && fallback);
+    SendMessage(pair.view, WM_SETFONT, (WPARAM)editor, 0);
+    uint64_t primary = picture_hash(print_client(pair.view));
+
+    CHECK(TextView_AddFontFallback(pair.view, 0, fallback));
+    CHECK(picture_hash(print_client(pair.view)) == primary);
+
+    close_edit_pair(&pair);
+    DeleteObject(fallback);
+    DeleteObject(editor);
+}
+
+void textview_selects_syntax_for_the_document_name()
+{
+    const UINT ids[] = {IDR_SYNTAX_C, IDR_SYNTAX_LOG, IDR_SYNTAX_MARKDOWN};
+    EditPair   pair  = {};
+
+    if (!open_edit_pair(&pair, L"return 42;\r\nINFO ready\r\n*emphasis*", NCP_UTF8))
+    {
+        CHECK(false);
+        close_edit_pair(&pair);
+        return;
+    }
+
+    std::wstring path(pair.path);
+    std::wstring cpp = path + L".CPP";
+    std::wstring log = path + L".log";
+    std::wstring md  = path + L".md";
+
+    LOGFONT style    = {};
+    style.lfHeight   = -16;
+    style.lfCharSet  = DEFAULT_CHARSET;
+    lstrcpy(style.lfFaceName, L"Courier New");
+    HFONT font = CreateFontIndirect(&style);
+
+    CHECK(font != 0);
+    SendMessage(pair.view, WM_SETFONT, (WPARAM)font, 0);
+    TextView_SetSyntaxResources(pair.view, ids, ARRAYSIZE(ids));
+    TEXTVIEWPALETTE palette = {IDR_PALETTE_ADWAITA, IDR_PALETTE_CLASSIC, FALSE, RGB(0, 120, 215)};
+    CHECK(TextView_SetPaletteResources(pair.view, &palette));
+    uint64_t plain = picture_hash(print_client(pair.view));
+
+    CHECK(TextView_SaveFile(pair.view, cpp.c_str(), NCP_UTF8, FALSE, 0));
+    CHECK(TextView_OpenFile(pair.view, cpp.c_str()));
+    auto code = TextViewMarginProbe::attributes(pair.view, 0);
+    CHECK(!code.empty() && code[0].fg == RGB(0, 0, 255));
+
+    CHECK(!TextView_OpenFile(pair.view, (cpp + L".missing").c_str()));
+    code = TextViewMarginProbe::attributes(pair.view, 0);
+    CHECK(!code.empty() && code[0].fg == RGB(0, 0, 255));
+
+    palette.overlayResource = 0;
+    palette.dark            = TRUE;
+    CHECK(TextView_SetPaletteResources(pair.view, &palette));
+    CHECK(TextViewMarginProbe::colour(pair.view, TXC_BACKGROUND) == RGB(0x1d, 0x1d, 0x20));
+    code = TextViewMarginProbe::attributes(pair.view, 0);
+    CHECK(!code.empty() && code[0].fg == RGB(0xdc, 0x8a, 0xdd) && code[0].bold);
+
+    palette.overlayResource = IDR_PALETTE_SOLARIZED;
+    CHECK(TextView_SetPaletteResources(pair.view, &palette));
+    CHECK(TextViewMarginProbe::colour(pair.view, TXC_BACKGROUND) == RGB(0, 0x2b, 0x36));
+    code = TextViewMarginProbe::attributes(pair.view, 0);
+    CHECK(!code.empty() && code[0].fg == RGB(0x85, 0x99, 0) && code[0].bold);
+
+    palette.dark = FALSE;
+    CHECK(TextView_SetPaletteResources(pair.view, &palette));
+    CHECK(TextViewMarginProbe::colour(pair.view, TXC_BACKGROUND) == RGB(0xfd, 0xf6, 0xe3));
+
+    COLORREF legacy[TXC_MAX_COLOURS];
+    for (int i = 0; i < TXC_MAX_COLOURS; ++i)
+        legacy[i] = TextViewMarginProbe::colour(pair.view, i);
+
+    legacy[TXC_BACKGROUND] = RGB(0xe3, 0xf6, 0xfd);
+    palette.overlayResource = IDR_PALETTE_CLASSIC;
+    palette.legacyColours   = legacy;
+    CHECK(TextView_SetPaletteResources(pair.view, &palette));
+    CHECK(TextViewMarginProbe::colour(pair.view, TXC_BACKGROUND) == legacy[TXC_BACKGROUND]);
+
+    palette.legacyColours = 0;
+    CHECK(TextView_SetPaletteResources(pair.view, &palette));
+    CHECK(TextView_SaveFile(pair.view, md.c_str(), NCP_UTF8, FALSE, 0));
+    auto markdown = TextViewMarginProbe::attributes(pair.view, 2);
+    CHECK(!markdown.empty() && markdown[0].italic);
+    CHECK(picture_hash(print_client(pair.view)) != plain);
+
+    CHECK(TextView_OpenFile(pair.view, pair.path));
+    CHECK(picture_hash(print_client(pair.view)) == plain);
+
+    CHECK(TextView_SaveFile(pair.view, log.c_str(), NCP_UTF8, FALSE, 0));
+    CHECK(TextView_TailFile(pair.view, log.c_str()));
+    auto levels = TextViewMarginProbe::attributes(pair.view, 1);
+    CHECK(!levels.empty() && levels[0].fg == RGB(0, 96, 192));
+
+    CHECK(TextView_Clear(pair.view));
+    close_edit_pair(&pair);
+    DeleteObject(font);
+    DeleteFile(cpp.c_str());
+    DeleteFile(log.c_str());
+    DeleteFile(md.c_str());
+}
+
 // Show line numbers, so the margin is painted too, and the selection in one
 // colour whether or not the window is active
 void paint_styles(HWND view)
@@ -2640,6 +2761,8 @@ void textview_paint_hashes_are_repeatable()
 }
 
 const test_case tests[] = {
+    {"textview_keeps_the_editor_font_for_spaces", textview_keeps_the_editor_font_for_spaces},
+    {"textview_selects_syntax_for_the_document_name", textview_selects_syntax_for_the_document_name},
     {"textview_diff_background_matches_the_whole_margin", textview_diff_background_matches_the_whole_margin},
     {"textview_diff_indicators_can_be_hidden_without_losing_changes",
      textview_diff_indicators_can_be_hidden_without_losing_changes},

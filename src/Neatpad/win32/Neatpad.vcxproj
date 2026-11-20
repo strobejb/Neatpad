@@ -170,6 +170,7 @@
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="resource.rc" />
+    <ResourceCompile Include="syntax.rc" />
   </ItemGroup>
   <ItemGroup>
     <Image Include="bitmap1.bmp" />

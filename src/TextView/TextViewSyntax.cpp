@@ -122,14 +122,21 @@ void TextView::SetPalette(const TextPalette &palette)
         m_syntaxStyles[i] = palette.syntax[i];
 
     ResetLineCache();
+    if (m_pSyntax)
+        UpdateCaretCoord(&m_cursorPos, true, &m_nCaretPosX);
+
     RefreshWindow();
 }
 
 void TextView::UseSyntax(const SyntaxDefinition *definition)
 {
+    if (!definition && !m_pSyntax)
+        return;
+
     m_pSyntax.reset(definition ? new SyntaxLexer(*definition) : 0);
 
     ResetLineCache();
+    UpdateCaretCoord(&m_cursorPos, true, &m_nCaretPosX);
     RefreshWindow();
 }
 

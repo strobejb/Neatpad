@@ -14,9 +14,10 @@
 #include <vector>
 
 #include "UspTextLayout.h"
+#include "TextViewWin32.h"
 #include "Win32Canvas.h"
 
-UspTextLayout::UspTextLayout(HWND hwnd, USPFONT *fonts) : m_hWnd(hwnd), m_fonts(fonts), m_uspData(UspAllocate())
+UspTextLayout::UspTextLayout(TextViewWin32 &host) : m_host(host), m_uspData(UspAllocate())
 {
 }
 
@@ -27,7 +28,7 @@ UspTextLayout::~UspTextLayout()
 
 bool UspTextLayout::Analyze(const tchar_t *text, int length, TextRun *runs, int tabWidth)
 {
-    HDC               hdc = GetDC(m_hWnd);
+    HDC               hdc = GetDC(m_host.m_hWnd);
     std::vector<ATTR> attr(length > 0 ? length : 1);
 
     // UspLib's runs: the same, by another name
@@ -36,7 +37,7 @@ bool UspTextLayout::Analyze(const tchar_t *text, int length, TextRun *runs, int 
         attr[i].fg       = runs[i].fg;
         attr[i].bg       = runs[i].bg;
         attr[i].len      = runs[i].len;
-        attr[i].font     = runs[i].font;
+        attr[i].font     = m_host.StyledFont(runs[i].font, runs[i].bold, runs[i].italic, hdc);
         attr[i].sel      = runs[i].sel;
         attr[i].ctrl     = runs[i].ctrl;
         attr[i].eol      = runs[i].eol;
@@ -51,10 +52,10 @@ bool UspTextLayout::Analyze(const tchar_t *text, int length, TextRun *runs, int 
     SCRIPT_CONTROL scriptControl = {0};
     SCRIPT_STATE   scriptState   = {0};
 
-    BOOL analyzed =
-        UspAnalyze(m_uspData, hdc, (WCHAR *)text, length, attr.data(), 0, m_fonts, &scriptControl, &scriptState, &tabdef);
+    BOOL analyzed = UspAnalyze(m_uspData, hdc, (WCHAR *)text, length, attr.data(), 0, m_host.m_fonts, &scriptControl,
+                               &scriptState, &tabdef);
 
-    ReleaseDC(m_hWnd, hdc);
+    ReleaseDC(m_host.m_hWnd, hdc);
 
     return analyzed != FALSE;
 }

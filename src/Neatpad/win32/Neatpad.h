@@ -20,9 +20,6 @@ extern "C" {
 //
 //	Global variables used for Neatpad settings
 //
-extern LONG		g_nFontSize;
-extern BOOL		g_fFontBold;
-extern TCHAR	g_szFontName[];
 extern BOOL		g_fLineNumbers;
 extern BOOL		g_fLongLines;
 extern BOOL		g_fSelMargin;
@@ -41,22 +38,38 @@ extern BOOL     g_fInsertSpaces;
 extern BOOL     g_fAutoIndent;
 extern LONG		g_nInMemoryLimit;
 
-extern COLORREF g_rgbColourList[];
-extern COLORREF g_rgbCustColours[];
-
 #define MAX_LINE_SPACING 40
+#define DEFAULT_EDITOR_FONT _T("Courier New")
+#define DEFAULT_EDITOR_FONT_SIZE 10
 
-extern LONG g_nLineSpacing;
+enum
+{
+    STYLE_SYSTEM,
+    STYLE_LIGHT,
+    STYLE_DARK
+};
+
+enum
+{
+    PALETTE_ADWAITA,
+    PALETTE_CLASSIC,
+    PALETTE_SOLARIZED,
+    PALETTE_CUSTOM
+};
+
+extern BOOL g_fHasCustomPalette;
 
 // Edits stay local to the dialog until all pages accept OK.
 typedef struct
 {
     LONG     nFontSize;
     BOOL     fFontBold;
+    BOOL     fFontItalic;
     TCHAR    szFontName[LF_FACESIZE];
     LONG     nLineSpacing;
-    COLORREF rgbColourList[19];
-    COLORREF rgbCustColours[16];
+    LONG     nAppearanceStyle;
+    LONG     nPalette;
+    BOOL     fShowStatusbar;
     BOOL     fLineNumbers;
     BOOL     fLongLines;
     BOOL     fSelMargin;
@@ -91,7 +104,11 @@ HDC		ShowPrintDlg(HWND hwndParent);
 //	Options.c functions
 //
 void ShowOptions(HWND hwndParent);
+void OptionsPageActivated(HWND page);
 void ApplyRegSettings();
+void ApplyAppearancePalette();
+void ApplyEditorPalette(HWND view, LONG choice, LONG style);
+HFONT CreateEditorFont(const TCHAR *face, int points, BOOL bold, BOOL italic, int zoom);
 void ApplyFonts();
 void LoadRegSettings();
 void SaveRegSettings();

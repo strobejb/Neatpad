@@ -18,16 +18,23 @@
 INT_PTR CALLBACK MiscOptionsDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
     PSHNOTIFY *notification;
+    OPTIONS   *options = (OPTIONS *)GetWindowLongPtr(hwnd, DWLP_USER);
     BOOL       enabled;
 
     switch (msg)
     {
     case WM_INITDIALOG:
+        options = (OPTIONS *)((PROPSHEETPAGE *)lParam)->lParam;
+        SetWindowLongPtr(hwnd, DWLP_USER, (LONG_PTR)options);
         CheckDlgButton(hwnd, IDC_ADDCONTEXT, IsExplorerContextMenuEnabled());
+        CheckDlgButton(hwnd, IDC_SHOWSTATUSBAR, options->fShowStatusbar ? BST_CHECKED : BST_UNCHECKED);
         return TRUE;
 
     case WM_NOTIFY:
         notification = (PSHNOTIFY *)lParam;
+        if (notification->hdr.code == PSN_SETACTIVE)
+            OptionsPageActivated(hwnd);
+
         if (notification->hdr.code == PSN_APPLY)
         {
             enabled = IsDlgButtonChecked(hwnd, IDC_ADDCONTEXT) == BST_CHECKED;
@@ -41,6 +48,7 @@ INT_PTR CALLBACK MiscOptionsDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
                 return TRUE;
             }
 
+            options->fShowStatusbar = IsDlgButtonChecked(hwnd, IDC_SHOWSTATUSBAR) == BST_CHECKED;
             SetWindowLongPtr(hwnd, DWLP_MSGRESULT, PSNRET_NOERROR);
             return TRUE;
         }

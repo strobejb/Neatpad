@@ -33,6 +33,12 @@
 #define IDB_SEARCHBAR_BUTTONS           131
 #define IDD_GOTOLINE                    132
 #define IDD_NOTIFYBAR                   134
+#define IDR_SYNTAX_C                    135
+#define IDR_SYNTAX_LOG                  136
+#define IDR_SYNTAX_MARKDOWN             137
+#define IDR_PALETTE_ADWAITA             138
+#define IDR_PALETTE_CLASSIC             139
+#define IDR_PALETTE_SOLARIZED           140
 #define IDC_COMBO1                      1000
 #define IDC_FONTLIST                    1000
 #define IDC_COMBO2                      1001
@@ -44,21 +50,14 @@
 #define IDC_EDIT2                       1004
 #define IDC_SPIN1                       1005
 #define IDC_SPIN2                       1006
-#define IDC_PREVIEW                     1009
 #define IDC_LIST1                       1010
-#define IDC_ITEMLIST                    1010
 #define IDC_COMBO5                      1011
 #define IDC_BUTTON1                     1012
-#define IDC_BGCOLCOMBO                  1012
 #define IDC_BUTTON2                     1014
-#define IDC_CUSTBUT1                    1014
 #define IDC_BUTTON3                     1015
-#define IDC_DISPLAYITEMLIST             1015
-#define IDC_CUSTBUT2                    1015
-#define IDC_FGCOLCOMBO                  1016
 #define IDC_DEFAULTS                    1017
 #define IDC_BOLD                        1018
-#define IDC_LINESPACING 1019
+#define IDC_LINESPACING                 1019
 #define IDC_CHECK2                      1022
 #define IDC_CHECK3                      1023
 #define IDC_ADDCONTEXT                  1023
@@ -82,7 +81,7 @@
 #define IDC_LINENOSFIRST                1040
 #define IDC_LINENOS                     1041
 #define IDC_SELMARGIN                   1042
-#define IDC_LONGLINES 1043
+#define IDC_LONGLINES                   1043
 #define IDC_SELMARGIN2                  1044
 #define IDC_HIGHLIGHTCURLINE            1044
 #define IDC_HEADER1                     1046
@@ -108,13 +107,19 @@
 #define IDC_SEARCH_REPLACEALL           1066
 #define IDC_SEARCH_HIGHLIGHT            1067
 #define IDC_SEARCH_FILTER               1068
-#define IDC_FILTERCONTEXT 1069
-#define IDC_FILTERCONTEXTSPIN 1070
+#define IDC_FILTERCONTEXT               1069
+#define IDC_FILTERCONTEXTSPIN           1070
 #define IDC_TABWIDTH                    1071
 #define IDC_INSERTSPACES                1072
 #define IDC_AUTOINDENT                  1073
-#define IDC_CHANGEINDICATORS             1074
-#define IDC_HIGHLIGHTCHANGES             1075
+#define IDC_CHANGEINDICATORS            1074
+#define IDC_HIGHLIGHTCHANGES            1075
+#define IDC_APPEARANCESTYLE             1076
+#define IDC_PALETTE                     1077
+#define IDC_ITALIC                      1079
+#define IDC_SHOWSTATUSBAR               1081
+#define IDC_PREVCIE                     1082
+#define IDC_PREVIEW                     1082
 #define IDM_FILE_NEW                    40001
 #define IDM_FILE_OPEN                   40002
 #define IDM_FILE_EXIT                   40003
@@ -169,9 +174,9 @@
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
-#define _APS_NEXT_RESOURCE_VALUE        135
+#define _APS_NEXT_RESOURCE_VALUE        141
 #define _APS_NEXT_COMMAND_VALUE         40063
-#define _APS_NEXT_CONTROL_VALUE 1076
+#define _APS_NEXT_CONTROL_VALUE         1083
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif

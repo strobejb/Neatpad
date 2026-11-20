@@ -181,6 +181,11 @@
     <ClCompile Include="..\src\TextView\win32\UspTextLayout.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ResourceCompile Include="..\src\Neatpad\win32\syntax.rc">
+      <AdditionalIncludeDirectories>$(MSBuildThisFileDirectory)..\src\Neatpad\win32;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\src\TextView\win32\UspLib\UspLib.vcxproj">
       <Project>{5E7AC3D0-6E3B-4BF1-9DD6-B68A47376C83}</Project>
     </ProjectReference>

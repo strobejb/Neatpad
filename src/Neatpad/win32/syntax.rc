@@ -1,0 +1,12 @@
+// Copyright (c) 2004-2026 James Brown, Catch22 Solutions
+// SPDX-License-Identifier: MIT
+
+#include "resource.h"
+
+IDR_SYNTAX_C        RCDATA "..\\..\\TextView\\syntax\\c.syntax"
+IDR_SYNTAX_LOG      RCDATA "..\\..\\TextView\\syntax\\log.syntax"
+IDR_SYNTAX_MARKDOWN RCDATA "..\\..\\TextView\\syntax\\markdown.syntax"
+
+IDR_PALETTE_ADWAITA   RCDATA "..\\..\\TextView\\palettes\\adwaita.palette"
+IDR_PALETTE_CLASSIC   RCDATA "..\\..\\TextView\\palettes\\classic.palette"
+IDR_PALETTE_SOLARIZED RCDATA "..\\..\\TextView\\palettes\\solarized.palette"

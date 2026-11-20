@@ -66,6 +66,9 @@ INT_PTR CALLBACK DisplayOptionsDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 
         pshn = (PSHNOTIFY *)lParam;
 
+        if (pshn->hdr.code == PSN_SETACTIVE)
+            OptionsPageActivated(hwnd);
+
         if (pshn->hdr.code == PSN_APPLY)
         {
             OPTIONS *options = (OPTIONS *)GetWindowLongPtr(hwnd, DWLP_USER);

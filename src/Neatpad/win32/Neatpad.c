@@ -823,6 +823,8 @@ UINT CommandHandler(HWND hwnd, UINT nCtrlId, UINT nCtrlCode, HWND hwndFrom)
 //
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
+    static const UINT syntax[] = {IDR_SYNTAX_C, IDR_SYNTAX_LOG, IDR_SYNTAX_MARKDOWN};
+
 	int width, height, heightsb, heightsrch, top = 0;
 	HIMAGELIST hImgList;
 	RECT rect;
@@ -837,6 +839,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		g_hwndStatusbar = CreateStatusBar(hwnd);
 		g_hwndSearchBar = CreateSearchBar(hwnd);
 		g_hwndNotifyBar = CreateNotifyBar(hwnd);
+        TextView_SetSyntaxResources(g_hwndTextView, syntax, ARRAYSIZE(syntax));
 		UpdateStatusBarFileInfo();
 
 		SetTimer(hwnd, FILE_CHECK_TIMER, FILE_CHECK_MS, 0);
@@ -885,6 +888,13 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
 	//case WM_NCCALCSIZE:
 	//	return NcCalcSize(hwnd, wParam, lParam);
+
+    case WM_SETTINGCHANGE:
+    case WM_SYSCOLORCHANGE:
+    case WM_THEMECHANGED:
+        if (g_hwndTextView)
+            ApplyAppearancePalette();
+        break;
 
 	case WM_INITMENU:
 		CheckMenuCommand((HMENU)wParam, IDM_VIEW_LINENUMBERS,	g_fLineNumbers);
@@ -1005,9 +1015,13 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		if(g_fShowStatusbar)
 		{
 			DeferWindowPos(hdwp, g_hwndStatusbar, 0, 0, height - heightsb, width, heightsb, SWP_SHOWWINDOW);
-		//	MoveWindow(g_hwndStatusbar, 0, height - heightsb, width, heightsb, TRUE);
 			height -= heightsb;
 		}
+        else
+        {
+            DeferWindowPos(hdwp, g_hwndStatusbar, 0, 0, 0, 0, 0,
+                           SWP_HIDEWINDOW | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+        }
 
 		if(SearchBarIsVisible())
 		{

@@ -10,11 +10,15 @@
 #include <commctrl.h>
 #include <uxtheme.h>
 
+#include <string>
+#include <vector>
+
 #include "../TextViewHost.h"
 #include "../TextView.h"
 #include "UspLib/usplib.h"
 
 class TextView;
+class UspTextLayout;
 
 //
 //	The engine's notification structures as the Win32 API's, for TVN_*
@@ -108,15 +112,22 @@ class TextViewWin32 : public TextViewHost
     intptr_t Notify(unsigned code, void *info) override;
 
   private:
+    friend class UspTextLayout;
+
     LONG  OnPaint();
     LONG  OnPrintClient(HDC hdc);
     void  SetFont(int idx, HFONT hFont);
+    int   StyledFont(int idx, bool bold, bool italic, HDC hdc);
+    void  ClearStyledFonts(int idx);
     LONG  AddFont(HFONT hFont);
     LONG  AddFontFallback(int slot, HFONT hFont);
     LONG  ClearFontFallbacks(int slot);
     LONG  OnNcPaint(HRGN hrgnUpdate);
     LONG  OnContextMenu(HWND hwndParam, int x, int y);
     HMENU CreateContextMenu();
+
+    void SetSyntaxResources(const UINT *ids, UINT count);
+    void ChooseSyntax(const WCHAR *filename);
 
     HWND      m_hWnd;
     TextView *m_pView;
@@ -125,11 +136,14 @@ class TextViewWin32 : public TextViewHost
     HCURSOR   m_hMarginCursor; // the margin's right-pointing arrow
 
     // fonts, the first the main one, and the margin's images
-    static const int MAX_FONTS = 32;
+    static const int MAX_FONTS   = 32;
+    static const int FONT_STYLES = 4;
 
-    USPFONT    m_fonts[MAX_FONTS];
+    USPFONT    m_fonts[MAX_FONTS * FONT_STYLES];
     int        m_nNumFonts;
     HIMAGELIST m_hImageList;
+
+    std::vector<std::string> m_syntaxDefinitions;
 };
 
 #endif

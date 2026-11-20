@@ -79,6 +79,31 @@ COLORREF RealizeColour(COLORREF col);
 #define TXM_LOADSTATE (TXM_BASE + 45)
 #define TXM_SETFILTERCONTEXT (TXM_BASE + 46)
 #define TXM_SETTABWIDTH (TXM_BASE + 47)
+#define TXM_SETSYNTAXRESOURCES (TXM_BASE + 48)
+#define TXM_SETPALETTERESOURCES (TXM_BASE + 49)
+#define TXM_SETSYNTAXRESOURCE (TXM_BASE + 50)
+
+// Apply a base palette and an optional overlay, embedded as UTF-8 RCDATA.
+typedef struct
+{
+    UINT            baseResource;
+    UINT            overlayResource;
+    BOOL            dark;
+    COLORREF        accent;
+    const COLORREF *legacyColours; // optional TXC_MAX_COLOURS entries
+} TEXTVIEWPALETTE;
+
+#define TextView_SetPaletteResources(hwndTV, palette) \
+    ((BOOL)SendMessage((hwndTV), TXM_SETPALETTERESOURCES, 0, (LPARAM)(const TEXTVIEWPALETTE *)(palette)))
+
+// Register UTF-8 .syntax files embedded as RCDATA in the application.
+// The view selects the first matching definition when a document gets a name.
+#define TextView_SetSyntaxResources(hwndTV, ids, count) \
+    SendMessage((hwndTV), TXM_SETSYNTAXRESOURCES, (WPARAM)(UINT)(count), (LPARAM)(const UINT *)(ids))
+
+// Apply one UTF-8 .syntax resource directly, including for documents without a filename.
+#define TextView_SetSyntaxResource(hwndTV, id) \
+    ((BOOL)SendMessage((hwndTV), TXM_SETSYNTAXRESOURCE, (WPARAM)(UINT)(id), 0))
 
     typedef struct _TEXTVIEWRECOVERY
     {

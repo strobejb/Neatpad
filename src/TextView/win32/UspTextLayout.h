@@ -11,6 +11,8 @@
 #include "../TextLayout.h"
 #include "UspLib/usplib.h"
 
+class TextViewWin32;
+
 //
 //	UspTextLayout - a line laid out by Uniscribe, through UspLib's USPDATA
 //
@@ -18,7 +20,7 @@ class UspTextLayout : public TextLayout
 {
   public:
     // Lines are laid out for hwnd, in fonts from the list
-    UspTextLayout(HWND hwnd, USPFONT *fonts);
+    explicit UspTextLayout(TextViewWin32 &host);
     ~UspTextLayout() override;
 
     bool Analyze(const tchar_t *text, int length, TextRun *runs, int tabWidth) override;
@@ -44,9 +46,8 @@ class UspTextLayout : public TextLayout
   private:
     const SCRIPT_LOGATTR *LogAttr(int offset);
 
-    HWND     m_hWnd;
-    USPFONT *m_fonts;
-    USPDATA *m_uspData;
+    TextViewWin32 &m_host;
+    USPDATA       *m_uspData;
 };
 
 #endif

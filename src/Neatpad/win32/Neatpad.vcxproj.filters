@@ -64,6 +64,9 @@
     <ResourceCompile Include="resource.rc">
       <Filter>Source Files</Filter>
     </ResourceCompile>
+    <ResourceCompile Include="syntax.rc">
+      <Filter>Source Files</Filter>
+    </ResourceCompile>
   </ItemGroup>
   <ItemGroup>
     <Image Include="bitmap1.bmp">

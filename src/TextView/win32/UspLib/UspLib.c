@@ -497,7 +497,10 @@ static BOOL GlyphRunHasMissingGlyphs(USPFONT *uspFont, HDC hdc, WORD *glyphList,
 
 	for(i = 0; i < glyphCount; i++)
 	{
-		if(glyphList[i] == fontProps.wgDefault || glyphList[i] == fontProps.wgInvalid)
+		// Some fonts, including Courier New, use their space glyph for wgInvalid.
+		// A blank glyph alone is ambiguous and must not cause font substitution.
+		if(glyphList[i] != fontProps.wgBlank &&
+		   (glyphList[i] == fontProps.wgDefault || glyphList[i] == fontProps.wgInvalid))
 			return TRUE;
 	}
 

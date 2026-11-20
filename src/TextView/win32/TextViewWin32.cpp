@@ -112,6 +112,7 @@ TextViewWin32::~TextViewWin32()
 
     for (int i = 0; i < m_nNumFonts; i++)
     {
+        ClearStyledFonts(i);
         UspFreeFont(&m_fonts[i]);
     }
 
@@ -165,10 +166,71 @@ void TextViewWin32::SetFont(int idx, HFONT hFont)
     HDC hdc = GetDC(m_hWnd);
 
     // Initialize the font for USPLIB
+    ClearStyledFonts(idx);
     UspFreeFont(&m_fonts[idx]);
     UspInitFont(&m_fonts[idx], hdc, hFont);
 
     ReleaseDC(m_hWnd, hdc);
+}
+
+//
+// Each font slot has up to three variants for syntax runs. Create them only
+// when used, keeping the primary font's baseline and fallback faces.
+//
+int TextViewWin32::StyledFont(int idx, bool bold, bool italic, HDC hdc)
+{
+    if (!bold && !italic)
+        return idx;
+
+    int      style  = (bold ? 1 : 0) + (italic ? 2 : 0);
+    int      styled = idx + style * MAX_FONTS;
+    USPFONT &font   = m_fonts[styled];
+    USPFONT &base   = m_fonts[idx];
+
+    if (font.hFont)
+        return styled;
+
+    LOGFONT description;
+
+    if (!GetObject(base.hFont, sizeof(description), &description))
+        return idx;
+
+    if (bold && description.lfWeight < FW_BOLD)
+        description.lfWeight = FW_BOLD;
+
+    if (italic)
+        description.lfItalic = TRUE;
+
+    HFONT handle = CreateFontIndirect(&description);
+
+    if (!handle)
+        return idx;
+
+    UspInitFont(&font, hdc, handle);
+    font.yoffset = base.yoffset + base.tm.tmAscent - font.tm.tmAscent;
+
+    if (const USPFONT_FALLBACKS *fallbacks = base.fallbacks)
+    {
+        for (int i = 0; i < fallbacks->fallbackCount; ++i)
+            UspAddFontFallback(&font, hdc, fallbacks->fallback[i].hFont);
+    }
+
+    return styled;
+}
+
+void TextViewWin32::ClearStyledFonts(int idx)
+{
+    for (int style = 1; style < FONT_STYLES; ++style)
+    {
+        USPFONT &font = m_fonts[idx + style * MAX_FONTS];
+
+        if (font.hFont)
+        {
+            UspFreeFont(&font);
+            DeleteObject(font.hFont);
+            font.hFont = 0;
+        }
+    }
 }
 
 //
@@ -206,6 +268,7 @@ LONG TextViewWin32::AddFontFallback(int slot, HFONT hFont)
 
     if (result)
     {
+        ClearStyledFonts(slot);
         m_pView->FontsChanged();
     }
 
@@ -220,6 +283,7 @@ LONG TextViewWin32::ClearFontFallbacks(int slot)
     }
 
     UspClearFontFallbacks(&m_fonts[slot]);
+    ClearStyledFonts(slot);
     m_pView->FontsChanged();
 
     return TRUE;
@@ -444,7 +508,7 @@ uint32_t TextViewWin32::SystemColour(int index)
 
 TextLayout *TextViewWin32::CreateLayout()
 {
-    return new UspTextLayout(m_hWnd, m_fonts);
+    return new UspTextLayout(*this);
 }
 
 bool TextViewWin32::ReadClipboard(const std::function<void(const tchar_t *text, size_t length)> &use)

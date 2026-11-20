@@ -1,17 +1,10 @@
 // Copyright (c) 2004-2026 James Brown, Catch22 Solutions
 // SPDX-License-Identifier: MIT
 
-//
-//	Neatpad
-//	OptionsFont.c
-//
-//	www.catch22.net
-//
+// Neatpad's Appearance page.
 
-#define _CRT_SECURE_NO_DEPRECATE
-#define _CRT_NON_CONFORMING_SWPRINTFS
-#define _WIN32_WINNT 0x501
 #define STRICT
+#define WIN32_LEAN_AND_MEAN
 
 #include <windows.h>
 #include <tchar.h>
@@ -21,961 +14,409 @@
 #include "../../TextView/TextView.h"
 #include "resource.h"
 
+#define FONT_COMBO_BOLD_FONT _T("Neatpad.FontComboBoldFont")
+#define FONT_COMBO_TYPE_ICON _T("Neatpad.FontComboTypeIcon")
+#define PREVIEW_FONT _T("Neatpad.PreviewFont")
+#define WM_UPDATE_PREVIEW_FONT (WM_APP + 1)
 
-#include <uxtheme.h>
-#include <vssym32.h>
-
-COLORREF LightenRGB(COLORREF rgbColor, int amt);
-
-#define MSG_UPDATE_PREVIEW (WM_USER+1)
-
-static HFONT g_hBoldFont;
-static HFONT g_hNormalFont;
-static HICON g_hIcon2;			// TrueType icon
-static HICON g_hIcon3;			// OpenType icon
-static int	 g_nFontHeight;
-
-static COLORREF g_crPreviewFG;
-static COLORREF g_crPreviewBG;
-static COLORREF g_rgbTempColourList[TXC_MAX_COLOURS];
-static COLORREF g_rgbTempCustColours[16];
-
-COLORREF g_rgbAutoColourList[TXC_MAX_COLOURS] = 
+enum
 {
-	SYSCOL(COLOR_WINDOWTEXT),							// foreground
-	SYSCOL(COLOR_WINDOW),								// background
-	SYSCOL(COLOR_HIGHLIGHTTEXT),						// selected text
-	SYSCOL(COLOR_HIGHLIGHT),							// selection
-	SYSCOL(COLOR_WINDOWTEXT),							// inactive selected text
-	SYSCOL(COLOR_3DFACE),								// inactive selection
-	SYSCOL(COLOR_3DFACE),								// selection margin#1
-	SYSCOL(COLOR_3DHIGHLIGHT),							// selection margin#2
-	MIXED_SYSCOL(COLOR_3DSHADOW, COLOR_3DDKSHADOW),		// line number text
-	MIXED_SYSCOL2(COLOR_3DFACE, COLOR_WINDOW),			// line number bg
-	SYSCOL(COLOR_WINDOWTEXT),							// long line text
-	MIXED_SYSCOL(COLOR_3DFACE, COLOR_WINDOW),			// long-line background
-	SYSCOL(COLOR_WINDOWTEXT),							// current line text
-	RGB(230,240,255),									// current line background
-	SYSCOL(COLOR_WINDOWTEXT),							// search match text
-	RGB(255,230,128),									// search match background
-    RGB(190, 55, 55),                                    // changed text
-    RGB(88, 132, 164),                                   // changed line outline
-    MIXED_SYSCOL2(COLOR_3DFACE, COLOR_WINDOW),             // changed line fill
+    FONT_ITEM_FIXED_WIDTH = 1,
+    FONT_ITEM_TRUETYPE    = 2,
+    FONT_ICON_SIZE        = 16
 };
 
-
-#ifndef ODS_NOFOCUSRECT
-#define ODS_NOFOCUSRECT     0x0200
-#endif
-
-#define COLORECT_WIDTH  32
-#define COLORECT_OFFSET 4
-
-#define NUM_DEFAULT_COLOURS 17
-
-struct _CUSTCOL
+static void UpdateStyleControl(HWND hwnd, LONG style)
 {
-	COLORREF cr;
-	TCHAR *szName;
+    LRESULT palette = SendDlgItemMessage(hwnd, IDC_PALETTE, CB_GETCURSEL, 0, 0);
+    BOOL flexible   = palette == PALETTE_ADWAITA || palette == PALETTE_SOLARIZED;
 
-} CUSTCOL[NUM_DEFAULT_COLOURS] = 
-{
-	{ RGB(255,255,255),	_T("Automatic") },
-	{ RGB(0,0,0),		_T("Black") },
-	{ RGB(255,255,255),	_T("White") },
-	{ RGB(128, 0, 0),	_T("Maroon") },
-	{ RGB(0, 128,0),	_T("Dark Green") },
-	{ RGB(128,128,0),	_T("Olive") },
-	{ RGB(0,0,128),		_T("Dark Blue") },
-	{ RGB(128,0,128),	_T("Purple") },
-	{ RGB(0,128,128),	_T("Aquamarine") },
-	{ RGB(196,196,196),	_T("Light Grey") },
-	{ RGB(128,128,128),	_T("Dark Grey") },
-	{ RGB(255,0,0),		_T("Red") },
-	{ RGB(0,255,0),		_T("Green") },
-	{ RGB(255,255,0),	_T("Yellow") },
-	{ RGB(0,0,255),		_T("Blue") },
-	{ RGB(255,0,255),	_T("Magenta") },
-	{ RGB(0,255,255),	_T("Cyan") },
-//	{ RGB(255,255,255),	"Custom..." },
-};
-
-//
-//	Convert from logical-units to point-sizes
-//
-int LogicalToPoints(int nLogicalSize)
-{
-	HDC hdc      = GetDC(0);
-	int size     = MulDiv(nLogicalSize, 72, GetDeviceCaps(hdc, LOGPIXELSY));
-
-	ReleaseDC(0, hdc);
-
-	return size;
+    SendDlgItemMessage(hwnd, IDC_APPEARANCESTYLE, CB_SETCURSEL, flexible ? style : -1, 0);
+    EnableWindow(GetDlgItem(hwnd, IDC_APPEARANCESTYLE), flexible);
 }
 
-DWORD GetCurrentComboData(HWND hwnd, UINT uCtrl)
+static int CALLBACK AddFontFamily(const LOGFONT *font, const TEXTMETRIC *metrics, DWORD type, LPARAM data)
 {
-	int idx = (int)SendDlgItemMessage(hwnd, uCtrl, CB_GETCURSEL, 0, 0);
-	return    (DWORD)SendDlgItemMessage(hwnd, uCtrl, CB_GETITEMDATA, idx == -1 ? 0 : idx, 0);
+    HWND combo = (HWND)data;
+
+    if (font->lfFaceName[0] != _T('@') &&
+        SendMessage(combo, CB_FINDSTRINGEXACT, -1, (LPARAM)font->lfFaceName) == CB_ERR)
+    {
+        LRESULT item  = SendMessage(combo, CB_ADDSTRING, 0, (LPARAM)font->lfFaceName);
+        // In TEXTMETRIC this flag is set for variable-pitch fonts.
+        LPARAM  flags = (metrics->tmPitchAndFamily & TMPF_FIXED_PITCH) ? 0 : FONT_ITEM_FIXED_WIDTH;
+
+        if ((type & TRUETYPE_FONTTYPE) || font->lfOutPrecision == OUT_STROKE_PRECIS)
+            flags |= FONT_ITEM_TRUETYPE;
+
+        if (item >= 0)
+            SendMessage(combo, CB_SETITEMDATA, (WPARAM)item, flags);
+    }
+
+    return 1;
 }
 
-DWORD GetCurrentListData(HWND hwnd, UINT uCtrl)
+static void InitFontDrawing(HWND hwnd, HWND combo, HDC dc)
 {
-	int idx = (int)SendDlgItemMessage(hwnd, uCtrl, LB_GETCURSEL, 0, 0);
-	return    (DWORD)SendDlgItemMessage(hwnd, uCtrl, LB_GETITEMDATA, idx == -1 ? 0 : idx, 0);
+    HFONT   normal = (HFONT)SendMessage(hwnd, WM_GETFONT, 0, 0);
+    HICON   icon   = (HICON)LoadImage(GetModuleHandle(0), MAKEINTRESOURCE(IDI_ICON2), IMAGE_ICON,
+                                    FONT_ICON_SIZE, FONT_ICON_SIZE, LR_SHARED);
+    LOGFONT font;
+    int     height = FONT_ICON_SIZE;
+
+    if (icon)
+        SetProp(hwnd, FONT_COMBO_TYPE_ICON, icon);
+
+    if (normal && GetObject(normal, sizeof(font), &font))
+    {
+        HFONT bold;
+
+        font.lfWeight = FW_BOLD;
+        bold = CreateFontIndirect(&font);
+        if (bold && !SetProp(hwnd, FONT_COMBO_BOLD_FONT, bold))
+            DeleteObject(bold);
+    }
+
+    if (dc)
+    {
+        HGDIOBJ    previous = normal ? SelectObject(dc, normal) : 0;
+        TEXTMETRIC metrics;
+
+        if (GetTextMetrics(dc, &metrics))
+            height = max(height, metrics.tmHeight);
+        if (previous)
+            SelectObject(dc, previous);
+    }
+
+    // WM_MEASUREITEM arrives before the dialog font is available.
+    SendMessage(combo, CB_SETITEMHEIGHT, (WPARAM)-1, height);
+    SendMessage(combo, CB_SETITEMHEIGHT, 0, height);
 }
 
-DWORD AddComboStringWithData(HWND hwnd, UINT uCtrl, TCHAR *szText, DWORD data)
+static void DrawFontItem(HWND hwnd, const DRAWITEMSTRUCT *item)
 {
-	int idx = (int)SendDlgItemMessage(hwnd, uCtrl, CB_ADDSTRING, 0, (LPARAM)szText);
-	return    (DWORD)SendDlgItemMessage(hwnd, uCtrl, CB_SETITEMDATA, idx, data);
+    BOOL       disabled = (item->itemState & ODS_DISABLED) != 0;
+    BOOL       selected = (item->itemState & ODS_SELECTED) != 0;
+    BOOL       focus    = !(item->itemState & ODS_NOFOCUSRECT);
+    int        textRole = selected ? COLOR_HIGHLIGHTTEXT : COLOR_WINDOWTEXT;
+    int        fillRole = selected ? COLOR_HIGHLIGHT : COLOR_WINDOW;
+    HFONT      font     = 0;
+    HGDIOBJ    previous;
+    COLORREF   foreground, background;
+    TEXTMETRIC metrics  = {0};
+    TCHAR      face[LF_FACESIZE] = {0};
+
+    if (item->itemAction == ODA_FOCUS)
+    {
+        if (focus)
+            DrawFocusRect(item->hDC, &item->rcItem);
+        return;
+    }
+
+    if (item->itemID != (UINT)-1)
+        SendMessage(item->hwndItem, CB_GETLBTEXT, item->itemID, (LPARAM)face);
+
+    if (item->itemData & FONT_ITEM_FIXED_WIDTH)
+        font = (HFONT)GetProp(hwnd, FONT_COMBO_BOLD_FONT);
+    if (!font)
+        font = (HFONT)SendMessage(hwnd, WM_GETFONT, 0, 0);
+
+    previous   = font ? SelectObject(item->hDC, font) : 0;
+    foreground = SetTextColor(item->hDC, GetSysColor(disabled ? COLOR_3DSHADOW : textRole));
+    background = SetBkColor(item->hDC, GetSysColor(disabled ? COLOR_3DFACE : fillRole));
+    GetTextMetrics(item->hDC, &metrics);
+
+    int height = item->rcItem.bottom - item->rcItem.top;
+    int top    = item->rcItem.top + (height - metrics.tmHeight) / 2;
+
+    ExtTextOut(item->hDC, item->rcItem.left + FONT_ICON_SIZE + 4, top, ETO_CLIPPED | ETO_OPAQUE,
+               &item->rcItem, face, (UINT)lstrlen(face), 0);
+
+    if (item->itemID != (UINT)-1 && (item->itemData & FONT_ITEM_TRUETYPE))
+    {
+        HICON icon = (HICON)GetProp(hwnd, FONT_COMBO_TYPE_ICON);
+
+        if (icon)
+            DrawIconEx(item->hDC, item->rcItem.left + 2, item->rcItem.top + (height - FONT_ICON_SIZE) / 2,
+                       icon, FONT_ICON_SIZE, FONT_ICON_SIZE, 0, 0, DI_NORMAL);
+    }
+
+    SetTextColor(item->hDC, foreground);
+    SetBkColor(item->hDC, background);
+    if (previous)
+        SelectObject(item->hDC, previous);
+
+    if (focus && (item->itemState & ODS_FOCUS))
+        DrawFocusRect(item->hDC, &item->rcItem);
 }
 
-//
-//	Font-enumeration callback
-//
-int CALLBACK EnumFontNames(ENUMLOGFONTEX *lpelfe, NEWTEXTMETRICEX *lpntme, DWORD FontType, LPARAM lParam)
+static void InitFontControls(HWND hwnd, const OPTIONS *options)
 {
-	HWND hwndCombo = (HWND)lParam;
-	TCHAR *pszName  = lpelfe->elfLogFont.lfFaceName;
+    static const UINT sizes[] = {8, 9, 10, 11, 12, 14, 16, 18, 20, 22, 24, 26, 28, 36, 48, 72};
+    const TCHAR      *face   = options->szFontName[0] ? options->szFontName : DEFAULT_EDITOR_FONT;
+    HWND              combo  = GetDlgItem(hwnd, IDC_FONTLIST);
+    HDC               dc     = GetDC(combo);
+    LOGFONT           font   = {0};
+    LRESULT           selected;
+    LRESULT           sizeIndex = CB_ERR;
+
+    InitFontDrawing(hwnd, combo, dc);
+    if (dc)
+    {
+        font.lfCharSet = DEFAULT_CHARSET;
+        EnumFontFamiliesEx(dc, &font, AddFontFamily, (LPARAM)combo, 0);
+        ReleaseDC(combo, dc);
+    }
+
+    selected = SendMessage(combo, CB_FINDSTRINGEXACT, -1, (LPARAM)face);
+    // Keep a saved face selectable even if it is missing or was chosen in an older build.
+    if (selected == CB_ERR)
+        selected = SendMessage(combo, CB_ADDSTRING, 0, (LPARAM)face);
+    SendMessage(combo, CB_SETCURSEL, (WPARAM)selected, 0);
+
+    for (UINT i = 0; i < ARRAYSIZE(sizes); ++i)
+    {
+        TCHAR   size[4];
+        LRESULT item;
+
+        wsprintf(size, _T("%u"), sizes[i]);
+        item = SendDlgItemMessage(hwnd, IDC_SIZELIST, CB_ADDSTRING, 0, (LPARAM)size);
+        if (sizes[i] == (UINT)options->nFontSize)
+            sizeIndex = item;
+    }
 
-		if(pszName[0] == '@')
-			return 1;
-	
-	// make sure font doesn't already exist in our list
-	if(SendMessage(hwndCombo, CB_FINDSTRING, 0, (LPARAM)pszName) == CB_ERR)
-	{
-		int		idx;
-		BOOL	fFixed;
-		int		fTrueType;		// 0 = normal, 1 = TrueType, 2 = OpenType
-
-		// add the font
-		idx = (int)SendMessage(hwndCombo, CB_ADDSTRING, 0, (LPARAM)pszName);
-
-		// record the font's attributes (Fixedwidth and Truetype)
-		fFixed		= (lpelfe->elfLogFont.lfPitchAndFamily & FIXED_PITCH) ? TRUE : FALSE;
-		fTrueType	= (lpelfe->elfLogFont.lfOutPrecision == OUT_STROKE_PRECIS) ? TRUE : FALSE;
-		fTrueType	= (lpntme->ntmTm.ntmFlags & NTM_TT_OPENTYPE) ? 2 : fTrueType;
-			
-		// store this information in the list-item's userdata area
-		SendMessage(hwndCombo, CB_SETITEMDATA, idx, MAKEWPARAM(fFixed, fTrueType));
-	}
-
-	return 1;
-}
-
-//
-//	Initialize the font-list by enumeration all system fonts
-//
-void FillFontComboList(HWND hwndCombo)
-{
-	HDC		hdc = GetDC(hwndCombo);
-	LOGFONT lf;
-	int		idx;
-
-	SendMessage(hwndCombo, WM_SETFONT, (WPARAM)g_hNormalFont, 0);
-
-	lf.lfCharSet			= ANSI_CHARSET;	// DEFAULT_CHARSET;
-	lf.lfFaceName[0]		= '\0';			// all fonts
-	lf.lfPitchAndFamily		= 0;
-
-	// store the list of fonts in the combo
-	EnumFontFamiliesEx(hdc, &lf, (FONTENUMPROC)EnumFontNames, (LPARAM)hwndCombo, 0);
-
-	ReleaseDC(hwndCombo, hdc);
-
-	// select current font in list
-	idx = (int)SendMessage(hwndCombo, CB_FINDSTRING, 0, (LPARAM)g_szFontName);
-	SendMessage(hwndCombo, CB_SETCURSEL, idx, 0);
-}
-
-/*
-//
-//	Could be used to fill a ListView with a list
-//	of file-types and their associated icons
-//
-void FillFileTypeList(HWND hwnd)
-{
-	LVITEM lvi = { LVIF_TEXT|LVIF_IMAGE };
-	SHFILEINFO shfi = { 0 };
-	HIMAGELIST hImgList;
-	int i;
-
-	char *lookup[] = 
-	{
-		".asm", ".c", ".cpp", ".cs", ".js", 0
-	};
-
-	for(i = 0; lookup[i]; i++)
-	{
-		ZeroMemory(&shfi, sizeof(shfi));
-		hImgList = (HIMAGELIST)SHGetFileInfo(lookup[i], FILE_ATTRIBUTE_NORMAL, &shfi, sizeof(shfi),  
-			SHGFI_TYPENAME|SHGFI_ICON |SHGFI_USEFILEATTRIBUTES|SHGFI_SMALLICON|SHGFI_SYSICONINDEX);
-
-		ListView_SetImageList(hwnd, hImgList, LVSIL_SMALL);
-
-		lvi.iItem		= 0;
-		lvi.iSubItem	= 0;
-		lvi.pszText		= shfi.szTypeName;//lookup[i];
-		lvi.iImage		= shfi.iIcon;
-	
-		ListView_InsertItem(hwnd, &lvi);
-	}
-}*/
-
-void SetComboItemHeight(HWND hwndCombo, int nMinHeight)
-{
-	TEXTMETRIC	tm;
-	HDC			hdc	 = GetDC(hwndCombo);
-	HANDLE		hold = SelectObject(hdc, g_hNormalFont);
-	
-	// item height must fit the font+smallicon height
-	GetTextMetrics(hdc, &tm);
-	nMinHeight = max(tm.tmHeight, nMinHeight);
-
-	SelectObject(hdc, hold);
-	ReleaseDC(hwndCombo, hdc);
-
-	SendMessage(hwndCombo, CB_SETITEMHEIGHT, -1, nMinHeight);
-	SendMessage(hwndCombo, CB_SETITEMHEIGHT, 0, nMinHeight);
-}
-
-//
-//	Draw a colour rectangle with border
-//
-void PaintFrameRect(HDC hdc, RECT *rect, COLORREF border, COLORREF fill)
-{
-	HBRUSH   hbrFill	= CreateSolidBrush(fill);
-	HBRUSH   hbrBorder	= CreateSolidBrush(border);
-
-	FrameRect(hdc, rect, hbrBorder);
-	InflateRect(rect, -1, -1);
-	FillRect(hdc, rect,  hbrFill);
-	InflateRect(rect, 1, 1);
-
-	DeleteObject(hbrFill);
-	DeleteObject(hbrBorder);
-}
-
-void DrawItem_DefaultColours(DRAWITEMSTRUCT *dis)
-{
-	if(dis->itemState & ODS_DISABLED)
-	{
-		SetTextColor(dis->hDC, GetSysColor(COLOR_3DSHADOW));
-		SetBkColor(dis->hDC,   GetSysColor(COLOR_3DFACE));
-	}
-	else
-	{
-		if((dis->itemState & ODS_SELECTED))
-		{
-			SetTextColor(dis->hDC,  GetSysColor(COLOR_HIGHLIGHTTEXT));
-			SetBkColor(dis->hDC,	GetSysColor(COLOR_HIGHLIGHT));
-		}
-		else
-		{
-			SetTextColor(dis->hDC, GetSysColor(COLOR_WINDOWTEXT));
-			SetBkColor(dis->hDC,   GetSysColor(COLOR_WINDOW));
-		}
-	}
-}
-
-//
-//	Fontlist owner-draw 
-//
-BOOL FontCombo_DrawItem(HWND hwnd, DRAWITEMSTRUCT *dis)
-{
-	TCHAR		szText[100];
-	
-	BOOL		fFixed		= LOWORD(dis->itemData);
-	BOOL		fTrueType	= HIWORD(dis->itemData);
-
-	TEXTMETRIC	tm;
-	int			xpos, ypos;
-	HANDLE		hOldFont;
-
-	if(dis->itemAction & ODA_FOCUS && !(dis->itemState & ODS_NOFOCUSRECT))
-	{
-		DrawFocusRect(dis->hDC, &dis->rcItem);
-		return TRUE;
-	}
-
-	/*{
-		HTHEME hTheme = 	OpenThemeData(hwnd, L"combobox");
-		RECT rc;
-		HDC hdc=GetDC(GetParent(hwnd));
-		CopyRect(&rc, &dis->rcItem);
-		InflateRect(&rc, 3, 3);
-		//GetClientRect(hwnd, &rc);
-		//rc.bottom = rc.top + 22;
-
-		//DrawThemeBackground(
-		//	hTheme, 
-		//	dis->hDC, 
-		//	4,//CP_DROPDOWNBUTTON, 
-		//	CBXS_HOT,//CBXS_NORMAL, 
-		//	&rc, 
-		//	&rc);
-
-		CloseThemeData(hTheme);
-		ReleaseDC(GetParent(hwnd),hdc);
-		return TRUE;
-	}*/
-
-	//
-	//	Get the item text
-	//
-	if(dis->itemID == -1)
-		SendMessage(dis->hwndItem, WM_GETTEXT, 0, (LPARAM)szText);
-	else
-		SendMessage(dis->hwndItem, CB_GETLBTEXT, dis->itemID, (LPARAM)szText);
-	
-	//
-	//	Set text colour and background based on current state
-	//
-	DrawItem_DefaultColours(dis);
-
-	// set the font: BOLD for fixed-width, NORMAL for 'normal'
-	hOldFont = SelectObject(dis->hDC, fFixed ? g_hBoldFont : g_hNormalFont);
-	GetTextMetrics(dis->hDC, &tm);
-
-	ypos = dis->rcItem.top  + (dis->rcItem.bottom-dis->rcItem.top-tm.tmHeight)/2;
-	xpos = dis->rcItem.left + 20;
-	
-	// draw the text
-	ExtTextOut(dis->hDC, xpos, ypos,
-		ETO_CLIPPED|ETO_OPAQUE, &dis->rcItem, szText, (UINT)_tcslen(szText), 0);
-
-	// draw a 'TT' icon if the font is TRUETYPE
-	if(fTrueType)
-		DrawIconEx(dis->hDC, dis->rcItem.left+2, dis->rcItem.top, g_hIcon2,16, 16, 0, 0, DI_NORMAL);
-	//else if(fTrueType == 2)
-	//	DrawIconEx(dis->hDC, dis->rcItem.left+2, dis->rcItem.top, g_hIcon3,16, 16, 0, 0, DI_NORMAL);
-
-	SelectObject(dis->hDC, hOldFont);
-
-	// draw the focus rectangle
-	if((dis->itemState & ODS_FOCUS) && !(dis->itemState & ODS_NOFOCUSRECT))
-	{
-		DrawFocusRect(dis->hDC, &dis->rcItem);
-	}
-
-	return TRUE;
-}
-
-//
-//	Combobox must have the CBS_HASSTRINGS style set!!
-//	
-BOOL ColourCombo_DrawItem(HWND hwnd, UINT uCtrlId, DRAWITEMSTRUCT *dis, BOOL fSelectImage)
-{
-	RECT		rect	= dis->rcItem;
-	int			boxsize = (dis->rcItem.bottom - dis->rcItem.top) - 4;			
-	int			xpos;
-	int			ypos;
-	TEXTMETRIC	tm;
-	TCHAR		szText[80];
-	HANDLE		hOldFont;
-	
-	if(!fSelectImage)
-		rect.left += boxsize + 4;
-
-	if(dis->itemAction & ODA_FOCUS && !(dis->itemState & ODS_NOFOCUSRECT))
-	{
-		DrawFocusRect(dis->hDC, &rect);
-		return TRUE;
-	}
-	
-	//
-	//	Get the item text
-	//
-	if(dis->itemID == -1)
-		SendMessage(dis->hwndItem, WM_GETTEXT, 0, (LPARAM)szText);
-	else
-		SendMessage(dis->hwndItem, CB_GETLBTEXT, dis->itemID, (LPARAM)szText);
-	
-	//
-	//	Set text colour and background based on current state
-	//
-	DrawItem_DefaultColours(dis);
-	
-	//
-	//	Draw the text (centered vertically)
-	//	
-	hOldFont = SelectObject(dis->hDC, g_hNormalFont);
-
-	GetTextMetrics(dis->hDC, &tm);
-	ypos = dis->rcItem.top  + (dis->rcItem.bottom - dis->rcItem.top - tm.tmHeight) / 2;
-	xpos = dis->rcItem.left + boxsize + 4 + 4;
-	
-	ExtTextOut(dis->hDC, xpos, ypos, 
-		ETO_CLIPPED|ETO_OPAQUE, &rect, szText, lstrlen(szText), 0);
-	
-	if((dis->itemState & ODS_FOCUS) && !(dis->itemState & ODS_NOFOCUSRECT))
-	{
-		DrawFocusRect(dis->hDC, &rect);
-	}
-	
-	// 
-	//	Paint the colour rectangle
-	//	
-	rect = dis->rcItem;
-	InflateRect(&rect, -2, -2);
-	rect.right = rect.left + boxsize;
-	
-	if(dis->itemState & ODS_DISABLED)
-		PaintFrameRect(dis->hDC, &rect, GetSysColor(COLOR_3DSHADOW), GetSysColor(COLOR_3DFACE));
-	else
-		PaintFrameRect(dis->hDC, &rect, RGB(0,0,0), REALIZE_SYSCOL((COLORREF)dis->itemData));
-	
-	
-	return TRUE;
-}
-
-int CALLBACK EnumFontSizes(ENUMLOGFONTEX *lpelfe, NEWTEXTMETRICEX *lpntme, DWORD FontType, LPARAM lParam)
-{
-	static int ttsizes[] = { 8, 9, 10, 11, 12, 14, 16, 18, 20, 22, 24, 26, 28, 36, 48, 72 };
-	TCHAR ach[100];
-
-	BOOL fTrueType = (lpelfe->elfLogFont.lfOutPrecision == OUT_STROKE_PRECIS) ? TRUE : FALSE;
-
-	HWND hwndCombo = (HWND)lParam;
-	int  i, count, idx;
-
-	if(fTrueType)
-	{
-		for(i = 0; i < (sizeof(ttsizes) / sizeof(ttsizes[0])); i++)
-		{
-			_stprintf(ach, _T("%d"), ttsizes[i]);
-			idx = (int)SendMessage(hwndCombo, CB_ADDSTRING, 0, (LPARAM)ach);
-			SendMessage(hwndCombo, CB_SETITEMDATA, idx, ttsizes[i]);
-			//nFontSizes[i] = ttsizes[i];
-		}
-		//nNumFontSizes = i;
-		return 0;
-	}
-	else
-	{
-		int size = LogicalToPoints(lpntme->ntmTm.tmHeight);
-		_stprintf(ach, _T("%d"), size);
-
-		count = (int)SendMessage(hwndCombo, CB_GETCOUNT, 0, 0);
-
-		for(i = 0; i < count; i++)
-		{
-			if(SendMessage(hwndCombo, CB_GETITEMDATA, 0, 0) == size)
-				break;
-		}
-		
-		if(i >= count)
-		{
-			idx = (int)SendMessage(hwndCombo, CB_ADDSTRING, 0, (LPARAM)ach);
-			SendMessage(hwndCombo, CB_SETITEMDATA, idx, size);
-		}
-
-		return 1;	
-	}
-
-	return 1;
-}
-
-
-void InitSizeList(HWND hwnd)
-{
-	LOGFONT lf = { 0 };
-	HDC hdc = GetDC(hwnd);
-	
-	// get current font size
-	int cursize = GetDlgItemInt(hwnd, IDC_SIZELIST, 0, 0);
-		
-	int item   = (int)SendDlgItemMessage(hwnd, IDC_FONTLIST, CB_GETCURSEL, 0, 0);
-	int i, count, nearest = 0;
-
-	lf.lfCharSet		= DEFAULT_CHARSET;
-	lf.lfPitchAndFamily = 0;
-	SendDlgItemMessage(hwnd, IDC_FONTLIST, CB_GETLBTEXT, item, (LPARAM)lf.lfFaceName);
-
-	// empty list
-	SendDlgItemMessage(hwnd, IDC_SIZELIST, CB_RESETCONTENT, 0, 0);
-
-	// enumerate font sizes
-	EnumFontFamiliesEx(hdc, &lf, (FONTENUMPROC)EnumFontSizes, (LPARAM)GetDlgItem(hwnd, IDC_SIZELIST), 0);
-
-	// set selection to first item
-	count = (int)SendDlgItemMessage(hwnd, IDC_SIZELIST, CB_GETCOUNT, 0, 0);
-	
-	for(i = 0; i < count; i++)
-	{
-		int n = (int)SendDlgItemMessage(hwnd, IDC_SIZELIST, CB_GETITEMDATA, i, 0);
-
-		if(n <= cursize) 
-			nearest = i;
-	}
-
-	SendDlgItemMessage(hwnd, IDC_SIZELIST, CB_SETCURSEL, nearest, 0);
-
-	ReleaseDC(hwnd, hdc);
-}
-
-static WNDPROC  oldPreviewProc;
-static HFONT	g_hPreviewFont;
-
-LRESULT CALLBACK PreviewWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
-{
-	RECT		rect;
-	PAINTSTRUCT ps;
-	HANDLE		hold;
-
-	switch(msg)
-	{
-	case WM_ERASEBKGND:
-		return 1;
-
-	case WM_PAINT:
-		BeginPaint(hwnd, &ps);
-		
-		GetClientRect(hwnd, &rect);
-
-		FrameRect(ps.hdc, &rect, GetSysColorBrush(COLOR_3DSHADOW));
-		InflateRect(&rect, -1, -1);
-
-		SetTextColor(ps.hdc, g_crPreviewFG);
-		SetBkColor(ps.hdc, g_crPreviewBG);
-
-		ExtTextOut(ps.hdc, 0, 0, ETO_OPAQUE, &rect, 0, 0, 0);
-		hold = SelectObject(ps.hdc, g_hPreviewFont);
-
-		DrawText(ps.hdc, _T("Sample Text"), -1, &rect, DT_SINGLELINE|DT_CENTER|DT_VCENTER);
-		
-		SelectObject(ps.hdc, hold);
-		EndPaint(hwnd, &ps);
-		return 0;
-	}
-
-	return CallWindowProc(oldPreviewProc, hwnd, msg, wParam, lParam);
-}
-
-void AddColourListItem(HWND hwnd, UINT uItem, int fgIdx, int bgIdx, TCHAR *szName)
-{
-	HWND hwndCtrl = GetDlgItem(hwnd, uItem);
-	int idx = (int)SendMessage(hwndCtrl, LB_ADDSTRING, 0, (LPARAM)szName);
-	SendMessage(hwndCtrl, LB_SETITEMDATA, idx, MAKELONG(fgIdx, bgIdx));
-}
-
-void AddColourComboItem(HWND hwnd, UINT uItem, COLORREF col, TCHAR *szName)
-{
-	HWND hwndCtrl = GetDlgItem(hwnd, uItem);
-	int idx = (int)SendMessage(hwndCtrl, CB_ADDSTRING, 0, (LPARAM)szName);
-	SendMessage(hwndCtrl, CB_SETITEMDATA, idx, col);
-}
-
-void UpdatePreviewPane(HWND hwnd)
-{
-	TCHAR szFaceName[200];
-	int idx = (int)SendDlgItemMessage(hwnd, IDC_FONTLIST, CB_GETCURSEL, 0, 0);
-	int size;
-	DWORD data;
-
-	SendDlgItemMessage(hwnd, IDC_FONTLIST, CB_GETLBTEXT, idx, (LPARAM)szFaceName);
-
-	size = GetDlgItemInt(hwnd, IDC_SIZELIST, 0, FALSE);
-
-	if(g_hPreviewFont != 0)
-		DeleteObject(g_hPreviewFont);
-
-    g_hPreviewFont = EasyCreateFont(size, IsDlgButtonChecked(hwnd, IDC_BOLD), DEFAULT_QUALITY, szFaceName);
-
-    idx  = (int)SendDlgItemMessage(hwnd, IDC_ITEMLIST, LB_GETCURSEL, 0, 0);
-	data = (DWORD)SendDlgItemMessage(hwnd, IDC_ITEMLIST, LB_GETITEMDATA, idx, 0);
-
-
-	if((short)LOWORD(data) >= 0)
-		g_crPreviewFG = REALIZE_SYSCOL(g_rgbTempColourList[LOWORD(data)]);
-	else
-		g_crPreviewFG = GetSysColor(COLOR_WINDOWTEXT);
-
-	if((short)HIWORD(data) >= 0)
-		g_crPreviewBG = REALIZE_SYSCOL(g_rgbTempColourList[HIWORD(data)]);
-	else
-		g_crPreviewBG = GetSysColor(COLOR_WINDOW);
-
-	InvalidateRect(GetDlgItem(hwnd, IDC_PREVIEW), 0, TRUE); 
-}
-
-BOOL PickColour(HWND hwndParent, COLORREF *col, COLORREF *custCol)
-{
-	CHOOSECOLOR cc = { sizeof(cc) };
-	COLORREF    custTmp[16];
-
-	memcpy(custTmp, custCol, sizeof(custTmp));
-
-	cc.Flags			= CC_ANYCOLOR|CC_FULLOPEN|CC_SOLIDCOLOR|CC_RGBINIT;
-	cc.hwndOwner		= hwndParent;
-	cc.lpCustColors		= custTmp;
-	cc.rgbResult		= *col;
-
-	if(ChooseColor(&cc))
-	{
-		*col = cc.rgbResult;
-		memcpy(custCol, custTmp, sizeof(custTmp));
-		return TRUE;
-	}
-	else
-	{
-		return FALSE;
-	}
-}
-
-//
-//
-//
-void SelectColorInList(HWND hwnd, UINT uComboIdx, short itemIdx)
-{
-	HWND hwndCombo = GetDlgItem(hwnd, uComboIdx);
-	int  i;
-
-	if(itemIdx == (short)-1)
-	{
-		SendMessage(hwndCombo, CB_SETCURSEL, 0, 0);
-		EnableWindow(hwndCombo, FALSE);
-		EnableWindow(GetWindow(hwndCombo, GW_HWNDNEXT), FALSE);
-		return;
-	}
-	else
-	{
-		EnableWindow(hwndCombo, TRUE);
-		EnableWindow(GetWindow(hwndCombo, GW_HWNDNEXT), TRUE);
-	}
-
-	if(itemIdx < 0 || itemIdx >= TXC_MAX_COLOURS)
-		return;
-
-	// update the Auto item
-	SendMessage(hwndCombo, CB_SETITEMDATA, 0, g_rgbAutoColourList[itemIdx]);
-
-	// remove the custom entry (if any)
-	SendMessage(hwndCombo, CB_DELETESTRING, NUM_DEFAULT_COLOURS, 0);
-
-	// if an "AUTO" colour
-	if((g_rgbTempColourList[itemIdx] & 0x80000000) ||
-		g_rgbTempColourList[itemIdx] == g_rgbAutoColourList[itemIdx])
-	{
-		SendMessage(hwndCombo, CB_SETCURSEL, 0, 0);
-	}
-	// normal colour
-	else
-	{
-		// try to match current colour with a default colour
-		for(i = 1; i < NUM_DEFAULT_COLOURS; i++)
-		{
-			if(g_rgbTempColourList[itemIdx] == CUSTCOL[i].cr)
-			{
-				SendMessage(hwndCombo, CB_SETCURSEL, i, 0);
-				break;
-			}
-		}
-		
-		// if we didn't match the colour, add it as a custom entry
-		if(i == NUM_DEFAULT_COLOURS)
-		{
-			i = (int)SendMessage(hwndCombo, CB_ADDSTRING, 0, (LPARAM)_T("Custom"));
-			SendMessage(hwndCombo, CB_SETITEMDATA, i, g_rgbTempColourList[itemIdx]);
-			SendMessage(hwndCombo, CB_SETCURSEL, i, 0);
-		}
-	}
-}
-
-BOOL InitFontOptionsDlg(HWND hwnd)
-{
-	HWND	hwndPreview;
-	int		i;
-	LOGFONT lf;
-	HFONT   hDlgFont;
-	TCHAR	ach[LF_FACESIZE];
-
-	// make a temporary copy of the current colour settings
-	memcpy(g_rgbTempColourList, g_rgbColourList, sizeof(COLORREF) * TXC_MAX_COLOURS);
-    memcpy(g_rgbTempCustColours, g_rgbCustColours, sizeof(g_rgbTempCustColours));
-
-    //
-	//	Load the TrueType icon for the font-list
-	//
-	g_hIcon2 = LoadImage(GetModuleHandle(0), MAKEINTRESOURCE(IDI_ICON2), IMAGE_ICON, 16, 16, 0);
-	g_hIcon3 = LoadImage(GetModuleHandle(0), MAKEINTRESOURCE(IDI_ICON3), IMAGE_ICON, 16, 16, 0);
-	
-	//
-	//	Create two fonts (normal+bold) based on current dialog's font settings
-	//
-	hDlgFont = (HFONT)SendMessage(hwnd, WM_GETFONT, 0, 0);
-	GetObject(hDlgFont, sizeof(lf), &lf);
-		
-	g_hNormalFont = CreateFontIndirect(&lf);
-	lf.lfWeight   = FW_BOLD;
-	g_hBoldFont   = CreateFontIndirect(&lf);
-
-	//
-	//	Manually set the COMBO item-heights because WM_MEASUREITEM has already
-	//  been sent and we missed it..
-	//
-	SetComboItemHeight(GetDlgItem(hwnd, IDC_FGCOLCOMBO), 14);
-	SetComboItemHeight(GetDlgItem(hwnd, IDC_BGCOLCOMBO), 14);
-	SetComboItemHeight(GetDlgItem(hwnd, IDC_FONTLIST), 16);
-
-    g_hPreviewFont = EasyCreateFont(g_nFontSize, g_fFontBold, DEFAULT_QUALITY, g_szFontName);
-
-    // Create the list of fonts
-	FillFontComboList(GetDlgItem(hwnd, IDC_FONTLIST));
-
-	// Update the font-size-list
-	InitSizeList(hwnd);
-	
-	//
-	//	Subclass the PREVIEW static control so we can custom-draw it
-	//
-	hwndPreview = GetDlgItem(hwnd, IDC_PREVIEW);
-	oldPreviewProc = (WNDPROC)SetWindowLongPtr(hwndPreview, GWLP_WNDPROC, (LONG_PTR)PreviewWndProc);
-	
-//	g_rgbAutoColourList[TXC_LONGLINE]	= MixRGB(GetSysColor(COLOR_3DFACE), GetSysColor(COLOR_WINDOW));
-//	g_rgbAutoColourList[TXC_LINENUMBER]	= MixRGB(GetSysColor(COLOR_3DFACE), GetSysColor(COLOR_WINDOW));
-//	g_rgbAutoColourList[TXC_LINENUMBER] = MixRGB(g_rgbAutoColourList[TXC_LINENUMBER], GetSysColor(COLOR_WINDOW));
-
-	//g_rgbAutoColourList[TXC_LONGLINE]	= MixRGB(GetSysColor(COLOR_3DFACE), GetSysColor(COLOR_WINDOW));
-	//g_rgbAutoColourList[TXC_LINENUMBER]	= MixRGB(GetSysColor(COLOR_3DFACE), GetSysColor(COLOR_WINDOW));
-	//g_rgbAutoColourList[TXC_LINENUMBER] = MixRGB(g_rgbAutoColourList[TXC_LINENUMBER], GetSysColor(COLOR_WINDOW));
-
-	AddColourListItem(hwnd, IDC_LIST1, TXC_FOREGROUND,		TXC_BACKGROUND,   _T("Text"));
-	AddColourListItem(hwnd, IDC_LIST1, TXC_HIGHLIGHTTEXT,	TXC_HIGHLIGHT,    _T("Selected Text"));
-	AddColourListItem(hwnd, IDC_LIST1, TXC_HIGHLIGHTTEXT2,  TXC_HIGHLIGHT2,   _T("Inactive Selection"));
-	AddColourListItem(hwnd, IDC_LIST1, TXC_SELMARGIN1,		TXC_SELMARGIN2,   _T("Left Margin"));
-	AddColourListItem(hwnd, IDC_LIST1, TXC_LINENUMBERTEXT,  TXC_LINENUMBER,   _T("Line Numbers"));
-	AddColourListItem(hwnd, IDC_LIST1, -1,					TXC_LONGLINE,	  _T("Long Lines"));
-	AddColourListItem(hwnd, IDC_LIST1, TXC_CURRENTLINETEXT, TXC_CURRENTLINE,  _T("Current Line"));
-	AddColourListItem(hwnd, IDC_LIST1, TXC_SEARCHMATCHTEXT, TXC_SEARCHMATCH,  _T("Search Matches"));
-    AddColourListItem(hwnd, IDC_LIST1, TXC_CHANGEDTEXT, -1, _T("Changed Text"));
-    AddColourListItem(hwnd, IDC_LIST1, TXC_CHANGEDLINE, TXC_CHANGEDLINEBG, _T("Changed Lines"));
-	
-	SendDlgItemMessage(hwnd, IDC_ITEMLIST, LB_SETCURSEL, 0, 0);
-	PostMessage(hwnd, WM_COMMAND, MAKEWPARAM(IDC_ITEMLIST, LBN_SELCHANGE), (LPARAM)GetDlgItem(hwnd, IDC_ITEMLIST));
-
-	for(i = 0; i < NUM_DEFAULT_COLOURS; i++)
-	{
-		AddColourComboItem(hwnd, IDC_FGCOLCOMBO, CUSTCOL[i].cr, CUSTCOL[i].szName);
-		AddColourComboItem(hwnd, IDC_BGCOLCOMBO, CUSTCOL[i].cr, CUSTCOL[i].szName);
-	}
-	
-	SendDlgItemMessage(hwnd, IDC_FGCOLCOMBO, CB_SETCURSEL, 1, 0);
-	SendDlgItemMessage(hwnd, IDC_BGCOLCOMBO, CB_SETCURSEL, 0, 0);
-
-    SendDlgItemMessage(hwnd, IDC_SPIN1, UDM_SETRANGE32, 0, MAX_LINE_SPACING);
-    SendDlgItemMessage(hwnd, IDC_LINESPACING, EM_LIMITTEXT, 2, 0);
     SendDlgItemMessage(hwnd, IDC_SIZELIST, CB_LIMITTEXT, 3, 0);
+    if (sizeIndex >= 0)
+        SendDlgItemMessage(hwnd, IDC_SIZELIST, CB_SETCURSEL, (WPARAM)sizeIndex, 0);
+    else
+        SetDlgItemInt(hwnd, IDC_SIZELIST, options->nFontSize, FALSE);
 
-    //
-	//	Select
-	//
-	_stprintf(ach, _T("%d"), g_nFontSize);
-
-	SendDlgItemMessage(hwnd, IDC_SIZELIST, CB_SELECTSTRING, -1, (LPARAM)ach);
-	SendDlgItemMessage(hwnd, IDC_FONTLIST, CB_SELECTSTRING, -1, (LPARAM)g_szFontName);
-
-    SetDlgItemInt(hwnd, IDC_LINESPACING, g_nLineSpacing, FALSE);
-
-    CheckDlgButton(hwnd, IDC_BOLD,    g_fFontBold);
-
-	UpdatePreviewPane(hwnd);
-
-	return TRUE;
+    CheckDlgButton(hwnd, IDC_BOLD, options->fFontBold ? BST_CHECKED : BST_UNCHECKED);
 }
 
-//BOOL FontOptions(HWND hwnd, WPARAM wParam, 
-//
-//	Dialogbox procedure for the FONT pane
-//
-INT_PTR CALLBACK FontOptionsDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
+static BOOL ReadEditorFont(HWND hwnd, OPTIONS *options, BOOL reportError)
 {
-	PSHNOTIFY *pshn;
+    BOOL  valid;
+    UINT  size = GetDlgItemInt(hwnd, IDC_SIZELIST, &valid, FALSE);
+    TCHAR face[LF_FACESIZE];
 
-	switch(msg)
-	{
-	case WM_INITDIALOG:
-        SetWindowLongPtr(hwnd, DWLP_USER, ((PROPSHEETPAGE *)lParam)->lParam);
-        CenterWindow(GetParent(hwnd));
-		return InitFontOptionsDlg(hwnd);
+    if (!valid || size < 1 || size > 200)
+    {
+        if (reportError)
+        {
+            MessageBox(hwnd, _T("Enter a font size between 1 and 200 points."), APP_TITLE, MB_OK | MB_ICONWARNING);
+            SetFocus(GetDlgItem(hwnd, IDC_SIZELIST));
+        }
+        return FALSE;
+    }
 
-	case MSG_UPDATE_PREVIEW:
-		UpdatePreviewPane(hwnd);
-		return TRUE;
+    if (!GetDlgItemText(hwnd, IDC_FONTLIST, face, ARRAYSIZE(face)))
+    {
+        if (reportError)
+            SetFocus(GetDlgItem(hwnd, IDC_FONTLIST));
+        return FALSE;
+    }
 
-	case WM_DESTROY:
-		DeleteObject(g_hNormalFont);
-		DeleteObject(g_hBoldFont);
-		DeleteObject(g_hPreviewFont);
-		return TRUE;
+    lstrcpy(options->szFontName, face);
+    options->nFontSize   = size;
+    options->fFontBold   = IsDlgButtonChecked(hwnd, IDC_BOLD) == BST_CHECKED;
+    return TRUE;
+}
 
-	case WM_MEASUREITEM:
-		// can't do anything here because we haven't created
-		// the fonts yet, so send a manual CB_SETITEMHEIGHT instead
-		return FALSE;
+static void PreviewFont(HWND hwnd, const OPTIONS *options)
+{
+    HWND    preview = GetDlgItem(hwnd, IDC_PREVIEW);
+    OPTIONS chosen  = *options;
+    HFONT   font, previous;
 
-	case WM_DRAWITEM:
+    if (!preview || !ReadEditorFont(hwnd, &chosen, FALSE))
+        return;
 
-		if(wParam == IDC_FONTLIST)
-			return FontCombo_DrawItem(hwnd, (DRAWITEMSTRUCT *)lParam);
+    font = CreateEditorFont(chosen.szFontName, chosen.nFontSize, chosen.fFontBold, chosen.fFontItalic, 100);
+    if (!font)
+        return;
 
-		else if(wParam == IDC_FGCOLCOMBO || wParam == IDC_BGCOLCOMBO)
-			return ColourCombo_DrawItem(hwnd, (UINT)wParam, (DRAWITEMSTRUCT *)lParam, FALSE);
+    previous = (HFONT)GetProp(hwnd, PREVIEW_FONT);
+    if (!SetProp(hwnd, PREVIEW_FONT, font))
+    {
+        DeleteObject(font);
+        return;
+    }
 
-		return FALSE;
+    SendMessage(preview, WM_SETFONT, (WPARAM)font, TRUE);
+    if (previous)
+        DeleteObject(previous);
+}
 
-	case WM_NOTIFY:
+static void PreviewPalette(HWND hwnd, const OPTIONS *options)
+{
+    LONG choice = (LONG)SendDlgItemMessage(hwnd, IDC_PALETTE, CB_GETCURSEL, 0, 0);
+    LONG style  = (LONG)SendDlgItemMessage(hwnd, IDC_APPEARANCESTYLE, CB_GETCURSEL, 0, 0);
 
-		pshn = (PSHNOTIFY *)lParam;
+    if (choice != CB_ERR)
+        ApplyEditorPalette(GetDlgItem(hwnd, IDC_PREVIEW), choice, style == CB_ERR ? options->nAppearanceStyle : style);
+}
 
-		if(pshn->hdr.code == NM_CUSTOMDRAW)
-		{
-			if(pshn->hdr.idFrom == IDC_FONTLIST)
-			{
-				return FALSE;
-			}
-			return FALSE;
-		}		
-		else if(pshn->hdr.code == PSN_APPLY)
-		{
-            OPTIONS *options = (OPTIONS *)GetWindowLongPtr(hwnd, DWLP_USER);
-            BOOL     valid;
-            UINT     size = GetDlgItemInt(hwnd, IDC_SIZELIST, &valid, FALSE);
+static void PreviewSpacing(HWND hwnd)
+{
+    BOOL valid;
+    UINT spacing = GetDlgItemInt(hwnd, IDC_LINESPACING, &valid, FALSE);
 
-            if (!valid || size < 1 || size > 200)
-            {
-                MessageBox(hwnd, _T("Enter a font size between 1 and 200."), _T("Font size"), MB_OK | MB_ICONWARNING);
-                SetFocus(GetDlgItem(hwnd, IDC_SIZELIST));
-                SetWindowLongPtr(hwnd, DWLP_MSGRESULT, PSNRET_INVALID_NOCHANGEPAGE);
-                return TRUE;
-            }
+    if (valid && spacing <= MAX_LINE_SPACING)
+        TextView_SetLineSpacing(GetDlgItem(hwnd, IDC_PREVIEW), spacing / 2, (spacing + 1) / 2);
+}
 
+static void InitPreview(HWND hwnd, const OPTIONS *options)
+{
+    static const TCHAR sample[] = _T("// Editor preview\r\n")
+                                  _T("const char *app = \"Neatpad\";\r\n")
+                                  _T("int tab_width = 4;");
+    HWND preview = GetDlgItem(hwnd, IDC_PREVIEW);
+
+    TextView_SetEditMode(preview, MODE_READONLY);
+    TextView_SetStyle(preview, TXS_HIGHLIGHTCHANGES | TXS_CHANGEMARKERS, 0);
+    TextView_SetSyntaxResource(preview, IDR_SYNTAX_C);
+    SendMessage(preview, EM_REPLACESEL, FALSE, (LPARAM)sample);
+    SendMessage(preview, EM_SETSEL, 0, 0);
+    SendMessage(preview, EM_SCROLLCARET, 0, 0);
+
+    PreviewFont(hwnd, options);
+    PreviewPalette(hwnd, options);
+    PreviewSpacing(hwnd);
+}
+
+static void InitAppearancePage(HWND hwnd, const OPTIONS *options)
+{
+    SendDlgItemMessage(hwnd, IDC_APPEARANCESTYLE, CB_ADDSTRING, 0, (LPARAM)_T("Follow system"));
+    SendDlgItemMessage(hwnd, IDC_APPEARANCESTYLE, CB_ADDSTRING, 0, (LPARAM)_T("Light"));
+    SendDlgItemMessage(hwnd, IDC_APPEARANCESTYLE, CB_ADDSTRING, 0, (LPARAM)_T("Dark"));
+
+    SendDlgItemMessage(hwnd, IDC_PALETTE, CB_ADDSTRING, 0, (LPARAM)_T("Adwaita"));
+    SendDlgItemMessage(hwnd, IDC_PALETTE, CB_ADDSTRING, 0, (LPARAM)_T("Classic"));
+    SendDlgItemMessage(hwnd, IDC_PALETTE, CB_ADDSTRING, 0, (LPARAM)_T("Solarized"));
+    if (g_fHasCustomPalette)
+        SendDlgItemMessage(hwnd, IDC_PALETTE, CB_ADDSTRING, 0, (LPARAM)_T("Custom"));
+
+    SendDlgItemMessage(hwnd, IDC_PALETTE, CB_SETCURSEL, options->nPalette, 0);
+    UpdateStyleControl(hwnd, options->nAppearanceStyle);
+
+    InitFontControls(hwnd, options);
+
+    SetDlgItemInt(hwnd, IDC_LINESPACING, options->nLineSpacing, FALSE);
+    SendDlgItemMessage(hwnd, IDC_LINESPACING, EM_LIMITTEXT, 2, 0);
+    SendDlgItemMessage(hwnd, IDC_SPIN1, UDM_SETRANGE32, 0, MAX_LINE_SPACING);
+    InitPreview(hwnd, options);
+}
+
+INT_PTR CALLBACK AppearanceOptionsDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
+{
+    OPTIONS *options = (OPTIONS *)GetWindowLongPtr(hwnd, DWLP_USER);
+
+    switch (msg)
+    {
+    case WM_INITDIALOG:
+        options = (OPTIONS *)((PROPSHEETPAGE *)lParam)->lParam;
+        SetWindowLongPtr(hwnd, DWLP_USER, (LONG_PTR)options);
+        InitAppearancePage(hwnd, options);
+        return TRUE;
+
+    case WM_DRAWITEM:
+        if (wParam == IDC_FONTLIST)
+        {
+            DrawFontItem(hwnd, (const DRAWITEMSTRUCT *)lParam);
+            SetWindowLongPtr(hwnd, DWLP_MSGRESULT, TRUE);
+            return TRUE;
+        }
+        break;
+
+    case WM_NCDESTROY:
+    {
+        HFONT bold    = (HFONT)RemoveProp(hwnd, FONT_COMBO_BOLD_FONT);
+        HFONT preview = (HFONT)RemoveProp(hwnd, PREVIEW_FONT);
+
+        if (bold)
+            DeleteObject(bold);
+        if (preview)
+            DeleteObject(preview);
+        RemoveProp(hwnd, FONT_COMBO_TYPE_ICON);
+        break;
+    }
+
+    case WM_UPDATE_PREVIEW_FONT:
+        PreviewFont(hwnd, options);
+        return TRUE;
+
+    case WM_COMMAND:
+    {
+        WORD control = LOWORD(wParam);
+        WORD event   = HIWORD(wParam);
+
+        if (control == IDC_PALETTE && event == CBN_SELCHANGE)
+        {
+            LRESULT style = SendDlgItemMessage(hwnd, IDC_APPEARANCESTYLE, CB_GETCURSEL, 0, 0);
+
+            if (style != CB_ERR)
+                options->nAppearanceStyle = (LONG)style;
+
+            UpdateStyleControl(hwnd, options->nAppearanceStyle);
+            PreviewPalette(hwnd, options);
+            return TRUE;
+        }
+        if (control == IDC_APPEARANCESTYLE && event == CBN_SELCHANGE)
+        {
+            PreviewPalette(hwnd, options);
+            return TRUE;
+        }
+        if ((control == IDC_FONTLIST && event == CBN_SELCHANGE) ||
+            (control == IDC_SIZELIST && (event == CBN_SELCHANGE || event == CBN_EDITCHANGE)) ||
+            (control == IDC_BOLD && event == BN_CLICKED))
+        {
+            // An editable combo updates its text after CBN_SELCHANGE returns.
+            PostMessage(hwnd, WM_UPDATE_PREVIEW_FONT, 0, 0);
+            return TRUE;
+        }
+        if (control == IDC_LINESPACING && event == EN_CHANGE)
+        {
+            PreviewSpacing(hwnd);
+            return TRUE;
+        }
+        break;
+    }
+
+    case WM_NOTIFY:
+        if (((NMHDR *)lParam)->code == PSN_SETACTIVE)
+            OptionsPageActivated(hwnd);
+
+        if (((NMHDR *)lParam)->code == PSN_APPLY)
+        {
+            BOOL valid;
             UINT spacing = GetDlgItemInt(hwnd, IDC_LINESPACING, &valid, FALSE);
+            LRESULT style = SendDlgItemMessage(hwnd, IDC_APPEARANCESTYLE, CB_GETCURSEL, 0, 0);
 
             if (!valid || spacing > MAX_LINE_SPACING)
             {
-                MessageBox(hwnd, _T("Enter extra line spacing between 0 and 40 pixels."), _T("Line spacing"),
-                           MB_OK | MB_ICONWARNING);
+                MessageBox(hwnd, _T("Enter line spacing between 0 and 40 pixels."), APP_TITLE, MB_OK | MB_ICONWARNING);
                 SetFocus(GetDlgItem(hwnd, IDC_LINESPACING));
                 SetWindowLongPtr(hwnd, DWLP_MSGRESULT, PSNRET_INVALID_NOCHANGEPAGE);
                 return TRUE;
             }
 
-            options->nFontSize    = (LONG)size;
-            options->fFontBold    = IsDlgButtonChecked(hwnd, IDC_BOLD);
-            options->nLineSpacing = (LONG)spacing;
-            GetDlgItemText(hwnd, IDC_FONTLIST, options->szFontName, LF_FACESIZE);
-            memcpy(options->rgbColourList, g_rgbTempColourList, sizeof(g_rgbTempColourList));
-            memcpy(options->rgbCustColours, g_rgbTempCustColours, sizeof(g_rgbTempCustColours));
+            if (!ReadEditorFont(hwnd, options, TRUE))
+            {
+                SetWindowLongPtr(hwnd, DWLP_MSGRESULT, PSNRET_INVALID_NOCHANGEPAGE);
+                return TRUE;
+            }
+
+            options->nLineSpacing     = spacing;
+            options->nPalette         = (LONG)SendDlgItemMessage(hwnd, IDC_PALETTE, CB_GETCURSEL, 0, 0);
+            if (style != CB_ERR)
+                options->nAppearanceStyle = (LONG)style;
+
             SetWindowLongPtr(hwnd, DWLP_MSGRESULT, PSNRET_NOERROR);
-
             return TRUE;
-		}
+        }
+        break;
+    }
 
-		return FALSE;
-
-	case WM_COMMAND:
-
-		switch(LOWORD(wParam))
-		{
-
-		case IDCANCEL:
-			return TRUE;
-
-		case IDC_FONTLIST:
-			if(HIWORD(wParam) == CBN_SELCHANGE)
-			{
-				InitSizeList(hwnd);
-			}
-				
-			PostMessage(hwnd, MSG_UPDATE_PREVIEW, 0, 0);
-			return TRUE;
-
-		case IDC_ITEMLIST:
-
-			if(HIWORD(wParam) == CBN_SELCHANGE)
-			{
-				DWORD itemidx = GetCurrentListData(hwnd, IDC_ITEMLIST);
-
-				SelectColorInList(hwnd, IDC_FGCOLCOMBO, LOWORD(itemidx));
-				SelectColorInList(hwnd, IDC_BGCOLCOMBO, HIWORD(itemidx));
-
-				UpdatePreviewPane(hwnd);
-			}
-
-			return TRUE;
-
-		case IDC_SIZELIST:
-			
-			if(HIWORD(wParam) == CBN_SELCHANGE || 
-			   HIWORD(wParam) == CBN_EDITCHANGE)
-			{
-				PostMessage(hwnd, MSG_UPDATE_PREVIEW, 0, 0);
-			}
-
-			return TRUE;
-
-		case IDC_FGCOLCOMBO:
-		case IDC_BGCOLCOMBO:
-			
-			if(HIWORD(wParam) == CBN_SELCHANGE)
-			{
-				short fgidx = LOWORD(GetCurrentListData(hwnd, IDC_ITEMLIST));
-				short bgidx = HIWORD(GetCurrentListData(hwnd, IDC_ITEMLIST));
-
-				if(fgidx >= 0)
-					g_rgbTempColourList[fgidx] = GetCurrentComboData(hwnd, IDC_FGCOLCOMBO);
-				
-				if(bgidx >= 0)
-					g_rgbTempColourList[bgidx] = GetCurrentComboData(hwnd, IDC_BGCOLCOMBO);
-
-				PostMessage(hwnd, MSG_UPDATE_PREVIEW, 0, 0);
-			}
-
-			return TRUE;
-			
-		case IDC_BOLD:
-			PostMessage(hwnd, MSG_UPDATE_PREVIEW, 0, 0);
-			return TRUE;
-
-		case IDC_CUSTBUT1:
-			{
-				COLORREF col = 0;
-				int idx = LOWORD(GetCurrentListData(hwnd, IDC_ITEMLIST));
-
-				if(idx >= 0)
-					col = REALIZE_SYSCOL(g_rgbTempColourList[idx]);
-
-                if (PickColour(hwnd, &col, g_rgbTempCustColours))
-                {
-					g_rgbTempColourList[idx] = col;
-					SelectColorInList(hwnd, IDC_FGCOLCOMBO, (short)idx);
-					UpdatePreviewPane(hwnd);
-				}
-			}
-			return TRUE;
-
-		case IDC_CUSTBUT2:
-			{
-				COLORREF col = 0;
-				int idx = HIWORD(GetCurrentListData(hwnd, IDC_ITEMLIST));
-				
-				if(idx >= 0)
-					col = REALIZE_SYSCOL(g_rgbTempColourList[idx]);
-
-                if (PickColour(hwnd, &col, g_rgbTempCustColours))
-                {
-					g_rgbTempColourList[idx] = col;
-					SelectColorInList(hwnd, IDC_BGCOLCOMBO, (short)idx);
-					UpdatePreviewPane(hwnd);
-				}
-			}
-			return TRUE;
-		}
-
-		return FALSE;
-	}
-
-	return FALSE;
+    return FALSE;
 }

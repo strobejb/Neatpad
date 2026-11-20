@@ -81,5 +81,6 @@ int32_t TextView::SetLineSpacing(int nAbove, int nBelow)
 	m_nHeightAbove = nAbove;
 	m_nHeightBelow = nBelow;
 	RecalcLineHeight();
+	UpdateMetrics();
 	return true;
 }

@@ -109,6 +109,95 @@ static BOOL RecoveryState(TextView *view, TEXTVIEWRECOVERY *state, bool save)
     return done;
 }
 
+static std::string ResourceText(UINT id)
+{
+    HMODULE     module   = GetModuleHandle(0);
+    HRSRC       resource = FindResource(module, MAKEINTRESOURCE(id), RT_RCDATA);
+    DWORD       size     = resource ? SizeofResource(module, resource) : 0;
+    HGLOBAL     data     = size ? LoadResource(module, resource) : 0;
+    const char *text     = data ? static_cast<const char *>(LockResource(data)) : 0;
+
+    return text ? std::string(text, size) : std::string();
+}
+
+static BOOL SetPaletteResources(TextView *view, const TEXTVIEWPALETTE *settings)
+{
+    if (!settings)
+        return FALSE;
+
+    std::vector<std::string> palettes;
+    TextPalette              palette;
+
+    palettes.push_back(ResourceText(settings->baseResource));
+    if (settings->overlayResource)
+        palettes.push_back(ResourceText(settings->overlayResource));
+
+    for (const std::string &text : palettes)
+    {
+        if (PaletteName(text).empty())
+            return FALSE;
+    }
+
+    ResolvePalette(palettes, settings->dark != FALSE, settings->accent, &palette);
+
+    if (settings->legacyColours)
+    {
+        for (int i = 0; i < TXC_MAX_COLOURS; ++i)
+            palette.colours[i] = settings->legacyColours[i];
+
+        // Classic's emphasis uses the document's foreground, including a custom one.
+        palette.syntax[(int)SyntaxKind::Strong].colour = palette.colours[TXC_FOREGROUND];
+        palette.syntax[(int)SyntaxKind::Emphasis].colour = palette.colours[TXC_FOREGROUND];
+    }
+
+    view->SetPalette(palette);
+    return TRUE;
+}
+
+void TextViewWin32::SetSyntaxResources(const UINT *ids, UINT count)
+{
+    m_syntaxDefinitions.clear();
+
+    for (UINT i = 0; i < count; ++i)
+    {
+        std::string text = ResourceText(ids[i]);
+
+        if (!text.empty())
+            m_syntaxDefinitions.push_back(std::move(text));
+    }
+
+    m_pView->SetSyntax(0);
+}
+
+void TextViewWin32::ChooseSyntax(const WCHAR *filename)
+{
+    if (m_syntaxDefinitions.empty())
+        return;
+
+    if (filename == 0 || filename[0] == 0)
+    {
+        m_pView->SetSyntax(0);
+        return;
+    }
+
+    int         length = WideCharToMultiByte(CP_UTF8, 0, filename, -1, 0, 0, 0, 0);
+    std::string name(length, '\0');
+
+    if (length && WideCharToMultiByte(CP_UTF8, 0, filename, -1, &name[0], length, 0, 0))
+    {
+        std::vector<const char *> definitions;
+
+        for (const std::string &definition : m_syntaxDefinitions)
+            definitions.push_back(definition.c_str());
+
+        m_pView->ChooseSyntax(definitions.data(), (int)definitions.size(), name.c_str());
+    }
+    else
+    {
+        m_pView->SetSyntax(0);
+    }
+}
+
 //
 //	The window's own messages, and the TXM_* and EM_* messages of its API
 //
@@ -254,24 +343,59 @@ LRESULT TextViewWin32::WndProc(UINT msg, WPARAM wParam, LPARAM lParam)
     case WM_TIMER:
         return view->OnTimer((UINT_PTR)wParam);
 
-    //
+    case TXM_SETSYNTAXRESOURCES:
+        SetSyntaxResources((const UINT *)lParam, (UINT)wParam);
+        return 0;
+
+    case TXM_SETSYNTAXRESOURCE:
+    {
+        std::string definition = ResourceText((UINT)wParam);
+
+        return !definition.empty() && view->SetSyntax(definition.c_str());
+    }
+
+    case TXM_SETPALETTERESOURCES:
+        return SetPaletteResources(view, (const TEXTVIEWPALETTE *)lParam);
+
     case TXM_OPENFILE:
-        return view->OpenFile((TCHAR *)lParam, -1, false);
+    case TXM_TAILFILE:
+    case TXM_SAVEFILE:
+    {
+        const TCHAR *filename = (const TCHAR *)lParam;
+        bool         done;
+
+        if (msg == TXM_OPENFILE)
+            done = view->OpenFile(filename, -1, false);
+        else if (msg == TXM_TAILFILE)
+            done = view->TailFile(filename);
+        else
+            done = view->SaveFile(filename, LOBYTE(LOWORD(wParam)), HIWORD(wParam), HIBYTE(LOWORD(wParam)));
+
+        if (done)
+            ChooseSyntax(filename);
+
+        return done;
+    }
 
     case TXM_SAVESTATE:
-    case TXM_LOADSTATE:
-        return RecoveryState(view, (TEXTVIEWRECOVERY *)lParam, msg == TXM_SAVESTATE);
+        return RecoveryState(view, (TEXTVIEWRECOVERY *)lParam, true);
 
-    case TXM_TAILFILE:
-        return view->TailFile((TCHAR *)lParam);
+    case TXM_LOADSTATE:
+    {
+        TEXTVIEWRECOVERY *state = (TEXTVIEWRECOVERY *)lParam;
+
+        if (!RecoveryState(view, state, false))
+            return FALSE;
+
+        ChooseSyntax(state->filename);
+        return TRUE;
+    }
 
     case TXM_UPDATETAIL:
         return view->UpdateTail();
 
-    case TXM_SAVEFILE:
-        return view->SaveFile((TCHAR *)lParam, LOBYTE(LOWORD(wParam)), HIWORD(wParam), HIBYTE(LOWORD(wParam)));
-
     case TXM_CLEAR:
+        ChooseSyntax(0);
         return view->ClearFile();
 
     case TXM_SETLINESPACING:

@@ -9,6 +9,11 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
+    <ResourceCompile Include="..\src\Neatpad\win32\syntax.rc">
+      <Filter>Source Files</Filter>
+    </ResourceCompile>
+  </ItemGroup>
+  <ItemGroup>
     <ClCompile Include="main.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>

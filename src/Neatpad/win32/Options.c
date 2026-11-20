@@ -24,14 +24,17 @@
 #define CONTEXT_APP_LOC _T("Software\\Classes\\*\\shell\\Open with Neatpad")
 #define CONTEXT_CMD_LOC CONTEXT_APP_LOC _T("\\command")
 
-INT_PTR CALLBACK FontOptionsDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+INT_PTR CALLBACK AppearanceOptionsDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 INT_PTR CALLBACK MiscOptionsDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 INT_PTR CALLBACK DisplayOptionsDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
-LONG  g_nFontSize;
-LONG  g_nLineSpacing;
-BOOL  g_fFontBold;
-TCHAR g_szFontName[LF_FACESIZE];
+static LONG  g_nFontSize;
+static BOOL  g_fFontBold;
+static BOOL  g_fFontItalic;
+static TCHAR g_szFontName[LF_FACESIZE];
+static LONG  g_nLineSpacing;
+static LONG  g_nAppearanceStyle;
+static LONG  g_nPalette;
 
 BOOL  g_fLineNumbers;
 BOOL  g_fLongLines;
@@ -51,22 +54,12 @@ BOOL  g_fInsertSpaces  = TRUE;
 BOOL  g_fAutoIndent    = TRUE;
 LONG  g_nInMemoryLimit;
 
-C_ASSERT(TXC_MAX_COLOURS == ARRAYSIZE(((OPTIONS *)0)->rgbColourList));
-
-COLORREF g_rgbColourList[TXC_MAX_COLOURS];
-COLORREF g_rgbCustColours[16];
-extern COLORREF g_rgbAutoColourList[];
+BOOL g_fHasCustomPalette;
+static COLORREF g_legacyColours[TXC_MAX_COLOURS];
 
 #define MAX_RECENT_FILES (IDM_RECENT_LAST - IDM_RECENT_FIRST + 1)
 
 TCHAR g_szRecentFiles[MAX_RECENT_FILES][MAX_PATH];
-
-// Get a binary buffer from the registry
-BOOL GetSettingBin(HKEY hkey, TCHAR szKeyName[], PVOID pBuffer, LONG nLength)
-{
-	ZeroMemory(pBuffer, nLength);
-	return !RegQueryValueEx(hkey, szKeyName, 0, 0, (BYTE *)pBuffer, &nLength);
-}
 
 // Get an integer value from the registry
 BOOL GetSettingInt(HKEY hkey, TCHAR szKeyName[], LONG *pnReturnVal, LONG nDefault)
@@ -86,12 +79,6 @@ BOOL GetSettingStr(HKEY hkey, TCHAR szKeyName[], TCHAR pszReturnStr[], DWORD nLe
 	lstrcpyn(pszReturnStr, szDefault, nLength);
 
 	return !RegQueryValueEx(hkey, szKeyName, 0, 0, (BYTE *)pszReturnStr, &len);
-}
-
-// Write a binary value from the registry
-BOOL WriteSettingBin(HKEY hkey, TCHAR szKeyName[], PVOID pData, ULONG nLength)
-{
-	return !RegSetValueEx(hkey, szKeyName, 0, REG_BINARY, (BYTE *)pData, nLength);
 }
 
 // Write an integer value from the registry
@@ -440,16 +427,82 @@ BOOL SetExplorerContextMenu(BOOL enabled)
     return TRUE;
 }
 
+//
+// Keep saved per-colour settings available as Custom. The old registry
+// entries are read in TXC_* order and left intact when a preset is selected.
+//
+static void LoadLegacyPalette(HKEY hKey)
+{
+    static const struct
+    {
+        TCHAR   *name;
+        COLORREF automatic;
+    } colours[] = {
+        {_T("Foreground"), SYSCOL(COLOR_WINDOWTEXT)},
+        {_T("Background"), SYSCOL(COLOR_WINDOW)},
+        {_T("SelFG"), SYSCOL(COLOR_HIGHLIGHTTEXT)},
+        {_T("SelBG"), SYSCOL(COLOR_HIGHLIGHT)},
+        {_T("SelFG2"), SYSCOL(COLOR_WINDOWTEXT)},
+        {_T("SelBG2"), SYSCOL(COLOR_3DFACE)},
+        {_T("Margin1"), SYSCOL(COLOR_3DFACE)},
+        {_T("Margin2"), SYSCOL(COLOR_3DHIGHLIGHT)},
+        {_T("LinenoText"), MIXED_SYSCOL(COLOR_3DSHADOW, COLOR_3DDKSHADOW)},
+        {_T("Lineno"), MIXED_SYSCOL2(COLOR_3DFACE, COLOR_WINDOW)},
+        {_T("LongLineText"), SYSCOL(COLOR_WINDOWTEXT)},
+        {_T("LongLine"), MIXED_SYSCOL(COLOR_3DFACE, COLOR_WINDOW)},
+        {_T("CurlineText"), SYSCOL(COLOR_WINDOWTEXT)},
+        {_T("Curline"), RGB(230, 240, 255)},
+        {_T("SearchMatchText"), SYSCOL(COLOR_WINDOWTEXT)},
+        {_T("SearchMatch"), RGB(255, 230, 128)},
+        {_T("ChangedText"), RGB(190, 55, 55)},
+        {_T("ChangedLine"), RGB(88, 132, 164)},
+        {_T("ChangedLineBG"), MIXED_SYSCOL2(COLOR_3DFACE, COLOR_WINDOW)},
+    };
+    HKEY colourKey;
+
+    C_ASSERT(ARRAYSIZE(colours) == TXC_MAX_COLOURS);
+    g_fHasCustomPalette = FALSE;
+
+    if (RegOpenKeyEx(hKey, _T("Colours"), 0, KEY_QUERY_VALUE, &colourKey) != ERROR_SUCCESS)
+        return;
+
+    for (UINT i = 0; i < ARRAYSIZE(colours); ++i)
+    {
+        LONG colour;
+
+        GetSettingInt(colourKey, colours[i].name, &colour, colours[i].automatic);
+
+        // The previous automatic outline colour predates the current default.
+        if (i == TXC_CHANGEDLINE && (COLORREF)colour == RGB(202, 151, 54))
+            colour = colours[i].automatic;
+
+        g_legacyColours[i] = colour;
+        if (g_legacyColours[i] != colours[i].automatic)
+            g_fHasCustomPalette = TRUE;
+    }
+
+    RegCloseKey(colourKey);
+}
+
 void LoadRegSettings()
 {
-	HKEY hKey, hColKey;
+    HKEY hKey = 0;
 
-	// open registry location for reading
-	RegCreateKeyEx(HKEY_CURRENT_USER, REGLOC, 0, 0, 0, KEY_READ, 0, &hKey, 0);
+    RegCreateKeyEx(HKEY_CURRENT_USER, REGLOC, 0, 0, 0, KEY_READ, 0, &hKey, 0);
 
-	GetSettingInt(hKey, _T("FontSize"),		&g_nFontSize, 10);
-	GetSettingInt(hKey, _T("FontBold"),		&g_fFontBold, FALSE);
-	GetSettingStr(hKey, _T("FontName"),		g_szFontName, LF_FACESIZE, _T("Courier New"));
+    GetSettingInt(hKey, _T("FontSize"), &g_nFontSize, DEFAULT_EDITOR_FONT_SIZE);
+    GetSettingInt(hKey, _T("FontBold"), &g_fFontBold, FALSE);
+    GetSettingInt(hKey, _T("FontItalic"), &g_fFontItalic, FALSE);
+    GetSettingStr(hKey, _T("FontName"), g_szFontName, LF_FACESIZE, DEFAULT_EDITOR_FONT);
+
+    LoadLegacyPalette(hKey);
+    GetSettingInt(hKey, _T("AppearanceStyle"), &g_nAppearanceStyle, STYLE_SYSTEM);
+    if (g_nAppearanceStyle < STYLE_SYSTEM || g_nAppearanceStyle > STYLE_DARK)
+        g_nAppearanceStyle = STYLE_SYSTEM;
+
+    GetSettingInt(hKey, _T("Palette"), &g_nPalette, g_fHasCustomPalette ? PALETTE_CUSTOM : PALETTE_ADWAITA);
+    if (g_nPalette < PALETTE_ADWAITA || g_nPalette > (g_fHasCustomPalette ? PALETTE_CUSTOM : PALETTE_SOLARIZED))
+        g_nPalette = PALETTE_ADWAITA;
 
     // Migrate the old separate values, keeping their total extra space.
     {
@@ -494,104 +547,45 @@ void LoadRegSettings()
 	GetSettingInt(hKey, _T("ShowStatusbar"), &g_fShowStatusbar, TRUE);
 	LoadRecentFiles(hKey);
 	
-	// read the display colours
-	RegCreateKeyEx(hKey, _T("Colours"), 0, 0, 0, KEY_READ, 0, &hColKey, 0);
-
-	GetSettingInt(hColKey, _T("Foreground"),	&g_rgbColourList[TXC_FOREGROUND],		g_rgbAutoColourList[TXC_FOREGROUND]		);
-	GetSettingInt(hColKey, _T("Background"),	&g_rgbColourList[TXC_BACKGROUND],		g_rgbAutoColourList[TXC_BACKGROUND]		);	
-	GetSettingInt(hColKey, _T("SelFG"),			&g_rgbColourList[TXC_HIGHLIGHTTEXT],	g_rgbAutoColourList[TXC_HIGHLIGHTTEXT]	);
-	GetSettingInt(hColKey, _T("SelBG"),			&g_rgbColourList[TXC_HIGHLIGHT],		g_rgbAutoColourList[TXC_HIGHLIGHT]		);
-	GetSettingInt(hColKey, _T("SelFG2"),		&g_rgbColourList[TXC_HIGHLIGHTTEXT2],   g_rgbAutoColourList[TXC_HIGHLIGHTTEXT2]	);
-	GetSettingInt(hColKey, _T("SelBG2"),		&g_rgbColourList[TXC_HIGHLIGHT2],		g_rgbAutoColourList[TXC_HIGHLIGHT2]		);
-	GetSettingInt(hColKey, _T("Margin1"),		&g_rgbColourList[TXC_SELMARGIN1],		g_rgbAutoColourList[TXC_SELMARGIN1]		);
-	GetSettingInt(hColKey, _T("Margin2"),		&g_rgbColourList[TXC_SELMARGIN2],		g_rgbAutoColourList[TXC_SELMARGIN2]		);
-	GetSettingInt(hColKey, _T("LinenoText"),	&g_rgbColourList[TXC_LINENUMBERTEXT],	g_rgbAutoColourList[TXC_LINENUMBERTEXT]	);
-	GetSettingInt(hColKey, _T("Lineno"),		&g_rgbColourList[TXC_LINENUMBER],		g_rgbAutoColourList[TXC_LINENUMBER]		);
-	GetSettingInt(hColKey, _T("LongLineText"),	&g_rgbColourList[TXC_LONGLINETEXT],		g_rgbAutoColourList[TXC_LONGLINETEXT]	);
-	GetSettingInt(hColKey, _T("LongLine"),		&g_rgbColourList[TXC_LONGLINE],			g_rgbAutoColourList[TXC_LONGLINE]		);
-	GetSettingInt(hColKey, _T("CurlineText"),	&g_rgbColourList[TXC_CURRENTLINETEXT],	g_rgbAutoColourList[TXC_CURRENTLINETEXT]	);
-	GetSettingInt(hColKey, _T("Curline"),		&g_rgbColourList[TXC_CURRENTLINE],		g_rgbAutoColourList[TXC_CURRENTLINE]		);
-	GetSettingInt(hColKey, _T("SearchMatchText"), &g_rgbColourList[TXC_SEARCHMATCHTEXT],	g_rgbAutoColourList[TXC_SEARCHMATCHTEXT]	);
-	GetSettingInt(hColKey, _T("SearchMatch"),	&g_rgbColourList[TXC_SEARCHMATCH],		g_rgbAutoColourList[TXC_SEARCHMATCH]		);
-    GetSettingInt(hColKey, _T("ChangedText"), &g_rgbColourList[TXC_CHANGEDTEXT], g_rgbAutoColourList[TXC_CHANGEDTEXT]);
-    GetSettingInt(hColKey, _T("ChangedLine"), &g_rgbColourList[TXC_CHANGEDLINE], g_rgbAutoColourList[TXC_CHANGEDLINE]);
-    GetSettingInt(hColKey, _T("ChangedLineBG"), &g_rgbColourList[TXC_CHANGEDLINEBG],
-                  g_rgbAutoColourList[TXC_CHANGEDLINEBG]);
-
-    // Replace the previous automatic colour, while retaining custom colours.
-    if (g_rgbColourList[TXC_CHANGEDLINE] == RGB(202, 151, 54))
-    {
-        g_rgbColourList[TXC_CHANGEDLINE] = g_rgbAutoColourList[TXC_CHANGEDLINE];
-    }
-
-	GetSettingBin(hColKey, _T("Custom"),		g_rgbCustColours, sizeof(g_rgbCustColours)); 
-
-	RegCloseKey(hColKey);
-	RegCloseKey(hKey);
+    RegCloseKey(hKey);
 }
 
 void SaveRegSettings()
 {
-	HKEY hKey, hColKey;
+    HKEY hKey;
 
-	// open registry location for writing
-	RegCreateKeyEx(HKEY_CURRENT_USER, REGLOC, 0, 0, 0, KEY_WRITE, 0, &hKey, 0);
+    if (RegCreateKeyEx(HKEY_CURRENT_USER, REGLOC, 0, 0, 0, KEY_WRITE, 0, &hKey, 0) != ERROR_SUCCESS)
+        return;
 
-	WriteSettingInt(hKey, _T("FontSize"),	g_nFontSize);
-	WriteSettingInt(hKey, _T("FontBold"),	g_fFontBold);
-	WriteSettingStr(hKey, _T("FontName"),	g_szFontName);
+    WriteSettingInt(hKey, _T("AppearanceStyle"), g_nAppearanceStyle);
+    WriteSettingInt(hKey, _T("Palette"), g_nPalette);
+    WriteSettingInt(hKey, _T("FontSize"), g_nFontSize);
+    WriteSettingInt(hKey, _T("FontBold"), g_fFontBold);
+    WriteSettingInt(hKey, _T("FontItalic"), g_fFontItalic);
+    WriteSettingStr(hKey, _T("FontName"), g_szFontName);
     WriteSettingInt(hKey, _T("LineSpacing"), g_nLineSpacing);
 
-    WriteSettingInt(hKey, _T("SelMargin"),	  g_fSelMargin);
+    WriteSettingInt(hKey, _T("SelMargin"), g_fSelMargin);
     WriteSettingInt(hKey, _T("ChangeIndicators"), g_fChangeIndicators);
     WriteSettingInt(hKey, _T("HighlightChanges"), g_fHighlightChanges);
-	WriteSettingInt(hKey, _T("LineNumbers"),  g_fLineNumbers);
-	WriteSettingInt(hKey, _T("LongLines"),	  g_fLongLines);
-	WriteSettingInt(hKey, _T("SaveOnExit"),	  g_fSaveOnExit);
-	WriteSettingInt(hKey, _T("LongLineLimit"),g_nLongLineLimit);
-	WriteSettingInt(hKey, _T("HLCurLine"),	  g_nHLCurLine);
-	WriteSettingInt(hKey, _T("ShowLineEndings"), g_fShowLineEndings);
-	WriteSettingInt(hKey, _T("SearchMatchCase"), g_fSearchMatchCase);
-	WriteSettingInt(hKey, _T("SearchWrap"), g_fSearchWrap);
+    WriteSettingInt(hKey, _T("LineNumbers"), g_fLineNumbers);
+    WriteSettingInt(hKey, _T("LongLines"), g_fLongLines);
+    WriteSettingInt(hKey, _T("SaveOnExit"), g_fSaveOnExit);
+    WriteSettingInt(hKey, _T("LongLineLimit"), g_nLongLineLimit);
+    WriteSettingInt(hKey, _T("HLCurLine"), g_nHLCurLine);
+    WriteSettingInt(hKey, _T("ShowLineEndings"), g_fShowLineEndings);
+    WriteSettingInt(hKey, _T("SearchMatchCase"), g_fSearchMatchCase);
+    WriteSettingInt(hKey, _T("SearchWrap"), g_fSearchWrap);
     WriteSettingInt(hKey, _T("TabWidth"), g_nTabWidth);
     WriteSettingInt(hKey, _T("InsertSpaces"), g_fInsertSpaces);
     WriteSettingInt(hKey, _T("AutoIndent"), g_fAutoIndent);
     WriteSettingInt(hKey, _T("FilterContext"), g_nFilterContext);
     WriteSettingInt(hKey, _T("InMemoryLimit"), g_nInMemoryLimit);
 
-	WriteSettingInt(hKey, _T("ShowStatusbar"), g_fShowStatusbar);
-	SaveRecentFiles(hKey);
-	
-	// write the display colours
-	RegCreateKeyEx(hKey, _T("Colours"), 0, 0, 0, KEY_WRITE, 0, &hColKey, 0);
+    WriteSettingInt(hKey, _T("ShowStatusbar"), g_fShowStatusbar);
+    SaveRecentFiles(hKey);
 
-	WriteSettingInt(hColKey, _T("Foreground"),	g_rgbColourList[TXC_FOREGROUND]); 
-	WriteSettingInt(hColKey, _T("Background"),	g_rgbColourList[TXC_BACKGROUND]); 
-	WriteSettingInt(hColKey, _T("SelFG"),		g_rgbColourList[TXC_HIGHLIGHTTEXT]); 
-	WriteSettingInt(hColKey, _T("SelBG"),		g_rgbColourList[TXC_HIGHLIGHT]); 
-	WriteSettingInt(hColKey, _T("SelFG2"),		g_rgbColourList[TXC_HIGHLIGHTTEXT2]); 
-	WriteSettingInt(hColKey, _T("SelBG2"),		g_rgbColourList[TXC_HIGHLIGHT2]); 
-
-	WriteSettingInt(hColKey, _T("Margin1"),		g_rgbColourList[TXC_SELMARGIN1]); 
-	WriteSettingInt(hColKey, _T("Margin2"),		g_rgbColourList[TXC_SELMARGIN2]); 
-	WriteSettingInt(hColKey, _T("LinenoText"),	g_rgbColourList[TXC_LINENUMBERTEXT]); 
-	WriteSettingInt(hColKey, _T("Lineno"),		g_rgbColourList[TXC_LINENUMBER]); 
-	WriteSettingInt(hColKey, _T("LongLineText"),g_rgbColourList[TXC_LONGLINETEXT]); 
-	WriteSettingInt(hColKey, _T("LongLine"),	g_rgbColourList[TXC_LONGLINE]); 
-
-	WriteSettingInt(hColKey, _T("CurlineText"),	g_rgbColourList[TXC_CURRENTLINETEXT]); 
-	WriteSettingInt(hColKey, _T("Curline"),		g_rgbColourList[TXC_CURRENTLINE]); 
-	WriteSettingInt(hColKey, _T("SearchMatchText"), g_rgbColourList[TXC_SEARCHMATCHTEXT]);
-	WriteSettingInt(hColKey, _T("SearchMatch"),	g_rgbColourList[TXC_SEARCHMATCH]);
-    WriteSettingInt(hColKey, _T("ChangedText"), g_rgbColourList[TXC_CHANGEDTEXT]);
-    WriteSettingInt(hColKey, _T("ChangedLine"), g_rgbColourList[TXC_CHANGEDLINE]);
-    WriteSettingInt(hColKey, _T("ChangedLineBG"), g_rgbColourList[TXC_CHANGEDLINEBG]);
-
-
-	WriteSettingBin(hColKey, _T("Custom"),		g_rgbCustColours, sizeof(g_rgbCustColours)); 
-
-	RegCloseKey(hColKey);
-	RegCloseKey(hKey);
+    RegCloseKey(hKey);
 }
 
 static HFONT g_hFallbackFonts[3];
@@ -614,17 +608,19 @@ static void DeleteFallbackFonts()
 }
 
 //
-//	The text's font in the face given, at the font size zoomed to g_nZoom percent
+//	The given editor font at the requested zoom percentage
 //
-static HFONT CreateTextFont(TCHAR *szFace)
+HFONT CreateEditorFont(const TCHAR *face, int points, BOOL bold, BOOL italic, int zoom)
 {
-    return CreateFont(MulDiv(PointsToLogical(g_nFontSize), g_nZoom, 100), 0, 0, 0, g_fFontBold ? FW_BOLD : 0, 0, 0, 0,
-                      DEFAULT_CHARSET, 0, 0, DEFAULT_QUALITY, 0, szFace);
+    int weight = bold ? FW_BOLD : FW_NORMAL;
+
+    return CreateFont(MulDiv(PointsToLogical(points), zoom, 100), 0, 0, 0, weight, italic, 0, 0,
+                      DEFAULT_CHARSET, 0, 0, DEFAULT_QUALITY, 0, face);
 }
 
 static void AddFallbackFont(int idx, TCHAR *faceName)
 {
-	g_hFallbackFonts[idx] = CreateTextFont(faceName);
+    g_hFallbackFonts[idx] = CreateEditorFont(faceName, g_nFontSize, g_fFontBold, g_fFontItalic, g_nZoom);
 
 	if(g_hFallbackFonts[idx])
 		TextView_AddFontFallback(g_hwndTextView, 0, g_hFallbackFonts[idx]);
@@ -639,7 +635,7 @@ void ApplyFonts()
 
 	DeleteFallbackFonts();
 
-	g_hFont = CreateTextFont(g_szFontName);
+    g_hFont = CreateEditorFont(g_szFontName, g_nFontSize, g_fFontBold, g_fFontItalic, g_nZoom);
 	SendMessage(g_hwndTextView, WM_SETFONT, (WPARAM)g_hFont, 0);
 
 	if(oldFont)
@@ -661,9 +657,59 @@ void DeleteRuntimeFonts()
 	}
 }
 
+static BOOL UseDarkEditorStyle(LONG style)
+{
+    HKEY key;
+    LONG light = TRUE;
+
+    if (style != STYLE_SYSTEM)
+        return style == STYLE_DARK;
+
+    if (RegOpenKeyEx(HKEY_CURRENT_USER, _T("Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize"),
+                     0, KEY_QUERY_VALUE, &key) == ERROR_SUCCESS)
+    {
+        GetSettingInt(key, _T("AppsUseLightTheme"), &light, TRUE);
+        RegCloseKey(key);
+    }
+
+    return !light;
+}
+
+void ApplyEditorPalette(HWND view, LONG choice, LONG style)
+{
+    TEXTVIEWPALETTE palette = {0};
+
+    palette.baseResource = IDR_PALETTE_ADWAITA;
+    palette.accent       = GetSysColor(COLOR_HIGHLIGHT);
+
+    switch (choice)
+    {
+    case PALETTE_CUSTOM:
+        palette.legacyColours = g_legacyColours;
+        // Custom keeps its saved colours and Classic's syntax styles.
+        // Fall through to Classic.
+    case PALETTE_CLASSIC:
+        palette.overlayResource = IDR_PALETTE_CLASSIC;
+        break;
+
+    case PALETTE_SOLARIZED:
+        palette.overlayResource = IDR_PALETTE_SOLARIZED;
+        // Fall through to set the light or dark variant.
+    default:
+        palette.dark = UseDarkEditorStyle(style);
+        break;
+    }
+
+    TextView_SetPaletteResources(view, &palette);
+}
+
+void ApplyAppearancePalette()
+{
+    ApplyEditorPalette(g_hwndTextView, g_nPalette, g_nAppearanceStyle);
+}
+
 void ApplyRegSettings()
 {
-	int i;
 
     // Split extra pixels evenly; an odd pixel belongs below the text.
     TextView_SetLineSpacing(g_hwndTextView, g_nLineSpacing / 2, (g_nLineSpacing + 1) / 2);
@@ -686,12 +732,113 @@ void ApplyRegSettings()
     TextView_SetStyleBool(g_hwndTextView, TXS_AUTOINDENT, g_fAutoIndent);
 
     ApplyFonts();
+    ApplyAppearancePalette();
+}
 
-	for(i = 0; i < TXC_MAX_COLOURS; i++)
-	{
-		TextView_SetColor(g_hwndTextView, i, g_rgbColourList[i]);
-	}
+#define WM_FIT_OPTIONS_PAGE (WM_APP + 2)
 
+void OptionsPageActivated(HWND page)
+{
+    // The property sheet positions the page after PSN_SETACTIVE returns.
+    PostMessage(GetParent(page), WM_FIT_OPTIONS_PAGE, 0, 0);
+}
+
+static void FitOptionsPage(HWND sheet)
+{
+    static const int buttons[] = {IDOK, IDCANCEL};
+    HWND page = PropSheet_GetCurrentPageHwnd(sheet);
+    HWND tabs = PropSheet_GetTabControl(sheet);
+    RECT pageRect, tabRect, tabBody, sheetRect;
+    RECT padding = {0, 0, 0, 7};
+    int  bottom, delta, height, top;
+    HDWP positions;
+
+    if (!page || !tabs)
+        return;
+
+    GetWindowRect(page, &pageRect);
+    GetWindowRect(tabs, &tabRect);
+    GetWindowRect(sheet, &sheetRect);
+    GetClientRect(tabs, &tabBody);
+    TabCtrl_AdjustRect(tabs, FALSE, &tabBody);
+    MapWindowPoints(tabs, 0, (POINT *)&tabBody, 2);
+    MapDialogRect(page, &padding);
+
+    bottom = pageRect.top;
+    for (HWND control = GetWindow(page, GW_CHILD); control; control = GetWindow(control, GW_HWNDNEXT))
+    {
+        RECT bounds;
+
+        if ((GetWindowLongPtr(control, GWL_STYLE) & WS_VISIBLE) && GetWindowRect(control, &bounds))
+            bottom = max(bottom, bounds.bottom);
+    }
+    bottom += padding.bottom;
+    delta = bottom - tabBody.bottom;
+
+    positions = BeginDeferWindowPos(2 + ARRAYSIZE(buttons));
+    if (!positions)
+        return;
+
+    positions = DeferWindowPos(positions, page, 0, 0, 0, pageRect.right - pageRect.left, bottom - pageRect.top,
+                               SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+    if (positions)
+    {
+        positions = DeferWindowPos(positions, tabs, 0, 0, 0, tabRect.right - tabRect.left,
+                                   tabRect.bottom - tabRect.top + delta, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+    }
+
+    for (UINT i = 0; positions && i < ARRAYSIZE(buttons); ++i)
+    {
+        HWND button = GetDlgItem(sheet, buttons[i]);
+        RECT bounds;
+
+        if (button && GetWindowRect(button, &bounds))
+        {
+            MapWindowPoints(0, sheet, (POINT *)&bounds, 2);
+            positions = DeferWindowPos(positions, button, 0, bounds.left, bounds.top + delta, 0, 0,
+                                       SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+        }
+    }
+
+    if (!positions || !EndDeferWindowPos(positions) || !delta)
+        return;
+
+    height = sheetRect.bottom - sheetRect.top + delta;
+    top    = sheetRect.top;
+    if (delta > 0)
+    {
+        MONITORINFO monitor = {sizeof(monitor)};
+
+        if (GetMonitorInfo(MonitorFromWindow(sheet, MONITOR_DEFAULTTONEAREST), &monitor))
+            top = max(monitor.rcWork.top, min(top, monitor.rcWork.bottom - height));
+    }
+
+    SetWindowPos(sheet, 0, sheetRect.left, top, sheetRect.right - sheetRect.left, height, SWP_NOZORDER | SWP_NOACTIVATE);
+}
+
+static LRESULT CALLBACK OptionsSheetProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR id, DWORD_PTR data)
+{
+    UNREFERENCED_PARAMETER(data);
+
+    if (msg == WM_FIT_OPTIONS_PAGE)
+    {
+        FitOptionsPage(hwnd);
+        return 0;
+    }
+    if (msg == WM_NCDESTROY)
+        RemoveWindowSubclass(hwnd, OptionsSheetProc, id);
+
+    return DefSubclassProc(hwnd, msg, wp, lp);
+}
+
+static int CALLBACK InitOptionsSheet(HWND hwnd, UINT msg, LPARAM lp)
+{
+    UNREFERENCED_PARAMETER(lp);
+
+    if (msg == PSCB_INITIALIZED && SetWindowSubclass(hwnd, OptionsSheetProc, 0, 0))
+        PostMessage(hwnd, WM_FIT_OPTIONS_PAGE, 0, 0);
+
+    return 0;
 }
 
 void ShowOptions(HWND hwndParent)
@@ -707,7 +854,11 @@ void ShowOptions(HWND hwndParent)
 
     options.nFontSize             = g_nFontSize;
     options.fFontBold             = g_fFontBold;
+    options.fFontItalic           = g_fFontItalic;
     options.nLineSpacing          = g_nLineSpacing;
+    options.nAppearanceStyle      = g_nAppearanceStyle;
+    options.nPalette               = g_nPalette;
+    options.fShowStatusbar        = g_fShowStatusbar;
     options.fLineNumbers          = g_fLineNumbers;
     options.fLongLines            = g_fLongLines;
     options.fSelMargin            = g_fSelMargin;
@@ -720,23 +871,22 @@ void ShowOptions(HWND hwndParent)
     options.fAutoIndent           = g_fAutoIndent;
     options.nFilterContext        = g_nFilterContext;
     memcpy(options.szFontName, g_szFontName, sizeof(options.szFontName));
-    memcpy(options.rgbColourList, g_rgbColourList, sizeof(options.rgbColourList));
-    memcpy(options.rgbCustColours, g_rgbCustColours, sizeof(options.rgbCustColours));
 
     CoInitialize(0);
 
     // configure property sheet
-    psh.dwFlags    = PSH_PROPSHEETPAGE | PSH_NOAPPLYNOW;
+    psh.dwFlags    = PSH_PROPSHEETPAGE | PSH_NOAPPLYNOW | PSH_USECALLBACK;
     psh.hwndParent = hwndParent;
     psh.nPages     = sizeof(psp) / sizeof(psp[0]);
     psh.ppsp       = psp;
     psh.pszCaption = _T("Options");
+    psh.pfnCallback = InitOptionsSheet;
 
     // configure property sheet page(1)
     psp[0].lParam      = (LPARAM)&options;
     psp[0].dwFlags     = PSP_USETITLE;
     psp[0].hInstance   = g_hResourceModule; // GetModuleHandle(0);
-    psp[0].pfnDlgProc  = FontOptionsDlgProc;
+    psp[0].pfnDlgProc  = AppearanceOptionsDlgProc;
     psp[0].pszTemplate = MAKEINTRESOURCE(IDD_FONT);
     psp[0].pszTitle    = _T("Appearance");
 
@@ -760,7 +910,11 @@ void ShowOptions(HWND hwndParent)
     {
         g_nFontSize         = options.nFontSize;
         g_fFontBold         = options.fFontBold;
+        g_fFontItalic       = options.fFontItalic;
         g_nLineSpacing      = options.nLineSpacing;
+        g_nAppearanceStyle  = options.nAppearanceStyle;
+        g_nPalette          = options.nPalette;
+        g_fShowStatusbar    = options.fShowStatusbar;
         g_fLineNumbers      = options.fLineNumbers;
         g_fLongLines        = options.fLongLines;
         g_fSelMargin        = options.fSelMargin;
@@ -773,10 +927,8 @@ void ShowOptions(HWND hwndParent)
         g_fAutoIndent       = options.fAutoIndent;
         g_nFilterContext    = options.nFilterContext;
         memcpy(g_szFontName, options.szFontName, sizeof(options.szFontName));
-        memcpy(g_rgbColourList, options.rgbColourList, sizeof(options.rgbColourList));
-        memcpy(g_rgbCustColours, options.rgbCustColours, sizeof(options.rgbCustColours));
-
         ApplyRegSettings();
+        SendMessage(hwndParent, WM_SIZE, 0, 0);
     }
 
     CoUninitialize();
