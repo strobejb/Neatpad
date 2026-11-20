@@ -1,0 +1,78 @@
+# The colours of GtkSourceView's Adwaita and Adwaita Dark schemes, as GNOME
+# Text Editor shows text, with the selection in the accent colour as
+# libadwaita selects text. Every palette is laid over this one: what another
+# palette leaves out is Adwaita's.
+
+[palette]
+name=Adwaita
+selection-text=text
+selection=accent 30%
+inactive-selection-text=text
+inactive-selection=text 10%
+margin=background
+line-number=background
+long-line-text=text
+long-line=current-line
+current-line-text=text
+changed-line-background=current-line
+
+[light]
+text=#504e55
+background=#ffffff
+caret=#77767b
+line-number-text=#b0afac
+current-line=#f6f5f4
+match-text=#3d3846
+match=#f8e45c
+changed-text=#c01c28
+changed-line=#3584e4
+
+[dark]
+text=#c0bfbc
+background=#1d1d20
+caret=#c0bfbc
+line-number-text=#5e5e5e
+current-line=#242428
+match-text=#242424
+match=#f6d32d 50%
+changed-text=#f66151
+changed-line=#62a0ea
+
+# GNOME's palette: darker on light, lighter on dark
+[syntax]
+strong=text bold
+emphasis=text italic
+
+[light-syntax]
+comment=#77767b
+keyword=#9141ac bold
+type=#1a5fb4
+constant=#c64600
+string=#26a269
+escape=#c64600
+number=#c64600
+preprocessor=#865e3c
+error=#c01c28
+warning=#9c6e03
+info=#1c71d8
+debug=#77767b
+heading=#1a5fb4 bold
+code=#26a269
+link=#1c71d8
+
+[dark-syntax]
+comment=#9a9996
+keyword=#dc8add bold
+type=#62a0ea
+constant=#ffa348
+string=#8ff0a4
+escape=#ffbe6f
+number=#ffa348
+preprocessor=#cdab8f
+error=#f66151
+warning=#f8e45c
+info=#99c1f1
+debug=#9a9996
+heading=#62a0ea bold
+code=#8ff0a4
+link=#99c1f1

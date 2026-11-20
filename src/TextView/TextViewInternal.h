@@ -45,6 +45,7 @@ HRESULT (WINAPI * DrawThemeBackground_Proc)(HTHEME hTheme, HDC hdc, int, int, co
 #include "TextLayout.h"
 #include "TextCanvas.h"
 #include "SyntaxLexer.h"
+#include "TextPalette.h"
 
 //
 //	LINECACHE - a line laid out, kept while it's in use
@@ -295,6 +296,9 @@ public:
 	int			ChooseSyntax(const char *const *definitions, int count, const char *filename);
 	bool		SetSyntax(const char *definition);
 	void		SetSyntaxStyle(SyntaxKind kind, uint32_t rgbColour, bool bold, bool italic);
+
+	// Every colour and syntax style at once, from palettes (TextPalette.h)
+	void		SetPalette(const TextPalette &palette);
 	
 private:
 
@@ -520,13 +524,6 @@ private:
 	// Syntax colouring: the language's rules (none for plain text), each kind's
 	// style, and the state lines start in, by where they start, for some of
 	// the lines coloured so far. The states go when the line cache is reset.
-	struct SyntaxStyle
-	{
-		uint32_t colour;
-		bool	 bold;
-		bool	 italic;
-	};
-
 	std::unique_ptr<SyntaxLexer> m_pSyntax;
 	SyntaxStyle	m_syntaxStyles[SYNTAX_KINDS];
 	std::map<size_w, int> m_syntaxStates;

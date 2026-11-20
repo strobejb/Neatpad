@@ -1,0 +1,43 @@
+# Win32 Neatpad's own colours, as Windows' default theme has them, and
+# Visual Studio's light syntax colours. One style: it's the same in dark.
+
+[palette]
+name=Classic
+text=#000000
+background=#ffffff
+caret=#000000
+selection-text=#ffffff
+selection=#0078d7
+inactive-selection-text=#000000
+inactive-selection=#f0f0f0
+margin=#f0f0f0
+line-number-text=#a0a0a0
+line-number=#f0f0f0
+long-line-text=#a0a0a0
+long-line=#f0f0f0
+current-line-text=#000000
+current-line=#e6f0ff
+match-text=#000000
+match=#ffe680
+changed-text=#be3737
+changed-line=#5884a4
+changed-line-background=#f0f0f0
+
+[syntax]
+comment=#008000
+keyword=#0000ff
+type=#2b91af
+constant=#6f008a
+string=#a31515
+escape=#b77600
+number=#098658
+preprocessor=#808080
+error=#cd0000
+warning=#b07000
+info=#0060c0
+debug=#808080
+heading=#0000ff bold
+strong=text bold
+emphasis=text italic
+code=#a31515
+link=#0066cc

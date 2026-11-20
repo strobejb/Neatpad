@@ -558,8 +558,13 @@ static void neatpad_text_view_dispose(GObject *object)
     G_OBJECT_CLASS(neatpad_text_view_parent_class)->dispose(object);
 }
 
+// The built-in palettes, compiled in and registered as the class is made
+extern "C" void neatpad_palettes_register_resource(void);
+
 static void neatpad_text_view_class_init(NeatpadTextViewClass *klass)
 {
+    neatpad_palettes_register_resource();
+
     GObjectClass   *object_class = G_OBJECT_CLASS(klass);
     GtkWidgetClass *widget_class = GTK_WIDGET_CLASS(klass);
 
@@ -963,122 +968,52 @@ void neatpad_text_view_set_tab_width(NeatpadTextView *view, guint width)
     view_of(view)->SetTabWidth(width);
 }
 
-// A colour part way from one to another: 0 is from, 1 is to
-static uint32_t mix(uint32_t from, uint32_t to, double amount)
+// A built-in palette's text (palettes.gresource.xml)
+static std::string builtin_palette(const char *name)
 {
-    uint32_t mixed = 0;
+    char       *path = g_strconcat(NEATPAD_PALETTES "/", name, ".palette", NULL);
+    GBytes     *bytes;
+    std::string text;
 
-    for (int shift = 0; shift < 24; shift += 8)
+    bytes = g_resources_lookup_data(path, G_RESOURCE_LOOKUP_FLAGS_NONE, 0);
+
+    if (bytes)
     {
-        double a = (from >> shift) & 0xff;
-        double b = (to >> shift) & 0xff;
-
-        mixed |= (uint32_t)(a + (b - a) * amount + 0.5) << shift;
+        text.assign((const char *)g_bytes_get_data(bytes, 0), g_bytes_get_size(bytes));
+        g_bytes_unref(bytes);
     }
 
-    return mixed;
+    g_free(path);
+    return text;
 }
 
 //
-//	The colours of GtkSourceView's Adwaita and Adwaita Dark schemes, as GNOME
-//	Text Editor shows text. A selection is the accent colour 30% over the
-//	background, as libadwaita selects text, and a tenth of the text's colour
-//	when the view isn't focused.
+//	A palette over Adwaita's, for the style and the accent colour. The text's
+//	colours, its background and the caret are the padding's too.
 //
-void neatpad_text_view_set_scheme(NeatpadTextView *view, gboolean dark, const GdkRGBA *accent)
+void neatpad_text_view_set_palette(NeatpadTextView *view, const char *palette, gboolean dark, const GdkRGBA *accent)
 {
-    TextView *engine = 0;
-    uint32_t  background;
-    uint32_t  text;
-    uint32_t  highlight;
-    uint32_t  current;
+    std::vector<std::string> palettes = {builtin_palette("adwaita")};
+    TextPalette              resolved;
+    uint32_t                 colour;
 
     g_return_if_fail(NEATPAD_IS_TEXT_VIEW(view));
 
-    engine     = view_of(view);
-    background = dark ? TV_RGB(0x1d, 0x1d, 0x20) : TV_RGB(0xff, 0xff, 0xff);
-    text       = dark ? TV_RGB(0xc0, 0xbf, 0xbc) : TV_RGB(0x50, 0x4e, 0x55);
-    current    = dark ? TV_RGB(0x24, 0x24, 0x28) : TV_RGB(0xf6, 0xf5, 0xf4);
-    highlight  = accent ? TV_RGB((int)(accent->red * 255 + 0.5), (int)(accent->green * 255 + 0.5),
-                                 (int)(accent->blue * 255 + 0.5))
-                        : TV_RGB(0x35, 0x84, 0xe4);
+    if (palette)
+        palettes.push_back(palette);
 
-    const struct
-    {
-        uint32_t index;
-        uint32_t colour;
-    } colours[] = {
-        {TXC_FOREGROUND, text},
-        {TXC_BACKGROUND, background},
-        {TXC_HIGHLIGHTTEXT, text},
-        {TXC_HIGHLIGHT, mix(background, highlight, 0.3)},
-        {TXC_HIGHLIGHTTEXT2, text},
-        {TXC_HIGHLIGHT2, mix(background, text, 0.1)},
-        {TXC_SELMARGIN1, background},
-        {TXC_SELMARGIN2, background},
-        {TXC_LINENUMBERTEXT, dark ? TV_RGB(0x5e, 0x5e, 0x5e) : TV_RGB(0xb0, 0xaf, 0xac)},
-        {TXC_LINENUMBER, background},
-        {TXC_LONGLINETEXT, text},
-        {TXC_LONGLINE, current},
-        {TXC_CURRENTLINETEXT, text},
-        {TXC_CURRENTLINE, current},
-        {TXC_SEARCHMATCHTEXT, dark ? TV_RGB(0x24, 0x24, 0x24) : TV_RGB(0x3d, 0x38, 0x46)},
-        {TXC_SEARCHMATCH, dark ? mix(background, TV_RGB(0xf6, 0xd3, 0x2d), 0.5) : TV_RGB(0xf8, 0xe4, 0x5c)},
-        {TXC_CHANGEDTEXT, dark ? TV_RGB(0xf6, 0x61, 0x51) : TV_RGB(0xc0, 0x1c, 0x28)},
-        {TXC_CHANGEDLINE, dark ? TV_RGB(0x62, 0xa0, 0xea) : TV_RGB(0x35, 0x84, 0xe4)},
-        {TXC_CHANGEDLINEBG, current},
-    };
+    colour = accent ? TV_RGB((int)(accent->red * 255 + 0.5), (int)(accent->green * 255 + 0.5),
+                             (int)(accent->blue * 255 + 0.5))
+                    : TV_RGB(0x35, 0x84, 0xe4);
 
-    for (const auto &colour : colours)
-        engine->SetColour(colour.index, colour.colour);
-
-    // syntax colours from GNOME's palette, darker on light, lighter on dark,
-    // with keywords and headings in bold
-    const struct
-    {
-        SyntaxKind kind;
-        uint32_t   colour;
-        bool       bold;
-        bool       italic;
-    } syntax[] = {
-        {SyntaxKind::Plain, text, false},
-        {SyntaxKind::Comment, dark ? TV_RGB(0x9a, 0x99, 0x96) : TV_RGB(0x77, 0x76, 0x7b), false},
-        {SyntaxKind::Keyword, dark ? TV_RGB(0xdc, 0x8a, 0xdd) : TV_RGB(0x91, 0x41, 0xac), true},
-        {SyntaxKind::Type, dark ? TV_RGB(0x62, 0xa0, 0xea) : TV_RGB(0x1a, 0x5f, 0xb4), false},
-        {SyntaxKind::Constant, dark ? TV_RGB(0xff, 0xa3, 0x48) : TV_RGB(0xc6, 0x46, 0x00), false},
-        {SyntaxKind::String, dark ? TV_RGB(0x8f, 0xf0, 0xa4) : TV_RGB(0x26, 0xa2, 0x69), false},
-        {SyntaxKind::Escape, dark ? TV_RGB(0xff, 0xbe, 0x6f) : TV_RGB(0xc6, 0x46, 0x00), false},
-        {SyntaxKind::Number, dark ? TV_RGB(0xff, 0xa3, 0x48) : TV_RGB(0xc6, 0x46, 0x00), false},
-        {SyntaxKind::Preprocessor, dark ? TV_RGB(0xcd, 0xab, 0x8f) : TV_RGB(0x86, 0x5e, 0x3c), false},
-        {SyntaxKind::Error, dark ? TV_RGB(0xf6, 0x61, 0x51) : TV_RGB(0xc0, 0x1c, 0x28), false},
-        {SyntaxKind::Warning, dark ? TV_RGB(0xf8, 0xe4, 0x5c) : TV_RGB(0x9c, 0x6e, 0x03), false},
-        {SyntaxKind::Info, dark ? TV_RGB(0x99, 0xc1, 0xf1) : TV_RGB(0x1c, 0x71, 0xd8), false},
-        {SyntaxKind::Debug, dark ? TV_RGB(0x9a, 0x99, 0x96) : TV_RGB(0x77, 0x76, 0x7b), false},
-        {SyntaxKind::Heading, dark ? TV_RGB(0x62, 0xa0, 0xea) : TV_RGB(0x1a, 0x5f, 0xb4), true},
-        {SyntaxKind::Strong, text, true},
-        {SyntaxKind::Emphasis, text, false, true},
-        {SyntaxKind::Code, dark ? TV_RGB(0x8f, 0xf0, 0xa4) : TV_RGB(0x26, 0xa2, 0x69), false},
-        {SyntaxKind::Link, dark ? TV_RGB(0x99, 0xc1, 0xf1) : TV_RGB(0x1c, 0x71, 0xd8), false},
-    };
-
-    for (const auto &style : syntax)
-        engine->SetSyntaxStyle(style.kind, style.colour, style.bold, style.italic);
-
-    view->host->SetPalette(background, text, dark ? TV_RGB(0xc0, 0xbf, 0xbc) : TV_RGB(0x77, 0x76, 0x7b));
+    ResolvePalette(palettes, dark, colour, &resolved);
+    view_of(view)->SetPalette(resolved);
+    view->host->SetPalette(resolved.colours[TXC_BACKGROUND], resolved.colours[TXC_FOREGROUND], resolved.caret);
 }
 
-gboolean neatpad_text_view_set_syntax_style(NeatpadTextView *view, const char *kind, guint32 colour, gboolean bold,
-                                            gboolean italic)
+void neatpad_text_view_set_scheme(NeatpadTextView *view, gboolean dark, const GdkRGBA *accent)
 {
-    SyntaxKind which;
-
-    g_return_val_if_fail(NEATPAD_IS_TEXT_VIEW(view), FALSE);
-
-    if (kind == 0 || !SyntaxKindFromName(kind, &which))
-        return FALSE;
-
-    view_of(view)->SetSyntaxStyle(which, colour, bold, italic);
-    return TRUE;
+    neatpad_text_view_set_palette(view, 0, dark, accent);
 }
 
 int neatpad_text_view_choose_syntax(NeatpadTextView *view, const char *const *definitions, int count,
@@ -1087,31 +1022,6 @@ int neatpad_text_view_choose_syntax(NeatpadTextView *view, const char *const *de
     g_return_val_if_fail(NEATPAD_IS_TEXT_VIEW(view), -1);
 
     return view_of(view)->ChooseSyntax(definitions, count, filename);
-}
-
-void neatpad_text_view_set_colour(NeatpadTextView *view, guint index, guint32 colour)
-{
-    uint32_t window;
-    uint32_t text;
-    uint32_t caret;
-
-    g_return_if_fail(NEATPAD_IS_TEXT_VIEW(view));
-    g_return_if_fail(index <= NEATPAD_COLOUR_CARET);
-
-    // the text and its background are the padding's and the system colours too
-    view->host->PaletteColours(&window, &text, &caret);
-
-    if (index == TXC_BACKGROUND)
-        window = colour;
-    else if (index == TXC_FOREGROUND)
-        text = colour;
-    else if (index == NEATPAD_COLOUR_CARET)
-        caret = colour;
-
-    if (index < TXC_MAX_COLOURS)
-        view_of(view)->SetColour(index, colour);
-
-    view->host->SetPalette(window, text, caret);
 }
 
 void neatpad_text_view_set_style(NeatpadTextView *view, guint mask, guint styles)

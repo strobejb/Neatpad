@@ -1,0 +1,60 @@
+# Ethan Schoonover's Solarized. Its accent colours are the same in light and
+# dark; only the base tones swap.
+
+[palette]
+name=Solarized
+selection-text=caret
+inactive-selection-text=text
+margin=background
+line-number=background
+long-line-text=text
+long-line=current-line
+current-line-text=text
+match-text=background
+match=#b58900
+changed-text=#dc322f
+changed-line=#268bd2
+changed-line-background=current-line
+
+[light]
+text=#657b83
+background=#fdf6e3
+caret=#586e75
+selection=#e4ddc8
+inactive-selection=#eee8d5
+line-number-text=#93a1a1
+current-line=#eee8d5
+
+[dark]
+text=#839496
+background=#002b36
+caret=#93a1a1
+selection=#0d4655
+inactive-selection=#073642
+line-number-text=#586e75
+current-line=#073642
+
+[syntax]
+keyword=#859900 bold
+type=#b58900
+constant=#d33682
+string=#2aa198
+escape=#cb4b16
+number=#d33682
+preprocessor=#cb4b16
+error=#dc322f
+warning=#b58900
+info=#268bd2
+heading=#268bd2 bold
+strong=caret bold
+emphasis=caret italic
+code=#2aa198
+link=#6c71c4
+
+[light-syntax]
+comment=#93a1a1 italic
+debug=#93a1a1
+
+[dark-syntax]
+comment=#586e75 italic
+debug=#586e75

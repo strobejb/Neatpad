@@ -54,6 +54,9 @@
     <ClCompile Include="SyntaxParser.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="TextPalette.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="win32\TextViewWin32.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -96,6 +99,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="SyntaxLexer.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="TextPalette.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="win32\UspTextLayout.h">

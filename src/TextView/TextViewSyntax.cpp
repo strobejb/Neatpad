@@ -113,6 +113,18 @@ void TextView::SetSyntaxStyle(SyntaxKind kind, uint32_t rgbColour, bool bold, bo
     RefreshWindow();
 }
 
+void TextView::SetPalette(const TextPalette &palette)
+{
+    for (int i = 0; i < TXC_MAX_COLOURS; i++)
+        m_rgbColourList[i] = palette.colours[i];
+
+    for (int i = 0; i < SYNTAX_KINDS; i++)
+        m_syntaxStyles[i] = palette.syntax[i];
+
+    ResetLineCache();
+    RefreshWindow();
+}
+
 void TextView::UseSyntax(const SyntaxDefinition *definition)
 {
     m_pSyntax.reset(definition ? new SyntaxLexer(*definition) : 0);

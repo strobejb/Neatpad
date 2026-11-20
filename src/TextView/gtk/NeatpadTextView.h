@@ -150,22 +150,16 @@ void neatpad_text_view_set_style(NeatpadTextView *view, guint mask, guint styles
 // Characters from one tab stop to the next
 void neatpad_text_view_set_tab_width(NeatpadTextView *view, guint width);
 
-// The colours: GNOME's Adwaita or Adwaita Dark editor scheme, with the
-// selection in the accent colour (Adwaita blue when accent is NULL)
+// The colours, from palettes (src/TextView/palettes): the text of a .palette
+// file laid over Adwaita's, or Adwaita's alone for NULL. dark chooses the
+// style, and accent is the accent colour (Adwaita blue for NULL). The built-in
+// palettes are resources, in NEATPAD_PALETTES.
+#define NEATPAD_PALETTES "/net/catch22/Neatpad/palettes"
+
+void neatpad_text_view_set_palette(NeatpadTextView *view, const char *palette, gboolean dark, const GdkRGBA *accent);
+
+// Adwaita's colours alone
 void neatpad_text_view_set_scheme(NeatpadTextView *view, gboolean dark, const GdkRGBA *accent);
-
-// One colour in place of the scheme's, after neatpad_text_view_set_scheme: a
-// TXC_* index, or NEATPAD_COLOUR_CARET. Colours are 0x00BBGGRR, as TV_RGB makes.
-#define NEATPAD_COLOUR_CARET TXC_MAX_COLOURS
-
-void neatpad_text_view_set_colour(NeatpadTextView *view, guint index, guint32 colour);
-
-// One kind of text's style in place of the scheme's, after
-// neatpad_text_view_set_scheme: its colour (0x00BBGGRR), and bold or italic.
-// The kind is named as definitions name it, such as "keyword": FALSE for a
-// name that isn't one.
-gboolean neatpad_text_view_set_syntax_style(NeatpadTextView *view, const char *kind, guint32 colour, gboolean bold,
-                                            gboolean italic);
 
 // Colours the text by the first of the syntax definitions (src/TextView/syntax)
 // whose file patterns match the file's name, or by none: returns which, or -1

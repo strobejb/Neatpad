@@ -58,6 +58,7 @@ add_library(TextViewEngine STATIC
     src/TextView/TextViewSyntax.cpp
     src/TextView/SyntaxLexer.cpp
     src/TextView/SyntaxParser.cpp
+    src/TextView/TextPalette.cpp
 )
 
 target_link_libraries(TextViewEngine PUBLIC TextDocument)
@@ -71,11 +72,23 @@ if(PkgConfig_FOUND)
 endif()
 
 if(GTK4_FOUND)
+    # the built-in palettes, compiled into the view
+    find_program(GLIB_COMPILE_RESOURCES glib-compile-resources REQUIRED)
+    set(NEATPAD_PALETTES ${CMAKE_CURRENT_SOURCE_DIR}/src/TextView/palettes)
+    add_custom_command(
+        OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/palettes-resources.c
+        COMMAND ${GLIB_COMPILE_RESOURCES} --generate-source --manual-register --c-name neatpad_palettes
+                --sourcedir=${NEATPAD_PALETTES} --target=${CMAKE_CURRENT_BINARY_DIR}/palettes-resources.c
+                ${CMAKE_CURRENT_SOURCE_DIR}/src/TextView/gtk/palettes.gresource.xml
+        DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/TextView/gtk/palettes.gresource.xml ${NEATPAD_PALETTES}/adwaita.palette
+                ${NEATPAD_PALETTES}/classic.palette ${NEATPAD_PALETTES}/solarized.palette)
+
     add_library(TextViewGtk STATIC
         src/TextView/gtk/GtkCanvas.cpp
         src/TextView/gtk/NeatpadTextView.cpp
         src/TextView/gtk/PangoTextLayout.cpp
         src/TextView/gtk/TextViewGtk.cpp
+        ${CMAKE_CURRENT_BINARY_DIR}/palettes-resources.c
     )
 
     target_include_directories(TextViewGtk PUBLIC src/TextView/gtk)
@@ -91,7 +104,6 @@ if(GTK4_FOUND)
     # The app, where libadwaita is too
     if(ADWAITA_FOUND)
         # its icons and Keyboard Shortcuts, compiled in as a GResource
-        find_program(GLIB_COMPILE_RESOURCES glib-compile-resources REQUIRED)
         set(NEATPAD_GTK ${CMAKE_CURRENT_SOURCE_DIR}/src/Neatpad/gtk)
         add_custom_command(
             OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/neatpad-resources.c
@@ -134,11 +146,13 @@ add_executable(CoreTests
     tests/document_tests.cpp
     tests/engine_tests.cpp
     tests/syntax_tests.cpp
+    tests/palette_tests.cpp
 )
 
 target_link_libraries(CoreTests PRIVATE TextDocument TextViewEngine)
-# the syntax definitions Neatpad has, for the tests to read
-target_compile_definitions(CoreTests PRIVATE NEATPAD_SYNTAX_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src/TextView/syntax")
+# the syntax definitions and palettes Neatpad has, for the tests to read
+target_compile_definitions(CoreTests PRIVATE NEATPAD_SYNTAX_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src/TextView/syntax"
+                                             NEATPAD_PALETTE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src/TextView/palettes")
 
 enable_testing()
 add_test(NAME CoreTests COMMAND CoreTests)

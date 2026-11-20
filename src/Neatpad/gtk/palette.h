@@ -4,38 +4,11 @@
 //
 //	MODULE:		palette.h
 //
-//	PURPOSE:	The text's colours: Adwaita's, which follow the style and the
-//				accent colour, or a palette's in their place. Palettes are
-//				built in, or .palette files in ~/.config/catch22/neatpad/palettes:
-//
-//					[palette]
-//					name=Solarized
-//
-//					[light]
-//					background=#fdf6e3
-//					text=#657b83
-//
-//					[dark]
-//					background=#002b36
-//					text=#839496
-//
-//				A palette with one of [light] and [dark] has it for both styles.
-//				What it leaves out is Adwaita's. The colours (as CSS writes them):
-//
-//					text, background, caret, selection-text, selection,
-//					inactive-selection-text, inactive-selection, margin,
-//					line-number-text, line-number, long-line-text, long-line,
-//					current-line-text, current-line, match-text, match,
-//					changed-text, changed-line, changed-line-background
-//
-//				And syntax colouring's, each a colour then bold or italic if it's
-//				either, such as syntax-keyword=#9141ac bold:
-//
-//					syntax-comment, syntax-keyword, syntax-type, syntax-constant,
-//					syntax-string, syntax-escape, syntax-number, syntax-preprocessor,
-//					syntax-error, syntax-warning, syntax-info, syntax-debug,
-//					syntax-heading, syntax-strong, syntax-emphasis, syntax-code,
-//					syntax-link
+//	PURPOSE:	The text's colours, from a palette: a .palette file, as
+//				src/TextView/palettes/README.md describes. The built-in ones
+//				are compiled into the view (NEATPAD_PALETTES), and .palette
+//				files in ~/.config/catch22/neatpad/palettes add more, or take a
+//				built-in one's place. Every palette is laid over Adwaita's.
 //
 #ifndef NEATPAD_PALETTE_INCLUDED
 #define NEATPAD_PALETTE_INCLUDED

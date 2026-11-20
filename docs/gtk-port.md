@@ -312,9 +312,11 @@ Each step is its own commit on `main`, and moves and formatting changes stay sep
     them as UTF-16, as find does.
   - **Done:** palettes, in place of Win32's colour for each display item: Preferences picks one, as Text Editor
     picks a style scheme. Adwaita (following the style and the accent colour), Classic (Win32 Neatpad's colours)
-    and Solarized are built in, and `.palette` files in `~/.config/catch22/neatpad/palettes` add more: a key file
-    with `[light]` and `[dark]` colours, as `src/Neatpad/gtk/palette.h` describes. What a palette leaves out is
-    Adwaita's.
+    and Solarized are built in, and `.palette` files in `~/.config/catch22/neatpad/palettes` add more. Every
+    palette, Adwaita's too, is a `.palette` file in `src/TextView/palettes`, whose `README.md` is the format:
+    shared colours, then `[light]` and `[dark]` ones, and syntax styles likewise. A colour can be the accent, or
+    another colour's key, at a percentage over the background. The engine reads them (`TextPalette.cpp`), so
+    Win32 can too; the GTK view compiles the built-in ones in. What a palette leaves out is Adwaita's.
   - **Done:** control characters (but tabs) show as on Win32: their code in hex, in a rounded box of the text's
     colour, which Pango keeps a shape's room for. A NUL no longer ends a line: Pango is given a space in its place.
   - **Done:** Save As chooses the encoding and line endings, as Win32's Save As does. `GtkFileDialog` can't add

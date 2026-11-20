@@ -13,6 +13,7 @@
 
 #include <map>
 #include <set>
+#include <stdint.h>
 #include <string>
 #include <vector>
 
@@ -41,6 +42,14 @@ enum class SyntaxKind
 
 // How many kinds there are
 const int SYNTAX_KINDS = (int)SyntaxKind::Link + 1;
+
+// How a kind of text is drawn: its colour (0x00BBGGRR), and bold or italic
+struct SyntaxStyle
+{
+    uint32_t colour;
+    bool     bold;
+    bool     italic;
+};
 
 // What a rule matches
 enum class SyntaxPattern

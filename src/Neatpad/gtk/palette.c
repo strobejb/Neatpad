@@ -10,235 +10,39 @@
 
 #include "palette.h"
 
-// The palettes Neatpad comes with, as their files would be
-static const struct
-{
-    const char *id;
-    const char *file;
-} builtins[] = {
-    {PALETTE_DEFAULT, "[palette]\n"
-                      "name=Adwaita\n"},
-
-    // Win32 Neatpad's own colours, as Windows' default theme has them
-    {"classic", "[palette]\n"
-                "name=Classic\n"
-                "[light]\n"
-                "text=#000000\n"
-                "background=#ffffff\n"
-                "caret=#000000\n"
-                "selection-text=#ffffff\n"
-                "selection=#0078d7\n"
-                "inactive-selection-text=#000000\n"
-                "inactive-selection=#f0f0f0\n"
-                "margin=#f0f0f0\n"
-                "line-number-text=#a0a0a0\n"
-                "line-number=#f0f0f0\n"
-                "long-line-text=#a0a0a0\n"
-                "long-line=#f0f0f0\n"
-                "current-line-text=#000000\n"
-                "current-line=#e6f0ff\n"
-                "match-text=#000000\n"
-                "match=#ffe680\n"
-                "changed-text=#be3737\n"
-                "changed-line=#5884a4\n"
-                "changed-line-background=#f0f0f0\n"
-                "syntax-comment=#008000\n"
-                "syntax-keyword=#0000ff\n"
-                "syntax-type=#2b91af\n"
-                "syntax-constant=#6f008a\n"
-                "syntax-string=#a31515\n"
-                "syntax-escape=#b77600\n"
-                "syntax-number=#098658\n"
-                "syntax-preprocessor=#808080\n"
-                "syntax-error=#cd0000\n"
-                "syntax-warning=#b07000\n"
-                "syntax-info=#0060c0\n"
-                "syntax-debug=#808080\n"
-                "syntax-heading=#0000ff bold\n"
-                "syntax-strong=#000000 bold\n"
-                "syntax-emphasis=#000000 italic\n"
-                "syntax-code=#a31515\n"
-                "syntax-link=#0066cc\n"},
-
-    // Ethan Schoonover's Solarized
-    {"solarized", "[palette]\n"
-                  "name=Solarized\n"
-                  "[light]\n"
-                  "text=#657b83\n"
-                  "background=#fdf6e3\n"
-                  "caret=#586e75\n"
-                  "selection-text=#586e75\n"
-                  "selection=#e4ddc8\n"
-                  "inactive-selection-text=#657b83\n"
-                  "inactive-selection=#eee8d5\n"
-                  "margin=#fdf6e3\n"
-                  "line-number-text=#93a1a1\n"
-                  "line-number=#fdf6e3\n"
-                  "long-line-text=#657b83\n"
-                  "long-line=#eee8d5\n"
-                  "current-line-text=#657b83\n"
-                  "current-line=#eee8d5\n"
-                  "match-text=#fdf6e3\n"
-                  "match=#b58900\n"
-                  "changed-text=#dc322f\n"
-                  "changed-line=#268bd2\n"
-                  "changed-line-background=#eee8d5\n"
-                  "syntax-comment=#93a1a1 italic\n"
-                  "syntax-keyword=#859900 bold\n"
-                  "syntax-type=#b58900\n"
-                  "syntax-constant=#d33682\n"
-                  "syntax-string=#2aa198\n"
-                  "syntax-escape=#cb4b16\n"
-                  "syntax-number=#d33682\n"
-                  "syntax-preprocessor=#cb4b16\n"
-                  "syntax-error=#dc322f\n"
-                  "syntax-warning=#b58900\n"
-                  "syntax-info=#268bd2\n"
-                  "syntax-debug=#93a1a1\n"
-                  "syntax-heading=#268bd2 bold\n"
-                  "syntax-strong=#586e75 bold\n"
-                  "syntax-emphasis=#586e75 italic\n"
-                  "syntax-code=#2aa198\n"
-                  "syntax-link=#6c71c4\n"
-                  "[dark]\n"
-                  "text=#839496\n"
-                  "background=#002b36\n"
-                  "caret=#93a1a1\n"
-                  "selection-text=#93a1a1\n"
-                  "selection=#0d4655\n"
-                  "inactive-selection-text=#839496\n"
-                  "inactive-selection=#073642\n"
-                  "margin=#002b36\n"
-                  "line-number-text=#586e75\n"
-                  "line-number=#002b36\n"
-                  "long-line-text=#839496\n"
-                  "long-line=#073642\n"
-                  "current-line-text=#839496\n"
-                  "current-line=#073642\n"
-                  "match-text=#002b36\n"
-                  "match=#b58900\n"
-                  "changed-text=#dc322f\n"
-                  "changed-line=#268bd2\n"
-                  "changed-line-background=#073642\n"
-                  "syntax-comment=#586e75 italic\n"
-                  "syntax-keyword=#859900 bold\n"
-                  "syntax-type=#b58900\n"
-                  "syntax-constant=#d33682\n"
-                  "syntax-string=#2aa198\n"
-                  "syntax-escape=#cb4b16\n"
-                  "syntax-number=#d33682\n"
-                  "syntax-preprocessor=#cb4b16\n"
-                  "syntax-error=#dc322f\n"
-                  "syntax-warning=#b58900\n"
-                  "syntax-info=#268bd2\n"
-                  "syntax-debug=#586e75\n"
-                  "syntax-heading=#268bd2 bold\n"
-                  "syntax-strong=#93a1a1 bold\n"
-                  "syntax-emphasis=#93a1a1 italic\n"
-                  "syntax-code=#2aa198\n"
-                  "syntax-link=#6c71c4\n"},
-};
-
-// Each colour's name in a palette, and what it colours
-static const struct
-{
-    const char *key;
-    guint       index;
-} colours[] = {
-    {"text", TXC_FOREGROUND},
-    {"background", TXC_BACKGROUND},
-    {"caret", NEATPAD_COLOUR_CARET},
-    {"selection-text", TXC_HIGHLIGHTTEXT},
-    {"selection", TXC_HIGHLIGHT},
-    {"inactive-selection-text", TXC_HIGHLIGHTTEXT2},
-    {"inactive-selection", TXC_HIGHLIGHT2},
-    {"margin", TXC_SELMARGIN1},
-    {"margin", TXC_SELMARGIN2},
-    {"line-number-text", TXC_LINENUMBERTEXT},
-    {"line-number", TXC_LINENUMBER},
-    {"long-line-text", TXC_LONGLINETEXT},
-    {"long-line", TXC_LONGLINE},
-    {"current-line-text", TXC_CURRENTLINETEXT},
-    {"current-line", TXC_CURRENTLINE},
-    {"match-text", TXC_SEARCHMATCHTEXT},
-    {"match", TXC_SEARCHMATCH},
-    {"changed-text", TXC_CHANGEDTEXT},
-    {"changed-line", TXC_CHANGEDLINE},
-    {"changed-line-background", TXC_CHANGEDLINEBG},
-};
-
-// The kinds of text syntax colouring gives a style, as syntax-KIND keys
-static const char *const syntax_kinds[] = {
-    "comment", "keyword", "type", "constant", "string", "escape",
-    "number", "preprocessor", "error", "warning", "info", "debug",
-    "heading", "strong", "emphasis", "code", "link",
-};
-
-// A syntax style: a colour, then bold or italic if it's either
-static gboolean parse_style(const char *value, GdkRGBA *rgba, gboolean *bold, gboolean *italic)
-{
-    char   **words    = g_strsplit_set(value, " \t", -1);
-    gboolean coloured = FALSE;
-    gboolean ok       = TRUE;
-
-    *bold   = FALSE;
-    *italic = FALSE;
-
-    for (char **word = words; *word && ok; word++)
-    {
-        if (**word == 0)
-            continue;
-
-        if (g_str_equal(*word, "bold"))
-            *bold = TRUE;
-        else if (g_str_equal(*word, "italic"))
-            *italic = TRUE;
-        else if (!coloured && gdk_rgba_parse(rgba, *word))
-            coloured = TRUE;
-        else
-            ok = FALSE;
-    }
-
-    g_strfreev(words);
-    return ok && coloured;
-}
-
-static guint32 colour_of(const GdkRGBA *rgba)
-{
-    return TV_RGB((int)(rgba->red * 255 + 0.5), (int)(rgba->green * 255 + 0.5), (int)(rgba->blue * 255 + 0.5));
-}
-
 char *palette_folder(void)
 {
     return g_build_filename(g_get_user_config_dir(), "catch22", "neatpad", "palettes", NULL);
 }
 
-// A palette's file, the user's before a built-in one: NULL if there's neither
-static GKeyFile *load_palette(const char *id)
+// A palette's text, the user's file before a built-in one: NULL if there's neither
+static char *load_palette(const char *id)
 {
-    GKeyFile *file   = g_key_file_new();
-    char     *folder = palette_folder();
-    char     *name   = g_strconcat(id, ".palette", NULL);
-    char     *path   = g_build_filename(folder, name, NULL);
-    gboolean  loaded = g_key_file_load_from_file(file, path, G_KEY_FILE_NONE, 0);
+    char   *folder = palette_folder();
+    char   *name   = g_strconcat(id, ".palette", NULL);
+    char   *path   = g_build_filename(folder, name, NULL);
+    char   *text   = NULL;
+    GBytes *bytes;
 
-    for (size_t i = 0; i < G_N_ELEMENTS(builtins) && !loaded; i++)
+    if (!g_file_get_contents(path, &text, NULL, NULL))
     {
-        if (g_str_equal(builtins[i].id, id))
-            loaded = g_key_file_load_from_data(file, builtins[i].file, (gsize)-1, G_KEY_FILE_NONE, 0);
+        char *resource = g_strconcat(NEATPAD_PALETTES "/", name, NULL);
+
+        bytes = g_resources_lookup_data(resource, G_RESOURCE_LOOKUP_FLAGS_NONE, NULL);
+
+        if (bytes)
+        {
+            text = g_strndup(g_bytes_get_data(bytes, NULL), g_bytes_get_size(bytes));
+            g_bytes_unref(bytes);
+        }
+
+        g_free(resource);
     }
 
     g_free(path);
     g_free(name);
     g_free(folder);
-
-    if (!loaded)
-    {
-        g_key_file_free(file);
-        return 0;
-    }
-
-    return file;
+    return text;
 }
 
 static void palette_info_free(gpointer data)
@@ -252,12 +56,10 @@ static void palette_info_free(gpointer data)
 
 static void add_palette(GPtrArray *list, const char *id)
 {
-    GKeyFile    *file = load_palette(id);
+    GKeyFile    *file = g_key_file_new();
+    char        *text = NULL;
+    char        *name = NULL;
     PaletteInfo *info;
-    char        *name;
-
-    if (!file)
-        return;
 
     // listed once, as the user's file if there's one
     for (guint i = 0; i < list->len; i++)
@@ -269,16 +71,37 @@ static void add_palette(GPtrArray *list, const char *id)
         }
     }
 
-    name       = g_key_file_get_string(file, "palette", "name", 0);
-    info       = g_new0(PaletteInfo, 1);
-    info->id   = g_strdup(id);
-    info->name = name && *name ? name : g_strdup(id);
+    text = load_palette(id);
 
-    if (name && !*name)
-        g_free(name);
+    if (text && g_key_file_load_from_data(file, text, (gsize)-1, G_KEY_FILE_NONE, NULL))
+        name = g_key_file_get_string(file, "palette", "name", NULL);
 
-    g_ptr_array_add(list, info);
+    if (text)
+    {
+        info       = g_new0(PaletteInfo, 1);
+        info->id   = g_strdup(id);
+        info->name = name && *name ? g_strdup(name) : g_strdup(id);
+        g_ptr_array_add(list, info);
+    }
+
+    g_free(name);
+    g_free(text);
     g_key_file_free(file);
+}
+
+// Each .palette file of a list of names, by its id
+static void add_palettes(GPtrArray *list, char **names)
+{
+    for (char **name = names; name && *name; name++)
+    {
+        if (g_str_has_suffix(*name, ".palette"))
+        {
+            char *id = g_strndup(*name, strlen(*name) - strlen(".palette"));
+
+            add_palette(list, id);
+            g_free(id);
+        }
+    }
 }
 
 // Adwaita first, then by name
@@ -295,23 +118,19 @@ static int by_name(gconstpointer a, gconstpointer b)
 
 GPtrArray *palette_list(void)
 {
-    GPtrArray  *list   = g_ptr_array_new_with_free_func(palette_info_free);
-    char       *folder = palette_folder();
-    GDir       *dir    = g_dir_open(folder, 0, 0);
+    GPtrArray  *list     = g_ptr_array_new_with_free_func(palette_info_free);
+    char      **builtins = g_resources_enumerate_children(NEATPAD_PALETTES, G_RESOURCE_LOOKUP_FLAGS_NONE, NULL);
+    char       *folder   = palette_folder();
+    GDir       *dir      = g_dir_open(folder, 0, 0);
     const char *entry;
 
-    for (size_t i = 0; i < G_N_ELEMENTS(builtins); i++)
-        add_palette(list, builtins[i].id);
+    add_palettes(list, builtins);
 
     while (dir && (entry = g_dir_read_name(dir)) != 0)
     {
-        if (g_str_has_suffix(entry, ".palette"))
-        {
-            char *id = g_strndup(entry, strlen(entry) - strlen(".palette"));
+        char *names[] = {(char *)entry, NULL};
 
-            add_palette(list, id);
-            g_free(id);
-        }
+        add_palettes(list, names);
     }
 
     if (dir)
@@ -319,51 +138,15 @@ GPtrArray *palette_list(void)
 
     g_ptr_array_sort(list, by_name);
 
+    g_strfreev(builtins);
     g_free(folder);
     return list;
 }
 
 void palette_apply(const char *id, NeatpadTextView *view, gboolean dark, const GdkRGBA *accent)
 {
-    GKeyFile   *file = id ? load_palette(id) : 0;
-    const char *style;
+    char *text = id ? load_palette(id) : NULL;
 
-    neatpad_text_view_set_scheme(view, dark, accent);
-
-    if (!file)
-        return;
-
-    // the style's own colours, or the only ones the palette has
-    style = dark ? "dark" : "light";
-
-    if (!g_key_file_has_group(file, style))
-        style = dark ? "light" : "dark";
-
-    for (size_t i = 0; i < G_N_ELEMENTS(colours); i++)
-    {
-        char   *value = g_key_file_get_string(file, style, colours[i].key, 0);
-        GdkRGBA rgba;
-
-        if (value && gdk_rgba_parse(&rgba, value))
-            neatpad_text_view_set_colour(view, colours[i].index, colour_of(&rgba));
-
-        g_free(value);
-    }
-
-    for (size_t i = 0; i < G_N_ELEMENTS(syntax_kinds); i++)
-    {
-        char    *key   = g_strconcat("syntax-", syntax_kinds[i], NULL);
-        char    *value = g_key_file_get_string(file, style, key, 0);
-        GdkRGBA  rgba;
-        gboolean bold;
-        gboolean italic;
-
-        if (value && parse_style(value, &rgba, &bold, &italic))
-            neatpad_text_view_set_syntax_style(view, syntax_kinds[i], colour_of(&rgba), bold, italic);
-
-        g_free(value);
-        g_free(key);
-    }
-
-    g_key_file_free(file);
+    neatpad_text_view_set_palette(view, text, dark, accent);
+    g_free(text);
 }

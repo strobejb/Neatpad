@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The built-in palettes (src/TextView/palettes), compiled into the view.
+     NeatpadTextView.h names their path, NEATPAD_PALETTES. -->
+<gresources>
+  <gresource prefix="/net/catch22/Neatpad/palettes">
+    <file>adwaita.palette</file>
+    <file>classic.palette</file>
+    <file>solarized.palette</file>
+  </gresource>
+</gresources>
