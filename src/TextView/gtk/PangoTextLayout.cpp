@@ -107,6 +107,32 @@ bool PangoTextLayout::Analyze(const tchar_t *text, int length, TextRun *runs, in
         start = end;
     }
 
+    // the bold and italic stretches
+    for (int start = 0; start < length;)
+    {
+        int end = start;
+
+        while (end < length && runs[end].bold == runs[start].bold && runs[end].italic == runs[start].italic)
+            end++;
+
+        PangoAttribute *style[] = {
+            runs[start].bold ? pango_attr_weight_new(PANGO_WEIGHT_BOLD) : 0,
+            runs[start].italic ? pango_attr_style_new(PANGO_STYLE_ITALIC) : 0,
+        };
+
+        for (PangoAttribute *attr : style)
+        {
+            if (attr == 0)
+                continue;
+
+            attr->start_index = start;
+            attr->end_index   = end;
+            pango_attr_list_insert(list, attr);
+        }
+
+        start = end;
+    }
+
     // each control character a shape, as wide as its label in a box
     m_controls.clear();
 

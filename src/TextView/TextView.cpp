@@ -79,20 +79,25 @@ TextView::TextView(TextViewHost *host)
     m_rgbColourList[TXC_CHANGEDLINE]   = TV_RGB(88, 132, 164);
     m_rgbColourList[TXC_CHANGEDLINEBG] = SYSCOL(TVSC_3DFACE);
 
-    // syntax colours, as Visual Studio's light theme has them
-    m_rgbSyntaxColours[(int)SyntaxKind::Plain]        = SYSCOL(TVSC_WINDOWTEXT);
-    m_rgbSyntaxColours[(int)SyntaxKind::Comment]      = TV_RGB(0, 128, 0);
-    m_rgbSyntaxColours[(int)SyntaxKind::Keyword]      = TV_RGB(0, 0, 255);
-    m_rgbSyntaxColours[(int)SyntaxKind::Type]         = TV_RGB(43, 145, 175);
-    m_rgbSyntaxColours[(int)SyntaxKind::Constant]     = TV_RGB(111, 0, 138);
-    m_rgbSyntaxColours[(int)SyntaxKind::String]       = TV_RGB(163, 21, 21);
-    m_rgbSyntaxColours[(int)SyntaxKind::Escape]       = TV_RGB(183, 118, 0);
-    m_rgbSyntaxColours[(int)SyntaxKind::Number]       = TV_RGB(9, 134, 88);
-    m_rgbSyntaxColours[(int)SyntaxKind::Preprocessor] = TV_RGB(128, 128, 128);
-    m_rgbSyntaxColours[(int)SyntaxKind::Error]        = TV_RGB(205, 0, 0);
-    m_rgbSyntaxColours[(int)SyntaxKind::Warning]      = TV_RGB(176, 112, 0);
-    m_rgbSyntaxColours[(int)SyntaxKind::Info]         = TV_RGB(0, 96, 192);
-    m_rgbSyntaxColours[(int)SyntaxKind::Debug]        = TV_RGB(128, 128, 128);
+    // syntax colours, as Visual Studio's light theme has them, none bold
+    const SyntaxStyle syntax[SYNTAX_KINDS] = {
+        {SYSCOL(TVSC_WINDOWTEXT), false, false}, // plain
+        {TV_RGB(0, 128, 0), false, false},       // comment
+        {TV_RGB(0, 0, 255), false, false},       // keyword
+        {TV_RGB(43, 145, 175), false, false},    // type
+        {TV_RGB(111, 0, 138), false, false},     // constant
+        {TV_RGB(163, 21, 21), false, false},     // string
+        {TV_RGB(183, 118, 0), false, false},     // escape
+        {TV_RGB(9, 134, 88), false, false},      // number
+        {TV_RGB(128, 128, 128), false, false},   // preprocessor
+        {TV_RGB(205, 0, 0), false, false},       // error
+        {TV_RGB(176, 112, 0), false, false},     // warning
+        {TV_RGB(0, 96, 192), false, false},      // info
+        {TV_RGB(128, 128, 128), false, false},   // debug
+    };
+
+    for (int i = 0; i < SYNTAX_KINDS; i++)
+        m_syntaxStyles[i] = syntax[i];
 
 	// Runtime data
 	m_nSelectionMode	= SEL_NONE;

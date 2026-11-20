@@ -718,6 +718,8 @@ int TextView::ApplyTextAttributes(TextCoord *line, uint32_t &nColumn, tchar_t *s
 		attr[i].len		 = 1;
 		attr[i].font	 = 0;
 		attr[i].eol		 = 0;
+		attr[i].bold	 = 0;
+		attr[i].italic	 = 0;
 		attr[i].reserved = 0;
 
 		// change the background if the line is too long

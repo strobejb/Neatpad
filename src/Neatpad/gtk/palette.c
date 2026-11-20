@@ -41,7 +41,19 @@ static const struct
                 "match=#ffe680\n"
                 "changed-text=#be3737\n"
                 "changed-line=#5884a4\n"
-                "changed-line-background=#f0f0f0\n"},
+                "changed-line-background=#f0f0f0\n"
+                "syntax-comment=#008000\n"
+                "syntax-keyword=#0000ff\n"
+                "syntax-type=#2b91af\n"
+                "syntax-constant=#6f008a\n"
+                "syntax-string=#a31515\n"
+                "syntax-escape=#b77600\n"
+                "syntax-number=#098658\n"
+                "syntax-preprocessor=#808080\n"
+                "syntax-error=#cd0000\n"
+                "syntax-warning=#b07000\n"
+                "syntax-info=#0060c0\n"
+                "syntax-debug=#808080\n"},
 
     // Ethan Schoonover's Solarized
     {"solarized", "[palette]\n"
@@ -66,6 +78,18 @@ static const struct
                   "changed-text=#dc322f\n"
                   "changed-line=#268bd2\n"
                   "changed-line-background=#eee8d5\n"
+                  "syntax-comment=#93a1a1 italic\n"
+                  "syntax-keyword=#859900 bold\n"
+                  "syntax-type=#b58900\n"
+                  "syntax-constant=#d33682\n"
+                  "syntax-string=#2aa198\n"
+                  "syntax-escape=#cb4b16\n"
+                  "syntax-number=#d33682\n"
+                  "syntax-preprocessor=#cb4b16\n"
+                  "syntax-error=#dc322f\n"
+                  "syntax-warning=#b58900\n"
+                  "syntax-info=#268bd2\n"
+                  "syntax-debug=#93a1a1\n"
                   "[dark]\n"
                   "text=#839496\n"
                   "background=#002b36\n"
@@ -85,7 +109,19 @@ static const struct
                   "match=#b58900\n"
                   "changed-text=#dc322f\n"
                   "changed-line=#268bd2\n"
-                  "changed-line-background=#073642\n"},
+                  "changed-line-background=#073642\n"
+                  "syntax-comment=#586e75 italic\n"
+                  "syntax-keyword=#859900 bold\n"
+                  "syntax-type=#b58900\n"
+                  "syntax-constant=#d33682\n"
+                  "syntax-string=#2aa198\n"
+                  "syntax-escape=#cb4b16\n"
+                  "syntax-number=#d33682\n"
+                  "syntax-preprocessor=#cb4b16\n"
+                  "syntax-error=#dc322f\n"
+                  "syntax-warning=#b58900\n"
+                  "syntax-info=#268bd2\n"
+                  "syntax-debug=#586e75\n"},
 };
 
 // Each colour's name in a palette, and what it colours
@@ -115,6 +151,46 @@ static const struct
     {"changed-line", TXC_CHANGEDLINE},
     {"changed-line-background", TXC_CHANGEDLINEBG},
 };
+
+// The kinds of text syntax colouring gives a style, as syntax-KIND keys
+static const char *const syntax_kinds[] = {
+    "comment", "keyword", "type", "constant", "string", "escape",
+    "number", "preprocessor", "error", "warning", "info", "debug",
+};
+
+// A syntax style: a colour, then bold or italic if it's either
+static gboolean parse_style(const char *value, GdkRGBA *rgba, gboolean *bold, gboolean *italic)
+{
+    char   **words    = g_strsplit_set(value, " \t", -1);
+    gboolean coloured = FALSE;
+    gboolean ok       = TRUE;
+
+    *bold   = FALSE;
+    *italic = FALSE;
+
+    for (char **word = words; *word && ok; word++)
+    {
+        if (**word == 0)
+            continue;
+
+        if (g_str_equal(*word, "bold"))
+            *bold = TRUE;
+        else if (g_str_equal(*word, "italic"))
+            *italic = TRUE;
+        else if (!coloured && gdk_rgba_parse(rgba, *word))
+            coloured = TRUE;
+        else
+            ok = FALSE;
+    }
+
+    g_strfreev(words);
+    return ok && coloured;
+}
+
+static guint32 colour_of(const GdkRGBA *rgba)
+{
+    return TV_RGB((int)(rgba->red * 255 + 0.5), (int)(rgba->green * 255 + 0.5), (int)(rgba->blue * 255 + 0.5));
+}
 
 char *palette_folder(void)
 {
@@ -253,13 +329,24 @@ void palette_apply(const char *id, NeatpadTextView *view, gboolean dark, const G
         GdkRGBA rgba;
 
         if (value && gdk_rgba_parse(&rgba, value))
-        {
-            neatpad_text_view_set_colour(view, colours[i].index,
-                                         TV_RGB((int)(rgba.red * 255 + 0.5), (int)(rgba.green * 255 + 0.5),
-                                                (int)(rgba.blue * 255 + 0.5)));
-        }
+            neatpad_text_view_set_colour(view, colours[i].index, colour_of(&rgba));
 
         g_free(value);
+    }
+
+    for (size_t i = 0; i < G_N_ELEMENTS(syntax_kinds); i++)
+    {
+        char    *key   = g_strconcat("syntax-", syntax_kinds[i], NULL);
+        char    *value = g_key_file_get_string(file, style, key, 0);
+        GdkRGBA  rgba;
+        gboolean bold;
+        gboolean italic;
+
+        if (value && parse_style(value, &rgba, &bold, &italic))
+            neatpad_text_view_set_syntax_style(view, syntax_kinds[i], colour_of(&rgba), bold, italic);
+
+        g_free(value);
+        g_free(key);
     }
 
     g_key_file_free(file);

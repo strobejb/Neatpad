@@ -105,9 +105,9 @@ bool TextView::SetSyntax(const char *definition)
     return true;
 }
 
-void TextView::SetSyntaxColour(SyntaxKind kind, uint32_t rgbColour)
+void TextView::SetSyntaxStyle(SyntaxKind kind, uint32_t rgbColour, bool bold, bool italic)
 {
-    m_rgbSyntaxColours[(int)kind] = rgbColour;
+    m_syntaxStyles[(int)kind] = {rgbColour, bold, italic};
 
     ResetLineCache();
     RefreshWindow();
@@ -122,7 +122,8 @@ void TextView::UseSyntax(const SyntaxDefinition *definition)
 }
 
 //
-//	Colour a line's text, over the base coat, by the kind of each unit
+//	Colour a line's text, over the base coat, by the kind of each unit: its
+//	colour, and bold or italic
 //
 void TextView::SyntaxColour(TextCoord *line, tchar_t *szText, int nTextLen, TextRun *attr)
 {
@@ -136,8 +137,14 @@ void TextView::SyntaxColour(TextCoord *line, tchar_t *szText, int nTextLen, Text
 
     for (int i = 0; i < nTextLen; i++)
     {
-        if (kinds[i] != SyntaxKind::Plain)
-            attr[i].fg = ResolveColour(m_rgbSyntaxColours[(int)kinds[i]]);
+        const SyntaxStyle &style = m_syntaxStyles[(int)kinds[i]];
+
+        if (kinds[i] == SyntaxKind::Plain)
+            continue;
+
+        attr[i].fg     = ResolveColour(style.colour);
+        attr[i].bold   = style.bold;
+        attr[i].italic = style.italic;
     }
 }
 

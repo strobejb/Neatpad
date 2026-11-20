@@ -28,6 +28,13 @@
 //					current-line-text, current-line, match-text, match,
 //					changed-text, changed-line, changed-line-background
 //
+//				And syntax colouring's, each a colour then bold or italic if it's
+//				either, such as syntax-keyword=#9141ac bold:
+//
+//					syntax-comment, syntax-keyword, syntax-type, syntax-constant,
+//					syntax-string, syntax-escape, syntax-number, syntax-preprocessor,
+//					syntax-error, syntax-warning, syntax-info, syntax-debug
+//
 #ifndef NEATPAD_PALETTE_INCLUDED
 #define NEATPAD_PALETTE_INCLUDED
 

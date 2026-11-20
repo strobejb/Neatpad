@@ -160,6 +160,13 @@ void neatpad_text_view_set_scheme(NeatpadTextView *view, gboolean dark, const Gd
 
 void neatpad_text_view_set_colour(NeatpadTextView *view, guint index, guint32 colour);
 
+// One kind of text's style in place of the scheme's, after
+// neatpad_text_view_set_scheme: its colour (0x00BBGGRR), and bold or italic.
+// The kind is named as definitions name it, such as "keyword": FALSE for a
+// name that isn't one.
+gboolean neatpad_text_view_set_syntax_style(NeatpadTextView *view, const char *kind, guint32 colour, gboolean bold,
+                                            gboolean italic);
+
 // Colours the text by the first of the syntax definitions (src/TextView/syntax)
 // whose file patterns match the file's name, or by none: returns which, or -1
 int neatpad_text_view_choose_syntax(NeatpadTextView *view, const char *const *definitions, int count,

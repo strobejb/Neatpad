@@ -414,3 +414,17 @@ const char *SyntaxKindName(SyntaxKind kind)
 {
     return KIND_NAMES[(int)kind];
 }
+
+bool SyntaxKindFromName(const char *name, SyntaxKind *kind)
+{
+    for (int i = 0; i < SYNTAX_KINDS; i++)
+    {
+        if (std::string(name) == KIND_NAMES[i])
+        {
+            *kind = (SyntaxKind)i;
+            return true;
+        }
+    }
+
+    return false;
+}

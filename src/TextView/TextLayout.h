@@ -25,7 +25,9 @@ struct TextRun
     int      sel : 1;      // selected
     int      ctrl : 1;     // shown as an isolated control character
     int      eol : 1;      // part of the line break: the caret can't stop inside it
-    int      reserved : 6; // must be 0
+    int      bold : 1;     // in the font's bold, where the layout has one
+    int      italic : 1;   // in the font's italic, where the layout has one
+    int      reserved : 4; // must be 0
 };
 
 //

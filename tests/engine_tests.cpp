@@ -31,6 +31,7 @@ bool starts_character(const tstring &text, size_t i)
 // colours had them
 static std::vector<uint32_t> last_backgrounds;
 static std::vector<uint32_t> last_foregrounds;
+static std::vector<bool>     last_bolds;
 
 //
 //	A line laid out a character to a cell, with tab stops every tabWidth cells.
@@ -47,11 +48,13 @@ class FakeLayout : public TextLayout
         {
             last_backgrounds.clear();
             last_foregrounds.clear();
+            last_bolds.clear();
 
             for (int i = 0; i < length; i++)
             {
                 last_backgrounds.push_back(runs[i].bg);
                 last_foregrounds.push_back(runs[i].fg);
+                last_bolds.push_back(runs[i].bold != 0);
             }
         }
 
@@ -647,6 +650,13 @@ void engine_colours_syntax_across_lines()
     CHECK(last_foregrounds[0] == comment); // t
     CHECK(last_foregrounds[5] == comment); // the / of */
     CHECK(last_foregrounds[7] != comment); // b
+    CHECK(!last_bolds[0]);
+
+    // a kind's style can be bold
+    v.view->SetSyntaxStyle(SyntaxKind::Comment, comment, true, false);
+    v.view->Paint(canvas, &rect);
+    CHECK(last_bolds[0]);
+    CHECK(!last_bolds[7]);
 
     // a definition with a mistake isn't used
     CHECK(!v.view->SetSyntax("# neatpad-syntax-v1\nlanguage C\n"));

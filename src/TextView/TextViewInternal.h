@@ -294,7 +294,7 @@ public:
 	// a mistake.
 	int			ChooseSyntax(const char *const *definitions, int count, const char *filename);
 	bool		SetSyntax(const char *definition);
-	void		SetSyntaxColour(SyntaxKind kind, uint32_t rgbColour);
+	void		SetSyntaxStyle(SyntaxKind kind, uint32_t rgbColour, bool bold, bool italic);
 	
 private:
 
@@ -518,10 +518,17 @@ private:
 	uint32_t	m_rgbColourList[TXC_MAX_COLOURS];
 
 	// Syntax colouring: the language's rules (none for plain text), each kind's
-	// colour, and the state lines start in, by where they start, for some of
+	// style, and the state lines start in, by where they start, for some of
 	// the lines coloured so far. The states go when the line cache is reset.
+	struct SyntaxStyle
+	{
+		uint32_t colour;
+		bool	 bold;
+		bool	 italic;
+	};
+
 	std::unique_ptr<SyntaxLexer> m_pSyntax;
-	uint32_t	m_rgbSyntaxColours[SYNTAX_KINDS];
+	SyntaxStyle	m_syntaxStyles[SYNTAX_KINDS];
 	std::map<size_w, int> m_syntaxStates;
 
 	// The text ShowMatches highlights (none while empty), and whether its case matters

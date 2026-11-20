@@ -89,7 +89,8 @@ struct SyntaxDefinition
 //
 bool ParseSyntax(const std::string &text, SyntaxDefinition *definition, std::string *error);
 
-// A kind's name in a definition, such as "comment"
+// A kind's name in a definition, such as "comment", and the kind a name is
 const char *SyntaxKindName(SyntaxKind kind);
+bool        SyntaxKindFromName(const char *name, SyntaxKind *kind);
 
 #endif
