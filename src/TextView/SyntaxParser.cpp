@@ -19,6 +19,7 @@ const char *const KIND_NAMES[] =
 {
     "plain", "comment", "keyword", "type", "constant", "string", "escape",
     "number", "preprocessor", "error", "warning", "info", "debug",
+    "heading", "strong", "emphasis", "code", "link",
 };
 
 // The patterns that are a name: "word in" and quoted text are the others
@@ -270,7 +271,7 @@ bool Parser::Context(const Words &words)
 }
 
 //
-//	PATTERN KIND [enter NAME | leave]
+//	PATTERN [at line-start] KIND [enter NAME | leave]
 //
 bool Parser::Rule(const Words &words)
 {
@@ -311,6 +312,16 @@ bool Parser::Rule(const Words &words)
             return Fail(m_line, "unknown statement or pattern '" + words[i].text + "'");
 
         i++;
+    }
+
+    // where it can match
+    if (i < words.size() && !words[i].quoted && words[i].text == "at")
+    {
+        if (i + 1 == words.size() || words[i + 1].text != "line-start")
+            return Fail(m_line, "'at' takes 'line-start'");
+
+        rule.lineStart = true;
+        i += 2;
     }
 
     // how it's coloured

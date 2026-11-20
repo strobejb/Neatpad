@@ -35,7 +35,7 @@ context string  string  end-of-line
 | `files PATTERN...` | The file names it's for, such as `*.c`. Any number. |
 | `list NAME WORD...` | Words for `word in NAME` to look up. A list can go on over several `list` lines. |
 | `context NAME [KIND] [end-of-line]` | Starts a context: the rules after it, up to the next context, belong to it. |
-| `PATTERN KIND [enter NAME \| leave]` | A rule, in the context above it. |
+| `PATTERN [at line-start] KIND [enter NAME \| leave]` | A rule, in the context above it. `at line-start` matches only at a line's first character, as a Markdown heading's `#`. |
 
 - The first line is the version marker, `# neatpad-syntax-v1`, exactly.
 - Words are separated by spaces or tabs. Indenting means nothing, but makes the rules easy to read.
@@ -74,7 +74,11 @@ that enters or leaves a context.
 What a rule's text is, so the palette can give it a colour:
 
 `plain` `comment` `keyword` `type` `constant` `string` `escape` `number`
-`preprocessor` `error` `warning` `info` `debug`
+`preprocessor` `error` `warning` `info` `debug` `heading` `strong` `emphasis`
+`code` `link`
+
+The palette gives each kind its colour, and bold or italic: a definition says
+only what text is.
 
 ## Errors
 
@@ -84,6 +88,7 @@ A definition with a mistake isn't used. The error gives its line, such as
 - a missing or different version marker, or no `language` line
 - a statement or pattern that isn't one of the above, or an unknown kind
 - a quote that isn't closed, or an empty one
+- `at` without `line-start` after it
 - a rule before the first `context`, or no context at all
 - two contexts with the same name
 - `enter` a context, or `word in` a list, that isn't defined

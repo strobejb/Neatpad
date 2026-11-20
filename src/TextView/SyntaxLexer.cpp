@@ -142,7 +142,7 @@ SyntaxLexer::SyntaxLexer(const SyntaxDefinition &definition)
 
         for (const SyntaxRule &rule : context.rules)
         {
-            Rule r = { rule.pattern, FromUtf8(rule.text), -1, rule.kind, rule.action, rule.enter };
+            Rule r = { rule.pattern, FromUtf8(rule.text), -1, rule.kind, rule.action, rule.enter, rule.lineStart };
 
             if (rule.pattern == SyntaxPattern::WordIn)
                 r.list = listNumbers[rule.text];
@@ -245,6 +245,9 @@ int SyntaxLexer::Match(const Rule &rule, const tchar_t *text, int at, int length
     uint32_t ch   = Unit(text[at]);
     int      left = length - at;
     int      end  = at;
+
+    if (rule.lineStart && at != 0)
+        return 0;
 
     switch (rule.pattern)
     {

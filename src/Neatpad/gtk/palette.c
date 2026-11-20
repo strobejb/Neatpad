@@ -53,7 +53,12 @@ static const struct
                 "syntax-error=#cd0000\n"
                 "syntax-warning=#b07000\n"
                 "syntax-info=#0060c0\n"
-                "syntax-debug=#808080\n"},
+                "syntax-debug=#808080\n"
+                "syntax-heading=#0000ff bold\n"
+                "syntax-strong=#000000 bold\n"
+                "syntax-emphasis=#000000 italic\n"
+                "syntax-code=#a31515\n"
+                "syntax-link=#0066cc\n"},
 
     // Ethan Schoonover's Solarized
     {"solarized", "[palette]\n"
@@ -90,6 +95,11 @@ static const struct
                   "syntax-warning=#b58900\n"
                   "syntax-info=#268bd2\n"
                   "syntax-debug=#93a1a1\n"
+                  "syntax-heading=#268bd2 bold\n"
+                  "syntax-strong=#586e75 bold\n"
+                  "syntax-emphasis=#586e75 italic\n"
+                  "syntax-code=#2aa198\n"
+                  "syntax-link=#6c71c4\n"
                   "[dark]\n"
                   "text=#839496\n"
                   "background=#002b36\n"
@@ -121,7 +131,12 @@ static const struct
                   "syntax-error=#dc322f\n"
                   "syntax-warning=#b58900\n"
                   "syntax-info=#268bd2\n"
-                  "syntax-debug=#586e75\n"},
+                  "syntax-debug=#586e75\n"
+                  "syntax-heading=#268bd2 bold\n"
+                  "syntax-strong=#93a1a1 bold\n"
+                  "syntax-emphasis=#93a1a1 italic\n"
+                  "syntax-code=#2aa198\n"
+                  "syntax-link=#6c71c4\n"},
 };
 
 // Each colour's name in a palette, and what it colours
@@ -156,6 +171,7 @@ static const struct
 static const char *const syntax_kinds[] = {
     "comment", "keyword", "type", "constant", "string", "escape",
     "number", "preprocessor", "error", "warning", "info", "debug",
+    "heading", "strong", "emphasis", "code", "link",
 };
 
 // A syntax style: a colour, then bold or italic if it's either

@@ -48,6 +48,7 @@ class SyntaxLexer
         SyntaxKind    kind;
         SyntaxAction  action;
         int           enter;
+        bool          lineStart;
     };
 
     // The rules that can match at a character, by its first unit: one list for

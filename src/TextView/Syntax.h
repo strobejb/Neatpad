@@ -32,10 +32,15 @@ enum class SyntaxKind
     Warning,
     Info,
     Debug,
+    Heading,
+    Strong,
+    Emphasis,
+    Code,
+    Link,
 };
 
 // How many kinds there are
-const int SYNTAX_KINDS = (int)SyntaxKind::Debug + 1;
+const int SYNTAX_KINDS = (int)SyntaxKind::Link + 1;
 
 // What a rule matches
 enum class SyntaxPattern
@@ -62,6 +67,7 @@ struct SyntaxRule
     std::string   text;    // the text to match, or the list's name
     SyntaxKind    kind   = SyntaxKind::Plain;
     SyntaxAction  action = SyntaxAction::Stay;
+    bool          lineStart = false; // matches only at the start of a line
     std::string   target;  // the context entered
     int           enter = -1; // the context entered, as an index into contexts
     int           line  = 0;  // where it's defined

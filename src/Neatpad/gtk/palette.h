@@ -33,7 +33,9 @@
 //
 //					syntax-comment, syntax-keyword, syntax-type, syntax-constant,
 //					syntax-string, syntax-escape, syntax-number, syntax-preprocessor,
-//					syntax-error, syntax-warning, syntax-info, syntax-debug
+//					syntax-error, syntax-warning, syntax-info, syntax-debug,
+//					syntax-heading, syntax-strong, syntax-emphasis, syntax-code,
+//					syntax-link
 //
 #ifndef NEATPAD_PALETTE_INCLUDED
 #define NEATPAD_PALETTE_INCLUDED

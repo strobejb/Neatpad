@@ -1033,12 +1033,13 @@ void neatpad_text_view_set_scheme(NeatpadTextView *view, gboolean dark, const Gd
         engine->SetColour(colour.index, colour.colour);
 
     // syntax colours from GNOME's palette, darker on light, lighter on dark,
-    // and keywords in bold
+    // with keywords and headings in bold
     const struct
     {
         SyntaxKind kind;
         uint32_t   colour;
         bool       bold;
+        bool       italic;
     } syntax[] = {
         {SyntaxKind::Plain, text, false},
         {SyntaxKind::Comment, dark ? TV_RGB(0x9a, 0x99, 0x96) : TV_RGB(0x77, 0x76, 0x7b), false},
@@ -1053,10 +1054,15 @@ void neatpad_text_view_set_scheme(NeatpadTextView *view, gboolean dark, const Gd
         {SyntaxKind::Warning, dark ? TV_RGB(0xf8, 0xe4, 0x5c) : TV_RGB(0x9c, 0x6e, 0x03), false},
         {SyntaxKind::Info, dark ? TV_RGB(0x99, 0xc1, 0xf1) : TV_RGB(0x1c, 0x71, 0xd8), false},
         {SyntaxKind::Debug, dark ? TV_RGB(0x9a, 0x99, 0x96) : TV_RGB(0x77, 0x76, 0x7b), false},
+        {SyntaxKind::Heading, dark ? TV_RGB(0x62, 0xa0, 0xea) : TV_RGB(0x1a, 0x5f, 0xb4), true},
+        {SyntaxKind::Strong, text, true},
+        {SyntaxKind::Emphasis, text, false, true},
+        {SyntaxKind::Code, dark ? TV_RGB(0x8f, 0xf0, 0xa4) : TV_RGB(0x26, 0xa2, 0x69), false},
+        {SyntaxKind::Link, dark ? TV_RGB(0x99, 0xc1, 0xf1) : TV_RGB(0x1c, 0x71, 0xd8), false},
     };
 
     for (const auto &style : syntax)
-        engine->SetSyntaxStyle(style.kind, style.colour, style.bold, false);
+        engine->SetSyntaxStyle(style.kind, style.colour, style.bold, style.italic);
 
     view->host->SetPalette(background, text, dark ? TV_RGB(0xc0, 0xbf, 0xbc) : TV_RGB(0x77, 0x76, 0x7b));
 }

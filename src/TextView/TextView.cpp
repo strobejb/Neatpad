@@ -79,7 +79,7 @@ TextView::TextView(TextViewHost *host)
     m_rgbColourList[TXC_CHANGEDLINE]   = TV_RGB(88, 132, 164);
     m_rgbColourList[TXC_CHANGEDLINEBG] = SYSCOL(TVSC_3DFACE);
 
-    // syntax colours, as Visual Studio's light theme has them, none bold
+    // syntax colours, as Visual Studio's light theme has them
     const SyntaxStyle syntax[SYNTAX_KINDS] = {
         {SYSCOL(TVSC_WINDOWTEXT), false, false}, // plain
         {TV_RGB(0, 128, 0), false, false},       // comment
@@ -94,6 +94,11 @@ TextView::TextView(TextViewHost *host)
         {TV_RGB(176, 112, 0), false, false},     // warning
         {TV_RGB(0, 96, 192), false, false},      // info
         {TV_RGB(128, 128, 128), false, false},   // debug
+        {TV_RGB(0, 0, 255), true, false},        // heading
+        {SYSCOL(TVSC_WINDOWTEXT), true, false},  // strong
+        {SYSCOL(TVSC_WINDOWTEXT), false, true},  // emphasis
+        {TV_RGB(163, 21, 21), false, false},     // code
+        {TV_RGB(0, 102, 204), false, false},     // link
     };
 
     for (int i = 0; i < SYNTAX_KINDS; i++)

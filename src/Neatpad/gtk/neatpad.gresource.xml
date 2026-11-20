@@ -10,6 +10,7 @@
   <gresource prefix="/net/catch22/Neatpad/syntax">
     <file>c.syntax</file>
     <file>log.syntax</file>
+    <file>markdown.syntax</file>
   </gresource>
   <gresource prefix="/net/catch22/Neatpad/icons/scalable/actions">
     <file alias="neatpad-highlight-symbolic.svg">icons/neatpad-highlight-symbolic.svg</file>

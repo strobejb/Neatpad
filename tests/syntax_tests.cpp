@@ -51,12 +51,13 @@ const char *const C_RULES = "language C\n"
                             "    '\"'               string    leave\n";
 
 // The letter for each kind, in SyntaxKind's order
-const char KIND_LETTERS[] = ".cktCsenpEWID";
+const char KIND_LETTERS[] = ".cktCsenpEWIDhSiol";
 
 //
 //	Lines coloured one after another, each from the state the line before
 //	ended in. colour() gives a line's kinds as a letter a unit: . plain,
-//	c comment, k keyword, t type, s string, e escape, n number, p preprocessor.
+//	c comment, k keyword, t type, s string, e escape, n number, p preprocessor,
+//	h heading, S strong, i emphasis, o code, l link.
 //
 struct Colourer
 {
@@ -158,6 +159,12 @@ void syntax_reads_a_definition()
 
     CHECK(def.contexts[2].endOfLine);
     CHECK(def.contexts[2].rules[0].pattern == SyntaxPattern::Escape);
+    CHECK(!main.rules[0].lineStart);
+
+    // a rule can match only at a line's start
+    CHECK(ParseSyntax(definition("language M\ncontext main\n    \"#\"  at line-start  heading\n"), &def, &error));
+    CHECK(def.contexts[0].rules[0].lineStart);
+    CHECK(def.contexts[0].rules[0].kind == SyntaxKind::Heading);
 }
 
 void syntax_reads_quotes_comments_and_line_endings()
@@ -207,6 +214,8 @@ void syntax_reports_mistakes_by_line()
     CHECK(parse_error(definition("language C\ncontext main\n  \"x\"  keyword  enter\n")) ==
           "4: 'enter' takes a context's name");
     CHECK(parse_error(definition("language C\ncontext main\n  \"x\"  keyword  leave now\n")) == "4: unexpected 'now'");
+    CHECK(parse_error(definition("language C\ncontext main\n  \"#\"  at start  heading\n")) ==
+          "4: 'at' takes 'line-start'");
 
     // names are checked once everything is defined, at the rule's line
     CHECK(parse_error(definition("language C\ncontext main\n  \"x\"  keyword  enter later\ncontext later\n")) == "");
@@ -219,7 +228,7 @@ void syntax_reports_mistakes_by_line()
 void syntax_reads_the_definitions_neatpad_has()
 {
 #ifdef NEATPAD_SYNTAX_DIR
-    for (const char *name : { "c.syntax", "log.syntax" })
+    for (const char *name : { "c.syntax", "log.syntax", "markdown.syntax" })
     {
         std::ifstream     file(std::string(NEATPAD_SYNTAX_DIR) + "/" + name, std::ios::binary);
         std::stringstream text;
@@ -289,6 +298,42 @@ void lexer_colours_whole_characters()
     CHECK(c.colour(U"\"\\\U0001F600\"") == "se" + u + "s");
 }
 
+void lexer_matches_at_line_start()
+{
+    Colourer c(definition("language M\n"
+                          "context main\n"
+                          "    \"#\"  at line-start  heading  enter heading\n"
+                          "context heading  heading  end-of-line\n"));
+
+    CHECK(c.colour(U"# Title") == "hhhhhhh");
+    CHECK(c.state == SyntaxLexer::START);
+    CHECK(c.colour(U"a # b") == ".....");
+}
+
+void lexer_colours_markdown()
+{
+#ifdef NEATPAD_SYNTAX_DIR
+    std::ifstream     file(std::string(NEATPAD_SYNTAX_DIR) + "/markdown.syntax", std::ios::binary);
+    std::stringstream text;
+
+    text << file.rdbuf();
+
+    Colourer c(text.str());
+
+    CHECK(c.colour(U"## Notes") == "hhhhhhhh");
+    CHECK(c.colour(U"Some **bold** and *it* and `code` [link](url)") ==
+          "....." "SSSSSSSS" "....." "iiii" "....." "oooooo" "." "llllll" ".....");
+    CHECK(c.colour(U"* item") == "kk....");
+    CHECK(c.colour(U"snake_case_name") == "...............");
+
+    // a fenced block goes on over lines, and has no headings
+    CHECK(c.colour(U"```") == "ooo");
+    CHECK(c.colour(U"# not a heading") == "ooooooooooooooo");
+    CHECK(c.colour(U"```") == "ooo");
+    CHECK(c.state == SyntaxLexer::START);
+#endif
+}
+
 void lexer_reads_the_definitions_neatpad_has()
 {
 #ifdef NEATPAD_SYNTAX_DIR
@@ -315,6 +360,8 @@ const test_case tests[] =
     { "lexer_carries_a_block_comment_to_the_next_line", lexer_carries_a_block_comment_to_the_next_line },
     { "lexer_leaves_end_of_line_contexts_at_the_end", lexer_leaves_end_of_line_contexts_at_the_end },
     { "lexer_colours_whole_characters", lexer_colours_whole_characters },
+    { "lexer_matches_at_line_start", lexer_matches_at_line_start },
+    { "lexer_colours_markdown", lexer_colours_markdown },
     { "lexer_reads_the_definitions_neatpad_has", lexer_reads_the_definitions_neatpad_has },
 };
 }

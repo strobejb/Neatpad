@@ -342,8 +342,9 @@ Each step is its own commit on `main`, and moves and formatting changes stay sep
   `src/TextView/syntax`, whose `README.md` is the format's reference: `SyntaxParser.cpp` reads one and
   `SyntaxLexer.cpp` colours a line by it, from the state the line before ended in. Painting keeps some of those
   states, which the line cache's reset forgets; a document over 1 MB, or a language whose lines carry no state
-  (a log), colours each line on its own. The GTK app compiles the definitions in as a GResource and chooses one
-  by the file's name, in GNOME palette colours for light and dark.
+  (a log), colours each line on its own. The GTK app compiles the definitions in as a GResource (C and C++, logs
+  and Markdown) and chooses one by the file's name. Each kind of text has a style, a colour and bold or italic,
+  from GNOME's palette for light and dark, or a palette's `syntax-KIND` keys.
 - **Next:** syntax colouring in the Win32 app (the definitions as resources, colours in its options) and in the
   palettes. Perhaps a COPR spec for Fedora, from the same install rules. Smaller gaps, as wanted: input-method
   preedit.

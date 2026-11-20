@@ -1,0 +1,56 @@
+# neatpad-syntax-v1
+#
+#   Markdown: headings, emphasis, code, links and HTML comments.
+#   Simplified: emphasis and code spans end with their line.
+#
+language Markdown
+files    *.md *.markdown
+
+context main
+    escape                     escape
+    "#"      at line-start     heading    enter heading
+    "```"    at line-start     code       enter fence
+    "~~~"    at line-start     code       enter tilde-fence
+    "<!--"                     comment    enter html-comment
+    "`"                        code       enter code
+    "**"                       strong     enter strong
+    "__"                       strong     enter strong-underscores
+    "* "                       keyword
+    "- "     at line-start     keyword
+    "+ "     at line-start     keyword
+    "*"                        emphasis   enter emphasis
+    "_"                        emphasis   enter emphasis-underscore
+    "["                        link       enter link
+
+context heading  heading  end-of-line
+
+context fence  code
+    "```"    at line-start     code       leave
+
+context tilde-fence  code
+    "~~~"    at line-start     code       leave
+
+context html-comment  comment
+    "-->"                      comment    leave
+
+context code  code  end-of-line
+    "`"                        code       leave
+
+context strong  strong  end-of-line
+    escape                     escape
+    "**"                       strong     leave
+
+context strong-underscores  strong  end-of-line
+    escape                     escape
+    "__"                       strong     leave
+
+context emphasis  emphasis  end-of-line
+    escape                     escape
+    "*"                        emphasis   leave
+
+context emphasis-underscore  emphasis  end-of-line
+    escape                     escape
+    "_"                        emphasis   leave
+
+context link  link  end-of-line
+    "]"                        link       leave
